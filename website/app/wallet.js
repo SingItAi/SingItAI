@@ -299,14 +299,30 @@ export async function switchAppKitNetwork(chain) {
   await k.switchNetwork(chain === "solana" ? kitNetworks.solana : kitNetworks.base);
 }
 
+// AppKit picks the modal's views once, from the project's Reown settings, the first time it opens or
+// closes. Opening it before initialize() has those settings would leave out the email/Google wallet's
+// views for good, so a press in the first moments after the page loads waits for it.
+export function kitReady(k) {
+  if (k.getState?.()?.initialized !== false) return Promise.resolve();
+  return new Promise((resolve) => {
+    const stop = k.subscribeState((state) => {
+      if (!state?.initialized) return;
+      stop?.();
+      resolve();
+    });
+  });
+}
+
 export async function openAppKit() {
   const k = await appKit();
+  await kitReady(k);
   await k.open({ view: "Connect" });
 }
 
 // Buy crypto with a card (Reown's onramp providers), for a wallet connected through AppKit.
 export async function openOnRamp() {
   const k = await appKit();
+  await kitReady(k);
   await k.open({ view: "OnRampProviders" });
 }
 
