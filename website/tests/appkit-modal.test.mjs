@@ -51,3 +51,27 @@ test("a restored session with the modal closed never calls close()", async () =>
   assert.equal(kit.closes, 0);
   assert.deepEqual(seen, ["0x3d00"]);
 });
+
+const readyCode = source.slice(source.indexOf("export function kitReady("), source.indexOf("export async function openAppKit"))
+  .replace("export function", "function") + "\nglobalThis.kitReady = kitReady;";
+
+test("opening waits until AppKit has its settings, and does not wait once it has them", async () => {
+  const context = vm.createContext({});
+  vm.runInContext(readyCode, context);
+  let listener = null, stopped = false;
+  const kit = { state: { initialized: false }, getState() { return this.state; },
+    subscribeState(cb) { listener = cb; return () => { stopped = true; }; } };
+  let opened = false;
+  const waiting = context.kitReady(kit).then(() => { opened = true; });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(opened, false);
+  listener({ initialized: false });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(opened, false);
+  listener({ initialized: true });
+  await waiting;
+  assert.equal(opened, true);
+  assert.equal(stopped, true);
+  kit.state.initialized = true;
+  await context.kitReady(kit);  // ready: resolves at once
+});
