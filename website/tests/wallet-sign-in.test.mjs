@@ -42,3 +42,12 @@ test("a wallet already on Base signs without switching", async () => {
   await w.signMessage("Sign in to SingIt");
   assert.deepEqual(calls, ["eth_chainId", "personal_sign"]);
 });
+
+test("a wallet that reports Base as a decimal number signs without switching", async () => {
+  // Reown's email/Google wallet answers eth_chainId with 8453 and refuses wallet_switchEthereumChain.
+  for (const chainId of [8453, "8453"]) {
+    const { calls, wallet: w } = wallet(chainId);
+    assert.equal(await w.signMessage("Sign in to SingIt"), "0xsigned");
+    assert.deepEqual(calls, ["eth_chainId", "personal_sign"]);
+  }
+});
