@@ -113,6 +113,27 @@ class ChooseAndChatTests(unittest.TestCase):
         self.assertEqual(answer["modelLabel"], "Pro · SingIt Ask")
         self.assertGreater(self.pay.call_args.kwargs["cap"], 400_000)
 
+    def test_a_dear_model_answers_shorter_to_fit_the_limit_instead_of_being_refused(self):
+        with listed(CHEAP, PRO):
+            web_ask.choose(self.server, ACCOUNT, "ask:pro")
+            with patch.object(web_ask, "_per_answer_limit", return_value=450_000):
+                self.chat()
+            body, cap = self.pay.call_args.args[3], self.pay.call_args.kwargs["cap"]
+            self.assertLessEqual(cap, 450_000)
+            self.assertTrue(200 <= body["max_tokens"] < 1200)
+            args = dict(markup_bps=3000, fee=1000)
+            chars = sum(len(m["content"].encode("utf-16-le")) // 2 for m in body["messages"])
+            self.assertGreater(ask_catalogue.ceiling(PRO, chars, body["max_tokens"] + 1, **args), 450_000)  # the longest that fits
+            with patch.object(web_ask, "_per_answer_limit", return_value=10_000_000):
+                self.chat()
+            self.assertEqual(self.pay.call_args.args[3]["max_tokens"], 1200)
+            with patch.object(web_ask, "_per_answer_limit", return_value=5_000):  # even the shortest answer cannot fit: the thinking headroom alone is dear
+                self.chat()
+            self.assertEqual(self.pay.call_args.args[3]["max_tokens"], 200)
+            with patch.object(web_ask, "_per_answer_limit", return_value=None):
+                self.chat()
+            self.assertEqual(self.pay.call_args.args[3]["max_tokens"], 1200)
+
     def test_an_unknown_model_is_refused_before_anything_is_recorded(self):
         with listed(CHEAP):
             with self.assertRaises(AllowanceUnavailable):

@@ -85,6 +85,37 @@ def listing(result: dict[str, Any], account: str) -> dict[str, Any]:
     return result
 
 
+MAX_TOKENS = 1200
+MIN_TOKENS = 200  # shorter than this is no answer worth paying for; the refusal then names what it would take
+
+
+def _per_answer_limit(server: Any, account: str) -> int | None:
+    """The most this account's own limits let one answer be authorized for, or None when they cannot be read."""
+    try:
+        if account.startswith("solana:"):
+            lane = getattr(server, "solana_allowance", None)
+            limits = lane.store.limits(account) if lane is not None else None
+            return min(int(limits["per_purchase_cap"]), int(lane.max_per_purchase)) if limits else None
+        active = server.allowance.lane_for(account)
+        return int(active["per_purchase_cap"]) if active is not None else None
+    except Exception:  # noqa: BLE001 - the payment path will refuse with its own reason
+        return None
+
+
+def _fit_tokens(ceiling: Any, limit: int | None) -> int:
+    """The longest answer whose ceiling fits the account's limit, so a dear model answers shorter instead of
+    being refused. The ceiling grows with the answer, hence a plain search."""
+    if limit is None or ceiling(MAX_TOKENS) <= limit:
+        return MAX_TOKENS
+    low, high = MIN_TOKENS, MAX_TOKENS
+    if ceiling(low) > limit:
+        return MIN_TOKENS
+    while low < high:
+        mid = (low + high + 1) // 2
+        low, high = (mid, high) if ceiling(mid) <= limit else (low, mid - 1)
+    return low
+
+
 def require_payment_ready(server: Any, gw: Any, account: str) -> None:
     """Do not buy more search data while the selected answer model is blocked.
 
@@ -161,11 +192,14 @@ def chat(server: Any, gw: Any, account: str, raw_messages: Any, context: Any = N
     server.user_event_store.preflight_write()
     payer = ask_solana if account.startswith("solana:") else ask_metered
     label, surplus_id, info = _described(current(server, account))
-    max_tokens = 1200
+    max_tokens = MAX_TOKENS
     kwargs: dict[str, Any] = {}
     if info is not None:
         chars = sum(len(m["content"].encode("utf-16-le")) // 2 for m in messages)
-        kwargs["cap"] = ask_catalogue.ceiling(info, chars, max_tokens, markup_bps=ask_metered.MARKUP_BPS, fee=ask_metered.FEE)
+        def ceiling(tokens: int) -> int:
+            return ask_catalogue.ceiling(info, chars, tokens, markup_bps=ask_metered.MARKUP_BPS, fee=ask_metered.FEE)
+        max_tokens = _fit_tokens(ceiling, _per_answer_limit(server, account))
+        kwargs["cap"] = ceiling(max_tokens)
     amount, data, tx = payer.pay(server, gw, account,
                                 {"model": surplus_id or MODEL, "messages": messages, "max_tokens": max_tokens}, **kwargs)
     # Never retry a paid request on a missing or malformed answer.
