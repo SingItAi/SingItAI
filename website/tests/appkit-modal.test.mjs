@@ -12,7 +12,8 @@ const code = source.slice(from, to).replace("export async function", "async func
   + "\nglobalThis.watchAppKit = watchAppKit;";
 
 async function setup() {
-  const kit = { closes: 0, close() { this.closes++; }, subscribeAccount(cb) { this.emit = cb; } };
+  const kit = { open: true, closes: 0, isOpen() { return this.open; }, close() { this.closes++; },
+    subscribeAccount(cb) { this.emit = cb; } };
   const seen = [];
   const context = vm.createContext({
     appKit: async () => kit,
@@ -39,4 +40,14 @@ test("a new account closes the modal again, and so does reconnecting after a dis
   kit.emit({ isConnected: true, address: "0xbbbb" });
   assert.equal(kit.closes, 3);
   assert.deepEqual(seen, ["0xaaaa", "0xbbbb", null, "0xbbbb"]);
+});
+
+test("a restored session with the modal closed never calls close()", async () => {
+  // close() makes AppKit load its views; before its Reown settings arrive that skips the email/Google
+  // wallet's signature view for good. A reconnect on page load must leave the closed modal alone.
+  const { kit, seen } = await setup();
+  kit.open = false;
+  kit.emit({ isConnected: true, address: "0x3d00" });
+  assert.equal(kit.closes, 0);
+  assert.deepEqual(seen, ["0x3d00"]);
 });
