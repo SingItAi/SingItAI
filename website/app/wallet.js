@@ -157,7 +157,9 @@ export class Wallet {
       await kit.switchNetwork(kitNetworks.base);
     }
     const chainId = await this.provider.request({ method: "eth_chainId" });
-    if (String(chainId).toLowerCase() === BASE.chainId) return;
+    // Extensions answer "0x2105"; Reown's email/Google wallet answers 8453. Both are Base, and that wallet
+    // refuses wallet_switchEthereumChain ("Action not allowed"), so compare the number, not the text.
+    if (Number(chainId) === Number(BASE.chainId)) return;
     try {
       await this.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE.chainId }] });
     } catch (error) {
