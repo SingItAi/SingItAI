@@ -277,9 +277,12 @@ export async function watchAppKit(onWallet) {
         // Connected: the page takes over from the modal, once per address. AppKit sends more events
         // for the same account (network, balance), and closing the modal again would abort the
         // email/Google wallet's sign-in signature shown in it ("Request was aborted").
+        // Only when it is open: close() loads AppKit's views, and before its settings arrive from Reown
+        // (a restored session reconnects first) it would skip the email/Google wallet's views for good,
+        // leaving that wallet's signature window empty.
         if (account.address !== closedFor) {
           closedFor = account.address;
-          k.close?.();
+          if (k.isOpen?.()) k.close?.();
         }
       } catch { /* provider not ready yet; the next event has it */ }
     } else if (account && account.status === "disconnected") {
