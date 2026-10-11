@@ -192,3 +192,47 @@ test('wallet funds only its own agent with the exact SOL amount, including walle
   const transfer=message.instructions.find(i=>message.staticAccounts[i.programAddressIndex]==='11111111111111111111111111111111');
   assert.equal(Buffer.from(transfer.data).readBigUInt64LE(4),5000000n);
 });
+
+test('funding inspection validates the signature and returns recovery identifiers without sending', async () => {
+  const [owner, agent] = [await testWallet(), await testWallet()];
+  const rpc = fakeRpc(), service = lane(rpc);
+  const args = { kind: 'fund-gas', owner: owner.address, delegate: agent.address, amount: '5000000', feePayer: owner.address };
+  const prepared = await service.prepare(args);
+  const wire = await asPhantomWould(prepared, owner);
+  const input = { ...args, feePayer: null, transaction: wire, expectedHash: prepared.messageHash };
+  const inspected = await service.inspect(input);
+  assert.equal(inspected.blockhash, BLOCKHASH);
+  assert.equal(rpc.sent.length, 0);
+  await assert.rejects(service.inspect({ ...input, transaction: prepared.transaction }), /did not sign/);
+  assert.equal((await service.submit(input)).transaction, inspected.transaction);
+  assert.equal(rpc.sent.length, 1);
+});
+
+test('read-only recovery handles confirmation, rejection, expiry, lag and RPC loss without rebroadcast', async () => {
+  const statuses = [
+    [{ confirmationStatus: 'confirmed', err: null }, true, 'confirmed'],
+    [{ confirmationStatus: 'finalized', err: { InstructionError: [0, 'test'] } }, true, 'failed'],
+    [{ confirmationStatus: 'processed', err: null }, false, 'uncertain'],
+    [{ confirmationStatus: 'processed', err: { InstructionError: [0, 'test'] } }, false, 'uncertain'],
+    [null, true, 'uncertain'],
+    [null, false, 'expired'],
+  ];
+  for (const [status, valid, expected] of statuses) {
+    const rpc = fakeRpc();
+    rpc.getSignatureStatuses = (_signatures, options) => {
+      assert.equal(options.searchTransactionHistory, true);
+      return { send: async () => ({ value: [status] }) };
+    };
+    rpc.isBlockhashValid = () => ({ send: async () => ({ value: valid }) });
+    assert.equal((await lane(rpc).reconcile({ transaction: 'test-signature', blockhash: BLOCKHASH })).state, expected);
+    assert.equal(rpc.sent.length, 0);
+  }
+  const rpc = fakeRpc({ status: null });
+  rpc.isBlockhashValid = () => ({ send: async () => { throw new Error('RPC unavailable'); } });
+  assert.equal((await lane(rpc).reconcile({ transaction: 'test', blockhash: BLOCKHASH })).state, 'uncertain');
+  let reads = 0;
+  rpc.getSignatureStatuses = () => ({ send: async () => ({ value: [reads++ ? { confirmationStatus: 'confirmed', err: null } : null] }) });
+  rpc.isBlockhashValid = () => ({ send: async () => ({ value: false }) });
+  assert.equal((await lane(rpc).reconcile({ transaction: 'test', blockhash: BLOCKHASH })).state, 'confirmed');
+  assert.equal(rpc.sent.length, 0);
+});

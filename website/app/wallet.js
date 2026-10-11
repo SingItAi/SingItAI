@@ -103,6 +103,7 @@ export class SolanaWallet {
   }
 
   async signMessage(message) {
+    if (this.name === "WalletConnect") await switchAppKitNetwork("solana");
     const signed = await this.provider.signMessage(new TextEncoder().encode(message), "utf8");
     const bytes = signed?.signature || signed;
     if (!(bytes instanceof Uint8Array) || bytes.length !== 64) throw new Error("The wallet returned no signature.");
@@ -113,7 +114,7 @@ export class SolanaWallet {
   async signTransaction(base64) {
     // Through AppKit the Solana provider signs only while Solana is the active network
     // (otherwise "Invalid chain id"); the page starts on Base.
-    if (this.name === "WalletConnect" && kit && kitNetworks?.solana) await kit.switchNetwork(kitNetworks.solana);
+    if (this.name === "WalletConnect") await switchAppKitNetwork("solana");
     const { VersionedTransaction } = await solanaWeb3();
     const signed = await this.provider.signTransaction(VersionedTransaction.deserialize(fromBase64(base64)));
     const bytes = signed?.serialize ? signed.serialize() : signed?.signedTransaction?.serialize?.();
@@ -154,7 +155,7 @@ export class Wallet {
 
   async ensureBase() {
     if (this.name === "WalletConnect" && kit && kitNetworks?.base && kit.getCaipNetwork?.()?.id !== kitNetworks.base.id) {
-      await kit.switchNetwork(kitNetworks.base);
+      await kit.switchNetwork(kitNetworks.base, { throwOnFailure: true });
     }
     const chainId = await this.provider.request({ method: "eth_chainId" });
     // Extensions answer "0x2105"; Reown's email/Google wallet answers 8453. Both are Base, and that wallet
@@ -295,8 +296,21 @@ export async function watchAppKit(onWallet) {
 // The network a wallet connected through AppKit signs in on. An email or Google wallet has an address on
 // each, and each address is its own SingIt account: AppKit reports the new one through watchAppKit.
 export async function switchAppKitNetwork(chain) {
+  if (chain !== "base" && chain !== "solana") throw new Error("Choose Base or Solana.");
   const k = await appKit();
-  await k.switchNetwork(chain === "solana" ? kitNetworks.solana : kitNetworks.base);
+  await kitReady(k);
+  const network = chain === "solana" ? kitNetworks.solana : kitNetworks.base;
+  // AppKit's exported Base definition is a viem chain without chainNamespace;
+  // getCaipNetwork() returns AppKit's enriched version of it.
+  const namespace = chain === "solana" ? "solana" : "eip155";
+  await k.switchNetwork(network, { throwOnFailure: true });
+  const account = k.getAccount?.();
+  const active = k.getCaipNetwork?.();
+  if (String(active?.id) !== String(network.id) || active?.chainNamespace !== namespace
+      || !account?.isConnected || !account.address || !String(account.caipAddress || "").startsWith(`${namespace}:${network.id}:`)) {
+    throw new Error(`Your wallet has no connected ${chain === "solana" ? "Solana" : "Base"} account. Connect it and try again.`);
+  }
+  return kitWallet(k, account);
 }
 
 // AppKit picks the modal's views once, from the project's Reown settings, the first time it opens or

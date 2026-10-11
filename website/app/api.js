@@ -3,6 +3,33 @@
 
 const base = () => window.SINGIT_APP_CONFIG.apiBase.replace(/\/$/, "");
 const CSRF_KEY = "singit.csrf";
+const SESSION_KEY = "singit.session";
+
+function readSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || "null");
+    if (saved?.csrfToken && saved?.account) return saved;
+    const legacy = localStorage.getItem(CSRF_KEY);
+    return legacy ? { csrfToken: legacy, account: null } : null;
+  } catch { return null; }
+}
+
+// Capture once, not on each request: another tab must never silently replace
+// the credentials of the account this tab is displaying.
+let tabSession = readSession();
+let sessionVersion = 0;
+const sameSession = (a, b) => a?.csrfToken === b?.csrfToken && a?.account === b?.account;
+
+function changedSession() {
+  setCsrf(null);  // clear an expired local session, but preserve a newer tab's one
+  window.dispatchEvent(new Event("singit:session-changed"));
+  return new ApiError(409, { error: "session_changed", message: "Your account changed in another tab. Sign in again." });
+}
+
+window.addEventListener("storage", (event) => {
+  if ((event.key === SESSION_KEY || event.key === CSRF_KEY || event.key === null)
+      && !sameSession(tabSession, readSession())) changedSession();
+});
 
 export class ApiError extends Error {
   constructor(status, body) {
@@ -14,18 +41,33 @@ export class ApiError extends Error {
 }
 
 export function csrf() {
-  try { return localStorage.getItem(CSRF_KEY) || ""; } catch { return ""; }
+  return tabSession?.csrfToken || "";
 }
 
-export function setCsrf(token) {
-  try { token ? localStorage.setItem(CSRF_KEY, token) : localStorage.removeItem(CSRF_KEY); } catch { /* private mode */ }
+export function setCsrf(token, account = tabSession?.account) {
+  const previous = tabSession;
+  tabSession = token ? { csrfToken: token, account } : null;
+  sessionVersion++;
+  try {
+    if (token) localStorage.setItem(SESSION_KEY, JSON.stringify(tabSession));
+    else if (sameSession(previous, readSession())) localStorage.removeItem(SESSION_KEY);
+    // A stale tab must not erase another tab's new credentials.
+    if (token || localStorage.getItem(CSRF_KEY) === previous?.csrfToken) localStorage.removeItem(CSRF_KEY);
+  } catch { /* private mode: the in-memory session still works */ }
 }
 
 async function call(method, path, body) {
+  const publicAuth = path === "/auth/nonce" || path === "/auth/verify";
+  const version = sessionVersion;
+  const identity = tabSession;
+  if (!publicAuth && !identity) throw new ApiError(401, { message: "Sign in first." });
   const headers = { Accept: "application/json" };
+  if (!publicAuth) {
+    headers["X-SingIt-CSRF"] = identity.csrfToken;
+    if (identity.account) headers["X-SingIt-Account"] = identity.account;
+  }
   if (method === "POST") {
     headers["Content-Type"] = "application/json";
-    headers["X-SingIt-CSRF"] = csrf();
   }
   let response;
   try {
@@ -37,6 +79,10 @@ async function call(method, path, body) {
     throw new ApiError(0, { message: "Could not reach SingIt. Check your connection and try again." });
   }
   const data = await response.json().catch(() => ({}));
+  // Ignore late replies to an account that this tab has already left. Payments
+  // are never retried automatically, even when the response is discarded.
+  if (version !== sessionVersion) throw new ApiError(409, { error: "session_changed", message: "Your session changed. This response belongs to the previous session." });
+  if (!publicAuth && (response.status === 401 || data.error === "session_changed")) throw changedSession();
   if (!response.ok || data.ok === false) throw new ApiError(response.status, data);
   return data;
 }

@@ -233,6 +233,40 @@ Verification: 211 web gateway tests and five frontend call-state regression test
 production attempt returned HTTP 400, `Validation failed`. Czech `+420` calls are not supported by this
 integration; a successful real call has not been verified. These fixes do not add a new calling provider.
 
+### October 11: authentication and allowance audit fixes (local verification)
+
+Local working-tree changes in the merged SingItAI project, based on
+[`e47cb33`](https://github.com/bubon-ik/SingItAI/commit/e47cb33ba3f63e1ff8ceb564d238cb688867f574).
+Commit/PR for these fixes: not yet created. This entry records verification, not a deployment.
+
+The Solana allowance now reserves regular and metered payments against current
+limits atomically across database connections. Wallet-signed SOL funding checkpoints
+its public signature/blockhash before sending and reconciles uncertain outcomes
+without resubmission. The shared web app pins each tab to its authenticated payer
+and lets a newly connected user select Base or Solana before explicitly signing in.
+These are fixes to the existing merged authentication/payment lanes, not a new
+wallet provider or a new merchant integration.
+
+Verification: 1,784 gateway, 79 Solana client and 24 website tests passed in the
+current working tree. A local Chrome smoke test used generated unfunded signers,
+the actual page/API and a mocked wallet connection to verify Solana selection and
+cross-tab account changes. The audit's stale-limit, concurrent-payer and stuck-funding
+reproductions no longer trigger. No payment, production deployment or full real
+social OAuth callback was performed; old uncertain operations without a saved
+transaction signature still need investigation. [Detailed evidence and remaining findings](docs/security-audit/2026-10-11-auth-wallet-review.md).
+
+The October 11 follow-up also fixes private Solana allowance database permissions,
+adds owner/chain/address binding to managed Base ciphertext with key-preserving
+legacy migration, and bounds/rejects malformed web request bodies. A5's setup text
+is deferred by the owner. An isolated baseline-plus-fixes release passed 1,786
+gateway, 79 Solana and 24 website tests; four migration/installer checks passed
+afterwards. A server dry run verified 97 Base and three Solana managed wallets
+using a temporary database copy. On the VPS the staged gateway suite passed
+(1,790 discovered; one initial Node/PATH skip then covered by a passing 14-test
+module), as did all 79 Solana and 24 website tests. The release is staged, not deployed: unattended
+sudo is unavailable. Commit/PR: not yet created. [Installation, verification and
+limitations](docs/security-audit/2026-10-11-release.md).
+
 ## Pending work — not claimed as completed
 
 - Manually verify the deployed wallet commands and refreshed navigation in Telegram.

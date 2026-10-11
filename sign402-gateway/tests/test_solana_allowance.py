@@ -1,6 +1,10 @@
 import tempfile
+import os
+import sqlite3
+import threading
 import unittest
-from unittest.mock import Mock
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import Mock, patch
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -8,6 +12,7 @@ from cryptography.fernet import Fernet
 from sign402_gateway.agent_allowance import AllowanceError, AllowanceUnavailable
 from sign402_gateway.solana_allowance import SolanaAllowanceService, SolanaAllowanceStore
 from sign402_gateway.solana_keys import generate_keypair
+from sign402_gateway.secure_state import SensitiveStateError
 
 OWNER = generate_keypair()[0]
 ACCOUNT = f"solana:{OWNER}"
@@ -34,6 +39,10 @@ class FakeBridge:
                     "agent": {"usdcAtomic": str(self.agent_usdc)}}
         if operation == "allowance-prepare":
             return {"transaction": "BASE64TX", "messageHash": "hash-" + payload["kind"] + payload["amount"]}
+        if operation == "allowance-inspect":
+            return {"transaction": "SoLTx1", "blockhash": "blockhash"}
+        if operation == "allowance-reconcile":
+            return {"transaction": payload["transaction"], "state": self.submit_state}
         if operation == "allowance-submit":
             if self.submit_state == "confirmed":
                 self.delegated = int(self.calls[-2][4]["amount"]) if self.calls[-2][0] == "allowance-prepare" else self.delegated
@@ -45,6 +54,51 @@ class FakeBridge:
             self.agent_usdc += amount
             return {"state": "confirmed", "transaction": "PullTx"}
         raise AssertionError(operation)
+
+
+class SolanaStorePermissionsTests(unittest.TestCase):
+    def test_new_and_existing_databases_are_private_and_keep_their_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state" / "solana.db"
+            previous = os.umask(0o022)
+            try:
+                store = SolanaAllowanceStore(path)
+                store.add_agent("test", "address", "encrypted-fixture", NOW)
+                self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                path.chmod(0o644)
+                path.parent.chmod(0o755)
+                reopened = SolanaAllowanceStore(path)
+                self.assertEqual(reopened.agent("test")["encrypted_key"], "encrypted-fixture")
+                self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                with reopened._db() as db:
+                    db.execute("PRAGMA journal_mode=WAL")
+                    db.execute("INSERT INTO agents VALUES ('wal','wal-address','encrypted',1)")
+                    for suffix in ("-wal", "-shm"):
+                        sidecar = Path(str(path) + suffix)
+                        self.assertEqual(sidecar.stat().st_mode & 0o777, 0o600)
+                        sidecar.chmod(0o644)
+                    reopened.agent("test")
+                    for suffix in ("-wal", "-shm"):
+                        self.assertEqual(Path(str(path) + suffix).stat().st_mode & 0o777, 0o600)
+            finally:
+                os.umask(previous)
+
+    def test_symlink_database_and_directory_are_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "target"
+            target.write_bytes(b"untouched")
+            (root / "alias.db").symlink_to(target)
+            with self.assertRaises(SensitiveStateError):
+                SolanaAllowanceStore(root / "alias.db")
+            real = root / "real"
+            real.mkdir()
+            (root / "alias-dir").symlink_to(real)
+            with self.assertRaises(SensitiveStateError):
+                SolanaAllowanceStore(root / "alias-dir" / "wallets.db")
+            self.assertEqual(target.read_bytes(), b"untouched")
 
 
 class SolanaAllowanceTests(unittest.TestCase):
@@ -211,9 +265,9 @@ class SolanaAllowanceTests(unittest.TestCase):
         op = self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
         self.bridge.submit_state = "uncertain"
         self.assertEqual(self.service.submit_wallet(ACCOUNT, op["operation"], "SIGNED")["state"], "UNCERTAIN")
-        calls = len(self.bridge.calls)
+        calls = sum(c[0] == "allowance-submit" for c in self.bridge.calls)
         self.service.submit_wallet(ACCOUNT, op["operation"], "SIGNED")
-        self.assertEqual(len(self.bridge.calls), calls)
+        self.assertEqual(sum(c[0] == "allowance-submit" for c in self.bridge.calls), calls)
         with self.assertRaisesRegex(AllowanceError, "previous SOL transfer"):
             self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
 
@@ -260,8 +314,173 @@ class SolanaAllowanceTests(unittest.TestCase):
         with self.assertRaises(AllowanceUnavailable):
             self.service.owner("wallet:0x1111111111111111111111111111111111111111")
 
+    def test_limits_changed_while_reading_chain_are_rechecked_before_payment(self):
+        self.grant("100")
+        original = self.service.chain_state
+        def reduced(*args, **kwargs):
+            state = original(*args, **kwargs)
+            self.service.setup(ACCOUNT, "1", "1", "30")
+            return state
+        self.service.chain_state = reduced
+        pay = Mock(return_value={"state": "confirmed"})
+        with self.assertRaisesRegex(AllowanceError, "per-purchase"):
+            self.service.spend(ACCOUNT, 4_000_000, "queued", pay)
+        pay.assert_not_called()
+        self.assertEqual(self.service.store.spent_since(ACCOUNT, 0), 0)
+
+    def test_queued_purchase_reads_limits_after_acquiring_lock(self):
+        self.grant("100")
+        waiting, release = threading.Event(), threading.Event()
+        class Gate:
+            def __enter__(self):
+                waiting.set()
+                if not release.wait(5):
+                    raise AssertionError("test gate timed out")
+            def __exit__(self, *args): pass
+        self.service._spend_lock = Gate()
+        pay = Mock(return_value={"state": "confirmed"})
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            result = pool.submit(self.service.spend, ACCOUNT, 4_000_000, "queued", pay)
+            try:
+                self.assertTrue(waiting.wait(2))
+                self.service.setup(ACCOUNT, "1", "1", "30")
+            finally:
+                release.set()
+            with self.assertRaisesRegex(AllowanceError, "per-purchase"):
+                result.result(timeout=5)
+        pay.assert_not_called()
+
+    def test_independent_paying_instances_share_atomic_daily_budget(self):
+        self.grant("100")
+        self.service.setup(ACCOUNT, "5", "5", "30")
+        other = SolanaAllowanceService(
+            store=SolanaAllowanceStore(self.service.store.path), bridge=self.bridge, fernet=self.fernet,
+            fee_payer_key=None, max_daily=100_000_000, max_per_purchase=25_000_000,
+            max_days=90, max_grant=300_000_000, now=lambda: self.clock[0])
+        barrier = threading.Barrier(2)
+        def state(*args, **kwargs):
+            barrier.wait(timeout=5)
+            return {"owner": {"delegatedToAgent": "100000000", "amount": "100000000"}}
+        self.service.chain_state = other.chain_state = state
+        pay = Mock(return_value={"state": "confirmed", "transaction": "test"})
+        def spend(lane):
+            try:
+                lane.spend(ACCOUNT, 4_000_000, "concurrent", pay)
+                return True
+            except AllowanceError:
+                return False
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            self.assertEqual(sorted(pool.map(spend, [self.service, other])), [False, True])
+        pay.assert_called_once()
+        self.assertEqual(self.service.store.spent_since(ACCOUNT, 0), 4_000_000)
+
+    def test_metered_holds_use_current_limits_and_compete_with_other_spends(self):
+        self.grant("100")
+        self.service.setup(ACCOUNT, "5", "5", "30")
+        self.service.store.reserve_metered("first", ACCOUNT, 3_000_000, 20_000_000, NOW)
+        pay = Mock()
+        with self.assertRaisesRegex(AllowanceError, "today's"):
+            self.service.spend(ACCOUNT, 3_000_000, "other", pay)
+        self.service.setup(ACCOUNT, "1", "1", "30")
+        with self.assertRaisesRegex(AllowanceError, "per-purchase"):
+            self.service.store.reserve_metered("stale", ACCOUNT, 2_000_000, 20_000_000, NOW)
+        self.service.store.set_limits(ACCOUNT, OWNER, 5_000_000, 5_000_000, NOW, NOW)
+        with self.assertRaisesRegex(AllowanceError, "expired"):
+            self.service.store.reserve_metered("expired", ACCOUNT, 1, 20_000_000, NOW)
+        pay.assert_not_called()
+
+    def test_nonpositive_or_noninteger_spend_never_calls_payment(self):
+        self.grant()
+        for amount in (0, -1, True, 1.5, "100"):
+            pay = Mock()
+            with self.assertRaises(AllowanceError):
+                self.service.spend(ACCOUNT, amount, "invalid", pay)
+            pay.assert_not_called()
+
+    def test_funding_validation_failure_allows_fresh_preparation(self):
+        from sign402_gateway.solana_chat import SolanaChatError
+        self.service.setup(ACCOUNT, "20", "5", "30")
+        for code in ("TRANSACTION_MISMATCH", "SIGNATURE_REQUIRED", "BRIDGE_UNAVAILABLE"):
+            with self.subTest(code):
+                op = self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
+                with patch.object(self.bridge, "run", side_effect=SolanaChatError(code, "Validation failed.")):
+                    with self.assertRaises(AllowanceError):
+                        self.service.submit_wallet(ACCOUNT, op["operation"], "INVALID")
+                self.assertEqual(self.service.operation(ACCOUNT, op["operation"])["state"], "FAILED")
+                self.assertFalse(self.service.store.pending_gas(ACCOUNT))
+
+    def test_lost_funding_reply_keeps_checkpoint_and_recovers_without_resubmission(self):
+        from sign402_gateway.solana_chat import SolanaChatError
+        self.service.setup(ACCOUNT, "20", "5", "30")
+        op = self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
+        original = self.bridge.run
+        def lost(*args, **kwargs):
+            if args[3] == "allowance-submit":
+                stored = self.service.store.op(ACCOUNT, op["operation"])
+                self.assertEqual((stored["state"], stored["tx"], stored["tx_blockhash"]), ("SUBMITTING", "SoLTx1", "blockhash"))
+                raise SolanaChatError("BRIDGE_UNAVAILABLE", "Lost answer")
+            return original(*args, **kwargs)
+        with patch.object(self.bridge, "run", side_effect=lost):
+            with self.assertRaises(AllowanceError):
+                self.service.submit_wallet(ACCOUNT, op["operation"], "SIGNED")
+        self.assertEqual(self.service.store.op(ACCOUNT, op["operation"])["state"], "UNCERTAIN")
+        self.bridge.submit_state = "uncertain"
+        self.assertEqual(self.service.operation(ACCOUNT, op["operation"])["state"], "UNCERTAIN")
+        self.bridge.submit_state = "confirmed"
+        self.assertEqual(self.service.operation(ACCOUNT, op["operation"])["state"], "DONE")
+        self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
+
+    def test_expired_funding_recovers_but_unknown_legacy_submission_stays_blocked(self):
+        self.service.setup(ACCOUNT, "20", "5", "30")
+        op = self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
+        self.bridge.submit_state = "uncertain"
+        self.service.submit_wallet(ACCOUNT, op["operation"], "SIGNED")
+        self.bridge.submit_state = "expired"
+        self.assertEqual(self.service.operation(ACCOUNT, op["operation"])["state"], "EXPIRED")
+        legacy = self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
+        self.service.store.update_op(legacy["operation"], "SUBMITTING", NOW)
+        self.clock[0] += 1000
+        self.assertEqual(self.service.operation(ACCOUNT, legacy["operation"])["state"], "SUBMITTING")
+        with self.assertRaisesRegex(AllowanceError, "previous SOL"):
+            self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
+
+    def test_only_one_prepared_gas_transfer_can_claim_the_account(self):
+        self.service.setup(ACCOUNT, "20", "5", "30")
+        first = self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
+        second = self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")
+        self.assertTrue(self.service.store.claim_gas_submission(ACCOUNT, first["operation"], NOW))
+        with self.assertRaisesRegex(AllowanceError, "previous SOL"):
+            self.service.store.claim_gas_submission(ACCOUNT, second["operation"], NOW)
+        self.clock[0] += 100
+        self.assertEqual(self.service.operation(ACCOUNT, first["operation"])["state"], "FAILED")
+        self.assertFalse(self.service.store.checkpoint_gas(ACCOUNT, first["operation"], "tx", "block", NOW))
+
+    def test_stale_validation_or_expiry_cannot_release_a_checkpointed_transfer(self):
+        self.service.setup(ACCOUNT, "20", "5", "30")
+        op = self.service.prepare_wallet(ACCOUNT, "FUND_GAS", amount="0.005")["operation"]
+        self.service.store.claim_gas_submission(ACCOUNT, op, NOW)
+        self.service.store.checkpoint_gas(ACCOUNT, op, "tx", "block", NOW)
+        self.service.store.finish_pending_op(ACCOUNT, op, "FAILED", "stale validation timeout", NOW + 100, expected_state="VALIDATING")
+        self.service.store.expire_prepared_op(ACCOUNT, op, NOW + 100)
+        self.assertEqual(self.service.store.op(ACCOUNT, op)["state"], "SUBMITTING")
+        self.assertTrue(self.service.store.pending_gas(ACCOUNT))
+
 
 class FeePayerKeyTests(unittest.TestCase):
+    def test_recovery_column_migration_preserves_existing_keys_and_operations(self):
+        from sign402_gateway.solana_allowance import SCHEMA
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "legacy.db"
+            with sqlite3.connect(path) as db:
+                db.executescript(SCHEMA)
+                db.execute("INSERT INTO agents VALUES (?, ?, ?, ?)", (ACCOUNT, "agent-fixture", "encrypted-fixture", NOW))
+                db.execute("INSERT INTO ops VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                           ("legacy-op", ACCOUNT, "FUND_GAS", 5000000, "hash", "UNCERTAIN", "legacy-signature", "waiting", NOW, NOW, 1))
+            store = SolanaAllowanceStore(path)
+            self.assertEqual(store.agent(ACCOUNT)["encrypted_key"], "encrypted-fixture")
+            row = store.op(ACCOUNT, "legacy-op")
+            self.assertEqual((row["state"], row["tx"], row["tx_blockhash"]), ("UNCERTAIN", "legacy-signature", None))
+
     def test_a_new_fee_payer_is_encrypted_with_the_master_key(self):
         from sign402_gateway.solana_allowance import encrypt_fee_payer_key
         from sign402_gateway.solana_keys import keypair_address

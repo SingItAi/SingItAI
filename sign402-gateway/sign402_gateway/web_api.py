@@ -54,7 +54,9 @@ logger = logging.getLogger(__name__)
 PREFIX = "/web/v1"
 COOKIE = "singit_session"
 CSRF_HEADER = "X-SingIt-CSRF"
+ACCOUNT_HEADER = "X-SingIt-Account"
 MAX_BODY = 16 * 1024
+REQUEST_READ_SECONDS = 15
 DEFAULT_PORT = 8130
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
@@ -176,7 +178,7 @@ class WebApi:
         self.push_by_account = RateLimit(20, 3600)
 
     def handle(self, method: str, path: str, *, token: str, csrf: str | None, body: dict[str, Any],
-               client: str) -> tuple[int, dict[str, Any], dict[str, str]]:
+               client: str, expected_account: str | None = None) -> tuple[int, dict[str, Any], dict[str, str]]:
         """(status, JSON body, extra headers)."""
         if method == "POST" and path == "/auth/nonce":
             self.auth_by_ip.hit(client)
@@ -191,13 +193,18 @@ class WebApi:
                    "csrfToken": signed["csrfToken"], "expiresAt": signed["expiresAt"],
                    "telegramLinked": bool(self.auth.store.telegram_for(signed["account"]))}
             return 200, out, {"Set-Cookie": cookie}
+        session = self.auth.session(token, None if method == "GET" and expected_account is None else (csrf or ""))
+        account, owner = session["account_id"], session["address"]
+        # The HTTP client pins the identity displayed in that tab. A cookie can
+        # change independently when another tab signs in, including on GETs.
+        # None is reserved for in-process callers; HTTP always supplies a string.
+        if expected_account is not None:
+            bootstrap = method == "GET" and path == "/session" and not expected_account
+            if not bootstrap and expected_account != account:
+                raise WebError(409, "session_changed", "Your account changed in another tab. Sign in again.")
         if method == "POST" and path == "/auth/logout":
-            self.auth.session(token, csrf or "")
             self.auth.logout(token)
             return 200, {"ok": True}, {"Set-Cookie": f"{COOKIE}=; Path={PREFIX}; Max-Age=0; HttpOnly; Secure; SameSite=Strict"}
-
-        session = self.auth.session(token, None if method == "GET" else (csrf or ""))
-        account, owner = session["account_id"], session["address"]
         chain = chain_of_account(account)
         if method == "GET" and path == "/session":
             return 200, {"account": account, "address": owner, "chain": chain,
@@ -464,6 +471,47 @@ class WebHandler(BaseHTTPRequestHandler):
     server_version = "SingItWeb/1"
     head_only = False  # a HEAD request: the same status and headers as GET, and no body
 
+    def setup(self) -> None:
+        super().setup()
+        self.connection.settimeout(REQUEST_READ_SECONDS)
+
+    def _json_body(self) -> dict[str, Any]:
+        # This server does not decode transfer encodings. Never accept ambiguous
+        # framing, signed lengths, or duplicate headers, even if they agree.
+        lengths = self.headers.get_all("Content-Length", [])
+        if self.headers.get_all("Transfer-Encoding") or len(lengths) > 1:
+            raise WebError(400, "bad_length", "Ambiguous request length.")
+        value = lengths[0].strip() if lengths else "0"
+        if not re.fullmatch(r"[0-9]+", value):
+            raise WebError(400, "bad_length", "Invalid request length.")
+        digits = value.lstrip("0") or "0"
+        if len(digits) > len(str(MAX_BODY)) or int(digits) > MAX_BODY:
+            raise WebError(413, "too_large", "Request too large.")
+        length = int(digits)
+        deadline = time.monotonic() + REQUEST_READ_SECONDS
+        raw = bytearray()
+        try:
+            while len(raw) < length:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError
+                self.connection.settimeout(remaining)
+                chunk = self.rfile.read1(length - len(raw))
+                if not chunk:
+                    raise WebError(400, "incomplete_body", "Incomplete request body.")
+                raw.extend(chunk)
+        except TimeoutError:
+            raise WebError(408, "request_timeout", "Request body timed out.") from None
+        finally:
+            self.connection.settimeout(REQUEST_READ_SECONDS)
+        try:
+            body = json.loads(raw if length else b"{}")
+        except (ValueError, UnicodeError):
+            raise WebError(400, "bad_json", "Send a JSON object.") from None
+        if not isinstance(body, dict):
+            raise WebError(400, "bad_json", "Send a JSON object.")
+        return body
+
     def log_message(self, fmt: str, *args: Any) -> None:  # no request lines with cookies or tokens
         logger.debug("web %s", fmt % args)
 
@@ -512,7 +560,7 @@ class WebHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Credentials", "true")
         self.send_header("Access-Control-Allow-Methods", "GET, POST")
-        self.send_header("Access-Control-Allow-Headers", f"Content-Type, {CSRF_HEADER}")
+        self.send_header("Access-Control-Allow-Headers", f"Content-Type, {CSRF_HEADER}, {ACCOUNT_HEADER}")
         self.send_header("Access-Control-Max-Age", "600")
         self.send_header("Vary", "Origin")
         self.send_header("Content-Length", "0")
@@ -584,13 +632,7 @@ class WebHandler(BaseHTTPRequestHandler):
                 # JSON only: a cross-site form cannot send it without a preflight.
                 if self.headers.get_content_type() != "application/json":
                     raise WebError(415, "json_only", "Send JSON.")
-                length = int(self.headers.get("Content-Length") or 0)
-                if length > MAX_BODY:
-                    raise WebError(413, "too_large", "Request too large.")
-                raw = self.rfile.read(length) if length else b"{}"
-                body = json.loads(raw or b"{}")
-                if not isinstance(body, dict):
-                    raise WebError(400, "bad_json", "Send a JSON object.")
+                body = self._json_body()
             try:
                 cookie = SimpleCookie(self.headers.get("Cookie", ""))
                 token = cookie[COOKIE].value if COOKIE in cookie else ""
@@ -598,9 +640,10 @@ class WebHandler(BaseHTTPRequestHandler):
                 token = ""
             status, out, headers = self.server.api.handle(
                 method, path[len(PREFIX):], token=token, csrf=self.headers.get(CSRF_HEADER),
-                body=body, client=self._client())
+                body=body, client=self._client(), expected_account=self.headers.get(ACCOUNT_HEADER, ""))
             self._send(status, out, headers)
         except WebError as error:
+            self.close_connection = True
             self._send(error.status, {"ok": False, "error": error.code, "message": error.message})
         except WebAuthError as error:
             self._send(401, {"ok": False, "error": "auth", "message": str(error)})

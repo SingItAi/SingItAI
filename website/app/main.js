@@ -128,16 +128,26 @@ function say(text) {
 
 // -- wallet and session --
 
-let signInAfterConnect = false;  // the user pressed "Continue": sign in as soon as the wallet is there
+let networkSwitching = false;
+let signingIn = false;
+
+const walletIdentity = (wallet) => wallet?.address
+  ? `${wallet.chain}:${wallet.chain === "solana" ? wallet.address : wallet.address.toLowerCase()}` : "";
+
+// Tear down the whole tab, including in-flight callbacks and revealed codes.
+// Reloading restores the current session with its matching account, never a
+// request or payment from the previous page.
+window.addEventListener("singit:session-changed", () => location.reload());
 
 function setWallet(wallet) {
-  const changed = (wallet?.address || "").toLowerCase() !== (state.wallet?.address || "").toLowerCase();
+  const changed = walletIdentity(wallet) !== walletIdentity(state.wallet);
   state.wallet = wallet;
-  if (changed) render();
-  if (wallet?.address && signInAfterConnect && !state.session) {
-    signInAfterConnect = false;
-    signIn();
+  if (state.session && wallet && walletIdentity(wallet) !== walletIdentity(state.session)) {
+    setCsrf(null);
+    location.reload();
+    return;
   }
+  if (changed) render();
 }
 
 async function needWallet() {
@@ -145,14 +155,13 @@ async function needWallet() {
     connectWallet();
     throw new Error("Connect your wallet, then try again.");
   }
-  if (state.session && state.wallet.address.toLowerCase() !== state.session.address.toLowerCase()) {
+  if (state.session && walletIdentity(state.wallet) !== walletIdentity(state.session)) {
     throw new Error(`Switch your wallet to ${short(state.session.address)}, the address you signed in with.`);
   }
   return state.wallet;
 }
 
 function connectWallet() {
-  signInAfterConnect = !state.session;
   if (appKitConfigured()) {
     openAppKit().catch((error) => toast(explain(error), true));
   } else {
@@ -174,15 +183,25 @@ async function connectInjected(uuid) {
 }
 
 async function signIn() {
-  await busy("Sign the message in your wallet. It does not move any funds.", async () => {
-    const wallet = await needWallet();
-    const { message } = await api.nonce(wallet.address);
-    const signature = await wallet.signMessage(message);
-    const signed = await api.verify(message, signature);
-    setCsrf(signed.csrfToken);
-    state.session = signed;
-    await Promise.all([loadAllowance(), loadChats(), loadModels()]);
-  });
+  if (networkSwitching || signingIn) return;
+  signingIn = true;
+  try {
+    await busy("Sign the message in your wallet. It does not move any funds.", async () => {
+      const wallet = await needWallet();
+      const identity = walletIdentity(wallet);
+      const { message } = await api.nonce(wallet.address);
+      if (identity !== walletIdentity(state.wallet)) throw new Error("Your wallet changed. Sign in again.");
+      const signature = await wallet.signMessage(message);
+      if (identity !== walletIdentity(state.wallet)) throw new Error("Your wallet changed. Sign in again.");
+      const signed = await api.verify(message, signature);
+      if (identity !== walletIdentity(signed) || identity !== walletIdentity(state.wallet)) {
+        throw new Error("Your wallet changed. Sign in again.");
+      }
+      setCsrf(signed.csrfToken, signed.account);
+      state.session = signed;
+      await Promise.all([loadAllowance(), loadChats(), loadModels()]);
+    });
+  } finally { signingIn = false; render(); }
 }
 
 async function signOut() {
@@ -377,16 +396,16 @@ function renderNav() {
 function networkChoice() {
   if (state.wallet?.name !== "WalletConnect") return "";
   const option = (chain, label) => `<button type="button" data-action="sign-in-network" data-chain="${chain}"
-    class="${state.wallet.chain === chain ? "on" : ""}" aria-pressed="${state.wallet.chain === chain}">${label}</button>`;
+    class="${state.wallet.chain === chain ? "on" : ""}" aria-pressed="${state.wallet.chain === chain}" ${networkSwitching || signingIn ? "disabled" : ""}>${label}</button>`;
   return `<div class="row" style="justify-content:center">
       <div class="segmented" role="group" aria-label="Network to sign in on">${option("base", "Base")}${option("solana", "Solana")}</div>
     </div>
-    <p class="hint" style="text-align:center">Each network has its own address and its own limits.</p>`;
+    <p class="hint" style="text-align:center">Choose your network, then sign in. Each network has its own address and its own limits.</p>`;
 }
 
 function renderHero() {
   const cta = state.wallet
-    ? `<button class="btn btn-primary btn-lg has-orb" data-action="sign-in">Sign in as ${esc(short(state.wallet.address))}
+    ? `<button class="btn btn-primary btn-lg has-orb" data-action="sign-in" ${networkSwitching || signingIn ? "disabled" : ""}>Sign in as ${esc(short(state.wallet.address))}
          <span class="chain-tag">${state.wallet.chain === "solana" ? "Solana" : "Base"}</span>${orb}</button>
        <button class="btn btn-ghost btn-lg" data-action="connect">Use another wallet</button>`
     : `<button class="btn btn-primary btn-lg has-orb" data-action="connect">${appKitConfigured() ? "Continue with email or wallet" : "Connect wallet"}${orb}</button>
@@ -783,7 +802,7 @@ function renderModal() {
     modalEl.innerHTML = `<div class="overlay" data-action="dismiss"><div class="modal modal-wide bezel" role="dialog" aria-modal="true"
       aria-label="Choose a model"><div class="core">
       <div class="approval-head"><div class="avatar">${mark()}</div>
-        <div><strong>Choose a model</strong><span>SingIt Ask: token cost + fees, up to 0.003 USDC per answer · Venice: prices per 1M tokens</span></div></div>
+        <div><strong>Choose a model</strong><span>SingIt Ask: any model, charged what the answer costs + 30% + fees · prices per 1M tokens</span></div></div>
       ${granted ? "" : `<p class="note">Your chat starts once your limits are approved. Your choice is kept until then.</p>`}
       <input id="model-search" class="input" type="search" placeholder="Search ${state.models.models.length} models…"
         value="${esc(query)}" autocomplete="off" aria-label="Search models">
@@ -1313,7 +1332,7 @@ function renderUsage() {
       <p>Today, in UTC — the day your limiter and Venice count in.</p></div>
     ${u.failed ? `<p class="note warn">${esc(u.failed)}</p>` : ""}
     <div class="metrics">
-      ${u.venice?.billingMode === "actual_usage" ? metric("Token billing", "Usage + 30%", `Plus ${usd(u.venice.settlementFeeAtomic, 3)} settlement fee · max 0.003 USDC per answer`) : metric("Chat credit", u.venice ? usd(u.venice.creditAtomic, Number(u.venice.creditAtomic) % 10000 ? 4 : 2) : "—", u.venice ? `on Venice · ${esc(u.venice.modelLabel)}` : "private chat is off")}
+      ${u.venice?.billingMode === "actual_usage" ? metric("Token billing", "Usage + 30%", `Plus ${usd(u.venice.settlementFeeAtomic, 3)} settlement fee · only what the answer cost is charged`) : metric("Chat credit", u.venice ? usd(u.venice.creditAtomic, Number(u.venice.creditAtomic) % 10000 ? 4 : 2) : "—", u.venice ? `on Venice · ${esc(u.venice.modelLabel)}` : "private chat is off")}
       ${metric("Spent today", spent === null ? "—" : usd(spent), a?.configured ? `of ${usd(a.dailyCapAtomic, 0)} daily limit` : "no limits yet")}
       ${metric("Messages today", String(today.messages), `${Number(today.tokens).toLocaleString("en-US")} tokens · ${usd(today.costAtomic, u.venice?.billingMode === "actual_usage" ? 6 : 4)}`)}
     </div>
@@ -1419,7 +1438,9 @@ function drawQr(text) {
 
 // SingIt Ask answers by default, paid per answer. The lock switches to the private chat on Venice and back.
 const hasAsk = () => (state.models?.models || []).some((mdl) => mdl.id === "singit-ask");
-const isPrivate = () => hasAsk() && state.models.chosen !== "singit-ask";
+// SingIt Ask's own default, or any other model Surplus sells ("ask:<id>"): everything else is Venice.
+const isAskId = (id) => id === "singit-ask" || String(id || "").startsWith("ask:");
+const isPrivate = () => hasAsk() && !isAskId(state.models.chosen);
 
 function privateToggle() {
   if (!hasAsk() || !state.models.privateModel) return "";
@@ -1443,7 +1464,12 @@ async function loadModels() {
   try { state.models = await api.models(); } catch { state.models = null; }  // no Venice: no picker
 }
 
-const perMillion = (usd) => `$${Number(usd) < 1 ? Number(usd).toFixed(2) : Number(usd).toFixed(2).replace(/\.00$/, "")}`;
+// Cents for most models; the cheapest cost fractions of a cent per million tokens, so they keep two significant digits.
+const perMillion = (usd) => {
+  const n = Number(usd);
+  if (n > 0 && n < 0.01) return `$${n.toPrecision(2).replace(/0+$/, "").replace(/\.$/, "")}`;
+  return `$${n < 1 ? n.toFixed(2) : n.toFixed(2).replace(/\.00$/, "")}`;
+};
 
 function renderModelList() {
   const { query, category } = state.modelFilter;
@@ -1454,7 +1480,10 @@ function renderModelList() {
   return list.map((mdl) => `<button class="model-row ${mdl.id === state.models.chosen ? "chosen" : ""}" data-action="choose-model"
       data-id="${esc(mdl.id)}" role="option" aria-selected="${mdl.id === state.models.chosen}">
       <span class="model-main"><b>${esc(mdl.label)}</b>${mdl.blurb ? `<span>${esc(mdl.blurb)}</span>` : ""}</span>
-      <span class="model-price">${mdl.billingMode === "actual_usage" ? `Usage + ${esc(mdl.markupPercent)}% + ${esc(mdl.settlementFeeUsd)} USDC · max ${esc(mdl.maxChargeUsd)}` : `${perMillion(mdl.inputUsdPerMTok)} in · ${perMillion(mdl.outputUsdPerMTok)} out`}</span>
+      <span class="model-price">${mdl.billingMode === "actual_usage"
+        ? (mdl.maxChargeUsd ? `Usage + ${esc(mdl.markupPercent)}% + ${esc(mdl.settlementFeeUsd)} USDC · max ${esc(mdl.maxChargeUsd)}`
+                            : `${perMillion(mdl.inputUsdPerMTok)} in · ${perMillion(mdl.outputUsdPerMTok)} out · +${esc(mdl.markupPercent)}%`)
+        : `${perMillion(mdl.inputUsdPerMTok)} in · ${perMillion(mdl.outputUsdPerMTok)} out`}</span>
       <span class="model-check">${mdl.id === state.models.chosen ? "✓" : ""}</span></button>`).join("");
 }
 
@@ -1462,7 +1491,7 @@ async function chooseModel(id, note) {
   try {
     const chosen = await api.chooseModel(id);
     state.models = { ...state.models, chosen: chosen.chosen, chosenLabel: chosen.label, provider: chosen.provider || "Venice",
-                     ...(chosen.chosen !== "singit-ask" ? { privateModel: chosen.chosen, privateLabel: chosen.label } : {}) };
+                     ...(!isAskId(chosen.chosen) ? { privateModel: chosen.chosen, privateLabel: chosen.label } : {}) };
     state.modal = null;
     render();
     toast(note || `${chosen.label} answers from your next message.`);
@@ -1588,11 +1617,16 @@ const actions = {
   account: () => (state.session ? signOut() : connectWallet()),
   "sign-in": signIn,
   "sign-in-network": async (el) => {
-    if (el.dataset.chain === state.wallet?.chain) return;
+    if (state.session || networkSwitching || signingIn || el.dataset.chain === state.wallet?.chain) return;
+    networkSwitching = true;
+    render();
     try {
-      await switchAppKitNetwork(el.dataset.chain);  // watchAppKit then hands over the wallet on that network
+      setWallet(await switchAppKitNetwork(el.dataset.chain));
     } catch (error) {
       toast(explain(error), true);
+    } finally {
+      networkSwitching = false;
+      render();
     }
   },
   preset: (el) => {
@@ -2136,6 +2170,7 @@ async function start() {
   if (csrf()) {
     try {
       state.session = await api.session();
+      setCsrf(csrf(), state.session.account);
       await Promise.all([loadAllowance(), loadChats(), loadModels()]);
       syncPush().catch(() => { /* notifications are optional */ });
     } catch {

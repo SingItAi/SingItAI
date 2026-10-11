@@ -197,7 +197,7 @@ export class TokenAllowance {
     return { transaction: getBase64EncodedWireTransaction(tx), messageHash: messageHash(tx.messageBytes) };
   }
 
-  async submit({ transaction, expectedHash, owner, feePayer, kind = null, delegate = null, amount = '0' }) {
+  async validatedTransaction({ transaction, expectedHash, owner, feePayer, kind = null, delegate = null, amount = '0' }) {
     let tx;
     try { tx = getTransactionDecoder().decode(Buffer.from(String(transaction), 'base64')); }
     catch { throw new ClientError('INVALID_TRANSACTION', 'The signed transaction could not be read.'); }
@@ -214,8 +214,43 @@ export class TokenAllowance {
       throw new ClientError('SIGNATURE_REQUIRED', 'The wallet did not sign the transaction.');
     }
     // The owner may be their own fee payer; then theirs is the only signature.
-    const signed = feePayer ? await partiallySignTransaction([feePayer.signer.keyPair], tx) : tx;
-    return this.send(signed);
+    return feePayer ? await partiallySignTransaction([feePayer.signer.keyPair], tx) : tx;
+  }
+
+  // Validate without broadcasting. The gateway checkpoints only these public
+  // identifiers before it submits, so even a lost bridge response is recoverable.
+  async inspect(input) {
+    const tx = await this.validatedTransaction(input);
+    const message = getCompiledTransactionMessageDecoder().decode(tx.messageBytes);
+    return { transaction: getSignatureFromTransaction(tx), blockhash: message.lifetimeToken };
+  }
+
+  async submit(input) {
+    return this.send(await this.validatedTransaction(input));
+  }
+
+  async reconcile({ transaction, blockhash = null }) {
+    const read = () => this.rpc.getSignatureStatuses([transaction], { searchTransactionHistory: true })
+      .send({ abortSignal: AbortSignal.timeout(20000) });
+    const outcome = status => {
+      if (status?.err && ['confirmed', 'finalized'].includes(status.confirmationStatus)) return 'failed';
+      if (status && !status.err && ['confirmed', 'finalized'].includes(status.confirmationStatus)) return 'confirmed';
+      return 'uncertain';
+    };
+    try {
+      const status = (await read()).value[0];
+      const state = outcome(status);
+      if (state !== 'uncertain' || status || !blockhash) return { transaction, state };
+      const validity = await this.rpc.isBlockhashValid(blockhash, { commitment: 'finalized' })
+        .send({ abortSignal: AbortSignal.timeout(20000) });
+      if (validity.value !== false) return { transaction, state: 'uncertain' };
+      // Read history again after the finalized expiry check: never release an
+      // in-flight/processed signature just because its blockhash has aged out.
+      const finalStatus = (await read()).value[0];
+      return { transaction, state: finalStatus ? outcome(finalStatus) : 'expired' };
+    } catch {
+      return { transaction, state: 'uncertain' };
+    }
   }
 
   async fundingTransaction({owner, amount, agent, feePayer}) {
@@ -266,8 +301,9 @@ export class TokenAllowance {
       let status;
       try { status = (await this.rpc.getSignatureStatuses([id]).send({ abortSignal: AbortSignal.timeout(20000) })).value[0]; }
       catch { status = undefined; }
-      if (status?.err) return { transaction: id, state: 'failed' };
-      if (status && ['confirmed', 'finalized'].includes(status.confirmationStatus)) return { transaction: id, state: 'confirmed' };
+      if (status && ['confirmed', 'finalized'].includes(status.confirmationStatus)) {
+        return { transaction: id, state: status.err ? 'failed' : 'confirmed' };
+      }
       await this.sleep(1500);
     }
     return { transaction: id, state: 'uncertain' };

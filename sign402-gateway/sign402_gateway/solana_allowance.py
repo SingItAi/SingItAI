@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
 
 from .agent_allowance import AllowanceError, AllowanceUnavailable
+from .secure_state import ensure_private_directory, ensure_private_file
 from .solana_keys import generate_keypair
 from .web_accounts import SOLANA_PREFIX
 
@@ -92,16 +93,33 @@ def _text(atomic: int) -> str:
 class SolanaAllowanceStore:
     def __init__(self, path: Path):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_private_directory(self.path.parent)
+        # Pre-create privately: chmod after sqlite.connect leaves a readable window.
+        try:
+            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            os.close(fd)
         self._lock = threading.RLock()
         with self._db() as db:
             db.executescript(SCHEMA)
+            db.execute("BEGIN IMMEDIATE")  # web and gateway can migrate the shared store together
             columns = {row["name"] for row in db.execute("PRAGMA table_info(ops)")}
             if "owner_pays_fee" not in columns:
                 db.execute("ALTER TABLE ops ADD COLUMN owner_pays_fee INTEGER NOT NULL DEFAULT 0")
+            if "tx_blockhash" not in columns:
+                db.execute("ALTER TABLE ops ADD COLUMN tx_blockhash TEXT")
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
+        ensure_private_file(self.path)
+        for suffix in ("-journal", "-wal", "-shm"):
+            # Repair sidecars from an older deployment before opening SQLite.
+            try:
+                ensure_private_file(Path(str(self.path) + suffix))
+            except FileNotFoundError:
+                pass  # another SQLite connection can remove its journal meanwhile
         db = sqlite3.connect(self.path, timeout=10)
         db.row_factory = sqlite3.Row
         try:
@@ -155,21 +173,80 @@ class SolanaAllowanceStore:
         """A durable ceiling counts alongside other Solana purchases until reconciled."""
         with self._db() as db:
             db.execute("BEGIN IMMEDIATE")
-            spent = db.execute("SELECT COALESCE(SUM(amount), 0) FROM spends WHERE account = ? AND created_at >= ?",
-                               (account, now // DAY * DAY)).fetchone()[0]
-            held = db.execute("SELECT COALESCE(SUM(amount), 0) FROM metered_holds WHERE account = ?", (account,)).fetchone()[0]
-            if ceiling <= 0 or int(spent) + int(held) + ceiling > daily_cap:
-                raise AllowanceError("The request's maximum exceeds your remaining Solana daily limit. Nothing was paid.")
+            self._check_budget(db, account, ceiling, now, daily_ceiling=daily_cap)
             db.execute("INSERT INTO metered_holds VALUES (?, ?, ?, ?)", (hold_id, account, ceiling, now))
+
+    @staticmethod
+    def _check_budget(db: sqlite3.Connection, account: str, amount: int, now: int,
+                      *, daily_ceiling: int | None = None, per_ceiling: int | None = None) -> None:
+        """Called inside the same write transaction that reserves the debit.
+
+        setup() writes this database too. A completed change therefore applies to
+        every new reservation, including workers in another process. Already
+        reserved/in-flight payments remain counted; they cannot safely be recalled.
+        """
+        limits = db.execute("SELECT * FROM limits WHERE account = ?", (account,)).fetchone()
+        if limits is None:
+            raise AllowanceUnavailable("Set your limits and approve them first.")
+        if type(amount) is not int or amount <= 0:
+            raise AllowanceError("The payment must be a positive integer amount of atomic USDC.")
+        if limits["expiry"] <= now:
+            raise AllowanceError("Your Solana allowance has expired. Set new limits to continue.")
+        daily = min(limits["daily_cap"], daily_ceiling) if daily_ceiling is not None else limits["daily_cap"]
+        per = min(limits["per_purchase_cap"], per_ceiling) if per_ceiling is not None else limits["per_purchase_cap"]
+        if amount > per:
+            raise AllowanceError(f"{_text(amount)} is above your {_text(per)} per-purchase limit. Nothing was paid.")
+        spent = db.execute("SELECT COALESCE(SUM(amount), 0) FROM spends WHERE account = ? AND created_at >= ?",
+                           (account, now // DAY * DAY)).fetchone()[0]
+        held = db.execute("SELECT COALESCE(SUM(amount), 0) FROM metered_holds WHERE account = ?", (account,)).fetchone()[0]
+        used = int(spent) + int(held)
+        if used + amount > daily:
+            raise AllowanceError(f"That would pass today's {_text(daily)} limit "
+                                 f"({_text(max(0, daily - used))} left). Nothing was paid.")
+
+    def reserve_spend(self, account: str, amount: int, purpose: str, now: int,
+                      *, daily_ceiling: int, per_ceiling: int) -> int:
+        with self._db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._check_budget(db, account, amount, now, daily_ceiling=daily_ceiling, per_ceiling=per_ceiling)
+            return int(db.execute("INSERT INTO spends(account, amount, purpose, pull_tx, created_at) VALUES (?, ?, ?, NULL, ?)",
+                                  (account, amount, purpose[:200], now)).lastrowid)
 
     def claim_gas_submission(self, account: str, op_id: str, now: int) -> bool:
         with self._db() as db:
-            return db.execute("UPDATE ops SET state='SUBMITTING', updated_at=? WHERE account=? AND op_id=? AND kind='FUND_GAS' AND state='PREPARED'",
+            db.execute("BEGIN IMMEDIATE")
+            pending = db.execute("SELECT 1 FROM ops WHERE account=? AND kind='FUND_GAS' "
+                                 "AND state IN ('VALIDATING','SUBMITTING','UNCERTAIN')", (account,)).fetchone()
+            if pending:
+                raise AllowanceError("A previous SOL transfer needs confirmation. Nothing more was sent.")
+            return db.execute("UPDATE ops SET state='VALIDATING', updated_at=? WHERE account=? AND op_id=? AND kind='FUND_GAS' AND state='PREPARED'",
                               (now, account, op_id)).rowcount == 1
 
-    def pending_gas(self, account: str) -> bool:
+    def checkpoint_gas(self, account: str, op_id: str, tx: str, blockhash: str, now: int) -> bool:
         with self._db() as db:
-            return db.execute("SELECT 1 FROM ops WHERE account=? AND kind='FUND_GAS' AND state IN ('SUBMITTING','UNCERTAIN') LIMIT 1", (account,)).fetchone() is not None
+            return db.execute("UPDATE ops SET state='SUBMITTING', tx=?, tx_blockhash=?, updated_at=? "
+                              "WHERE account=? AND op_id=? AND state='VALIDATING'",
+                              (tx, blockhash, now, account, op_id)).rowcount == 1
+
+    def finish_pending_op(self, account: str, op_id: str, state: str, detail: str, now: int,
+                          *, expected_state: str | None = None) -> None:
+        with self._db() as db:
+            db.execute("UPDATE ops SET state=?, detail=?, updated_at=? WHERE account=? AND op_id=? "
+                       "AND state IN ('VALIDATING','SUBMITTING','UNCERTAIN') AND (? IS NULL OR state=?)",
+                       (state, detail, now, account, op_id, expected_state, expected_state))
+
+    def expire_prepared_op(self, account: str, op_id: str, now: int) -> None:
+        with self._db() as db:
+            db.execute("UPDATE ops SET state='EXPIRED', updated_at=?, detail=? WHERE account=? AND op_id=? AND state='PREPARED'",
+                       (now, "Too late for this transaction; prepare it again.", account, op_id))
+
+    def pending_gas_ops(self, account: str) -> list[sqlite3.Row]:
+        with self._db() as db:
+            return db.execute("SELECT * FROM ops WHERE account=? AND kind='FUND_GAS' "
+                              "AND state IN ('VALIDATING','SUBMITTING','UNCERTAIN')", (account,)).fetchall()
+
+    def pending_gas(self, account: str) -> bool:
+        return bool(self.pending_gas_ops(account))
 
     def release_metered(self, hold_id: str) -> None:
         with self._db() as db:
@@ -308,6 +385,8 @@ class SolanaAllowanceService:
             if atomic > self.max_grant:
                 raise AllowanceError(f"Allow at most {_text(self.max_grant)} at a time.")
         elif kind == "FUND_GAS":
+            for pending in self.store.pending_gas_ops(account):
+                self.operation(account, pending["op_id"])
             if self.store.pending_gas(account):
                 raise AllowanceError("A previous SOL transfer needs confirmation. It was not repeated; check its transaction before funding again.")
             try:
@@ -348,7 +427,7 @@ class SolanaAllowanceService:
             return self.operation(account, op_id)
         now = int(self.now())
         if op["created_at"] + PREPARE_SECONDS < now:
-            self.store.update_op(op_id, "EXPIRED", now, detail="Too late for this transaction; prepare it again.")
+            self.store.expire_prepared_op(account, op_id, now)
             return self.operation(account, op_id)
         if not op["owner_pays_fee"]:
             raise AllowanceError("This old sponsored request is disabled. Prepare a new transaction paid by your wallet.")
@@ -357,9 +436,30 @@ class SolanaAllowanceService:
         # around exactly this approve or revoke (solana-x402-service/src/allowance.mjs, doesOnly).
         if op["kind"] == "FUND_GAS" and not self.store.claim_gas_submission(account, op_id, now):
             return self.operation(account, op_id)
-        result = self._call(account, "allowance-submit", fee_payer=not owner_pays, owner=self.owner(account),
-                            ownerPaysFee=owner_pays, transaction=str(transaction or ""), messageHash=op["message_hash"],
-                            kind={"GRANT": "approve", "REVOKE": "revoke", "FUND_GAS": "fund-gas"}[op["kind"]], amount=str(op["amount"]))
+        payload = dict(owner=self.owner(account), ownerPaysFee=owner_pays, transaction=str(transaction or ""),
+                       messageHash=op["message_hash"], kind={"GRANT": "approve", "REVOKE": "revoke", "FUND_GAS": "fund-gas"}[op["kind"]],
+                       amount=str(op["amount"]))
+        if op["kind"] == "FUND_GAS":
+            try:
+                inspected = self._call(account, "allowance-inspect", **payload)
+                if not inspected.get("transaction") or not inspected.get("blockhash"):
+                    raise AllowanceError("The signed transfer could not be checked. Nothing was sent.")
+            except Exception:
+                # inspect is read-only, so even a timeout here proves we did not submit.
+                self.store.finish_pending_op(account, op_id, "FAILED", "The transfer could not be validated. Nothing was sent; prepare it again.", int(self.now()), expected_state="VALIDATING")
+                raise
+            if not self.store.checkpoint_gas(account, op_id, inspected["transaction"], inspected["blockhash"], int(self.now())):
+                return self.operation(account, op_id)
+        try:
+            result = self._call(account, "allowance-submit", fee_payer=not owner_pays, **payload)
+        except Exception as exc:
+            if op["kind"] == "FUND_GAS":
+                # These checks happen before send() in TokenAllowance. Every other
+                # exception may have sent; the checkpoint permits read-only recovery.
+                refused = getattr(exc, "code", None) in {"INVALID_TRANSACTION", "TRANSACTION_MISMATCH", "SIGNATURE_REQUIRED"}
+                self.store.finish_pending_op(account, op_id, "FAILED" if refused else "UNCERTAIN",
+                                             "Nothing was sent; prepare it again." if refused else "The transfer outcome is unknown. Check its status; it was not repeated.", int(self.now()))
+            raise
         state = {"confirmed": "DONE", "failed": "FAILED", "rejected": "FAILED"}.get(result.get("state"), "UNCERTAIN")
         detail = {
             "DONE": (f"Allowance now {_text(op['amount'])}." if op["kind"] == "GRANT" else "Revoked: your agent can no longer spend."),
@@ -368,15 +468,40 @@ class SolanaAllowanceService:
         }[state]
         if op["kind"] == "FUND_GAS" and state == "DONE":
             detail = f"Added {Decimal(op['amount']) / 1_000_000_000} SOL to your agent for network fees."
-        self.store.update_op(op_id, state, int(self.now()), tx=result.get("transaction"), detail=detail)
+        if op["kind"] == "FUND_GAS":
+            if result.get("transaction") != inspected["transaction"]:
+                state, detail = "UNCERTAIN", "The transfer receipt needs confirmation. It was not repeated."
+            self.store.finish_pending_op(account, op_id, state, detail, int(self.now()))
+        else:
+            self.store.update_op(op_id, state, int(self.now()), tx=result.get("transaction"), detail=detail)
         return self.operation(account, op_id)
 
     def operation(self, account: str, op_id: str) -> dict[str, Any]:
         op = self.store.op(account, str(op_id))
         if op is None:
             raise AllowanceError("No such request.")
+        if op["state"] == "VALIDATING" and op["updated_at"] + PREPARE_SECONDS < self.now():
+            self.store.finish_pending_op(account, op_id, "FAILED", "Validation timed out before submission. Prepare the transfer again.", int(self.now()), expected_state="VALIDATING")
+        elif op["state"] in ("SUBMITTING", "UNCERTAIN") and op["tx"]:
+            try:
+                result = self._call(account, "allowance-reconcile", transaction=op["tx"], blockhash=op["tx_blockhash"])
+            except Exception:
+                result = {}  # RPC/bridge failures never release an uncertain transfer
+            state = {"confirmed": "DONE", "failed": "FAILED", "expired": "EXPIRED"}.get(result.get("state"))
+            if state and result.get("transaction") == op["tx"]:
+                detail = (f"Added {Decimal(op['amount']) / 1_000_000_000} SOL to your agent for network fees."
+                          if state == "DONE" and op["kind"] == "FUND_GAS" else
+                          "Confirmed on Solana." if state == "DONE" else
+                          "The transfer expired without confirmation. Prepare it again." if state == "EXPIRED" else
+                          "Solana refused the transaction. Nothing changed.")
+                self.store.finish_pending_op(account, op_id, state, detail, int(self.now()))
+                self._seen.pop(account, None)
+        op = self.store.op(account, str(op_id))
+        detail = op["detail"]
+        if op["state"] in ("SUBMITTING", "UNCERTAIN") and not op["tx"]:
+            detail = "This older transfer has no recovery signature. Contact support before sending another transfer."
         return {"operation": op["op_id"], "kind": op["kind"], "state": op["state"], "chain": "solana",
-                "amountAtomic": str(op["amount"]), "currency": "SOL" if op["kind"] == "FUND_GAS" else "USDC", "txHash": op["tx"], "detail": op["detail"],
+                "amountAtomic": str(op["amount"]), "currency": "SOL" if op["kind"] == "FUND_GAS" else "USDC", "txHash": op["tx"], "detail": detail,
                 "explorer": f"https://solscan.io/tx/{op['tx']}" if op["tx"] else None}
 
     def stale_allowances(self, account: str) -> list[dict[str, Any]]:
@@ -392,27 +517,21 @@ class SolanaAllowanceService:
         time, so two cannot both fit the same room. The count is taken back only when the
         payment surely did not leave: a lost answer may still have moved the money.
         """
-        amount = int(amount)
-        limits = self.store.limits(account)
-        if limits is None:
-            raise AllowanceUnavailable("Set your limits and approve them first.")
         with self._spend_lock:
-            now = int(self.now())
-            if limits["expiry"] <= now:
-                raise AllowanceError("Your Solana allowance has expired. Set new limits to continue.")
-            if amount > limits["per_purchase_cap"]:
-                raise AllowanceError(f"{_text(amount)} is above your {_text(limits['per_purchase_cap'])} per-purchase limit. Nothing was paid.")
-            spent = self.store.spent_since(account, now // DAY * DAY)
-            if spent + amount > limits["daily_cap"]:
-                raise AllowanceError(f"That would pass today's {_text(limits['daily_cap'])} limit "
-                                     f"({_text(max(0, limits['daily_cap'] - spent))} left). Nothing was paid.")
+            if type(amount) is not int or amount <= 0:
+                raise AllowanceError("The payment must be a positive integer amount of atomic USDC.")
+            if self.store.limits(account) is None:
+                raise AllowanceUnavailable("Set your limits and approve them first.")
             owner = self.chain_state(account)["owner"]
             if amount > int(owner["delegatedToAgent"]):
                 raise AllowanceError("Your wallet's approval is used up or revoked. Approve a new allowance to continue. Nothing was paid.")
             if amount > int(owner["amount"]):
                 raise AllowanceError(f"Your Solana wallet holds {_text(int(owner['amount']))}; this costs {_text(amount)}. Nothing was paid.")
             self._seen.pop(account, None)
-            spend_id = self.store.add_spend(account, amount, purpose, None, now)
+            # After the potentially slow chain read, re-read current limits and
+            # reserve atomically with every other worker and metered hold.
+            spend_id = self.store.reserve_spend(account, amount, purpose, int(self.now()),
+                                                daily_ceiling=self.max_daily, per_ceiling=self.max_per_purchase)
             try:
                 result = pay()
             except Exception as exc:

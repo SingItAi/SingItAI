@@ -81,6 +81,8 @@ class SolanaBridge:
                 timeout=240, check=False)
             response = json.loads(process.stdout)
         except Exception:
+            if operation == 'allowance-submit':
+                raise SolanaChatError('BRIDGE_UNAVAILABLE', 'The transfer outcome is unknown. Check its status before preparing another transfer; it was not repeated.') from None
             raise SolanaChatError('BRIDGE_UNAVAILABLE', 'Could not complete the Exa request. Check search payment status before trying again.' if operation.startswith('exa-') else 'Could not reach Solana. Nothing was sent; try again shortly.' if operation.startswith('allowance-') else 'Could not complete the Venice request. Check payment status before trying another top-up.') from None
         finally:
             request.pop('privateKey', None)

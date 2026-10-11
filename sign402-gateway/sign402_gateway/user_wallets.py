@@ -1,4 +1,5 @@
 import hashlib
+import json
 import secrets
 import sqlite3
 import threading
@@ -114,6 +115,15 @@ class UserWalletStore:
                     int(time.time()),
                 ),
             )
+
+    def bind_legacy_base_key(self, wallet: dict[str, Any], encrypted: str) -> bool:
+        """Compare-and-swap: never replace a key changed since it was validated."""
+        with self.lock, self._database() as db:
+            return db.execute(
+                "UPDATE user_wallets SET encrypted_private_key = ? "
+                "WHERE telegram_user_id = ? AND chain = 'base' AND wallet_address = ? AND encrypted_private_key = ?",
+                (encrypted, wallet["telegram_user_id"], wallet["wallet_address"], wallet["encrypted_private_key"]),
+            ).rowcount == 1
 
     def _init_db(self) -> None:
         with self._database() as db:
@@ -312,9 +322,7 @@ class ManagedBaseWalletService:
         private_key = account.key.hex()
         if not private_key.startswith("0x"):
             private_key = "0x" + private_key
-        encrypted_private_key = fernet.encrypt(private_key.encode("utf-8")).decode(
-            "ascii"
-        )
+        encrypted_private_key = self._encrypt_bound_key(fernet, user_id, account.address, private_key)
         try:
             wallet = self.store.insert_wallet(
                 telegram_user_id=user_id,
@@ -480,17 +488,41 @@ class ManagedBaseWalletService:
 
     def decrypt_private_key_for_future_signing(self, telegram_user_id: str) -> str:
         user_id = _require_telegram_user_id(telegram_user_id)
-        wallet = self.store.get_wallet_by_telegram_user_id(user_id)
-        if wallet is None:
-            raise ValueError("wallet not found")
-        try:
-            return self._fernet().decrypt(
-                wallet["encrypted_private_key"].encode("ascii")
-            ).decode("utf-8")
-        except InvalidToken as exc:
-            raise WalletEncryptionError(
-                "wallet private key could not be decrypted"
-            ) from exc
+        cipher = self._fernet()
+        for _ in range(3):
+            wallet = self.store.get_wallet_by_telegram_user_id(user_id)
+            if wallet is None:
+                raise ValueError("wallet not found")
+            try:
+                raw = cipher.decrypt(wallet["encrypted_private_key"].encode("ascii")).decode("utf-8")
+                legacy = raw.startswith("0x") and len(raw) == 66
+                if legacy:
+                    key = raw
+                else:
+                    envelope = json.loads(raw)
+                    if (envelope["version"] != 1 or envelope["chain"] != "base"
+                            or envelope["telegramUserId"] != user_id
+                            or envelope["address"].lower() != wallet["wallet_address"].lower()):
+                        raise ValueError("Wallet binding mismatch")
+                    key = envelope["privateKey"]
+                if (wallet["telegram_user_id"] != user_id or wallet["chain"] != "base"
+                        or Account.from_key(key).address.lower() != wallet["wallet_address"].lower()):
+                    raise ValueError("Wallet binding mismatch")
+            except (InvalidToken, ValueError, TypeError, KeyError, AttributeError):
+                raise WalletEncryptionError("wallet private key could not be decrypted or bound to its owner") from None
+            if not legacy:
+                return key
+            encrypted = self._encrypt_bound_key(cipher, user_id, wallet["wallet_address"], key)
+            if self.store.bind_legacy_base_key(wallet, encrypted):
+                return key
+            # Another process may have migrated the same row. Re-read and verify it.
+        raise WalletEncryptionError("wallet changed while binding its private key; try again")
+
+    @staticmethod
+    def _encrypt_bound_key(cipher: Fernet, user_id: str, address: str, key: str) -> str:
+        envelope = {"version": 1, "chain": "base", "telegramUserId": user_id,
+                    "address": address, "privateKey": key}
+        return cipher.encrypt(json.dumps(envelope).encode("utf-8")).decode("ascii")
 
     def _fernet(self) -> Fernet:
         if not self.master_key:

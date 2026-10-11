@@ -1,11 +1,15 @@
 import base64
+import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 from cryptography.fernet import Fernet
+from eth_account import Account
 
 from sign402_gateway.base_balances import AlchemyBaseBalanceProvider
 from sign402_gateway.user_wallets import (
@@ -139,6 +143,81 @@ class UserWalletTests(unittest.TestCase):
 
         self.assertEqual(store_path.parent.stat().st_mode & 0o777, 0o700)
         self.assertEqual(store_path.stat().st_mode & 0o777, 0o600)
+
+    def test_encrypted_base_key_binds_owner_chain_and_address(self):
+        service, store = self.make_service()
+        alice = service.create_wallet("alice")["wallet"]["address"]
+        service.create_wallet("bob")
+        row = store.get_wallet_by_telegram_user_id("alice")
+        key = service.decrypt_private_key_for_future_signing("alice")
+        self.assertEqual(Account.from_key(key).address, alice)
+        envelope = json.loads(Fernet(service.master_key.encode()).decrypt(row["encrypted_private_key"].encode()))
+        self.assertEqual((envelope["chain"], envelope["telegramUserId"], envelope["address"]), ("base", "alice", alice))
+        with sqlite3.connect(store.path) as db:
+            db.execute("UPDATE user_wallets SET encrypted_private_key=? WHERE telegram_user_id='bob'", (row["encrypted_private_key"],))
+        with self.assertRaises(WalletEncryptionError):
+            service.decrypt_private_key_for_future_signing("bob")
+        # Even moving address and ciphertext together cannot change the bound owner.
+        with sqlite3.connect(store.path) as db:
+            db.execute("DELETE FROM user_wallets WHERE telegram_user_id='alice'")
+            db.execute("UPDATE user_wallets SET wallet_address=? WHERE telegram_user_id='bob'", (alice,))
+        with self.assertRaises(WalletEncryptionError):
+            service.decrypt_private_key_for_future_signing("bob")
+
+    def legacy_wallet(self, service, store, user_id="legacy"):
+        account = Account.create()
+        key = account.key.to_0x_hex()
+        encrypted = Fernet(service.master_key.encode()).encrypt(key.encode()).decode()
+        store.insert_wallet(telegram_user_id=user_id, telegram_username="original", chain="base",
+                            wallet_address=account.address, encrypted_private_key=encrypted, status="created")
+        return key, store.get_wallet_by_telegram_user_id(user_id)
+
+    def test_legacy_key_is_bound_on_use_without_changing_address_key_or_tokens(self):
+        service, store = self.make_service()
+        key, before = self.legacy_wallet(service, store)
+        token = store.issue_access_token("legacy")
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            keys = list(pool.map(lambda _: service.decrypt_private_key_for_future_signing("legacy"), range(8)))
+        self.assertTrue(all(k == key for k in keys))
+        after = store.get_wallet_by_telegram_user_id("legacy")
+        self.assertNotEqual(before["encrypted_private_key"], after["encrypted_private_key"])
+        self.assertEqual({k: v for k, v in before.items() if k != "encrypted_private_key"},
+                         {k: v for k, v in after.items() if k != "encrypted_private_key"})
+        reopened = ManagedBaseWalletService(store=UserWalletStore(store.path), master_key=service.master_key)
+        self.assertEqual(reopened.decrypt_private_key_for_future_signing("legacy"), key)
+        self.assertEqual(store.resolve_telegram_user_id(token), "legacy")
+
+    def test_wrong_legacy_key_is_rejected_without_migrating_it(self):
+        service, store = self.make_service()
+        _, before = self.legacy_wallet(service, store)
+        with sqlite3.connect(store.path) as db:
+            db.execute("UPDATE user_wallets SET wallet_address=? WHERE telegram_user_id='legacy'", (Account.create().address,))
+        with self.assertRaises(WalletEncryptionError):
+            service.decrypt_private_key_for_future_signing("legacy")
+        self.assertEqual(store.get_wallet_by_telegram_user_id("legacy")["encrypted_private_key"], before["encrypted_private_key"])
+
+    def test_key_migration_does_not_overwrite_a_concurrently_changed_row(self):
+        service, store = self.make_service()
+        _, before = self.legacy_wallet(service, store)
+        with patch.object(store, "bind_legacy_base_key", return_value=False):
+            with self.assertRaises(WalletEncryptionError):
+                service.decrypt_private_key_for_future_signing("legacy")
+        self.assertEqual(store.get_wallet_by_telegram_user_id("legacy"), before)
+
+    def test_bad_envelopes_and_keys_fail_with_a_generic_error(self):
+        service, store = self.make_service()
+        service.create_wallet("alice")
+        row = store.get_wallet_by_telegram_user_id("alice")
+        cipher = Fernet(service.master_key.encode())
+        original = json.loads(cipher.decrypt(row["encrypted_private_key"].encode()))
+        for bad in ({**original, "chain": "solana"}, {**original, "version": 2},
+                    {**original, "privateKey": "secret-invalid-key"}, [], {"privateKey": "secret-invalid-key"}):
+            with sqlite3.connect(store.path) as db:
+                db.execute("UPDATE user_wallets SET encrypted_private_key=? WHERE telegram_user_id='alice'",
+                           (cipher.encrypt(json.dumps(bad).encode()).decode(),))
+            with self.assertRaises(WalletEncryptionError) as raised:
+                service.decrypt_private_key_for_future_signing("alice")
+            self.assertNotIn("secret-invalid-key", str(raised.exception))
 
     def test_wallet_status_without_wallet_returns_clear_message(self):
         service, _store = self.make_service()

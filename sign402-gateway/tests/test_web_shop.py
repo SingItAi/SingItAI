@@ -475,6 +475,7 @@ class EndToEndShopTests(unittest.TestCase):
         headers, signed = call("POST", "/auth/verify", {"message": issued["message"], "signature": signature})
         cookie["Cookie"] = headers["Set-Cookie"].split(";")[0]
         csrf[wa.CSRF_HEADER] = signed["csrfToken"]
+        csrf[wa.ACCOUNT_HEADER] = signed["account"]
         base.store.ensure_account(base.user.address, 1)
 
         with (patch("sign402_gateway.server.fetch_x402_payment_required", return_value={}),

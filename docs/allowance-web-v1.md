@@ -588,13 +588,48 @@ and Discord, which create a Reown embedded wallet for the user (a plain account,
 contract, which v1 refuses). From there it is the same flow as any wallet: Sign-In
 with Ethereum, limits, one approval. A new embedded wallet has no ETH, so the page
 approves the allowance with an EIP-2612 permit signature (no gas) instead of an
-`approve` transaction. Signing in follows the connection the user asked for
-without a second click. Funding it is the "Add funds" window (account menu; the sidebar when the wallet
+`approve` transaction. Connecting first shows the wallet and a Base/Solana selector;
+the user chooses the network and presses **Sign in** to sign its message. The
+connection itself does not silently open a Base session. Each chain's address
+is a separate SingIt account. Funding it is the "Add funds" window (account menu; the sidebar when the wallet
 holds under 1 USDC; a card on the agent's reply when a purchase or a new limiter
 is short of USDC): the address with a QR code and a copy button, the balance, a
 warning to send only USDC on Base, and, for a wallet connected through AppKit,
 "Buy USDC with a card" (Reown's onramp partners; they may ask for ID and charge a
 fee). The money lands in the user's own wallet, never with us.
+
+### Session identity across tabs
+
+The page keeps the authenticated account and CSRF token together under
+`singit.session`, capturing them in each tab's memory. Protected HTTP requests
+(including reads and logout) carry `X-SingIt-CSRF` and `X-SingIt-Account`; the
+server refuses a cookie/session that does not match. The only account-header
+exception is `GET /session` during legacy restoration, which still requires
+the cookie's exact CSRF token. The old `singit.csrf` entry is migrated after
+successful restoration.
+
+A storage change invalidates the old tab and reloads its account-bound UI;
+late replies are discarded and payments are never replayed automatically.
+Frontend and web API changes must be released together: older pages lacking
+the account header fail closed and need a reload.
+
+### Solana limit reservations and transfer recovery
+
+Every new payment reservation reads the current daily cap, per-purchase cap
+and expiry in the same SQLite write transaction as reserving the amount.
+Metered holds and other workers' reservations share the budget. A saved limit
+change applies to new reservations; already authorized/in-flight payments
+remain counted and cannot be recalled by a settings change.
+
+Wallet-signed SOL funding is validated before submission. The gateway stores
+only its public transaction signature and blockhash, then sends it once.
+Validation failures terminate the operation so the user can prepare a fresh
+one. Unknown outcomes keep their hold while read-only reconciliation checks
+signature history and finalized blockhash expiry. Polling and a new funding
+attempt can reconcile an older transfer, but never resubmit it. A legacy
+`SUBMITTING`/`UNCERTAIN` row without a saved signature requires operator review;
+its age alone does not prove that money stayed put. The additive database
+migration preserves existing agent keys and operations.
 
 
 ## Installing as an app

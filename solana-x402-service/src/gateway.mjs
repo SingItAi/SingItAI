@@ -36,8 +36,11 @@ export async function dispatch(input, { wallet, venice, chain, store, exa, feePa
       const payer = input.ownerPaysFee ? input.owner : needFeePayer().address;
       return lane.prepare({ kind: input.kind, owner: input.owner, delegate: wallet.address, amount: input.amount || '0', feePayer: payer });
     }
-    if (input.operation === 'allowance-submit') {
-      return lane.submit({ transaction: input.transaction, expectedHash: input.messageHash, owner: input.owner,
+    if (input.operation === 'allowance-reconcile') {
+      return lane.reconcile({ transaction: input.transaction, blockhash: input.blockhash || null });
+    }
+    if (input.operation === 'allowance-submit' || input.operation === 'allowance-inspect') {
+      return lane[input.operation === 'allowance-inspect' ? 'inspect' : 'submit']({ transaction: input.transaction, expectedHash: input.messageHash, owner: input.owner,
         feePayer: input.ownerPaysFee ? null : needFeePayer(), kind: input.kind, delegate: wallet.address, amount: input.amount || '0' });
     }
     if (input.operation === 'allowance-funding-check') {

@@ -257,6 +257,32 @@ class WebApiTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 429)
         self.call("POST", "/auth/nonce", {"address": self.user.address}, client="203.0.113.9")
 
+    def test_stale_tabs_cannot_read_spend_or_log_out_another_account(self):
+        token, csrf, signed = self.sign_in()
+        other = "wallet:" + Account.create().address
+        self.api.shop = Mock(return_value=(200, {"ok": True}))
+        for method, path in (("GET", "/allowance"), ("GET", "/session"), ("POST", "/shop/tools/buy"), ("POST", "/auth/logout")):
+            with self.subTest(path):
+                with self.assertRaises(wa.WebError) as raised:
+                    self.api.handle(method, path, token=token, csrf=csrf, body={}, client="test", expected_account=other)
+                self.assertEqual((raised.exception.status, raised.exception.code), (409, "session_changed"))
+        self.api.shop.assert_not_called()
+        with self.assertRaises(WebAuthError):
+            self.api.handle("GET", "/session", token=token, csrf="previous-session", body={}, client="test",
+                            expected_account=signed["account"])
+        self.assertEqual(self.api.handle("GET", "/session", token=token, csrf=csrf, body={}, client="test",
+                                         expected_account=signed["account"])[1]["account"], signed["account"])
+
+    def test_http_bootstrap_requires_the_csrf_of_the_cookie_session(self):
+        token, csrf, signed = self.sign_in()
+        for wrong in (None, "", "another-tab-token"):
+            with self.assertRaises(WebAuthError):
+                self.api.handle("GET", "/session", token=token, csrf=wrong, body={}, client="test", expected_account="")
+        self.assertEqual(self.api.handle("GET", "/session", token=token, csrf=csrf, body={}, client="test",
+                                         expected_account="")[1]["account"], signed["account"])
+        with self.assertRaises(wa.WebError):
+            self.api.handle("POST", "/shop/tools/buy", token=token, csrf=csrf, body={}, client="test", expected_account="")
+
 
 class WebHttpTests(unittest.TestCase):
     """The HTTP layer: JSON only, CORS for one origin, errors as JSON."""
@@ -283,6 +309,7 @@ class WebHttpTests(unittest.TestCase):
         self.assertEqual(status, 204)
         self.assertEqual(headers["Access-Control-Allow-Origin"], URI)
         self.assertIn(wa.CSRF_HEADER, headers["Access-Control-Allow-Headers"])
+        self.assertIn(wa.ACCOUNT_HEADER, headers["Access-Control-Allow-Headers"])
         status, _, _ = self.request("OPTIONS", "/web/v1/auth/nonce", headers={"Origin": "https://evil.test"})
         self.assertEqual(status, 403)
 
@@ -295,12 +322,13 @@ class WebHttpTests(unittest.TestCase):
 
         status, headers, _ = self.request("POST", "/web/v1/allowance/setup", {"dailyCap": "5"}, {
             "Content-Type": "application/json", "Cookie": f"{wa.COOKIE}=tok", wa.CSRF_HEADER: "c",
-            "Origin": URI})
+            "Origin": URI, wa.ACCOUNT_HEADER: "wallet:expected"})
         self.assertEqual(status, 200)
         self.assertEqual(headers["Cache-Control"], "no-store")
         args, kwargs = self.api.handle.call_args
         self.assertEqual(args, ("POST", "/allowance/setup"))
         self.assertEqual((kwargs["token"], kwargs["csrf"], kwargs["body"]), ("tok", "c", {"dailyCap": "5"}))
+        self.assertEqual(kwargs["expected_account"], "wallet:expected")
 
     def test_failures_are_json_with_the_right_status_and_no_detail_from_crashes(self):
         for error, status, code in ((WebAuthError("Sign in first."), 401, "auth"),
@@ -315,6 +343,68 @@ class WebHttpTests(unittest.TestCase):
                 self.assertNotIn("secret detail", body.decode())
         got, _, _ = self.request("GET", "/health")
         self.assertEqual(got, 404)
+
+    def raw_post(self, headers, body=b"", *, eof=False):
+        import http.client
+        import socket
+        with socket.create_connection(self.server.server_address, timeout=2) as connection:
+            connection.sendall(b"POST /web/v1/auth/nonce HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n"
+                               + headers + b"\r\n\r\n" + body)
+            if eof:
+                connection.shutdown(socket.SHUT_WR)
+            response = http.client.HTTPResponse(connection)
+            response.begin()
+            return response.status, json.loads(response.read())
+
+    def test_invalid_framing_is_refused_without_waiting_for_eof(self):
+        for headers in (b"Content-Length: -1", b"Content-Length: +2", b"Content-Length: nope",
+                        b"Content-Length: 2\r\nContent-Length: 2", b"Content-Length: 2, 2",
+                        b"Content-Length: 2\r\nTransfer-Encoding: chunked", b"Transfer-Encoding: chunked"):
+            with self.subTest(headers=headers):
+                status, body = self.raw_post(headers)
+                self.assertEqual((status, body["error"]), (400, "bad_length"))
+        self.assertEqual(self.raw_post(b"Content-Length: 9999999999999999999999")[0], 413)
+        self.api.handle.assert_not_called()
+
+    def test_partial_or_silent_body_never_reaches_auth(self):
+        self.assertEqual(self.raw_post(b"Content-Length: 10", b"{}", eof=True)[0], 400)
+        with unittest.mock.patch.object(wa, "REQUEST_READ_SECONDS", 0.15):
+            self.assertEqual(self.raw_post(b"Content-Length: 10")[0], 408)
+        self.api.handle.assert_not_called()
+
+    def test_body_deadline_is_absolute_even_if_the_client_keeps_trickling(self):
+        import http.client
+        import socket
+        import time
+        with unittest.mock.patch.object(wa, "REQUEST_READ_SECONDS", 0.2):
+            with socket.create_connection(self.server.server_address, timeout=2) as connection:
+                connection.sendall(b"POST /web/v1/auth/nonce HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n")
+                stop = threading.Event()
+                def trickle():
+                    while not stop.wait(0.04):
+                        try:
+                            connection.sendall(b" ")
+                        except OSError:
+                            return
+                worker = threading.Thread(target=trickle)
+                worker.start()
+                try:
+                    start = time.monotonic()
+                    response = http.client.HTTPResponse(connection)
+                    response.begin()
+                    self.assertEqual(response.status, 408)
+                    self.assertLess(time.monotonic() - start, 1.5)
+                    response.read()
+                finally:
+                    stop.set()
+                    worker.join()
+        self.api.handle.assert_not_called()
+
+    def test_bad_json_is_generic_and_valid_json_still_dispatches(self):
+        self.assertEqual(self.raw_post(b"Content-Length: 1", b"\xff")[1]["error"], "bad_json")
+        self.api.handle.return_value = (200, {"ok": True}, {})
+        self.assertEqual(self.raw_post(b"Content-Length: 2", b"{}")[0], 200)
+        self.api.handle.assert_called_once()
 
 
 
