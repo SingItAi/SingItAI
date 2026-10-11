@@ -56,7 +56,7 @@ def _journal_dir():
     return root
 
 
-def _run_buyer(key, body, checkpoint):
+def _run_buyer(key, body, checkpoint, cap=CAP):
     helper = Path(__file__).resolve().parents[2] / "singit-ask" / "src" / "buyer-cli.mjs"
     node = str(Path.home() / ".hermes" / "node" / "bin" / "node")
     if not Path(node).is_file():
@@ -65,14 +65,14 @@ def _run_buyer(key, body, checkpoint):
         raise AllowanceUnavailable("Metered payment helper is not installed. Nothing was paid.")
     try:
         completed = subprocess.run([node, str(helper)], input=json.dumps({"privateKey": key,
-            "body": body, "checkpoint": str(checkpoint)}), text=True, capture_output=True, timeout=210)
+            "body": body, "checkpoint": str(checkpoint), "maxCap": str(cap)}), text=True, capture_output=True, timeout=210)
         # Never log stdout/stderr or exception arguments: only validated receipt fields escape.
         return json.loads(completed.stdout)
     except (subprocess.TimeoutExpired, ValueError, OSError):
         return {"ok": False}
 
 
-def _validate_result(service, result, agent, account):
+def _validate_result(service, result, agent, account, cap=CAP):
     if result.get("ok") is not True or str(result.get("payer", "")).lower() != agent.lower():
         raise AllowanceError("Payment result is unresolved. No automatic retry was made.")
     data = result.get("body") or {}
@@ -87,9 +87,14 @@ def _validate_result(service, result, agent, account):
     markup = (cost * MARKUP_BPS + 9999) // 10000
     amount = cost + markup + FEE
     expected = {"providerCostAtomic": str(cost), "markupAtomic": str(markup),
-        "totalAtomic": str(amount), "settlementFeeAtomic": str(FEE), "maxChargeAtomic": str(CAP),
+        "totalAtomic": str(amount), "settlementFeeAtomic": str(FEE),
         "markupBps": MARKUP_BPS, "mode": "actual_usage", "version": 1, "currency": "USDC"}
-    if cost < 0 or amount > CAP or any(bill.get(k) != v for k, v in expected.items()) or result.get("amountAtomic") != str(amount):
+    # The merchant's offered ceiling is its own to set, but it may not exceed what this gateway allowed for the
+    # model, and the invoice must stay under it.
+    offered = bill.get("maxChargeAtomic")
+    if not (isinstance(offered, str) and offered.isascii() and offered.isdigit() and amount <= int(offered) <= cap):
+        raise AllowanceError("The usage invoice does not match the agreed price; settlement needs review.")
+    if cost < 0 or any(bill.get(k) != v for k, v in expected.items()) or result.get("amountAtomic") != str(amount):
         raise AllowanceError("The usage invoice does not match the agreed price; settlement needs review.")
     tx = str(result.get("transaction", ""))
     if len(tx) != 66 or not tx.startswith("0x") or any(c not in "0123456789abcdefABCDEF" for c in tx[2:]):
@@ -176,13 +181,13 @@ def recover(server, gw, account):
             _recover(server, gw, journal, checkpoint)
 
 
-def pay(server, gw, account, body):
+def pay(server, gw, account, body, cap=CAP):
     service = server.allowance
     active = service.lane_for(account)
     if active is None:
         raise AllowanceUnavailable("Set your limits and approve them first.")
-    if CAP > int(active["per_purchase_cap"]):
-        raise AllowanceError("This request needs permission for up to 0.003 USDC; its actual charge may be lower.")
+    if cap > int(active["per_purchase_cap"]):
+        raise AllowanceError(f"This request needs permission for up to {cap / 1_000_000:.3f} USDC; its actual charge may be lower.")
     root = _journal_dir()
     name = hashlib.sha256(account.encode()).hexdigest()
     journal, checkpoint = root / (name + ".json"), root / (name + ".submitted")
@@ -192,10 +197,10 @@ def pay(server, gw, account, body):
         if journal.exists() or checkpoint.exists():
             _recover(server, gw, journal, checkpoint)
         requirements = {"scheme": "upto", "network": "base-mainnet", "x402Network": "eip155:8453",
-            "asset": USDC, "amountAtomic": str(CAP), "receiver": PAY_TO, "resource": URL,
+            "asset": USDC, "amountAtomic": str(cap), "receiver": PAY_TO, "resource": URL,
             "paymentIntent": "ask-" + secrets.token_hex(16)}
         reservation, claim, complete = None, None, False
-        state = {"account": account, "createdAt": int(time.time()), "ceilingAtomic": CAP, "resource": URL}
+        state = {"account": account, "createdAt": int(time.time()), "ceilingAtomic": cap, "resource": URL}
         try:
             # Persist intent BEFORE reserving: a process crash cannot permit another payment.
             _save(journal, state)
@@ -205,9 +210,9 @@ def pay(server, gw, account, body):
             _save(journal, state)
             agent, key = service.agent_key(account)
             with service._spend_lock:
-                service._fund(active, agent, key, CAP, requirements["paymentIntent"])
-                result = _run_buyer(key, body, checkpoint)
-                amount, data, tx, index = _validate_result(service, result, agent, account)
+                service._fund(active, agent, key, cap, requirements["paymentIntent"])
+                result = _run_buyer(key, body, checkpoint, cap)
+                amount, data, tx, index = _validate_result(service, result, agent, account, cap)
                 state.update(amountAtomic=amount, txId=tx, logIndex=index, payer=agent)
                 _save(journal, state)
                 actual = {**requirements, "amountAtomic": str(amount)}

@@ -26,6 +26,19 @@ export function billUsage(usage, terms = TERMS) {
     totalAtomic: total.toString(), currency: "USDC" };
 }
 
+// The ceiling one answer can cost: the most the model could bill for this question and answer size, plus the
+// markup and the fee. It never drops below the network's standing ceiling (3000), so the default model and every
+// cheap one are authorized exactly as before; only models whose worst case is higher get a higher ceiling.
+// Input is counted at one token per character, which no tokenizer exceeds, and the output at the whole token
+// budget the answer may use, thinking headroom included. The prices are Surplus's list prices, above what a
+// seller actually charges, so the ceiling holds when a dearer seller wins.
+export function ceilingAtomic(model, { chars, maxTokens, headroom }, terms) {
+  const worst = Math.ceil((chars * model.promptUsdPerToken + (maxTokens + headroom) * model.completionUsdPerToken) * 1e6);
+  const total = BigInt(worst) + (BigInt(worst) * BigInt(terms.markupBps) + 9999n) / 10000n + BigInt(terms.settlementFeeAtomic);
+  const floor = BigInt(terms.maxChargeAtomic);
+  return (total > floor ? total : floor).toString();
+}
+
 // Web Ask: measure privately, then settle once from the delegated owner account.
 export const QUOTED_ROUTE = "/v1/chat/completions/quoted/solana";
 export const QUOTED_URL = `https://ask.singitai.app${QUOTED_ROUTE}`;

@@ -13,18 +13,15 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addUsageRoute, baseOffer, solanaOffer } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
+import { UnknownModel, ModelCatalogue } from "./catalogue.mjs";
+import { LIMITS, THINKING_HEADROOM } from "./limits.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 export const ROUTE = "/v1/chat/completions";
 
-// What one paid answer may ask for: at these sizes the model's cost stays under the 0.003 USDC ceiling.
-export const LIMITS = { messages: 40, chars: 24_000, maxTokens: 1_200, defaultTokens: 800, timeoutMs: 45_000 };
-// Thinking is switched off, but a seller may not obey, and thinking shares the token budget with the
-// answer: on 4 October one spent 931 of 1200 tokens thinking and the answer stopped mid-word. The answer keeps
-// its whole budget; the most thinking can add stays far under the ceiling (about 0.0001 USDC).
-export const THINKING_HEADROOM = 1_000;
+export { LIMITS, THINKING_HEADROOM };
 const ROLES = new Set(["system", "user", "assistant"]);
 
 export class RequestError extends Error {
@@ -53,13 +50,30 @@ export function readRequest(body) {
   if (chars > LIMITS.chars) throw new RequestError(400, `Keep the messages under ${LIMITS.chars} characters in all.`);
   const asked = Number(body.max_tokens ?? LIMITS.defaultTokens);
   const maxTokens = Number.isInteger(asked) && asked > 0 ? Math.min(asked, LIMITS.maxTokens) : LIMITS.defaultTokens;
-  return { messages: clean, maxTokens };
+  const model = body.model === undefined || body.model === "singit-ask" ? undefined : body.model;
+  if (model !== undefined && (typeof model !== "string" || !model.trim() || model.length > 120)) {
+    throw new RequestError(400, "model must be the id of a model listed at GET /v1/models.");
+  }
+  return { messages: clean, maxTokens, chars, model: model?.trim() };
+}
+
+// The model an answer is bought from and what it may cost. No model, or the default one, keeps the standing
+// ceiling; any other must be on Surplus's list, and its ceiling follows its own prices.
+export async function chooseModel(config, catalogue, input) {
+  if (!input.model || input.model === config.model) return { ...input, model: config.model, info: null };
+  if (!catalogue) throw new RequestError(400, "Choosing a model is not offered here.");
+  try {
+    return { ...input, info: await catalogue.resolve(input.model) };
+  } catch (error) {
+    if (error instanceof UnknownModel) throw new RequestError(400, error.message);
+    throw error;
+  }
 }
 
 export class UpstreamError extends Error {}
 
 // One completion from Surplus Intelligence. Any failure is an UpstreamError: the payer is not charged.
-export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch) {
+export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model) {
   let response;
   try {
     response = await fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
@@ -68,7 +82,7 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch)
       // No thinking, from the fastest seller within twice the cheapest price. Measured on 4 October: the cheapest
       // seller ignored `thinking: disabled` and answered a travel question in 21-24 s; with these, 2.5-2.7 s, three
       // of three, at the same cost. Surplus documents both: docs/reference/reasoning, docs/marketplace/routing-controls.
-      body: JSON.stringify({ model: config.model, messages, max_tokens: maxTokens + THINKING_HEADROOM, temperature: 0.4,
+      body: JSON.stringify({ model, messages, max_tokens: maxTokens + THINKING_HEADROOM, temperature: 0.4,
                              reasoning_effort: "none", si_route: { objective: "latency", price_tolerance_pct: 100 } }),
       signal: AbortSignal.timeout(LIMITS.timeoutMs),
     });
@@ -91,7 +105,8 @@ const EXAMPLE = {
   },
 };
 
-export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error }) {
+export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
+                                    catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl }) : null }) {
   const app = express();
   app.disable("x-powered-by");
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
@@ -103,14 +118,20 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
   });
-  app.get("/v1/models", (_req, res) => {
-    res.json({ object: "list", data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model,
-                                         endpoint: ROUTE, pricing }] });
+  // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
+  app.get("/v1/models", async (_req, res) => {
+    const models = catalogue ? await catalogue.list().catch(() => []) : [];
+    res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing,
+      data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
+        ...models.map(m => ({ id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name,
+          contextLength: m.contextLength,
+          usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 } }))] });
   });
 
-  const route = { facilitatorClient, config, readRequest, upstream, fetchImpl, log };
+  const choose = input => chooseModel(config, catalogue, input);
+  const route = { facilitatorClient, config, readRequest, choose, upstream, fetchImpl, log };
   // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.
-  addUsageRoute(app, ROUTE, [solanaOffer(config), baseOffer(config)], {
+  addUsageRoute(app, ROUTE, quotes => [solanaOffer(config, quotes), baseOffer(config, quotes)], {
     description: `SingIt Ask: one answer from ${config.model}, OpenAI-compatible. Pays actual token cost + 30% `
                  + "+ settlement fee (0.002 USDC on Solana, 0.001 on Base), at most 0.003 USDC; nothing without an answer.",
     serviceName: "SingIt Ask",
@@ -124,6 +145,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           properties: {
             messages: { type: "array", items: { type: "object" } },
             max_tokens: { type: "integer", maximum: LIMITS.maxTokens },
+            model: { type: "string", description: "Any model id from GET /v1/models; the ceiling follows its price." },
           },
           required: ["messages"],
         },
@@ -132,12 +154,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     },
   }, route);
   // The web agent's Base payments, pinned to this address by the gateway's buyer.
-  addUsageRoute(app, METERED_ROUTE, [baseOffer(config)], {
+  addUsageRoute(app, METERED_ROUTE, quotes => [baseOffer(config, quotes)], {
     description: "SingIt Ask: actual model cost + 30% markup + 0.001 USDC settlement fee. Authorize at most 0.003 USDC.",
     extensions: declareEip2612GasSponsoringExtension(),
   }, route);
   // The web agent's Solana payments: measured privately, then paid directly from the owner's delegated USDC.
-  if (config.directSolana) addSolanaQuotedRoute(app, config, { facilitatorClient, readRequest, upstream, fetchImpl, log });
+  if (config.directSolana) addSolanaQuotedRoute(app, config, { facilitatorClient, readRequest, choose, upstream, fetchImpl, log });
 
   return app;
 }

@@ -4,7 +4,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
 import { BASE, SOLANA, ROUTE, LIMITS, THINKING_HEADROOM, RequestError, UpstreamError, readRequest, askSurplus, createApp } from "../src/app.mjs";
-import { SOLANA_TERMS, TERMS } from "../src/pricing.mjs";
+import { SOLANA_TERMS, TERMS, ceilingAtomic, billUsage } from "../src/pricing.mjs";
+import { ModelCatalogue, UnknownModel } from "../src/catalogue.mjs";
 
 const SOLANA_PAY_TO = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
 const BASE_PAY_TO = "0x1111111111111111111111111111111111111111";
@@ -40,6 +41,11 @@ function fakeFacilitator() {
   };
 }
 
+const PRICEY = { id: "pro-model", name: "Pro", provider: "X", contextLength: 1e6, promptUsdPerToken: 30e-6, completionUsdPerToken: 180e-6 };
+const CHEAP = { id: "cheap-model", name: "Cheap", provider: "X", contextLength: 1e5, promptUsdPerToken: 0.1e-6, completionUsdPerToken: 0.3e-6 };
+const fakeCatalogue = { async resolve(id) { const m = [PRICEY, CHEAP].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
+  async list() { return [CHEAP, PRICEY]; } };
+
 async function serve(t, { upstream } = {}) {
   const facilitator = fakeFacilitator();
   const asked = [];
@@ -47,7 +53,7 @@ async function serve(t, { upstream } = {}) {
     asked.push({ messages, maxTokens });
     return { content: "Try Caffè Propaganda.", finishReason: "stop", usage: { total_tokens: 42, buyer_cost_micro: 100 } };
   });
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, upstream: answer, log: () => {} });
+  const app = createApp(CONFIG, { facilitatorClient: facilitator, upstream: answer, log: () => {}, catalogue: fakeCatalogue });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
   return { url: `http://127.0.0.1:${listener.address().port}`, facilitator, asked };
@@ -167,7 +173,7 @@ test("health and the model list are free, and the old test page is gone", async 
 
 test("readRequest keeps the question within what one answer pays for", () => {
   assert.deepEqual(readRequest({ messages: [{ role: "user", content: "hi", name: "x" }] }),
-                   { messages: [{ role: "user", content: "hi" }], maxTokens: LIMITS.defaultTokens });
+                   { messages: [{ role: "user", content: "hi" }], maxTokens: LIMITS.defaultTokens, chars: 2, model: undefined });
   assert.equal(readRequest({ ...QUESTION, max_tokens: 100_000 }).maxTokens, LIMITS.maxTokens);
   assert.equal(readRequest({ ...QUESTION, max_tokens: -5 }).maxTokens, LIMITS.defaultTokens);
   assert.throws(() => readRequest(null), RequestError);
@@ -204,4 +210,85 @@ test("askSurplus sends the key and model, and turns every failure into an Upstre
   for (const fetchImpl of failing) {
     await assert.rejects(askSurplus(CONFIG, QUESTION.messages, 300, fetchImpl), UpstreamError);
   }
+});
+
+test("another model gets a ceiling worked out from its own prices; the default and cheap ones keep 3000", async (t) => {
+  const { url, facilitator } = await serve(t);
+  const offerFor = async (model) => {
+    const unpaid = await post(url, { ...QUESTION, model });
+    assert.equal(unpaid.status, 402);
+    return decode(unpaid.headers.get("payment-required")).accepts;
+  };
+  for (const model of [undefined, "deepseek-v4.1-flash", "singit-ask", "cheap-model"]) {
+    assert.deepEqual((await offerFor(model)).map((a) => a.amount), ["3000", "3000"], String(model));
+  }
+  const pro = await offerFor("pro-model");
+  const size = { chars: 26, maxTokens: 300, headroom: THINKING_HEADROOM };
+  assert.equal(pro.find((a) => a.network === BASE).amount, ceilingAtomic(PRICEY, size, TERMS));
+  assert.equal(pro.find((a) => a.network === SOLANA).amount, ceilingAtomic(PRICEY, size, SOLANA_TERMS));
+  assert.ok(BigInt(pro[0].amount) > 200_000n, "a dear model is authorized for what it can really cost");
+  assert.equal(pro.find((a) => a.network === BASE).extra.billing.maxChargeAtomic, pro.find((a) => a.network === BASE).amount);
+  assert.equal(facilitator.calls.verify, 0);
+});
+
+test("a model that is not on the list is refused before any payment is asked for", async (t) => {
+  const { url, asked } = await serve(t);
+  const response = await post(url, { ...QUESTION, model: "no-such-model" });
+  assert.equal(response.status, 400);
+  assert.equal(response.headers.get("payment-required"), null);
+  assert.equal((await post(url, { ...QUESTION, model: 7 })).status, 400);
+  assert.equal(asked.length, 0);
+});
+
+test("a paid question on another model is bought from that model and charged its actual cost under its own ceiling", async (t) => {
+  const seen = [];
+  const { url, facilitator } = await serve(t, { upstream: async (_c, _m, _t, _f, model) => {
+    seen.push(model);
+    return { content: "ok", finishReason: "stop", usage: { buyer_cost_micro: 150_000 } };
+  } });
+  const unpaid = await post(url, { ...QUESTION, model: "pro-model" });
+  const required = decode(unpaid.headers.get("payment-required"));
+  const paid = await post(url, { ...QUESTION, model: "pro-model" }, { "PAYMENT-SIGNATURE": baseSignature(required) });
+  assert.equal(paid.status, 200);
+  assert.deepEqual(seen, ["pro-model"]);
+  const body = await paid.json();
+  assert.equal(body.billing.totalAtomic, String(150_000 + 45_000 + 1_000));
+  assert.deepEqual(facilitator.calls.settle, [body.billing.totalAtomic]);
+});
+
+test("an answer dearer than the ceiling of its own model is still not charged", async (t) => {
+  const { url, facilitator } = await serve(t, { upstream: async () => ({ content: "ok", usage: { buyer_cost_micro: 10_000_000 } }) });
+  const required = decode((await post(url, { ...QUESTION, model: "pro-model" })).headers.get("payment-required"));
+  const paid = await post(url, { ...QUESTION, model: "pro-model" }, { "PAYMENT-SIGNATURE": baseSignature(required) });
+  assert.equal(paid.status, 502);
+  assert.deepEqual(facilitator.calls.settle, []);
+});
+
+test("the model list is free and carries Surplus's prices", async (t) => {
+  const { url } = await serve(t);
+  const list = await (await fetch(`${url}/v1/models`)).json();
+  assert.equal(list.default, "deepseek-v4.1-flash");
+  assert.deepEqual(list.data.map((m) => m.id), ["singit-ask", "cheap-model", "pro-model"]);
+  assert.equal(list.data[2].usdPerMillionTokens.output, 180);
+});
+
+test("ModelCatalogue reads text models with prices, caches them, and survives a failed refresh", async () => {
+  let calls = 0, fail = false, clock = 0;
+  const entry = (id, modality = "text->text", params = ["max_tokens"]) => ({ id, name: id, provider: "P", context_length: 1000,
+    architecture: { modality }, supported_parameters: params, pricing: { prompt: "0.000001", completion: "0.000002" } });
+  const fetchImpl = async () => { calls++; if (fail) throw new Error("down");
+    return new Response(JSON.stringify({ data: [entry("a"), entry("img", "text->image"), entry("nocap", "text->text", []),
+      { ...entry("free"), pricing: { prompt: "0", completion: "0" } }, { ...entry("bad"), pricing: {} }] })); };
+  const catalogue = new ModelCatalogue({ url: "https://x", fetchImpl, now: () => clock });
+  assert.deepEqual((await catalogue.list()).map((m) => m.id).sort(), ["a", "free"]);
+  assert.equal((await catalogue.resolve("a")).completionUsdPerToken, 0.000002);
+  await assert.rejects(catalogue.resolve("img"), UnknownModel);
+  assert.equal(calls, 1);
+  fail = true; clock = 7 * 3600_000;
+  assert.equal((await catalogue.resolve("a")).id, "a", "a failed refresh keeps the last list");
+});
+
+test("ceilingAtomic never drops below the standing ceiling", () => {
+  assert.equal(ceilingAtomic({ promptUsdPerToken: 0, completionUsdPerToken: 0 }, { chars: 10, maxTokens: 100, headroom: 1000 }, TERMS), "3000");
+  assert.equal(billUsage({ buyer_cost_micro: 100 }, { ...TERMS, maxChargeAtomic: "50000" }).totalAtomic, "1130");
 });

@@ -6,12 +6,24 @@ signature or new wallet is involved. Solana pays the measured cost directly from
 from typing import Any
 
 from .agent_allowance import AllowanceError, AllowanceUnavailable
-from . import ask_metered, ask_solana
+from . import ask_catalogue, ask_metered, ask_solana
 
 MODEL = "singit-ask"
 LABEL = "DeepSeek V4.1 Flash · SingIt Ask"
 URL = ask_metered.URL
 PRICE = ask_metered.CAP
+
+
+def is_ask(model_id: Any) -> bool:
+    """SingIt Ask's own default, or any model Surplus sells, asked for as "ask:<its id>"."""
+    return model_id == MODEL or (isinstance(model_id, str) and model_id.startswith(ask_catalogue.PREFIX))
+
+
+def current(server: Any, account: str) -> str:
+    """The Ask model this account talks to: the default, or "ask:<id>"."""
+    base = getattr(server, "chat_service", None)
+    chosen = base.store.get_session("ask-web:" + account).model if base is not None else ""
+    return chosen if is_ask(chosen) else MODEL
 
 
 def selected(server: Any, account: str) -> bool:
@@ -21,32 +33,55 @@ def selected(server: Any, account: str) -> bool:
         return False
     chosen = base.store.get_session("ask-web:" + account).model
     # Choosing Venice records its model and clears this one; nothing chosen yet is SingIt Ask.
-    return chosen == MODEL or (not chosen and not base.store.get_session(account).model)
+    return is_ask(chosen) or (not chosen and not base.store.get_session(account).model)
 
 
-def choose(server: Any, account: str) -> tuple[int, dict[str, Any]]:
+def _described(model_id: str) -> tuple[str, str | None, dict | None]:
+    """(label, the id Surplus knows it by, its prices) for a chosen model. The default has no id of its own."""
+    if model_id == MODEL:
+        return LABEL, None, None
+    found = ask_catalogue.resolve(model_id[len(ask_catalogue.PREFIX):])
+    if found is None:
+        raise AllowanceUnavailable("That model is not available right now. Pick another; nothing was paid.")
+    return f"{found['label']} · SingIt Ask", found["id"], found
+
+
+def choose(server: Any, account: str, model_id: Any = MODEL) -> tuple[int, dict[str, Any]]:
     if not account.startswith(("wallet:", "solana:")):
         raise AllowanceUnavailable("A supported Base or Solana account is required.")
     base = getattr(server, "chat_service", None)
     if base is None:
         raise AllowanceUnavailable("Chat is not configured on this server.")
+    if not is_ask(model_id):
+        raise AllowanceUnavailable("That model is not available.")
+    label, _, _ = _described(model_id)  # unknown ids are refused here, before anything is recorded
     # Keep the linked Telegram/Venice model intact: this adapter belongs to the web chat.
-    base.store.set_model("ask-web:" + account, MODEL)
-    return 200, {"ok": True, "chosen": MODEL, "label": LABEL, "provider": "SingIt Ask"}
+    base.store.set_model("ask-web:" + account, model_id)
+    return 200, {"ok": True, "chosen": model_id, "label": label, "provider": "SingIt Ask"}
 
 
 def listing(result: dict[str, Any], account: str) -> dict[str, Any]:
     if account.startswith(("wallet:", "solana:")):
         fee = "0.001"
-        result["models"].insert(0, {
+        entries = [{
             "id": MODEL, "label": LABEL, "provider": "SingIt Ask",
             "blurb": f"Actual token cost + 30% + {fee} USDC settlement fee. Up to 0.003 per answer; Solana charges your wallet directly, with no agent SOL top-up.",
             "billingMode": "actual_usage", "markupPercent": 30, "settlementFeeUsd": fee, "maxChargeUsd": "0.003", "tags": ["x402"],
-        })
+        }]
+        # Every other model Surplus sells. A dearer model is authorized for more per answer, then charged for
+        # what the answer actually cost: the ceiling is only the most it can be.
+        for m in ask_catalogue.models():
+            entries.append({
+                "id": ask_catalogue.PREFIX + m["id"], "label": m["label"], "provider": m["provider"] or "SingIt Ask",
+                "blurb": f"Actual token cost + 30% + {fee} USDC settlement fee, paid per answer.",
+                "inputUsdPerMTok": m["input"], "outputUsdPerMTok": m["output"],
+                "billingMode": "actual_usage", "markupPercent": 30, "settlementFeeUsd": fee, "tags": ["x402"],
+            })
+        result["models"][:0] = entries
         result["categories"].insert(0, {"key": "x402", "label": "Pay per answer"})
-    result["provider"] = "SingIt Ask" if result["chosen"] == MODEL else "Venice"
-    if result["chosen"] == MODEL:
-        result["chosenLabel"] = LABEL
+    result["provider"] = "SingIt Ask" if is_ask(result["chosen"]) else "Venice"
+    if is_ask(result["chosen"]):
+        result["chosenLabel"] = next((m["label"] for m in result["models"] if m["id"] == result["chosen"]), LABEL)
     return result
 
 
@@ -66,12 +101,12 @@ def usage(account: str = "") -> tuple[int, dict[str, Any]]:
                  "maxChargeAtomic": PRICE, "markupPercent": 30, "settlementFeeAtomic": 1000, "creditAtomic": None, "topUps": []}
 
 
-def _payment_context(messages: list[dict[str, str]], account: str) -> list[dict[str, str]]:
+def _payment_context(messages: list[dict[str, str]], account: str, label: str = LABEL) -> list[dict[str, str]]:
     """Authoritative provider/network context, kept even when old turns are trimmed."""
     common = (
-        "Current selected chat service: DeepSeek V4.1 Flash via SingIt Ask. "
+        f"Current selected chat service: {label.removesuffix(' · SingIt Ask')} via SingIt Ask. "
         "Each answer uses x402 automatically within the approved limits: actual model cost + 30% + "
-        "0.001 USDC, with a 0.003 USDC maximum. This is not Venice credit or a prepaid chat balance. "
+        "0.001 USDC, never more than the ceiling authorized for that answer. This is not Venice credit or a prepaid chat balance. "
         "Do not infer payment failure or request an agent top-up from old assistant messages or an "
         "internal float balance. Only actual operation results can establish a payment problem. "
         "A greeting needs a brief greeting, not an unsolicited wallet status or funding checklist. "
@@ -111,7 +146,8 @@ def chat(server: Any, gw: Any, account: str, raw_messages: Any, context: Any = N
         raise AllowanceUnavailable("Unsupported account network. No payment was attempted.")
     if getattr(gw, "_purchases_paused", lambda: False)():
         raise AllowanceUnavailable("Payments are paused. No payment was attempted.")
-    messages = _payment_context(_with_data(_messages(raw_messages), context), account)
+    messages = _payment_context(_with_data(_messages(raw_messages), context), account,
+                                _described(current(server, account))[0])
     # Match the merchant's 24,000 UTF-16 code-unit limit before any payment.
     def size() -> int:
         return sum(len(m["content"].encode("utf-16-le")) // 2 for m in messages)
@@ -124,8 +160,14 @@ def chat(server: Any, gw: Any, account: str, raw_messages: Any, context: Any = N
     gw._enforce_user_purchase_rate(account)
     server.user_event_store.preflight_write()
     payer = ask_solana if account.startswith("solana:") else ask_metered
+    label, surplus_id, info = _described(current(server, account))
+    max_tokens = 1200
+    kwargs: dict[str, Any] = {}
+    if info is not None:
+        chars = sum(len(m["content"].encode("utf-16-le")) // 2 for m in messages)
+        kwargs["cap"] = ask_catalogue.ceiling(info, chars, max_tokens, markup_bps=ask_metered.MARKUP_BPS, fee=ask_metered.FEE)
     amount, data, tx = payer.pay(server, gw, account,
-                                {"model": MODEL, "messages": messages, "max_tokens": 1200})
+                                {"model": surplus_id or MODEL, "messages": messages, "max_tokens": max_tokens}, **kwargs)
     # Never retry a paid request on a missing or malformed answer.
     choices = data.get("choices") if isinstance(data, dict) else None
     first = choices[0] if isinstance(choices, list) and choices else None
@@ -137,6 +179,6 @@ def chat(server: Any, gw: Any, account: str, raw_messages: Any, context: Any = N
     def tokens(key: str) -> int:
         value = used.get(key)
         return value if type(value) is int and value >= 0 else 0
-    return 200, {"ok": True, "text": text, "model": MODEL, "modelLabel": LABEL,
+    return 200, {"ok": True, "text": text, "model": current(server, account), "modelLabel": label,
                  "costAtomic": amount, "billingMode": "actual_usage", "billing": data.get("billing"), "txId": tx,
                  "promptTokens": tokens("prompt_tokens"), "completionTokens": tokens("completion_tokens")}

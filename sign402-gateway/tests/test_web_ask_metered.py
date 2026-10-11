@@ -41,7 +41,7 @@ class MeteredTests(unittest.TestCase):
         self.buyer=Mock(side_effect=self.success)
         for p in [patch.object(m,'_journal_dir',return_value=self.root),patch.object(m,'_run_buyer',self.buyer)]:
             p.start();self.addCleanup(p.stop)
-    def success(self,key,body,checkpoint):
+    def success(self,key,body,checkpoint,cap=3000):
         checkpoint.write_text(json.dumps({'nonce':'1','ceilingAtomic':'3000'}));return result()
     def pay(self):return m.pay(self.server,self.gw,ACCOUNT,{'messages':[]})
     def test_reserve_maximum_but_ledger_and_memory_receive_only_actual_charge(self):
@@ -60,7 +60,7 @@ class MeteredTests(unittest.TestCase):
         self.gw._release_user_wallet_spend.assert_called_once_with(self.server,'reservation')
         self.assertEqual(list(self.root.glob('*.json')),[])
     def test_uncertain_submission_keeps_hold_and_blocks_next_request(self):
-        def lost(key,body,checkpoint):checkpoint.write_text('{}');return {'ok':False}
+        def lost(key,body,checkpoint,cap=3000):checkpoint.write_text('{}');return {'ok':False}
         self.buyer.side_effect=lost
         with self.assertRaises(AllowanceError):self.pay()
         self.gw._release_user_wallet_spend.assert_not_called()
@@ -69,7 +69,7 @@ class MeteredTests(unittest.TestCase):
         state=json.loads(next(self.root.glob('*.json')).read_text());self.assertEqual(state['reservationId'],'reservation')
         self.assertNotIn('test-key-not-real',json.dumps(state))
     def lose_answer(self,deadline='1000'):
-        def lost(key,body,checkpoint):
+        def lost(key,body,checkpoint,cap=3000):
             checkpoint.write_text(json.dumps({'payer':AGENT,'nonce':str(2**200+513),'deadline':deadline,'ceilingAtomic':'3000'}))
             return {'ok':False,'submitted':True}
         self.buyer.side_effect=lost

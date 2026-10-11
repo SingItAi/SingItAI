@@ -245,7 +245,7 @@ def models(server: Any, account: str) -> tuple[int, dict[str, Any]]:
         return 503, {"ok": False, "error": "chat_off", "text": "The private chat is off on this server."}
     catalogue = base._catalogue()
     from . import web_ask
-    chosen = web_ask.MODEL if web_ask.selected(server, account) else (base.store.get_session(account).model or base.default_model)
+    chosen = web_ask.current(server, account) if web_ask.selected(server, account) else (base.store.get_session(account).model or base.default_model)
     listed = catalogue.models()
     categories = [c for c in catalogue.categories() if c.key != "all"]
     private = base.store.get_session(account).model or base.default_model  # what the lock switches to
@@ -264,8 +264,8 @@ def models(server: Any, account: str) -> tuple[int, dict[str, Any]]:
 def choose_model(server: Any, account: str, model_id: Any) -> tuple[int, dict[str, Any]]:
     """Talk to another model from the next message on. Moves no money."""
     from . import web_ask
-    if model_id == web_ask.MODEL:
-        return web_ask.choose(server, account)
+    if web_ask.is_ask(model_id):
+        return web_ask.choose(server, account, model_id)
     base = getattr(server, "chat_service", None)
     if base is None:
         return 503, {"ok": False, "error": "chat_off", "text": "The private chat is off on this server."}

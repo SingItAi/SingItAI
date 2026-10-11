@@ -3,13 +3,18 @@ import {DIRECT_TERMS,QUOTED_URL} from './pricing.mjs';
 import {isAddress} from '@solana/kit';
 import {TOKEN_PROGRAM_ADDRESS} from '@solana-program/token';
 import {ata,requireReceiver} from './solana-buyer.mjs';
+// The ceiling this question's quote was priced under: the standing one, or the model's own up to `maxCap`.
+const ceilingOf=(quote,maxCap)=>{const c=quote?.billing?.maxChargeAtomic;
+  if(typeof c!=='string'||!/^[1-9][0-9]{0,17}$/.test(c)||!/^[1-9][0-9]{0,17}$/.test(String(maxCap))||BigInt(c)>BigInt(maxCap))throw new Error('Changed direct payment terms');
+  return {...DIRECT_TERMS,maxChargeAtomic:c};};
 const decode=s=>JSON.parse(Buffer.from(s,'base64').toString());
 // Merchant answers that end a request before it asks for settlement: nothing was or will be charged.
 const REFUSED=new Set(['400:invalid_payment','400:terms_changed','401:unauthorized','402:verification_refused',
   '404:not_found','409:quote_unavailable','502:verification_unavailable']);
 export class PaymentRefused extends Error {}
-export function validateDirectQuote(quote,{requestId,owner,agent}) {
-  const r=quote?.accepts?.[0],bill=billUsage(quote?.usage,DIRECT_TERMS);
+export function validateDirectQuote(quote,{requestId,owner,agent,maxCap=DIRECT_TERMS.maxChargeAtomic}) {
+  const terms=ceilingOf(quote,maxCap);
+  const r=quote?.accepts?.[0],bill=billUsage(quote?.usage,terms);
   if(quote?.x402Version!==2||quote.quoteId!==requestId||quote.owner!==owner||quote.agent!==agent||quote.accepts?.length!==1
     ||quote.resource?.url!==`${QUOTED_URL}/${requestId}`||r.scheme!=='exact'||r.network!==SOLANA||r.asset!==SOLANA_ASSET
     ||r.payTo!==SOLANA_PAY_TO||r.amount!==bill.totalAtomic||r.maxTimeoutSeconds!==300||r.extra?.memo!==`singit-ask:${requestId}`
@@ -33,14 +38,14 @@ export async function validateDirectTransfer(tx,{signature,owner,agent,amount,me
     &&i.parsed.info?.authority===agent&&i.parsed.info?.mint===SOLANA_ASSET&&i.parsed.info?.tokenAmount?.amount===String(amount));
   if(transfers.length!==1||!ix.some(i=>i.program==='spl-memo'&&i.parsed===memo))throw new Error('Wrong payment instructions');
 }
-export async function payDirect({body,owner,wallet,requestId,token,chain,rpc,beforeSubmit,fetchImpl=fetch}) {
+export async function payDirect({body,owner,wallet,requestId,token,chain,rpc,beforeSubmit,maxCap=DIRECT_TERMS.maxChargeAtomic,fetchImpl=fetch}) {
   const send=(url,body,headers={})=>fetchImpl(url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(90000),
     headers:{'Content-Type':'application/json','X-Singit-Ask-Token':token,...headers},body:JSON.stringify(body)});
   await requireReceiver(rpc);
   const prepared=await send(`${QUOTED_URL}/prepare`,{...body,requestId,owner,agent:wallet.address});
   if(!prepared.ok)throw new Error('Could not prepare answer');
   const {quote}=await prepared.json();
-  const accepted=validateDirectQuote(quote,{requestId,owner,agent:wallet.address});
+  const accepted=validateDirectQuote(quote,{requestId,owner,agent:wallet.address,maxCap});
   const built=await chain.buildDelegated(accepted,quote.resource,wallet,owner);
   await beforeSubmit({requestId,owner,payer:wallet.address,amountAtomic:accepted.amount,feePayer:accepted.extra.feePayer,
     memo:accepted.extra.memo,expiresAt:quote.expiresAt,lastValidBlockHeight:built.lastValidBlockHeight});
@@ -51,7 +56,7 @@ export async function payDirect({body,owner,wallet,requestId,token,chain,rpc,bef
     throw new Error('Submitted payment unresolved');
   }
   const receipt=decode(response.headers.get('payment-response'));
-  const answer=await response.json(),bill=billUsage(answer.usage,DIRECT_TERMS);
+  const answer=await response.json(),bill=billUsage(answer.usage,ceilingOf(quote,maxCap));
   if(receipt.success!==true||receipt.network!==SOLANA||receipt.payer!==wallet.address||receipt.amount!==accepted.amount
     ||!/^([1-9A-HJ-NP-Za-km-z]){80,90}$/.test(receipt.transaction??'')||bill.totalAtomic!==accepted.amount
     ||Object.entries(bill).some(([k,v])=>answer.billing?.[k]!==v||quote.billing?.[k]!==v))throw new Error('Wrong invoice');

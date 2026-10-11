@@ -6,7 +6,8 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {isAddress} from '@solana/kit';
 import {ExactSvmScheme} from '@x402/svm/exact/server';
-import {SOLANA, SOLANA_ASSET, SOLANA_PAY_TO, DIRECT_TERMS, QUOTED_ROUTE, QUOTED_URL, billUsage} from './pricing.mjs';
+import {SOLANA, SOLANA_ASSET, SOLANA_PAY_TO, DIRECT_TERMS, QUOTED_ROUTE, QUOTED_URL, billUsage, ceilingAtomic} from './pricing.mjs';
+import {THINKING_HEADROOM} from './limits.mjs';
 
 const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64');
 const digest=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -44,7 +45,7 @@ export class QuoteStore {
   paid(id,receipt){this.db.prepare("UPDATE quotes SET status='paid',receipt=?,signature=? WHERE id=? AND status='settling'").run(JSON.stringify(receipt),receipt.transaction,id);}
   close(){this.db.close();}
 }
-export function addSolanaQuotedRoute(app,config,{facilitatorClient,readRequest,upstream,fetchImpl,store,now=()=>Math.floor(Date.now()/1000),log=()=>{}}) {
+export function addSolanaQuotedRoute(app,config,{facilitatorClient,readRequest,choose=async i=>({...i,model:config.model,info:null}),upstream,fetchImpl,store,now=()=>Math.floor(Date.now()/1000),log=()=>{}}) {
   if(typeof config.quoteToken!=='string'||config.quoteToken.length<32)throw new Error('Private quote token required');
   store??=new QuoteStore(config.quoteDb);
   const authorized=req=>{
@@ -61,6 +62,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,readRequest,u
     if(!/^[a-f0-9]{32}$/.test(requestId??'')||!isAddress(owner??'')||!isAddress(agent??'')||owner===agent||[owner,agent].includes(SOLANA_PAY_TO))
       return res.status(400).json({error:'invalid_identity'});
     let input;
+    let chosen;
     try{input=readRequest(req.body);}catch{return res.status(400).json({error:'invalid_request'});}
     const hash=digest({owner,agent,input});
     let old=store.get(requestId);
@@ -71,13 +73,18 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,readRequest,u
     }
     try{store.create(requestId,owner,agent,hash,now());}catch{return res.status(409).json({error:'previous_quote_pending'});}
     try {
+      chosen=await choose(input);
+    }catch(e){store.fail(requestId);return res.status(e.status===400?400:502).json({error:e.status===400?'unknown_model':'no_billable_answer',message:e.status===400?e.message:'No billable answer was prepared. Nothing was paid.'});}
+    try {
       const supported=await facilitatorClient.getSupported();
       const kind=supported.kinds.find(x=>x.x402Version===2&&x.scheme==='exact'&&x.network===SOLANA);
       if(!isAddress(kind?.extra?.feePayer??'')||[owner,agent].includes(kind.extra.feePayer))throw new Error('no_sponsor');
       const asked=Date.now();
-      const answer=await upstream(config,input.messages,input.maxTokens,fetchImpl);
+      const answer=await upstream(config,input.messages,input.maxTokens,fetchImpl,chosen.model);
       log(`singit-ask Solana: model answered in ${Date.now()-asked} ms`);
-      const billing=billUsage(answer.usage,DIRECT_TERMS);
+      // The standing ceiling for the default model; for another, what its own prices allow for this question.
+      const cap=chosen.info?ceilingAtomic(chosen.info,{chars:input.chars,maxTokens:input.maxTokens,headroom:THINKING_HEADROOM},DIRECT_TERMS):DIRECT_TERMS.maxChargeAtomic;
+      const billing=billUsage(answer.usage,{...DIRECT_TERMS,maxChargeAtomic:cap});
       const requirement=await new ExactSvmScheme().enhancePaymentRequirements({scheme:'exact',network:SOLANA,
         asset:SOLANA_ASSET,amount:billing.totalAtomic,payTo:SOLANA_PAY_TO,maxTimeoutSeconds:300,
         extra:{billing,memo:`singit-ask:${requestId}`}},kind,[]);

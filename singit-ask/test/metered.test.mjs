@@ -125,3 +125,14 @@ test('real buyer passes the real merchant extension-echo validation before CDP v
       return response;}});
   assert.equal(result.amountAtomic,'1130');assert.equal(verifies,1);assert.equal(settles,1);assert.equal(submissions,1);
 });
+
+test('a raised ceiling is accepted only up to the cap the caller worked out, and its billing must name it',()=>{
+  const raised=amount=>{const q=offer();q.accepts[0].amount=amount;q.accepts[0].extra.billing={...TERMS,maxChargeAtomic:amount};return q;};
+  assert.equal(selectOffer(raised('400000'),'400000').amount,'400000');
+  assert.throws(()=>selectOffer(raised('400001'),'400000'),'above the caller\'s own cap');
+  assert.throws(()=>selectOffer(raised('400000')),'above the standing cap when none is given');
+  const stale=raised('400000');stale.accepts[0].extra.billing.maxChargeAtomic='3000';
+  assert.throws(()=>selectOffer(stale,'400000'),'billing that names another ceiling');
+  for(const bad of ['0','-5','1e5','04000',400000,null]){const q=raised('400000');q.accepts[0].amount=bad;assert.throws(()=>selectOffer(q,'400000'));}
+  assert.throws(()=>selectOffer(raised('400000'),'oops'));
+});

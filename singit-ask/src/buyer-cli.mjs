@@ -16,7 +16,7 @@ try {
     { retryCount: 0, timeout: 15000 }) });
   const signer = { address: account.address, signTypedData: account.signTypedData,
     readContract: chain.readContract.bind(chain) };
-  const result = await payMetered({ signer, chain, body: input.body,
+  const result = await payMetered({ signer, chain, body: input.body, ...(input.maxCap ? { maxCap: String(input.maxCap) } : {}),
     onProgress: (value, status) => { stage = value; if (status) httpStatus = status; }, beforeSubmit: async checkpoint => {
     // The caller creates a private directory. Exclusive creation prevents replay of a call ID.
     const fd = fs.openSync(input.checkpoint, "wx", 0o600);

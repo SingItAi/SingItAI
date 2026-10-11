@@ -100,7 +100,7 @@ def _run(lane, **payload):
         return {"ok": False}
 
 
-def _invoice(result, agent):
+def _invoice(result, agent, cap=CAP):
     if result.get("ok") is not True or result.get("payer") != agent:
         raise AllowanceError("The Solana payment needs settlement review. It was not repeated.")
     data = result.get("body") or {}
@@ -115,9 +115,13 @@ def _invoice(result, agent):
     markup = (cost * MARKUP_BPS + 9999) // 10000
     amount = cost + markup + FEE
     expected = {"version": 1, "mode": "actual_usage", "markupBps": MARKUP_BPS,
-                "maxChargeAtomic": str(CAP), "settlementFeeAtomic": str(FEE), "providerCostAtomic": str(cost),
+                "settlementFeeAtomic": str(FEE), "providerCostAtomic": str(cost),
                 "markupAtomic": str(markup), "totalAtomic": str(amount), "currency": "USDC"}
-    if cost < 0 or amount > CAP or any(bill.get(k) != v for k, v in expected.items()) or result.get("amountAtomic") != str(amount):
+    # The merchant sets the ceiling its quote was priced under, but never above what this gateway allowed.
+    offered = bill.get("maxChargeAtomic")
+    if not (isinstance(offered, str) and offered.isascii() and offered.isdigit() and amount <= int(offered) <= cap):
+        raise AllowanceError("Solana invoice differs from the agreed price. Do not retry payment.")
+    if cost < 0 or any(bill.get(k) != v for k, v in expected.items()) or result.get("amountAtomic") != str(amount):
         raise AllowanceError("Solana invoice differs from the agreed price. Do not retry payment.")
     return amount, data
 
@@ -155,7 +159,8 @@ def _recover(lane, account, journal, checkpoint):
     outcome = proof.get("state") if proof.get("ok") is True else None
     if (outcome == "paid" and hold and saved.get("owner") == owner
             and saved.get("memo") == "singit-ask:" + str(state.get("requestId"))
-            and str(saved.get("amountAtomic", "")).isdigit() and int(saved["amountAtomic"]) <= CAP):
+            and str(saved.get("amountAtomic", "")).isdigit()
+            and int(saved["amountAtomic"]) <= int(state.get("ceilingAtomic") or CAP)):
         lane.store.settle_metered(hold, int(saved["amountAtomic"]), proof["transaction"], int(lane.now()))
     elif outcome == "unpaid":
         if hold:
@@ -183,7 +188,7 @@ def recover(server, account):
             _recover(lane, account, journal, checkpoint)
 
 
-def pay(server, gw, account, body):
+def pay(server, gw, account, body, cap=CAP):
     if not account.startswith("solana:"):
         raise AllowanceUnavailable("A Solana account is required. No Base fallback is available.")
     lane = getattr(server, "solana_allowance", None)
@@ -206,25 +211,25 @@ def pay(server, gw, account, body):
             raise AllowanceUnavailable("Set your Solana limits and approve them first.")
         if limits["expiry"] <= now:
             raise AllowanceError("Your Solana allowance has expired. Nothing was paid.")
-        if CAP > min(limits["per_purchase_cap"], lane.max_per_purchase):
-            raise AllowanceError("This question needs a maximum allowance of 0.003 USDC; the actual charge can be lower.")
+        if cap > min(limits["per_purchase_cap"], lane.max_per_purchase):
+            raise AllowanceError(f"This question needs a maximum allowance of {cap / 1_000_000:.3f} USDC; the actual charge can be lower.")
         hold = "ask-" + secrets.token_hex(16)
-        state = {"account": account, "holdId": hold, "ceilingAtomic": CAP, "createdAt": now, "requestId": secrets.token_hex(16), "mode": "direct_exact"}
+        state = {"account": account, "holdId": hold, "ceilingAtomic": cap, "createdAt": now, "requestId": secrets.token_hex(16), "mode": "direct_exact"}
         complete, reserved = False, False
         try:
             _save(journal, state)
-            lane.store.reserve_metered(hold, account, CAP, min(limits["daily_cap"], lane.max_daily), now)
+            lane.store.reserve_metered(hold, account, cap, min(limits["daily_cap"], lane.max_daily), now)
             reserved = True
             chain = lane.chain_state(account, fresh=True)
             owner = lane.owner(account)
-            if int(chain["owner"]["delegatedToAgent"]) < CAP:
+            if int(chain["owner"]["delegatedToAgent"]) < cap:
                 raise AllowanceError("Your Solana grant is revoked or insufficient. Nothing was paid.")
-            if int(chain["owner"]["amount"]) < CAP:
-                raise AllowanceError("At least 0.003 USDC must be available; only actual usage will be charged.")
+            if int(chain["owner"]["amount"]) < cap:
+                raise AllowanceError(f"At least {cap / 1_000_000:.3f} USDC must be available; only actual usage will be charged.")
             agent, key = lane.agent_key(account)
             try:
                 result = _run(lane, privateKey=key, owner=owner, requestId=state["requestId"],
-                              token=token, body=body, checkpoint=str(checkpoint))
+                              token=token, body=body, checkpoint=str(checkpoint), maxCap=str(cap))
             finally:
                 key = None
             if not checkpoint.exists():
@@ -233,7 +238,7 @@ def pay(server, gw, account, body):
                 # The merchant refused before asking for settlement: nothing was or will be charged.
                 checkpoint.unlink()
                 raise AllowanceUnavailable("The payment was refused before settlement. Nothing was charged; ask again.")
-            amount, data = _invoice(result, agent)
+            amount, data = _invoice(result, agent, cap)
             saved = json.loads(checkpoint.read_text())
             if (saved.get("requestId") != state["requestId"] or saved.get("payer") != agent
                     or saved.get("owner") != owner or result.get("owner") != owner
