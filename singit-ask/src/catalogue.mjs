@@ -2,6 +2,8 @@
 // the day a seller adds one. The list is public; the prices are per token in USD.
 
 const TTL_MS = 6 * 60 * 60 * 1000;
+// The marketplace's cheapest offers move; the page showing them is public and large (about 1.7 MB), so ten minutes.
+const MARKET_TTL_MS = 10 * 60 * 1000;
 
 export class UnknownModel extends Error {}
 
@@ -12,31 +14,90 @@ function parseModels(data) {
     const prompt = Number(entry?.pricing?.prompt);
     const completion = Number(entry?.pricing?.completion);
     const arch = entry?.architecture;
-    // Text in, text out, and able to cap its answer: anything else cannot be priced or bounded here.
+    // Text out and text accepted, and able to cap its answer: anything else cannot be priced or bounded here.
+    // A model that also reads images or files (modality "text+image->text") still answers plain text questions.
+    const [from, to] = String(arch?.modality ?? "").split("->");
+    const inputs = arch?.input_modalities ?? from.split("+");
+    const outputs = arch?.output_modalities ?? to?.split("+") ?? [];
     if (!id || !(prompt >= 0) || !(completion >= 0)) continue;
-    if (arch?.modality !== "text->text" || !entry.supported_parameters?.includes("max_tokens")) continue;
+    if (!inputs.includes("text") || outputs.length !== 1 || outputs[0] !== "text") continue;
+    if (!entry.supported_parameters?.includes("max_tokens")) continue;
     models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""),
       contextLength: Number(entry.context_length) || 0, promptUsdPerToken: prompt, completionUsdPerToken: completion });
   }
   return models;
 }
 
+// The cheapest live offer per model, in USD per million tokens. Surplus lists it in micro-USD per million.
+function parseMarket(data) {
+  const market = new Map();
+  for (const entry of Array.isArray(data?.data?.markets) ? data.data.markets : []) {
+    const input = Number(entry?.best_input_per_1m) / 1e6;
+    const output = Number(entry?.best_output_per_1m) / 1e6;
+    if (typeof entry?.model === "string" && input >= 0 && output >= 0) market.set(entry.model, { input, output });
+  }
+  return market;
+}
+
+// Both lists are read from Surplus, which takes a second or three; a visitor must never wait for that. What is
+// cached is served at once even when it is old, and one refresh at a time runs in the background. Only the very
+// first read, with nothing cached yet, waits.
 export class ModelCatalogue {
   constructor({ url, fetchImpl = fetch, now = Date.now }) {
     Object.assign(this, { url, fetchImpl, now });
     this.models = null;
     this.loadedAt = 0;
+    this.prices = null;
+    this.pricesAt = 0;
+    this.loadingModels = null;
+    this.loadingPrices = null;
+  }
+
+  // One request in flight at a time; a failed refresh keeps what was cached and is retried at the next read.
+  loadModels() {
+    this.loadingModels ??= (async () => {
+      try {
+        const response = await this.fetchImpl(`${this.url}/v1/models`, { signal: AbortSignal.timeout(10_000) });
+        const models = response.ok ? parseModels(await response.json().catch(() => null)) : new Map();
+        if (models.size) { this.models = models; this.loadedAt = this.now(); }
+      } catch { /* keep the last list: a failed refresh must not take the endpoint down */ }
+      finally { this.loadingModels = null; }
+    })();
+    return this.loadingModels;
+  }
+
+  loadPrices() {
+    this.loadingPrices ??= (async () => {
+      try {
+        const response = await this.fetchImpl(`${this.url}/api/marketplace`, { signal: AbortSignal.timeout(15_000) });
+        const prices = response.ok ? parseMarket(await response.json().catch(() => null)) : new Map();
+        if (prices.size) { this.prices = prices; this.pricesAt = this.now(); }
+      } catch { /* keep the last prices */ }
+      finally { this.loadingPrices = null; }
+    })();
+    return this.loadingPrices;
   }
 
   async all() {
-    if (this.models && this.now() - this.loadedAt < TTL_MS) return this.models;
-    try {
-      const response = await this.fetchImpl(`${this.url}/v1/models`, { signal: AbortSignal.timeout(10_000) });
-      const models = response.ok ? parseModels(await response.json().catch(() => null)) : new Map();
-      if (models.size) { this.models = models; this.loadedAt = this.now(); }
-    } catch { /* keep the last list: a failed refresh must not take the endpoint down */ }
+    if (!this.models) await this.loadModels();
+    else if (this.now() - this.loadedAt >= TTL_MS) this.loadModels();
     if (!this.models) throw new UnknownModel("The model list is unavailable. Try again.");
     return this.models;
+  }
+
+  // Cheapest live price per model id, or an empty map when the marketplace cannot be read: a price shown is
+  // then the list price, never a guess.
+  async market() {
+    if (!this.prices) await this.loadPrices();
+    else if (this.now() - this.pricesAt >= MARKET_TTL_MS) this.loadPrices();
+    return this.prices ?? new Map();
+  }
+
+  // Read both now, then keep them fresh, so the first visitor after a start and every one after finds them ready.
+  async warm(everyMs = MARKET_TTL_MS / 2) {
+    await Promise.all([this.loadModels(), this.loadPrices()]);
+    this.timer ??= setInterval(() => { this.loadModels(); this.loadPrices(); }, everyMs);
+    this.timer.unref?.();
   }
 
   async resolve(id) {

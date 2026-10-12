@@ -6,12 +6,17 @@ will offer: it is what the payer's limits are checked against and what the merch
 the gateway never has to trust the merchant's number.
 """
 import json
+import logging
 import threading
 import time
 import urllib.request
 
+logger = logging.getLogger(__name__)
+
 URL = "https://ask.singitai.app/v1/models"
-TTL_SECONDS = 6 * 60 * 60
+# The merchant sits behind Cloudflare, which refuses urllib's default agent (403) while answering curl.
+USER_AGENT = "SingIt-Gateway/1.0 (+https://singitai.app)"
+TTL_SECONDS = 10 * 60  # the live market prices in the list move; the ceiling uses the list prices and does not
 THINKING_HEADROOM = 1000  # the same allowance the merchant counts as billable (singit-ask/src/limits.mjs)
 STANDING_CAP = 3000       # no answer is ever authorized for less
 MARGIN_PERCENT = 1        # the merchant works from exact per-token prices; this covers rounding between us
@@ -19,19 +24,24 @@ PREFIX = "ask:"
 
 _lock = threading.Lock()
 _cache: dict = {"at": 0.0, "models": None}
+_state: dict = {"default": None, "loading": False}  # the merchant's default model id, as of the last list read
 
 
 def _fetch() -> list[dict]:
-    request = urllib.request.Request(URL, headers={"Accept": "application/json"})
+    request = urllib.request.Request(URL, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=10) as response:
         data = json.loads(response.read(8_000_000))
     models = []
+    _state["default"] = data.get("default") if isinstance(data.get("default"), str) else None
     for entry in data.get("data") or []:
         price = entry.get("usdPerMillionTokens") or {}
         try:
             model = {"id": str(entry["id"]), "label": str(entry.get("name") or entry["id"]),
                      "provider": str(entry.get("owned_by") or ""), "input": float(price["input"]),
-                     "output": float(price["output"])}
+                     "output": float(price["output"]), "market": None}
+            live = entry.get("marketUsdPerMillionTokens")
+            if isinstance(live, dict) and float(live["input"]) >= 0 and float(live["output"]) >= 0:
+                model["market"] = {"input": float(live["input"]), "output": float(live["output"])}
         except (KeyError, TypeError, ValueError):
             continue  # the standing "singit-ask" entry carries no prices, and is not a choice of its own
         if model["input"] >= 0 and model["output"] >= 0:
@@ -39,17 +49,48 @@ def _fetch() -> list[dict]:
     return models
 
 
+def _spawn(work) -> None:
+    threading.Thread(target=work, daemon=True, name="ask-model-list").start()
+
+
+def _reload(now, fetch) -> None:
+    """Read the list and keep it only if it came back with models: a failed refresh keeps the last good one."""
+    try:
+        fresh = (fetch or _fetch)()
+        if fresh:
+            with _lock:
+                _cache.update(at=now(), models=sorted(fresh, key=lambda m: m["output"]))
+    except (OSError, ValueError) as error:
+        # Say why: an empty picker is otherwise indistinguishable from a model list that is empty.
+        logger.warning("SingIt Ask model list unavailable (%s)", type(error).__name__)
+    finally:
+        with _lock:
+            _state["loading"] = False
+
+
 def models(now=time.time, fetch=None) -> list[dict]:
-    """Every model that can be asked for, cheapest answer first. The last good list survives a failed refresh."""
+    """Every model that can be asked for, cheapest answer first, ready at once. The list changes slowly and
+    its live prices a little faster, and reading it takes a request: so what is cached is served even when it
+    is old, and one refresh at a time runs in the background. Only the very first read waits."""
     with _lock:
-        if _cache["models"] is None or now() - _cache["at"] >= TTL_SECONDS:
-            try:
-                fresh = (fetch or _fetch)()
-                if fresh:
-                    _cache.update(at=now(), models=sorted(fresh, key=lambda m: m["output"]))
-            except (OSError, ValueError):
-                pass
+        have = _cache["models"] is not None
+        if have and now() - _cache["at"] < TTL_SECONDS:
+            return list(_cache["models"])
+        if have and _state["loading"]:
+            return list(_cache["models"])
+        _state["loading"] = True
+        refresh_in_background = have
+    if refresh_in_background:
+        _spawn(lambda: _reload(now, fetch))
+    else:
+        _reload(now, fetch)
+    with _lock:
         return list(_cache["models"] or [])
+
+
+def default_id() -> str | None:
+    models()
+    return _state["default"]
 
 
 def resolve(model_id: str, **kwargs) -> dict | None:

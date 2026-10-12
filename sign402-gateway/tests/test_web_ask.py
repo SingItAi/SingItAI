@@ -104,11 +104,13 @@ class AskTests(unittest.TestCase):
         self.assertFalse(web_ask.selected(self.server,ACCOUNT))
         self.assertFalse(web_ask.selected(self.server,"telegram:123"))  # the web chat's adapter only
 
-    def test_picker_discloses_markup_fee_and_ceiling(self):
+    def test_picker_names_the_fee_and_the_default_ceiling_but_not_the_margin(self):
         result=web_ask.listing({"models":[],"categories":[],"chosen":"existing"},ACCOUNT)
         self.assertEqual((result["chosen"],result["provider"]),("existing","Venice"))
         model=result["models"][0]
-        self.assertEqual((model["markupPercent"],model["settlementFeeUsd"],model["maxChargeUsd"]),(30,"0.001","0.003"))
+        self.assertEqual((model["settlementFeeUsd"],model["maxChargeUsd"]),("0.001","0.003"))
+        self.assertNotIn("markupPercent",model)
+        self.assertNotIn("30%",model["blurb"])
         self.assertNotIn("pricePerAnswerUsd",model)
         self.assertEqual(web_ask.listing({"models":[],"categories":[],"chosen":"existing"},SOLANA_ACCOUNT)["models"][0]["settlementFeeUsd"],"0.001")
 

@@ -802,15 +802,16 @@ function renderModal() {
     modalEl.innerHTML = `<div class="overlay" data-action="dismiss"><div class="modal modal-wide bezel" role="dialog" aria-modal="true"
       aria-label="Choose a model"><div class="core">
       <div class="approval-head"><div class="avatar">${mark()}</div>
-        <div><strong>Choose a model</strong><span>SingIt Ask: any model, charged what the answer costs + 30% + fees · prices per 1M tokens</span></div></div>
+        <div><strong>Choose a model</strong><span>${hasAsk() && isPrivate() ? "Private chat on Venice, paid from Venice credit" : "SingIt Ask: any model, paid per answer"} · prices per 1M tokens</span></div></div>
       ${granted ? "" : `<p class="note">Your chat starts once your limits are approved. Your choice is kept until then.</p>`}
-      <input id="model-search" class="input" type="search" placeholder="Search ${state.models.models.length} models…"
+      <input id="model-search" class="input" type="search" placeholder="Search ${modelsInMode().length} models…"
         value="${esc(query)}" autocomplete="off" aria-label="Search models">
       <div class="model-cats">
         <button class="chip ${category ? "" : "on"}" data-action="model-category" data-key="">All</button>
-        ${state.models.categories.map((c) => `<button class="chip ${category === c.key ? "on" : ""}" data-action="model-category"
+        ${categoriesInMode().map((c) => `<button class="chip ${category === c.key ? "on" : ""}" data-action="model-category"
           data-key="${esc(c.key)}">${esc(c.label)}</button>`).join("")}
       </div>
+      ${hasAsk() && !isPrivate() && state.models.privateModel ? `<p class="faint" style="margin:0 4px 8px">Looking for Venice's private models? Switch on <b>Private</b> next to the message box.</p>` : ""}
       <div id="model-list" class="model-list" role="listbox">${renderModelList()}</div>
     </div></div></div>`;
     return;
@@ -1441,6 +1442,14 @@ const hasAsk = () => (state.models?.models || []).some((mdl) => mdl.id === "sing
 // SingIt Ask's own default, or any other model Surplus sells ("ask:<id>"): everything else is Venice.
 const isAskId = (id) => id === "singit-ask" || String(id || "").startsWith("ask:");
 const isPrivate = () => hasAsk() && !isAskId(state.models.chosen);
+// Pay-per-answer models and Venice's private ones are different services, often under the same model name:
+// each mode lists only its own, and the lock switches between them.
+const modelsInMode = () => (hasAsk() ? state.models.models.filter((mdl) => isAskId(mdl.id) === !isPrivate()) : state.models.models);
+// A category chip is worth showing only when it narrows the list.
+const categoriesInMode = () => {
+  const pool = modelsInMode();
+  return state.models.categories.filter((c) => pool.some((mdl) => mdl.tags.includes(c.key)) && !pool.every((mdl) => mdl.tags.includes(c.key)));
+};
 
 function privateToggle() {
   if (!hasAsk() || !state.models.privateModel) return "";
@@ -1474,16 +1483,14 @@ const perMillion = (usd) => {
 function renderModelList() {
   const { query, category } = state.modelFilter;
   const needle = query.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const list = state.models.models.filter((mdl) => (!category || mdl.tags.includes(category))
+  const list = modelsInMode().filter((mdl) => (!category || mdl.tags.includes(category))
     && (!needle || (mdl.label + mdl.id).toLowerCase().replace(/[^a-z0-9]/g, "").includes(needle)));
   if (!list.length) return `<p class="faint" style="padding:14px 4px">No model matches.</p>`;
   return list.map((mdl) => `<button class="model-row ${mdl.id === state.models.chosen ? "chosen" : ""}" data-action="choose-model"
       data-id="${esc(mdl.id)}" role="option" aria-selected="${mdl.id === state.models.chosen}">
       <span class="model-main"><b>${esc(mdl.label)}</b>${mdl.blurb ? `<span>${esc(mdl.blurb)}</span>` : ""}</span>
-      <span class="model-price">${mdl.billingMode === "actual_usage"
-        ? (mdl.maxChargeUsd ? `Usage + ${esc(mdl.markupPercent)}% + ${esc(mdl.settlementFeeUsd)} USDC · max ${esc(mdl.maxChargeUsd)}`
-                            : `${perMillion(mdl.inputUsdPerMTok)} in · ${perMillion(mdl.outputUsdPerMTok)} out · +${esc(mdl.markupPercent)}%`)
-        : `${perMillion(mdl.inputUsdPerMTok)} in · ${perMillion(mdl.outputUsdPerMTok)} out`}</span>
+      <span class="model-price">${mdl.inputUsdPerMTok == null ? "Pay per answer"
+        : `${mdl.billingMode === "actual_usage" ? "from " : ""}${perMillion(mdl.inputUsdPerMTok)} in · ${perMillion(mdl.outputUsdPerMTok)} out`}</span>
       <span class="model-check">${mdl.id === state.models.chosen ? "✓" : ""}</span></button>`).join("");
 }
 
@@ -1734,6 +1741,7 @@ const actions = {
   "open-models": async () => {
     await loadModels();  // Venice adds models; the list is cached for hours on the server
     if (!state.models) { toast("Model choice is unavailable right now.", true); return; }
+    state.modelFilter.category = "";  // the chips differ per mode: start from All
     state.modal = { type: "models" };
     render();
     $("#model-search")?.focus();

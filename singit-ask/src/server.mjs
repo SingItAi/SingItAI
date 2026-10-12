@@ -41,6 +41,8 @@ const requireCdp = createRequire(new URL("../../cdp-x402-service/package.json", 
 const facilitatorClient = new HTTPFacilitatorClient(requireCdp("@coinbase/x402").facilitator);
 
 const app = createApp(config, { facilitatorClient });
+// The model list and its live prices are read now and kept fresh, so no visitor waits for Surplus.
+app.locals.catalogue?.warm().catch(() => { /* the first read retries */ });
 app.listen(port, "127.0.0.1", () => {
   console.error(`singit-ask: ${config.model}, actual usage over Coinbase CDP on Solana and Base, on http://127.0.0.1:${port}`);
 });

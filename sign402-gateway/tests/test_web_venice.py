@@ -56,6 +56,11 @@ class FakeVenice:
 
 class WebVeniceTests(unittest.TestCase):
     def setUp(self):
+        # Like the Venice catalogue below, SingIt Ask's model list stays offline here.
+        from sign402_gateway import ask_catalogue
+        patcher = patch.object(ask_catalogue, "models", return_value=[])
+        patcher.start()
+        self.addCleanup(patcher.stop)
         store = ChatStore(":memory:")
         self.addCleanup(store.close)
         config = VeniceConfig(bound_pay_to=VENICE_PAY_TO.lower(), network="eip155:8453", asset=USDC,

@@ -60,22 +60,33 @@ def choose(server: Any, account: str, model_id: Any = MODEL) -> tuple[int, dict[
     return 200, {"ok": True, "chosen": model_id, "label": label, "provider": "SingIt Ask"}
 
 
+def _shown(model: dict) -> tuple[float, float]:
+    """USD per million tokens as this account will pay it: the cheapest live offer (the list price when the
+    market cannot be read) with SingIt's margin included."""
+    price = model.get("market") or {"input": model["input"], "output": model["output"]}
+    factor = (10_000 + ask_metered.MARKUP_BPS) / 10_000
+    return price["input"] * factor, price["output"] * factor
+
+
 def listing(result: dict[str, Any], account: str) -> dict[str, Any]:
     if account.startswith(("wallet:", "solana:")):
+        everything = ask_catalogue.models()
+        default = next((m for m in everything if m["id"] == ask_catalogue.default_id()), None)
         fee = "0.001"
-        entries = [{
-            "id": MODEL, "label": LABEL, "provider": "SingIt Ask",
-            "blurb": f"Actual token cost + 30% + {fee} USDC settlement fee. Up to 0.003 per answer; Solana charges your wallet directly, with no agent SOL top-up.",
-            "billingMode": "actual_usage", "markupPercent": 30, "settlementFeeUsd": fee, "maxChargeUsd": "0.003", "tags": ["x402"],
-        }]
+        entry = {"id": MODEL, "label": LABEL, "provider": "SingIt Ask",
+                 "blurb": f"Fast and light. Plus a {fee} USDC fee per answer, up to 0.003 in all.",
+                 "billingMode": "actual_usage", "settlementFeeUsd": fee, "maxChargeUsd": "0.003", "tags": ["x402"]}
+        if default is not None:
+            entry["inputUsdPerMTok"], entry["outputUsdPerMTok"] = _shown(default)
+        entries = [entry]
         # Every other model Surplus sells. A dearer model is authorized for more per answer, then charged for
         # what the answer actually cost: the ceiling is only the most it can be.
-        for m in ask_catalogue.models():
+        for m in everything:
+            low, high = _shown(m)
             entries.append({
                 "id": ask_catalogue.PREFIX + m["id"], "label": m["label"], "provider": m["provider"] or "SingIt Ask",
-                "blurb": f"Actual token cost + 30% + {fee} USDC settlement fee, paid per answer.",
-                "inputUsdPerMTok": m["input"], "outputUsdPerMTok": m["output"],
-                "billingMode": "actual_usage", "markupPercent": 30, "settlementFeeUsd": fee, "tags": ["x402"],
+                "blurb": f"Plus a {fee} USDC fee per answer.", "inputUsdPerMTok": low, "outputUsdPerMTok": high,
+                "billingMode": "actual_usage", "settlementFeeUsd": fee, "tags": ["x402"],
             })
         result["models"][:0] = entries
         result["categories"].insert(0, {"key": "x402", "label": "Pay per answer"})

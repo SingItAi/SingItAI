@@ -43,7 +43,7 @@ function fakeFacilitator() {
 
 const PRICEY = { id: "pro-model", name: "Pro", provider: "X", contextLength: 1e6, promptUsdPerToken: 30e-6, completionUsdPerToken: 180e-6 };
 const CHEAP = { id: "cheap-model", name: "Cheap", provider: "X", contextLength: 1e5, promptUsdPerToken: 0.1e-6, completionUsdPerToken: 0.3e-6 };
-const fakeCatalogue = { async resolve(id) { const m = [PRICEY, CHEAP].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
+const fakeCatalogue = { async market() { return new Map([["pro-model", { input: 4, output: 20 }]]); }, async resolve(id) { const m = [PRICEY, CHEAP].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
   async list() { return [CHEAP, PRICEY]; } };
 
 async function serve(t, { upstream } = {}) {
@@ -278,9 +278,12 @@ test("ModelCatalogue reads text models with prices, caches them, and survives a 
     architecture: { modality }, supported_parameters: params, pricing: { prompt: "0.000001", completion: "0.000002" } });
   const fetchImpl = async () => { calls++; if (fail) throw new Error("down");
     return new Response(JSON.stringify({ data: [entry("a"), entry("img", "text->image"), entry("nocap", "text->text", []),
-      { ...entry("free"), pricing: { prompt: "0", completion: "0" } }, { ...entry("bad"), pricing: {} }] })); };
+      { ...entry("free"), pricing: { prompt: "0", completion: "0" } }, { ...entry("bad"), pricing: {} },
+      { ...entry("sees"), architecture: { modality: "text+image+file->text", input_modalities: ["text", "image", "file"], output_modalities: ["text"] } },
+      { ...entry("draws"), architecture: { modality: "text->image", input_modalities: ["text"], output_modalities: ["image"] } },
+      { ...entry("listens"), architecture: { modality: "audio->text", input_modalities: ["audio"], output_modalities: ["text"] } }] })); };
   const catalogue = new ModelCatalogue({ url: "https://x", fetchImpl, now: () => clock });
-  assert.deepEqual((await catalogue.list()).map((m) => m.id).sort(), ["a", "free"]);
+  assert.deepEqual((await catalogue.list()).map((m) => m.id).sort(), ["a", "free", "sees"], "multimodal in, text out, is offered; image or audio-only is not");
   assert.equal((await catalogue.resolve("a")).completionUsdPerToken, 0.000002);
   await assert.rejects(catalogue.resolve("img"), UnknownModel);
   assert.equal(calls, 1);
@@ -291,4 +294,56 @@ test("ModelCatalogue reads text models with prices, caches them, and survives a 
 test("ceilingAtomic never drops below the standing ceiling", () => {
   assert.equal(ceilingAtomic({ promptUsdPerToken: 0, completionUsdPerToken: 0 }, { chars: 10, maxTokens: 100, headroom: 1000 }, TERMS), "3000");
   assert.equal(billUsage({ buyer_cost_micro: 100 }, { ...TERMS, maxChargeAtomic: "50000" }).totalAtomic, "1130");
+});
+
+test("the model list carries the live market price where there is one", async (t) => {
+  const { url } = await serve(t);
+  const list = await (await fetch(`${url}/v1/models`)).json();
+  assert.deepEqual(list.data.find((m) => m.id === "pro-model").marketUsdPerMillionTokens, { input: 4, output: 20 });
+  assert.equal(list.data.find((m) => m.id === "cheap-model").marketUsdPerMillionTokens, undefined);
+});
+
+test("ModelCatalogue.market reads the cheapest live offers in USD, caches them, and keeps the last on failure", async () => {
+  let calls = 0, fail = false, clock = 0;
+  const fetchImpl = async (url) => { calls++; assert.ok(String(url).endsWith("/api/marketplace")); if (fail) throw new Error("down");
+    return new Response(JSON.stringify({ data: { markets: [
+      { model: "claude-opus-5.5", best_input_per_1m: 599996, best_output_per_1m: 2999980 },
+      { model: "free", best_input_per_1m: 0, best_output_per_1m: 0 },
+      { model: "broken", best_input_per_1m: null, best_output_per_1m: "x" }] } })); };
+  const catalogue = new ModelCatalogue({ url: "https://x", fetchImpl, now: () => clock });
+  const prices = await catalogue.market();
+  assert.deepEqual(prices.get("claude-opus-5.5"), { input: 0.599996, output: 2.99998 });
+  assert.deepEqual(prices.get("free"), { input: 0, output: 0 });
+  assert.equal(prices.has("broken"), false);
+  await catalogue.market();
+  assert.equal(calls, 1);
+  fail = true; clock = 11 * 60_000;
+  assert.equal((await catalogue.market()).get("claude-opus-5.5").output, 2.99998, "a failed refresh keeps the last prices");
+  assert.equal(calls, 2);
+});
+
+test("ModelCatalogue serves what it has at once, refreshes once in the background, and warm() reads both lists", async () => {
+  let clock = 0, release, calls = { models: 0, market: 0 };
+  const gate = new Promise((resolve) => { release = resolve; });
+  const fetchImpl = async (url) => {
+    const kind = String(url).endsWith("/api/marketplace") ? "market" : "models";
+    calls[kind]++;
+    if (calls[kind] > 1) await gate;  // every refresh after the first is slow
+    return new Response(JSON.stringify(kind === "market"
+      ? { data: { markets: [{ model: "a", best_input_per_1m: 1_000_000, best_output_per_1m: 2_000_000 }] } }
+      : { data: [{ id: "a", name: "A", provider: "P", context_length: 1, architecture: { modality: "text->text" },
+          supported_parameters: ["max_tokens"], pricing: { prompt: "0.000001", completion: "0.000002" } }] }));
+  };
+  const catalogue = new ModelCatalogue({ url: "https://x", fetchImpl, now: () => clock });
+  await catalogue.warm(3_600_000);
+  clearInterval(catalogue.timer);
+  assert.deepEqual([calls.models, calls.market], [1, 1]);
+  clock = 7 * 3600_000;
+  const started = Date.now();
+  assert.equal((await catalogue.list())[0].id, "a");           // the old list, without waiting for the slow refresh
+  assert.equal((await catalogue.market()).get("a").input, 1);  // likewise the old prices
+  await catalogue.list(); await catalogue.market();
+  assert.ok(Date.now() - started < 1000);
+  assert.deepEqual([calls.models, calls.market], [2, 2], "one refresh each, however many reads");
+  release();
 });

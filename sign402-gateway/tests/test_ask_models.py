@@ -1,4 +1,5 @@
 """Choosing any Surplus model for SingIt Ask: the list, the ceiling, and what the gateway refuses to pay."""
+import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -19,7 +20,30 @@ def listed(*items):
 class CatalogueTests(unittest.TestCase):
     def setUp(self):
         ask_catalogue._cache.update(at=0.0, models=None)
+        ask_catalogue._state["loading"] = False
         self.addCleanup(ask_catalogue._cache.update, at=0.0, models=None)
+        self.addCleanup(ask_catalogue._state.update, loading=False)
+        # A background refresh runs in the test itself unless a test wants to hold it back.
+        patcher = patch.object(ask_catalogue, "_spawn", lambda work: work())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_an_old_list_is_served_at_once_and_refreshed_once_in_the_background(self):
+        clock, calls, held = [0.0], [], []
+        def fetch():
+            calls.append(1)
+            return [CHEAP] if len(calls) == 1 else [CHEAP, PRO]
+        now = lambda: clock[0]
+        with patch.object(ask_catalogue, "_spawn", held.append):
+            self.assertEqual(len(ask_catalogue.models(now=now, fetch=fetch)), 1)  # nothing cached: this one waits
+            clock[0] = ask_catalogue.TTL_SECONDS + 1
+            self.assertEqual(len(ask_catalogue.models(now=now, fetch=fetch)), 1)  # old, but at once
+            self.assertEqual(len(ask_catalogue.models(now=now, fetch=fetch)), 1)  # and no second refresh is started
+            self.assertEqual((len(calls), len(held)), (1, 1))
+            held[0]()
+        self.assertEqual(len(ask_catalogue.models(now=now, fetch=fetch)), 2)
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(ask_catalogue._state["loading"])
 
     def test_the_list_is_cached_cheapest_first_and_survives_a_failed_refresh(self):
         calls, clock = [], [0.0]
@@ -36,6 +60,29 @@ class CatalogueTests(unittest.TestCase):
         self.assertEqual([m["id"] for m in ask_catalogue.models(now=now, fetch=fetch)], ["cheap", "pro"])
         self.assertEqual(len(calls), 2)
         self.assertIsNone(ask_catalogue.resolve("nope", now=now, fetch=fetch))
+
+    def test_the_fetch_sends_an_agent_cloudflare_accepts_and_keeps_only_priced_entries(self):
+        body = json.dumps({"data": [{"id": "singit-ask"}, {"id": "m", "name": "M", "owned_by": "P",
+                                      "usdPerMillionTokens": {"input": 1, "output": 2}}]}).encode()
+        seen = []
+        class Reply:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return body
+        def urlopen(request, timeout):
+            seen.append(request.get_header("User-agent"))
+            return Reply()
+        with patch.object(ask_catalogue.urllib.request, "urlopen", urlopen):
+            found = ask_catalogue._fetch()
+        self.assertEqual([m["id"] for m in found], ["m"])
+        self.assertTrue(seen[0].startswith("SingIt-Gateway/") and "urllib" not in seen[0])
+
+    def test_a_failed_fetch_says_why_in_the_log_and_still_serves_the_last_list(self):
+        def boom():
+            raise OSError("403")
+        with self.assertLogs(ask_catalogue.logger, "WARNING") as logged:
+            self.assertEqual(ask_catalogue.models(fetch=boom), [])
+        self.assertIn("OSError", logged.output[0])
 
     def test_ceiling_never_drops_below_the_standing_one_and_grows_with_the_model(self):
         args = dict(markup_bps=3000, fee=1000)
@@ -149,13 +196,39 @@ class ChooseAndChatTests(unittest.TestCase):
             self.chat()
         self.pay.assert_not_called()
 
-    def test_the_picker_lists_every_surplus_model_with_its_prices(self):
-        with listed(CHEAP, PRO):
+    def test_the_picker_lists_every_surplus_model_at_the_price_the_account_pays(self):
+        live = {**PRO, "market": {"input": 4.0, "output": 20.0}}
+        with listed(CHEAP, live):
             result = web_ask.listing({"chosen": "ask:pro", "models": [{"id": "venice-1"}], "categories": []}, ACCOUNT)
         self.assertEqual([m["id"] for m in result["models"]], ["singit-ask", "ask:cheap", "ask:pro", "venice-1"])
-        self.assertEqual(result["models"][2]["outputUsdPerMTok"], 180.0)
+        cheap, pro = result["models"][1], result["models"][2]
+        # The live market price with the margin included: 4 and 20 become 5.2 and 26. With no market price, the list price.
+        self.assertEqual((pro["inputUsdPerMTok"], pro["outputUsdPerMTok"]), (5.2, 26.0))
+        self.assertEqual((round(cheap["inputUsdPerMTok"], 6), round(cheap["outputUsdPerMTok"], 6)), (0.13, 0.39))
+        for m in result["models"][:3]:
+            self.assertNotIn("markupPercent", m)
+            self.assertNotIn("30", m["blurb"])
+            self.assertIn("0.001 USDC", m["blurb"])
         self.assertEqual((result["provider"], result["chosenLabel"]), ("SingIt Ask", "Pro"))
 
+    def test_the_default_shows_the_price_of_the_model_it_answers_with(self):
+        with listed(CHEAP), patch.object(ask_catalogue, "default_id", return_value="cheap"):
+            entry = web_ask.listing({"chosen": "x", "models": [], "categories": []}, ACCOUNT)["models"][0]
+        self.assertEqual(round(entry["inputUsdPerMTok"], 6), 0.13)
+
+    def test_the_fetch_reads_the_live_market_price_and_the_default_id(self):
+        body = json.dumps({"default": "m", "data": [{"id": "m", "name": "M", "owned_by": "P",
+            "usdPerMillionTokens": {"input": 4, "output": 20}, "marketUsdPerMillionTokens": {"input": 0.6, "output": 3}},
+            {"id": "n", "name": "N", "usdPerMillionTokens": {"input": 1, "output": 2}}]}).encode()
+        class Reply:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return body
+        with patch.object(ask_catalogue.urllib.request, "urlopen", lambda r, timeout: Reply()):
+            found = {m["id"]: m for m in ask_catalogue._fetch()}
+        self.assertEqual(found["m"]["market"], {"input": 0.6, "output": 3.0})
+        self.assertIsNone(found["n"]["market"])
+        self.assertEqual(ask_catalogue._state["default"], "m")
 
 if __name__ == "__main__":
     unittest.main()

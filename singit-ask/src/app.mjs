@@ -108,6 +108,7 @@ const EXAMPLE = {
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl }) : null }) {
   const app = express();
+  app.locals.catalogue = catalogue;  // server.mjs warms it
   app.disable("x-powered-by");
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");
@@ -121,11 +122,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
   app.get("/v1/models", async (_req, res) => {
     const models = catalogue ? await catalogue.list().catch(() => []) : [];
+    const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing,
       data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
         ...models.map(m => ({ id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name,
           contextLength: m.contextLength,
-          usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 } }))] });
+          usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
+          ...(market.has(m.id) ? { marketUsdPerMillionTokens: market.get(m.id) } : {}) }))] });
   });
 
   const choose = input => chooseModel(config, catalogue, input);
