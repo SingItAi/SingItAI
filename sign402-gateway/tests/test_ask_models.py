@@ -211,6 +211,29 @@ class ChooseAndChatTests(unittest.TestCase):
             self.assertIn("0.001 USDC", m["blurb"])
         self.assertEqual((result["provider"], result["chosenLabel"]), ("SingIt Ask", "Pro"))
 
+    def test_ask_models_carry_their_capabilities_and_every_chip_has_a_label(self):
+        coder = {**CHEAP, "id": "coder", "tags": ["code", "vision"]}
+        with listed(coder, PRO):
+            result = web_ask.listing({"chosen": "x", "models": [], "categories": [{"key": "vision", "label": "Reads images"}]},
+                                     ACCOUNT)
+        tags = {m["id"]: m["tags"] for m in result["models"]}
+        self.assertEqual(tags["ask:coder"], ["x402", "code", "vision"])
+        self.assertEqual(tags["ask:pro"], ["x402"])
+        keys = [c["key"] for c in result["categories"]]
+        self.assertEqual(keys[:2], ["x402", "vision"])  # Venice's own labels are kept, in their order
+        self.assertEqual(sorted(keys[2:]), ["audio", "code", "private", "video"])
+        self.assertNotIn("reasoning", keys)
+
+    def test_the_fetch_keeps_only_known_tags_and_never_thinking(self):
+        body = json.dumps({"data": [{"id": "m", "name": "M", "usdPerMillionTokens": {"input": 1, "output": 2},
+                                     "tags": ["vision", "reasoning", "private", "teleport"]}]}).encode()
+        class Reply:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return body
+        with patch.object(ask_catalogue.urllib.request, "urlopen", lambda r, timeout: Reply()):
+            self.assertEqual(ask_catalogue._fetch()[0]["tags"], ["vision", "private"])
+
     def test_the_default_shows_the_price_of_the_model_it_answers_with(self):
         with listed(CHEAP), patch.object(ask_catalogue, "default_id", return_value="cheap"):
             entry = web_ask.listing({"chosen": "x", "models": [], "categories": []}, ACCOUNT)["models"][0]

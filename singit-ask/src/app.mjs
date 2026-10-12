@@ -142,6 +142,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
           const share = seen ?? trusted ?? null;
           return { id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name, contextLength: m.contextLength,
+            tags: m.tags ?? [],
             usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
             ...(share === null ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
               output: m.completionUsdPerToken * 1e6 * share, basis: seen === null ? "trusted" : "observed" } }) };

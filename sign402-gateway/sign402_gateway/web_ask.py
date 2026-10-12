@@ -60,6 +60,10 @@ def choose(server: Any, account: str, model_id: Any = MODEL) -> tuple[int, dict[
     return 200, {"ok": True, "chosen": model_id, "label": label, "provider": "SingIt Ask"}
 
 
+ASK_CATEGORIES = (("vision", "Reads images"), ("code", "Writes code"), ("video", "Watches video"),
+                  ("audio", "Hears audio"), ("private", "Extra privacy"))
+
+
 def _shown(model: dict) -> tuple[float, float]:
     """USD per million tokens as this account can expect to pay it, SingIt's margin included: what answers
     from the model have cost, or the list price when nothing better is known."""
@@ -86,10 +90,15 @@ def listing(result: dict[str, Any], account: str) -> dict[str, Any]:
             entries.append({
                 "id": ask_catalogue.PREFIX + m["id"], "label": m["label"], "provider": m["provider"] or "SingIt Ask",
                 "blurb": f"Plus a {fee} USDC fee per answer.", "inputUsdPerMTok": low, "outputUsdPerMTok": high,
-                "billingMode": "actual_usage", "settlementFeeUsd": fee, "tags": ["x402"],
+                "billingMode": "actual_usage", "settlementFeeUsd": fee, "tags": ["x402", *m.get("tags", [])],
             })
+        if default is not None:
+            entry["tags"] += default.get("tags", [])
         result["models"][:0] = entries
         result["categories"].insert(0, {"key": "x402", "label": "Pay per answer"})
+        # The same chips filter both lists; one Venice does not offer right now still has a label here.
+        known = {c["key"] for c in result["categories"]}
+        result["categories"] += [{"key": k, "label": label} for k, label in ASK_CATEGORIES if k not in known]
     result["provider"] = "SingIt Ask" if is_ask(result["chosen"]) else "Venice"
     if is_ask(result["chosen"]):
         result["chosenLabel"] = next((m["label"] for m in result["models"] if m["id"] == result["chosen"]), LABEL)

@@ -7,6 +7,21 @@ const MARKET_TTL_MS = 10 * 60 * 1000;
 
 export class UnknownModel extends Error {}
 
+// What a model can do, in the picker's own category keys (the ones Venice's list uses). Surplus says it through the
+// inputs a model accepts and its features; coding models are mostly marked only by name.
+const CODE_NAME = /coder|codex|devstral|(^|[-.])code([-.:]|$)/i;
+export function capabilities(entry, inputs) {
+  const features = new Set(entry?.supported_features ?? []);
+  const tags = [];
+  if (inputs.includes("image") || features.has("vision")) tags.push("vision");
+  if (features.has("code") || CODE_NAME.test(String(entry?.id ?? ""))) tags.push("code");
+  if (features.has("reasoning")) tags.push("reasoning");
+  if (inputs.includes("video")) tags.push("video");
+  if (inputs.includes("audio") || features.has("audio")) tags.push("audio");
+  if (features.has("e2ee") || features.has("tee_attestation") || String(entry?.id ?? "").startsWith("e2ee-")) tags.push("private");
+  return tags;
+}
+
 function parseModels(data) {
   const models = new Map();
   for (const entry of Array.isArray(data?.data) ? data.data : []) {
@@ -23,7 +38,8 @@ function parseModels(data) {
     if (!inputs.includes("text") || outputs.length !== 1 || outputs[0] !== "text") continue;
     if (!entry.supported_parameters?.includes("max_tokens")) continue;
     models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""),
-      contextLength: Number(entry.context_length) || 0, promptUsdPerToken: prompt, completionUsdPerToken: completion });
+      contextLength: Number(entry.context_length) || 0, promptUsdPerToken: prompt, completionUsdPerToken: completion,
+      tags: capabilities(entry, inputs) });
   }
   return models;
 }

@@ -399,3 +399,15 @@ test("ModelCatalogue serves what it has at once, refreshes once in the backgroun
   assert.deepEqual([calls.models, calls.market], [2, 2], "one refresh each, however many reads");
   release();
 });
+
+test("capabilities name what a model can do in the picker's category keys", async () => {
+  const { capabilities } = await import("../src/catalogue.mjs");
+  const entry = (id, features = []) => ({ id, supported_features: features });
+  assert.deepEqual(capabilities(entry("claude-opus-5.5", ["vision", "reasoning", "tools"]), ["text", "image", "file"]), ["vision", "reasoning"]);
+  assert.deepEqual(capabilities(entry("qwen3-coder"), ["text"]), ["code"]);
+  assert.deepEqual(capabilities(entry("gpt-5.3-codex"), ["text"]), ["code"]);
+  assert.deepEqual(capabilities(entry("kimi-k2.7-code:web"), ["text"]), ["code"]);
+  assert.deepEqual(capabilities(entry("barcode-reader"), ["text"]), [], "a name merely containing 'code' is not a coder");
+  assert.deepEqual(capabilities(entry("e2ee-glm-4.7", ["reasoning"]), ["text"]), ["reasoning", "private"]);
+  assert.deepEqual(capabilities(entry("omni", ["audio"]), ["text", "video", "audio"]), ["video", "audio"]);
+});

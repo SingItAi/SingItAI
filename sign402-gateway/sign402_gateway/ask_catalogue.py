@@ -21,6 +21,10 @@ THINKING_HEADROOM = 1000  # the same allowance the merchant counts as billable (
 STANDING_CAP = 3000       # no answer is ever authorized for less
 MARGIN_PERCENT = 1        # the merchant works from exact per-token prices; this covers rounding between us
 PREFIX = "ask:"
+# The picker's category keys, shared with Venice's list (venice_chat.MODEL_CATEGORIES); anything else is ignored.
+# "reasoning" is left out on purpose: SingIt Ask switches thinking off in every request, so a model that can
+# think step by step does not do so here, and the filter would promise what the answer will not be.
+TAGS = ("vision", "code", "video", "audio", "private")
 
 _lock = threading.Lock()
 _cache: dict = {"at": 0.0, "models": None}
@@ -38,7 +42,8 @@ def _fetch() -> list[dict]:
         try:
             model = {"id": str(entry["id"]), "label": str(entry.get("name") or entry["id"]),
                      "provider": str(entry.get("owned_by") or ""), "input": float(price["input"]),
-                     "output": float(price["output"]), "expected": None}
+                     "output": float(price["output"]), "expected": None,
+                     "tags": [t for t in TAGS if t in (entry.get("tags") or [])]}
             # What an answer is expected to cost: learnt from the merchant's own paid answers, or what trusted
             # sellers ask until then. Not the marketplace's best offer, which answers rarely reach.
             expected = entry.get("expectedUsdPerMillionTokens")
