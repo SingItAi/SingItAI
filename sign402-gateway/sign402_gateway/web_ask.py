@@ -61,9 +61,9 @@ def choose(server: Any, account: str, model_id: Any = MODEL) -> tuple[int, dict[
 
 
 def _shown(model: dict) -> tuple[float, float]:
-    """USD per million tokens as this account will pay it: the cheapest live offer (the list price when the
-    market cannot be read) with SingIt's margin included."""
-    price = model.get("market") or {"input": model["input"], "output": model["output"]}
+    """USD per million tokens as this account can expect to pay it, SingIt's margin included: what answers
+    from the model have cost, or the list price when nothing better is known."""
+    price = model.get("expected") or {"input": model["input"], "output": model["output"]}
     factor = (10_000 + ask_metered.MARKUP_BPS) / 10_000
     return price["input"] * factor, price["output"] * factor
 

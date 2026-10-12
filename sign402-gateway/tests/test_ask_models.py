@@ -197,12 +197,12 @@ class ChooseAndChatTests(unittest.TestCase):
         self.pay.assert_not_called()
 
     def test_the_picker_lists_every_surplus_model_at_the_price_the_account_pays(self):
-        live = {**PRO, "market": {"input": 4.0, "output": 20.0}}
+        live = {**PRO, "expected": {"input": 4.0, "output": 20.0, "basis": "observed"}}
         with listed(CHEAP, live):
             result = web_ask.listing({"chosen": "ask:pro", "models": [{"id": "venice-1"}], "categories": []}, ACCOUNT)
         self.assertEqual([m["id"] for m in result["models"]], ["singit-ask", "ask:cheap", "ask:pro", "venice-1"])
         cheap, pro = result["models"][1], result["models"][2]
-        # The live market price with the margin included: 4 and 20 become 5.2 and 26. With no market price, the list price.
+        # The expected price with the margin included: 4 and 20 become 5.2 and 26. With none known, the list price.
         self.assertEqual((pro["inputUsdPerMTok"], pro["outputUsdPerMTok"]), (5.2, 26.0))
         self.assertEqual((round(cheap["inputUsdPerMTok"], 6), round(cheap["outputUsdPerMTok"], 6)), (0.13, 0.39))
         for m in result["models"][:3]:
@@ -216,9 +216,10 @@ class ChooseAndChatTests(unittest.TestCase):
             entry = web_ask.listing({"chosen": "x", "models": [], "categories": []}, ACCOUNT)["models"][0]
         self.assertEqual(round(entry["inputUsdPerMTok"], 6), 0.13)
 
-    def test_the_fetch_reads_the_live_market_price_and_the_default_id(self):
+    def test_the_fetch_reads_the_expected_price_and_the_default_id(self):
         body = json.dumps({"default": "m", "data": [{"id": "m", "name": "M", "owned_by": "P",
-            "usdPerMillionTokens": {"input": 4, "output": 20}, "marketUsdPerMillionTokens": {"input": 0.6, "output": 3}},
+            "usdPerMillionTokens": {"input": 4, "output": 20}, "expectedUsdPerMillionTokens": {"input": 1, "output": 5, "basis": "observed"}},
+            {"id": "old", "name": "Old", "usdPerMillionTokens": {"input": 1, "output": 2}, "marketUsdPerMillionTokens": {"input": 0.01, "output": 0.02}},
             {"id": "n", "name": "N", "usdPerMillionTokens": {"input": 1, "output": 2}}]}).encode()
         class Reply:
             def __enter__(self): return self
@@ -226,8 +227,9 @@ class ChooseAndChatTests(unittest.TestCase):
             def read(self, n): return body
         with patch.object(ask_catalogue.urllib.request, "urlopen", lambda r, timeout: Reply()):
             found = {m["id"]: m for m in ask_catalogue._fetch()}
-        self.assertEqual(found["m"]["market"], {"input": 0.6, "output": 3.0})
-        self.assertIsNone(found["n"]["market"])
+        self.assertEqual(found["m"]["expected"], {"input": 1.0, "output": 5.0, "basis": "observed"})
+        self.assertIsNone(found["n"]["expected"])
+        self.assertIsNone(found["old"]["expected"], "the best offer is never taken for the expected price")
         self.assertEqual(ask_catalogue._state["default"], "m")
 
 if __name__ == "__main__":

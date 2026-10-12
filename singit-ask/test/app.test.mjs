@@ -43,7 +43,7 @@ function fakeFacilitator() {
 
 const PRICEY = { id: "pro-model", name: "Pro", provider: "X", contextLength: 1e6, promptUsdPerToken: 30e-6, completionUsdPerToken: 180e-6 };
 const CHEAP = { id: "cheap-model", name: "Cheap", provider: "X", contextLength: 1e5, promptUsdPerToken: 0.1e-6, completionUsdPerToken: 0.3e-6 };
-const fakeCatalogue = { async market() { return new Map([["pro-model", { input: 4, output: 20 }]]); }, async resolve(id) { const m = [PRICEY, CHEAP].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
+const fakeCatalogue = { async market() { return new Map([["pro-model", { trustedShare: 0.25 }]]); }, async resolve(id) { const m = [PRICEY, CHEAP].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
   async list() { return [CHEAP, PRICEY]; } };
 
 async function serve(t, { upstream } = {}) {
@@ -198,7 +198,8 @@ test("askSurplus sends the key and model, and turns every failure into an Upstre
   assert.equal(JSON.parse(sent.init.body).model, "deepseek-v4.1-flash");
   // Thinking off, and room for it where a seller thinks anyway, so the answer is never cut short.
   assert.equal(JSON.parse(sent.init.body).reasoning_effort, "none");
-  assert.deepEqual(JSON.parse(sent.init.body).si_route, { objective: "latency", price_tolerance_pct: 100 });
+  // The cheapest seller first (measured on 12 October: as fast, and cheaper).
+  assert.deepEqual(JSON.parse(sent.init.body).si_route, { objective: "price" });
   assert.equal(JSON.parse(sent.init.body).max_tokens, 300 + THINKING_HEADROOM);
 
   const failing = [
@@ -210,6 +211,27 @@ test("askSurplus sends the key and model, and turns every failure into an Upstre
   for (const fetchImpl of failing) {
     await assert.rejects(askSurplus(CONFIG, QUESTION.messages, 300, fetchImpl), UpstreamError);
   }
+});
+
+test("a seller that will not switch thinking off is asked once more with as little thinking as it allows", async () => {
+  const efforts = [];
+  const refusal = (message) => new Response(JSON.stringify({ error: { code: "request_rejected", message } }), { status: 400 });
+  const fetchImpl = async (_url, init) => {
+    efforts.push(JSON.parse(init.body).reasoning_effort);
+    return efforts.length === 1 ? refusal("Reasoning is mandatory for this endpoint and cannot be disabled.")
+      : new Response(JSON.stringify({ choices: [{ message: { content: "ciao" } }], usage: {} }), { status: 200 });
+  };
+  assert.equal((await askSurplus(CONFIG, QUESTION.messages, 300, fetchImpl)).content, "ciao");
+  assert.deepEqual(efforts, ["none", "low"]);
+  // Any other refusal, or a second one, is not retried.
+  const other = [];
+  await assert.rejects(askSurplus(CONFIG, QUESTION.messages, 300, async (_u, init) => {
+    other.push(JSON.parse(init.body).reasoning_effort); return refusal("Too many messages."); }), UpstreamError);
+  assert.deepEqual(other, ["none"]);
+  const twice = [];
+  await assert.rejects(askSurplus(CONFIG, QUESTION.messages, 300, async (_u, init) => {
+    twice.push(JSON.parse(init.body).reasoning_effort); return refusal("Reasoning is mandatory."); }), UpstreamError);
+  assert.deepEqual(twice, ["none", "low"]);
 });
 
 test("another model gets a ceiling worked out from its own prices; the default and cheap ones keep 3000", async (t) => {
@@ -296,29 +318,59 @@ test("ceilingAtomic never drops below the standing ceiling", () => {
   assert.equal(billUsage({ buyer_cost_micro: 100 }, { ...TERMS, maxChargeAtomic: "50000" }).totalAtomic, "1130");
 });
 
-test("the model list carries the live market price where there is one", async (t) => {
+test("the model list carries the price an answer is expected to cost, from trusted sellers until answers teach it", async (t) => {
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/models`)).json();
-  assert.deepEqual(list.data.find((m) => m.id === "pro-model").marketUsdPerMillionTokens, { input: 4, output: 20 });
-  assert.equal(list.data.find((m) => m.id === "cheap-model").marketUsdPerMillionTokens, undefined);
+  const pro = list.data.find((m) => m.id === "pro-model");
+  assert.deepEqual(pro.expectedUsdPerMillionTokens, { input: 30 * 0.25, output: 180 * 0.25, basis: "trusted" });
+  assert.equal(list.data.find((m) => m.id === "cheap-model").expectedUsdPerMillionTokens, undefined);
+  assert.equal(list.data.some((m) => "marketUsdPerMillionTokens" in m), false, "the unreachable best offer is never shown");
 });
 
-test("ModelCatalogue.market reads the cheapest live offers in USD, caches them, and keeps the last on failure", async () => {
+test("every answer that comes back teaches the price of its model", async (t) => {
+  const { url } = await serve(t, { upstream: async () => ({ content: "ok", finishReason: "stop",
+    usage: { prompt_tokens: 100, completion_tokens: 1000, buyer_cost_micro: 30_000 } }) });
+  const required = decode((await post(url, { ...QUESTION, model: "pro-model" })).headers.get("payment-required"));
+  assert.equal((await post(url, { ...QUESTION, model: "pro-model" }, { "PAYMENT-SIGNATURE": baseSignature(required) })).status, 200);
+  await new Promise((r) => setTimeout(r, 20));
+  const pro = (await (await fetch(`${url}/v1/models`)).json()).data.find((m) => m.id === "pro-model");
+  // At list price those tokens cost 100*30 + 1000*180 = 183,000 micro-USD; the answer cost 30,000: 16.39%.
+  assert.equal(pro.expectedUsdPerMillionTokens.basis, "observed");
+  assert.equal(pro.expectedUsdPerMillionTokens.output, 180 * 0.1639);
+});
+
+test("ObservedPrices keeps the median share of list price, skips answers too small to measure, and persists", async () => {
+  const fs = await import("node:fs"), os = await import("node:os"), path = await import("node:path");
+  const { ObservedPrices } = await import("../src/observed.mjs");
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "obs-")), "prices.json");
+  const list = { promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 };  // 1 micro-USD a token
+  const prices = new ObservedPrices({ file });
+  assert.equal(prices.share("m"), null);
+  prices.record("m", { prompt_tokens: 50, completion_tokens: 30, buyer_cost_micro: 1 }, list);  // 80 micro at list: too small
+  assert.equal(prices.share("m"), null);
+  for (const cost of [100, 300, 200]) prices.record("m", { prompt_tokens: 500, completion_tokens: 500, buyer_cost_micro: cost }, list);
+  assert.equal(prices.share("m"), 0.2);
+  assert.equal(new ObservedPrices({ file }).share("m"), 0.2, "kept across a restart");
+  assert.equal((fs.statSync(file).mode & 0o777).toString(8), "600");
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(file, "utf8"))), ["m"], "only model ids and shares are stored");
+});
+
+test("ModelCatalogue.market reads the trusted sellers' share of list price, caches it, and keeps the last on failure", async () => {
   let calls = 0, fail = false, clock = 0;
   const fetchImpl = async (url) => { calls++; assert.ok(String(url).endsWith("/api/marketplace")); if (fail) throw new Error("down");
     return new Response(JSON.stringify({ data: { markets: [
-      { model: "claude-opus-5.5", best_input_per_1m: 599996, best_output_per_1m: 2999980 },
-      { model: "free", best_input_per_1m: 0, best_output_per_1m: 0 },
-      { model: "broken", best_input_per_1m: null, best_output_per_1m: "x" }] } })); };
+      { model: "gpt-6-astra", best_input_per_1m: 1, best_output_per_1m: 1, best_trusted_offer_discount_pct: 75.5 },
+      { model: "free", best_trusted_offer_discount_pct: 100 },
+      { model: "none", best_trusted_offer_discount_pct: null }, { model: "odd", best_trusted_offer_discount_pct: 120 }] } })); };
   const catalogue = new ModelCatalogue({ url: "https://x", fetchImpl, now: () => clock });
   const prices = await catalogue.market();
-  assert.deepEqual(prices.get("claude-opus-5.5"), { input: 0.599996, output: 2.99998 });
-  assert.deepEqual(prices.get("free"), { input: 0, output: 0 });
-  assert.equal(prices.has("broken"), false);
+  assert.deepEqual(prices.get("gpt-6-astra"), { trustedShare: 0.245 });
+  assert.deepEqual(prices.get("free"), { trustedShare: 0 });
+  assert.equal(prices.has("none") || prices.has("odd"), false);
   await catalogue.market();
   assert.equal(calls, 1);
   fail = true; clock = 11 * 60_000;
-  assert.equal((await catalogue.market()).get("claude-opus-5.5").output, 2.99998, "a failed refresh keeps the last prices");
+  assert.equal((await catalogue.market()).get("gpt-6-astra").trustedShare, 0.245, "a failed refresh keeps the last");
   assert.equal(calls, 2);
 });
 
@@ -330,7 +382,7 @@ test("ModelCatalogue serves what it has at once, refreshes once in the backgroun
     calls[kind]++;
     if (calls[kind] > 1) await gate;  // every refresh after the first is slow
     return new Response(JSON.stringify(kind === "market"
-      ? { data: { markets: [{ model: "a", best_input_per_1m: 1_000_000, best_output_per_1m: 2_000_000 }] } }
+      ? { data: { markets: [{ model: "a", best_trusted_offer_discount_pct: 0 }] } }
       : { data: [{ id: "a", name: "A", provider: "P", context_length: 1, architecture: { modality: "text->text" },
           supported_parameters: ["max_tokens"], pricing: { prompt: "0.000001", completion: "0.000002" } }] }));
   };
@@ -341,7 +393,7 @@ test("ModelCatalogue serves what it has at once, refreshes once in the backgroun
   clock = 7 * 3600_000;
   const started = Date.now();
   assert.equal((await catalogue.list())[0].id, "a");           // the old list, without waiting for the slow refresh
-  assert.equal((await catalogue.market()).get("a").input, 1);  // likewise the old prices
+  assert.equal((await catalogue.market()).get("a").trustedShare, 1);  // likewise the old prices
   await catalogue.list(); await catalogue.market();
   assert.ok(Date.now() - started < 1000);
   assert.deepEqual([calls.models, calls.market], [2, 2], "one refresh each, however many reads");

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 URL = "https://ask.singitai.app/v1/models"
 # The merchant sits behind Cloudflare, which refuses urllib's default agent (403) while answering curl.
 USER_AGENT = "SingIt-Gateway/1.0 (+https://singitai.app)"
-TTL_SECONDS = 10 * 60  # the live market prices in the list move; the ceiling uses the list prices and does not
+TTL_SECONDS = 10 * 60  # the expected prices in the list move; the ceiling uses the list prices and does not
 THINKING_HEADROOM = 1000  # the same allowance the merchant counts as billable (singit-ask/src/limits.mjs)
 STANDING_CAP = 3000       # no answer is ever authorized for less
 MARGIN_PERCENT = 1        # the merchant works from exact per-token prices; this covers rounding between us
@@ -38,10 +38,13 @@ def _fetch() -> list[dict]:
         try:
             model = {"id": str(entry["id"]), "label": str(entry.get("name") or entry["id"]),
                      "provider": str(entry.get("owned_by") or ""), "input": float(price["input"]),
-                     "output": float(price["output"]), "market": None}
-            live = entry.get("marketUsdPerMillionTokens")
-            if isinstance(live, dict) and float(live["input"]) >= 0 and float(live["output"]) >= 0:
-                model["market"] = {"input": float(live["input"]), "output": float(live["output"])}
+                     "output": float(price["output"]), "expected": None}
+            # What an answer is expected to cost: learnt from the merchant's own paid answers, or what trusted
+            # sellers ask until then. Not the marketplace's best offer, which answers rarely reach.
+            expected = entry.get("expectedUsdPerMillionTokens")
+            if isinstance(expected, dict) and float(expected["input"]) >= 0 and float(expected["output"]) >= 0:
+                model["expected"] = {"input": float(expected["input"]), "output": float(expected["output"]),
+                                     "basis": str(expected.get("basis") or "")}
         except (KeyError, TypeError, ValueError):
             continue  # the standing "singit-ask" entry carries no prices, and is not a choice of its own
         if model["input"] >= 0 and model["output"] >= 0:

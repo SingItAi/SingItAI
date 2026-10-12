@@ -9,6 +9,8 @@
 //   SINGIT_ASK_QUOTE_DB        its private SQLite file
 //   SINGIT_ASK_MODEL           upstream model, default deepseek-v4.1-flash
 //   SINGIT_ASK_PORT            default 8140
+//   SINGIT_ASK_OBSERVED_PRICES where what answers cost per model is kept (no prompts), default
+//                              ~/.config/singit-ask/observed-prices.json
 
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
@@ -32,6 +34,8 @@ const config = {
   surplusKey: required("SURPLUS_API_KEY"),
   surplusUrl: (process.env.SURPLUS_API_URL || "https://api.surplusintelligence.ai").replace(/\/$/, ""),
   model: process.env.SINGIT_ASK_MODEL || "deepseek-v4.1-flash",
+  observedFile: process.env.SINGIT_ASK_OBSERVED_PRICES
+    || `${process.env.HOME}/.config/singit-ask/observed-prices.json`,
 };
 const port = Number(process.env.SINGIT_ASK_PORT || 8140);
 

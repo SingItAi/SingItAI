@@ -15,6 +15,7 @@ import { addUsageRoute, baseOffer, solanaOffer } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue } from "./catalogue.mjs";
 import { LIMITS, THINKING_HEADROOM } from "./limits.mjs";
+import { ObservedPrices } from "./observed.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
@@ -73,19 +74,28 @@ export async function chooseModel(config, catalogue, input) {
 export class UpstreamError extends Error {}
 
 // One completion from Surplus Intelligence. Any failure is an UpstreamError: the payer is not charged.
+//
+// Thinking is switched off and the cheapest seller is asked first. Measured on 12 October over four models: the
+// cheapest seller answered as fast as the fastest one within twice its price (1.8-8 s against 2-14 s) and cost the
+// same or less; the 21-24 s seen on 4 October did not recur. Some sellers refuse to switch thinking off ("Reasoning
+// is mandatory for this endpoint"), and Surplus gives up after two of them; such a refusal costs nothing, so the
+// question is asked once more with as little thinking as the seller allows. Surplus documents all three:
+// docs/reference/reasoning, docs/marketplace/routing-controls.
 export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model) {
+  const ask = (reasoning) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}` },
+    body: JSON.stringify({ model, messages, max_tokens: maxTokens + THINKING_HEADROOM, temperature: 0.4,
+                           reasoning_effort: reasoning, si_route: { objective: "price" } }),
+    signal: AbortSignal.timeout(LIMITS.timeoutMs),
+  });
   let response;
   try {
-    response = await fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}` },
-      // No thinking, from the fastest seller within twice the cheapest price. Measured on 4 October: the cheapest
-      // seller ignored `thinking: disabled` and answered a travel question in 21-24 s; with these, 2.5-2.7 s, three
-      // of three, at the same cost. Surplus documents both: docs/reference/reasoning, docs/marketplace/routing-controls.
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens + THINKING_HEADROOM, temperature: 0.4,
-                             reasoning_effort: "none", si_route: { objective: "latency", price_tolerance_pct: 100 } }),
-      signal: AbortSignal.timeout(LIMITS.timeoutMs),
-    });
+    response = await ask("none");
+    if (response.status === 400) {
+      const refusal = await response.clone().json().catch(() => null);
+      if (refusal?.error?.code === "request_rejected" && /reasoning/i.test(refusal.error.message ?? "")) response = await ask("low");
+    }
   } catch (error) {
     throw new UpstreamError(`model unreachable (${error.name})`);
   }
@@ -106,7 +116,8 @@ const EXAMPLE = {
 };
 
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
-                                    catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl }) : null }) {
+                                    catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl }) : null,
+                                    observed = new ObservedPrices({ file: config.observedFile }) }) {
   const app = express();
   app.locals.catalogue = catalogue;  // server.mjs warms it
   app.disable("x-powered-by");
@@ -125,14 +136,26 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing,
       data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
-        ...models.map(m => ({ id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name,
-          contextLength: m.contextLength,
-          usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
-          ...(market.has(m.id) ? { marketUsdPerMillionTokens: market.get(m.id) } : {}) }))] });
+        ...models.map(m => {
+          // The price an answer is expected to cost: what this service's own answers from the model cost, or,
+          // before the first, the share of list price Surplus's trusted sellers ask. Never the best offer.
+          const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
+          const share = seen ?? trusted ?? null;
+          return { id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name, contextLength: m.contextLength,
+            usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
+            ...(share === null ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
+              output: m.completionUsdPerToken * 1e6 * share, basis: seen === null ? "trusted" : "observed" } }) };
+        })] });
   });
 
   const choose = input => chooseModel(config, catalogue, input);
-  const route = { facilitatorClient, config, readRequest, choose, upstream, fetchImpl, log };
+  // Every answer that came back teaches the price shown for its model. It never delays or fails the answer.
+  const learning = async (config_, messages, maxTokens, fetchImpl_, model = config.model) => {
+    const answer = await upstream(config_, messages, maxTokens, fetchImpl_, model);
+    catalogue?.resolve(model).then((list) => observed.record(model, answer.usage, list)).catch(() => {});
+    return answer;
+  };
+  const route = { facilitatorClient, config, readRequest, choose, upstream: learning, fetchImpl, log };
   // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.
   addUsageRoute(app, ROUTE, quotes => [solanaOffer(config, quotes), baseOffer(config, quotes)], {
     description: `SingIt Ask: one answer from ${config.model}, OpenAI-compatible. Pays actual token cost + 30% `
@@ -162,7 +185,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     extensions: declareEip2612GasSponsoringExtension(),
   }, route);
   // The web agent's Solana payments: measured privately, then paid directly from the owner's delegated USDC.
-  if (config.directSolana) addSolanaQuotedRoute(app, config, { facilitatorClient, readRequest, choose, upstream, fetchImpl, log });
+  if (config.directSolana) addSolanaQuotedRoute(app, config, { facilitatorClient, readRequest, choose, upstream: learning, fetchImpl, log });
 
   return app;
 }

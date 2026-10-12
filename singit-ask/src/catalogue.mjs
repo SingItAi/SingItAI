@@ -28,13 +28,14 @@ function parseModels(data) {
   return models;
 }
 
-// The cheapest live offer per model, in USD per million tokens. Surplus lists it in micro-USD per million.
+// What Surplus's trusted sellers ask per model, as a share of list price (best_trusted_offer_discount_pct). Measured
+// on 12 October it was the closest of Surplus's figures to what answers really cost; the best offer was not.
 function parseMarket(data) {
   const market = new Map();
   for (const entry of Array.isArray(data?.data?.markets) ? data.data.markets : []) {
-    const input = Number(entry?.best_input_per_1m) / 1e6;
-    const output = Number(entry?.best_output_per_1m) / 1e6;
-    if (typeof entry?.model === "string" && input >= 0 && output >= 0) market.set(entry.model, { input, output });
+    const discount = entry?.best_trusted_offer_discount_pct;
+    if (typeof entry?.model === "string" && typeof discount === "number" && discount >= 0 && discount <= 100)
+      market.set(entry.model, { trustedShare: (100 - discount) / 100 });
   }
   return market;
 }
@@ -85,8 +86,7 @@ export class ModelCatalogue {
     return this.models;
   }
 
-  // Cheapest live price per model id, or an empty map when the marketplace cannot be read: a price shown is
-  // then the list price, never a guess.
+  // The trusted sellers' share of list price per model id, or an empty map when the marketplace cannot be read.
   async market() {
     if (!this.prices) await this.loadPrices();
     else if (this.now() - this.pricesAt >= MARKET_TTL_MS) this.loadPrices();

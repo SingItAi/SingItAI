@@ -1490,7 +1490,7 @@ function renderModelList() {
       data-id="${esc(mdl.id)}" role="option" aria-selected="${mdl.id === state.models.chosen}">
       <span class="model-main"><b>${esc(mdl.label)}</b>${mdl.blurb ? `<span>${esc(mdl.blurb)}</span>` : ""}</span>
       <span class="model-price">${mdl.inputUsdPerMTok == null ? "Pay per answer"
-        : `${mdl.billingMode === "actual_usage" ? "from " : ""}${perMillion(mdl.inputUsdPerMTok)} in · ${perMillion(mdl.outputUsdPerMTok)} out`}</span>
+        : `${mdl.billingMode === "actual_usage" ? "≈ " : ""}${perMillion(mdl.inputUsdPerMTok)} in · ${perMillion(mdl.outputUsdPerMTok)} out`}</span>
       <span class="model-check">${mdl.id === state.models.chosen ? "✓" : ""}</span></button>`).join("");
 }
 
