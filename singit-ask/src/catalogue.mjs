@@ -56,12 +56,25 @@ function parseMarket(data) {
   return market;
 }
 
+// Whether a model can be answered right now: some offer in its order book is trusted (the key routes to trusted
+// sellers only), healthy and available, and not from a provider the key blocks. A model with none is not offered:
+// choosing it would only end in an error. Measured on 12 October: 39 of 227 listed models had no such offer.
+function canServe(book, blocked) {
+  const offers = book?.data?.offers ?? book?.offers ?? [];
+  return offers.some((o) => o?.trusted === true && o?.healthy === true && o?.available === true
+                             && !blocked.has(String(o.provider_id ?? "").toLowerCase()));
+}
+
 // Both lists are read from Surplus, which takes a second or three; a visitor must never wait for that. What is
 // cached is served at once even when it is old, and one refresh at a time runs in the background. Only the very
 // first read, with nothing cached yet, waits.
 export class ModelCatalogue {
-  constructor({ url, fetchImpl = fetch, now = Date.now }) {
+  constructor({ url, fetchImpl = fetch, now = Date.now, blocked = [] }) {
     Object.assign(this, { url, fetchImpl, now });
+    this.blocked = new Set(blocked.map((p) => String(p).toLowerCase()));
+    this.served = null;  // ids of the models that can be answered now; null until first read
+    this.servedAt = 0;
+    this.loadingServed = null;
     this.models = null;
     this.loadedAt = 0;
     this.prices = null;
@@ -95,6 +108,44 @@ export class ModelCatalogue {
     return this.loadingPrices;
   }
 
+  // One order book per model, read slowly: read fast, Surplus answers 429, or 200 with books whose offers all look
+  // unhealthy (seen on 12 October). So two at a time with a pause, about a minute for all of them; a book that
+  // cannot be read keeps that model's last answer, or offers it; and a pass that would offer far fewer models
+  // than the last one (or than a quarter of them, the first time) is thrown away whole. An unreadable or odd
+  // book is no reason to empty the picker, and a model that turns out unable to answer costs nothing.
+  loadServed(pauseMs = 400) {
+    this.loadingServed ??= (async () => {
+      try {
+        const ids = [...((this.models ?? (await this.loadModels(), this.models)) ?? new Map()).keys()];
+        const served = new Set();
+        let next = 0;
+        const worker = async () => {
+          while (next < ids.length) {
+            const id = ids[next++];
+            try {
+              const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`,
+                                                    { signal: AbortSignal.timeout(10_000) });
+              const book = response.ok ? await response.json() : null;
+              if (book ? canServe(book, this.blocked) : (this.served?.has(id) ?? true)) served.add(id);
+            } catch { if (this.served?.has(id) ?? true) served.add(id); }
+            if (pauseMs) await new Promise((resolve) => setTimeout(resolve, pauseMs));
+          }
+        };
+        await Promise.all(Array.from({ length: 2 }, worker));
+        const floor = this.served ? this.served.size / 2 : ids.length / 4;
+        if (ids.length && served.size >= floor) { this.served = served; this.servedAt = this.now(); }
+        else if (ids.length) this.servedAt = this.now();  // keep what was offered; try again next time
+      } finally { this.loadingServed = null; }
+    })();
+    return this.loadingServed;
+  }
+
+  // Whether a model can be answered now: true until the order books have been read once.
+  async canAnswer(id) {
+    if (this.served && this.now() - this.servedAt >= MARKET_TTL_MS) this.loadServed();
+    return this.served ? this.served.has(id) : true;
+  }
+
   async all() {
     if (!this.models) await this.loadModels();
     else if (this.now() - this.loadedAt >= TTL_MS) this.loadModels();
@@ -112,7 +163,11 @@ export class ModelCatalogue {
   // Read both now, then keep them fresh, so the first visitor after a start and every one after finds them ready.
   async warm(everyMs = MARKET_TTL_MS / 2) {
     await Promise.all([this.loadModels(), this.loadPrices()]);
-    this.timer ??= setInterval(() => { this.loadModels(); this.loadPrices(); }, everyMs);
+    await this.loadServed();
+    this.timer ??= setInterval(() => {
+      this.loadModels(); this.loadPrices();
+      if (this.now() - this.servedAt >= MARKET_TTL_MS) this.loadServed();
+    }, everyMs);
     this.timer.unref?.();
   }
 

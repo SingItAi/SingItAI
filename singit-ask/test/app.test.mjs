@@ -43,8 +43,9 @@ function fakeFacilitator() {
 
 const PRICEY = { id: "pro-model", name: "Pro", provider: "X", contextLength: 1e6, promptUsdPerToken: 30e-6, completionUsdPerToken: 180e-6 };
 const CHEAP = { id: "cheap-model", name: "Cheap", provider: "X", contextLength: 1e5, promptUsdPerToken: 0.1e-6, completionUsdPerToken: 0.3e-6 };
-const fakeCatalogue = { async market() { return new Map([["pro-model", { trustedShare: 0.25 }]]); }, async resolve(id) { const m = [PRICEY, CHEAP].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
-  async list() { return [CHEAP, PRICEY]; } };
+const IDLE = { id: "idle-model", name: "Idle", provider: "X", contextLength: 1, promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 };
+const fakeCatalogue = { async market() { return new Map([["pro-model", { trustedShare: 0.25 }]]); }, async resolve(id) { const m = [PRICEY, CHEAP, IDLE].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
+  async list() { return [CHEAP, PRICEY]; }, async canAnswer(id) { return id !== "idle-model"; } };
 
 async function serve(t, { upstream } = {}) {
   const facilitator = fakeFacilitator();
@@ -378,6 +379,7 @@ test("ModelCatalogue serves what it has at once, refreshes once in the backgroun
   let clock = 0, release, calls = { models: 0, market: 0 };
   const gate = new Promise((resolve) => { release = resolve; });
   const fetchImpl = async (url) => {
+    if (String(url).includes("/api/markets/")) return new Response(JSON.stringify({ data: { offers: [] } }));
     const kind = String(url).endsWith("/api/marketplace") ? "market" : "models";
     calls[kind]++;
     if (calls[kind] > 1) await gate;  // every refresh after the first is slow
@@ -410,4 +412,66 @@ test("capabilities name what a model can do in the picker's category keys", asyn
   assert.deepEqual(capabilities(entry("barcode-reader"), ["text"]), [], "a name merely containing 'code' is not a coder");
   assert.deepEqual(capabilities(entry("e2ee-glm-4.7", ["reasoning"]), ["text"]), ["reasoning", "private"]);
   assert.deepEqual(capabilities(entry("omni", ["audio"]), ["text", "video", "audio"]), ["video", "audio"]);
+});
+
+test("a model no trusted seller can answer now is not listed, and is refused before any payment", async (t) => {
+  const { url, asked } = await serve(t);
+  const ids = (await (await fetch(`${url}/v1/models`)).json()).data.map((m) => m.id);
+  assert.ok(!ids.includes("idle-model"));
+  const refused = await post(url, { ...QUESTION, model: "idle-model" });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.headers.get("payment-required"), null);
+  assert.match((await refused.json()).error.message, /No trusted seller/);
+  assert.equal(asked.length, 0);
+});
+
+test("ModelCatalogue.canAnswer reads every order book: trusted, healthy, available and not blocked", async () => {
+  const offer = (o) => ({ trusted: true, healthy: true, available: true, provider_id: "openai", ...o });
+  const books = {
+    good: [offer({})], untrusted: [offer({ trusted: false })], sick: [offer({ healthy: false })],
+    full: [offer({ available: false })], blocked: [offer({ provider_id: "Mordiem" })], mixed: [offer({ trusted: false }), offer({})],
+  };
+  let unreadable = false;
+  const fetchImpl = async (url) => {
+    url = String(url);
+    if (url.endsWith("/v1/models")) return new Response(JSON.stringify({ data: [...Object.keys(books), "broken"].map((id) => ({
+      id, name: id, architecture: { modality: "text->text" }, supported_parameters: ["max_tokens"], pricing: { prompt: "0", completion: "0" } })) }));
+    const id = decodeURIComponent(url.split("/api/markets/")[1]);
+    if (id === "broken" || unreadable) return new Response("down", { status: 503 });
+    return new Response(JSON.stringify({ data: { offers: books[id] } }));
+  };
+  let clock = 0;
+  const catalogue = new ModelCatalogue({ url: "https://x", fetchImpl, now: () => clock, blocked: ["mordiem"] });
+  assert.equal(await catalogue.canAnswer("good"), true, "offered until the books have been read");
+  await catalogue.loadServed(0);
+  const answer = async (id) => catalogue.canAnswer(id);
+  assert.deepEqual(await Promise.all(Object.keys(books).map(answer)), [true, false, false, false, false, true]);
+  assert.equal(await answer("broken"), true, "a book that cannot be read never hides a model");
+  unreadable = true; clock = 11 * 60_000;
+  await catalogue.loadServed(0);
+  assert.equal(await answer("good"), true, "an unreadable refresh keeps the last answer");
+  assert.equal(await answer("untrusted"), false);
+});
+
+test("ModelCatalogue throws away a pass of order books that would empty the picker", async () => {
+  let sick = false, clock = 0;
+  const ids = Array.from({ length: 8 }, (_, i) => `m${i}`);
+  const fetchImpl = async (url) => {
+    url = String(url);
+    if (url.endsWith("/v1/models")) return new Response(JSON.stringify({ data: ids.map((id) => ({ id, name: id,
+      architecture: { modality: "text->text" }, supported_parameters: ["max_tokens"], pricing: { prompt: "0", completion: "0" } })) }));
+    // Under load Surplus has answered 200 with every offer unhealthy.
+    return new Response(JSON.stringify({ data: { offers: [{ trusted: true, healthy: !sick, available: true, provider_id: "openai" }] } }));
+  };
+  const catalogue = new ModelCatalogue({ url: "https://x", fetchImpl, now: () => clock });
+  sick = true;
+  await catalogue.loadServed(0);
+  assert.equal(catalogue.served, null, "a first pass offering under a quarter is not taken");
+  assert.equal(await catalogue.canAnswer("m0"), true);
+  sick = false;
+  await catalogue.loadServed(0);
+  assert.equal(catalogue.served.size, 8);
+  sick = true; clock = 11 * 60_000;
+  await catalogue.loadServed(0);
+  assert.equal(catalogue.served.size, 8, "a pass offering under half of the last is thrown away");
 });

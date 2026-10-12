@@ -64,7 +64,11 @@ export async function chooseModel(config, catalogue, input) {
   if (!input.model || input.model === config.model) return { ...input, model: config.model, info: null };
   if (!catalogue) throw new RequestError(400, "Choosing a model is not offered here.");
   try {
-    return { ...input, info: await catalogue.resolve(input.model) };
+    const info = await catalogue.resolve(input.model);
+    if (catalogue.canAnswer && !(await catalogue.canAnswer(info.id))) {
+      throw new RequestError(400, "No trusted seller offers that model right now. Pick another; nothing was paid.");
+    }
+    return { ...input, info };
   } catch (error) {
     if (error instanceof UnknownModel) throw new RequestError(400, error.message);
     throw error;
@@ -116,7 +120,7 @@ const EXAMPLE = {
 };
 
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
-                                    catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl }) : null,
+                                    catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [] }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }) }) {
   const app = express();
   app.locals.catalogue = catalogue;  // server.mjs warms it
@@ -132,7 +136,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   });
   // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
   app.get("/v1/models", async (_req, res) => {
-    const models = catalogue ? await catalogue.list().catch(() => []) : [];
+    // Only the models that can be answered now (the default always is).
+    const listed = catalogue ? await catalogue.list().catch(() => []) : [];
+    const answerable = await Promise.all(listed.map((m) => (catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
+    const models = listed.filter((m, i) => answerable[i] || m.id === config.model);
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing,
       data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
