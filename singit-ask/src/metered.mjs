@@ -45,13 +45,23 @@ function paidTerms(req) {
   return terms && { ...terms, maxChargeAtomic: req.askCeilings[network] };
 }
 
-export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log }) {
+// A request with no body at all: what a directory's crawler sends to see whether a route takes payment.
+const isEmptyBody = body => body === undefined || body === null
+  || (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0);
+
+export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, offerEmptyProbe = false }) {
   const offers = makeOffers(quotes);
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new UptoEvmScheme())
     .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }));
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
   app.post(route, async (req, res, next) => {
+    // x402scan registers a route only if an empty, unpaid request gets the 402 challenge (docs/DISCOVERY.md in
+    // Merit-Systems/x402scan). It gets the standing offer; paying it with no question is still refused below.
+    if (offerEmptyProbe && isEmptyBody(req.body) && !(req.get("payment-signature") ?? req.get("x-payment"))) {
+      req.askCeilings = ceilings(null, {});
+      return next();
+    }
     try {
       req.askInput = await choose(readRequest(req.body));
       req.askCeilings = ceilings(req.askInput.info, req.askInput);
