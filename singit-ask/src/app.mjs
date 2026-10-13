@@ -17,6 +17,7 @@ import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue } from "./catalogue.mjs";
 import { LIMITS, THINKING_HEADROOM } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
+import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
@@ -155,43 +156,60 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
 
   const pricing = { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS };
+  const free = freeTerms(config);
+  const freeOffer = free.models.length ? { models: free.models.map((m) => FREE_PREFIX + m), endpoint: ROUTE,
+    perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars } : null;
+  // What a payer pays on top of the model's own cost: the markup, and one settlement fee per answer.
+  const fees = { markupPct: TERMS.markupBps / 100,
+    perAnswerUsd: { [BASE]: Number(usd(TERMS.settlementFeeAtomic)), [SOLANA]: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) } };
   const origin = req => `${req.protocol}://${req.get("host")}`;
+  // Public, read-only documents: the website reads them straight from the browser.
+  const open = (_req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); next(); };
   const DESCRIPTION = `One answer from any model listed at GET /v1/models (default ${config.model}), OpenAI-compatible. `
     + "Pays actual token cost + 30% + settlement fee (0.002 USDC on Solana, 0.001 on Base), up to a ceiling that "
     + "follows the model's price; nothing without an answer.";
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing,
+    res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
   });
   // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
-  app.get("/v1/models", async (_req, res) => {
+  app.get("/v1/models", open, async (_req, res) => {
     // Only the models that can be answered now (the default always is).
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
     const answerable = await Promise.all(listed.map((m) => (catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
     const models = listed.filter((m, i) => answerable[i] || m.id === config.model);
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
-    res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing,
+    res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
         ...models.map(m => {
           // The price an answer is expected to cost: what this service's own answers from the model cost, or,
           // before the first, the share of list price Surplus's trusted sellers ask. Never the best offer.
           const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
           const share = seen ?? trusted ?? null;
+          // What a payer is expected to pay per million tokens: that cost plus the markup (the per-answer fee is in
+          // `fees`), and how much below the model's list price that is.
+          // A model Surplus lists at no price has no saving to show.
+          const listed = m.promptUsdPerToken > 0 || m.completionUsdPerToken > 0;
+          const ours = share === null || !listed ? null : share * (1 + TERMS.markupBps / 10_000);
           return { id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name, contextLength: m.contextLength,
             tags: m.tags ?? [],
             usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
             ...(share === null ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
-              output: m.completionUsdPerToken * 1e6 * share, basis: seen === null ? "trusted" : "observed" } }) };
+              output: m.completionUsdPerToken * 1e6 * share, basis: seen === null ? "trusted" : "observed" } }),
+            ...(ours === null ? {} : {
+              singitUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * ours, output: m.completionUsdPerToken * 1e6 * ours },
+              savingsVsListPct: Math.round((1 - ours) * 100) }) };
         })] });
   });
 
   // Free: how directories (x402scan, agents) find the paid route. x402scan reads this first, then /.well-known/x402.
-  app.get("/openapi.json", async (req, res) => {
+  app.get("/openapi.json", open, async (req, res) => {
     const price = await priceRange(catalogue);
     res.json({
       openapi: "3.1.0",
       info: { title: "SingIt Ask", version: "1.0.0",
-              description: "Language-model answers paid per answer over x402 in USDC on Base or Solana. No accounts or API keys." },
+              description: "Language-model answers paid per answer over x402 in USDC on Base or Solana. No accounts or API keys."
+                + (freeOffer ? ` Free to try: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day, no payment.` : "") },
       servers: [{ url: origin(req) }],
       paths: {
         [ROUTE]: { post: {
@@ -217,9 +235,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           + "`upto` USDC authorization on Base or Solana for the ceiling it names, and retry with the signature here." } } },
     });
   });
-  app.get("/.well-known/x402", (req, res) => {
+  app.get("/.well-known/x402", open, (req, res) => {
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`],
-      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.` });
+      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
+        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
 
   const choose = input => chooseModel(config, catalogue, input);
@@ -230,6 +249,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     return answer;
   };
   const route = { facilitatorClient, config, readRequest, choose, upstream: learning, fetchImpl, log };
+  // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
+  addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.
   addUsageRoute(app, ROUTE, quotes => [solanaOffer(config, quotes), baseOffer(config, quotes)], {
     description: `SingIt Ask: ${DESCRIPTION}`,

@@ -13,6 +13,10 @@
 //                              are not offered
 //   SINGIT_ASK_OBSERVED_PRICES where what answers cost per model is kept (no prompts), default
 //                              ~/.config/singit-ask/observed-prices.json
+//   SINGIT_ASK_FREE_MODELS     models answered free as "free/<id>" (comma-separated); unset means the default model,
+//                              empty turns free answers off
+//   SINGIT_ASK_FREE_PER_VISITOR, SINGIT_ASK_FREE_PER_DAY  free answers a day per visitor and for everyone together
+//                              (defaults in src/free.mjs)
 
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
@@ -40,6 +44,13 @@ const config = {
   observedFile: process.env.SINGIT_ASK_OBSERVED_PRICES
     || `${process.env.HOME}/.config/singit-ask/observed-prices.json`,
 };
+const model = config.model;
+config.freeModels = process.env.SINGIT_ASK_FREE_MODELS === undefined ? [model]
+  : process.env.SINGIT_ASK_FREE_MODELS.split(",").map((m) => m.trim()).filter(Boolean);
+const positive = (name) => { const n = Number(process.env[name]); return Number.isInteger(n) && n > 0 ? n : undefined; };
+config.freeLimits = Object.fromEntries(Object.entries({
+  perVisitorPerDay: positive("SINGIT_ASK_FREE_PER_VISITOR"), perDay: positive("SINGIT_ASK_FREE_PER_DAY"),
+}).filter(([, v]) => v !== undefined));
 const port = Number(process.env.SINGIT_ASK_PORT || 8140);
 
 required("CDP_API_KEY_ID"); required("CDP_API_KEY_SECRET");
