@@ -204,6 +204,25 @@ class WebApiTests(unittest.TestCase):
             self.assertIn(flag, headers["Set-Cookie"])
         self.assertEqual(body["address"], self.user.address)
 
+    def test_signing_in_with_another_wallet_ends_the_previous_session(self):
+        old_token, _, _ = self.sign_in()
+        other = Account.create()
+        _, issued, _ = self.call("POST", "/auth/nonce", {"address": other.address})
+        # A refused signature leaves the signed-in account as it was.
+        with self.assertRaises(WebAuthError):
+            self.call("POST", "/auth/verify", {"message": issued["message"], "signature": sign(self.user, issued["message"])},
+                      token=old_token)
+        self.assertEqual(self.call("GET", "/session", token=old_token)[1]["address"], self.user.address)
+
+        _, issued, _ = self.call("POST", "/auth/nonce", {"address": other.address})
+        status, body, headers = self.call("POST", "/auth/verify", {
+            "message": issued["message"], "signature": sign(other, issued["message"])}, token=old_token)
+        self.assertEqual((status, body["address"]), (200, other.address))
+        new_token = headers["Set-Cookie"].split(";")[0].split("=", 1)[1]
+        self.assertEqual(self.call("GET", "/session", token=new_token)[1]["address"], other.address)
+        with self.assertRaises(WebAuthError):
+            self.call("GET", "/session", token=old_token)
+
     def test_a_signed_in_wallet_creates_its_own_limiter(self):
         token, csrf, body = self.sign_in()
         status, allowance, _ = self.call("GET", "/allowance", token=token)

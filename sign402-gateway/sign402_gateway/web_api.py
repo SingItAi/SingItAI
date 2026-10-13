@@ -187,6 +187,10 @@ class WebApi:
         if method == "POST" and path == "/auth/verify":
             self.auth_by_ip.hit(client)
             signed = self.auth.verify(body.get("message"), body.get("signature"))
+            # Switching wallets signs in over a live session: once the new wallet has signed, the
+            # browser's previous session ends here, since its cookie is about to be replaced.
+            if token:
+                self.auth.logout(token)
             cookie = (f"{COOKIE}={signed['token']}; Path={PREFIX}; Max-Age={SESSION_SECONDS}; "
                       "HttpOnly; Secure; SameSite=Strict")
             out = {"account": signed["account"], "address": signed["address"], "chain": signed["chain"],

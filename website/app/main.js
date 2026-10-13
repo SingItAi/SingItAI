@@ -47,6 +47,7 @@ const state = {
   push: null,          // notifications on this device: see loadPush()
   replyLang: readPref("singit.replyLang"),  // "" follows each message; "en" | "ru"
   thinkingSince: 0,
+  switching: false,    // the Switch wallet window is open: another wallet may connect without ending the session
 };
 
 function readPref(key) {
@@ -143,6 +144,11 @@ function setWallet(wallet) {
   const changed = walletIdentity(wallet) !== walletIdentity(state.wallet);
   state.wallet = wallet;
   if (state.session && wallet && walletIdentity(wallet) !== walletIdentity(state.session)) {
+    // While switching, another wallet is expected: it signs in from the Switch wallet window.
+    if (state.switching) {
+      render();  // an extension's account change arrives on the same wallet object, so `changed` can miss it
+      return;
+    }
     setCsrf(null);
     location.reload();
     return;
@@ -180,6 +186,10 @@ async function connectInjected(uuid) {
     });
     state.wallet = wallet;
   });
+  if (state.switching) {
+    state.modal = { type: "switch" };
+    render();
+  }
 }
 
 async function signIn() {
@@ -209,11 +219,112 @@ async function signOut() {
   try { await api.logout(); } catch { /* the cookie may already be gone */ }
   setCsrf(null);
   await disconnectAppKit().catch(() => {});
-  Object.assign(state, { session: null, wallet: null, allowance: null, quote: null, result: null, purchases: null,
-                         linkCode: null, revealed: {}, tab: "allowance", modal: null, view: "chat", chats: [],
-                         chatId: null, messages: [], done: {}, chatMenu: null, renaming: null, showArchived: false, models: null, accountMenu: null, usage: null, push: null,
-                         modelFilter: { query: "", category: "" } });
+  Object.assign(state, accountState(), { session: null, wallet: null });
   showChatInUrl();
+  render();
+}
+
+// What belongs to one signed-in account: cleared when it signs out or another wallet takes over.
+const accountState = () => ({
+  allowance: null, quote: null, result: null, purchases: null, linkCode: null, revealed: {}, tab: "allowance",
+  modal: null, view: "chat", chats: [], chatId: null, messages: [], done: {}, chatMenu: null, renaming: null,
+  showArchived: false, models: null, accountMenu: null, usage: null, push: null, menuOpen: false, switching: false,
+  modelFilter: { query: "", category: "" },
+});
+
+// -- switching wallets --
+// The signed-in account stays signed in until another wallet signs; cancelling at any step keeps it.
+// Any wallet works the same way: an extension, WalletConnect, or one made with email, Google, Apple, X or Discord.
+
+function openSwitch() {
+  if (state.sending) { toast("Wait for the answer, then switch.", true); return; }
+  state.switching = true;
+  state.accountMenu = null;
+  state.menuOpen = false;
+  state.modal = { type: "switch" };
+  render();
+}
+
+const switchCandidate = () =>
+  state.wallet && walletIdentity(state.wallet) !== walletIdentity(state.session) ? state.wallet : null;
+
+async function connectAnotherWallet() {
+  if (!appKitConfigured()) {
+    state.modal = { type: "wallets" };
+    render();
+    return;
+  }
+  // AppKit holds one connection: the current one ends so the Connect view offers every way in again.
+  // The session does not: a wallet is needed only to sign, and the switch keeps the account until then.
+  await disconnectAppKit().catch(() => {});
+  state.wallet = null;
+  render();
+  openAppKit().catch((error) => toast(explain(error), true));
+}
+
+async function switchNetwork(chain) {
+  if (networkSwitching || signingIn || chain === state.wallet?.chain) return;
+  networkSwitching = true;
+  renderModal();
+  try {
+    setWallet(await switchAppKitNetwork(chain));
+  } catch (error) {
+    toast(explain(error), true);
+  } finally {
+    networkSwitching = false;
+    render();
+  }
+}
+
+async function switchSignIn() {
+  const wallet = switchCandidate();
+  if (!wallet || networkSwitching || signingIn) return;
+  const identity = walletIdentity(wallet);
+  signingIn = true;
+  say("Sign the message in your wallet. It does not move any funds.");
+  try {
+    const { message } = await api.nonce(wallet.address);
+    if (identity !== walletIdentity(state.wallet)) throw new Error("Your wallet changed. Try again.");
+    const signature = await wallet.signMessage(message);
+    if (identity !== walletIdentity(state.wallet)) throw new Error("Your wallet changed. Try again.");
+    // The server ends the previous session as this one starts (the request carries its cookie).
+    const signed = await api.verify(message, signature);
+    if (identity !== walletIdentity(signed)) throw new Error("Your wallet changed. Try again.");
+    setCsrf(signed.csrfToken, signed.account);
+    Object.assign(state, accountState(), { session: signed });
+    showChatInUrl();
+    render();
+    await Promise.all([loadAllowance(), loadChats(), loadModels()]).catch((error) => toast(explain(error), true));
+    syncPush().catch(() => { /* notifications are optional */ });
+    toast(`Switched to ${short(signed.address)}.`);
+  } catch (error) {
+    state.modal = { type: "switch" };
+    // Not explain(): a refused sign-in (401) is the new wallet's, and must not end the signed-in session.
+    toast(error instanceof ApiError ? error.message : walletError(error), true);
+  } finally {
+    signingIn = false;
+    render();
+  }
+}
+
+// Back to the signed-in account: the wallet it signed with is put back on its network, or let go.
+async function cancelSwitch() {
+  if (signingIn) return;
+  state.modal = null;
+  render();
+  const wallet = switchCandidate();
+  if (wallet) {
+    const signedIn = walletIdentity(state.session);
+    let back = null;
+    if (wallet.name === "WalletConnect") back = await switchAppKitNetwork(state.session.chain).catch(() => null);
+    if (walletIdentity(back) === signedIn) {
+      state.wallet = back;
+    } else {
+      if (wallet.name === "WalletConnect") await disconnectAppKit().catch(() => {});
+      state.wallet = null;
+    }
+  }
+  state.switching = false;
   render();
 }
 
@@ -738,6 +849,33 @@ function renderModal() {
       <p class="hint">A Trezor or Ledger behind your wallet works too: the device shows every signature.</p>`);
     return;
   }
+  if (m.type === "switch") {
+    const s = state.session;
+    const next = switchCandidate();
+    const chainName = (chain) => (chain === "solana" ? "Solana" : "Base");
+    const off = networkSwitching || signingIn ? "disabled" : "";
+    // A wallet connected through AppKit (email, Google, WalletConnect) has an address on each network.
+    const option = (chain) => `<button type="button" data-action="switch-network" data-chain="${chain}"
+      class="${state.wallet?.chain === chain ? "on" : ""}" aria-pressed="${state.wallet?.chain === chain}" ${off}>${chainName(chain)}</button>`;
+    const networks = state.wallet?.name === "WalletConnect"
+      ? `<div class="row switch-networks"><div class="segmented" role="group" aria-label="Network">${option("base")}${option("solana")}</div></div>`
+      : "";
+    modalEl.innerHTML = modal(`
+      <div class="approval-head"><div class="avatar">${mark()}</div>
+        <div><strong>Switch wallet</strong><span>Signed in as ${esc(short(s.address))} · ${chainName(s.chain)}</span></div></div>
+      ${next
+        ? `<p class="switch-next">Connected: <span class="mono">${esc(short(next.address))}</span><span class="chain-tag">${chainName(next.chain)}</span></p>`
+        : `<p class="hint switch-lead">Connect another wallet, or sign in with email, Google, Apple, X or Discord.${
+            networks ? " Or move this wallet to its other network: each network has its own address." : ""}</p>`}
+      ${networks}
+      <div class="actions switch-actions">
+        ${next ? `<button class="btn btn-primary" data-action="switch-sign-in" ${off}>Sign in as ${esc(short(next.address))}</button>` : ""}
+        <button class="btn ${next ? "btn-ghost" : "btn-primary"}" data-action="switch-connect" ${off}>${state.wallet ? "Use another wallet" : "Connect a wallet"}</button>
+        <button class="btn btn-ghost" data-action="switch-cancel">Cancel</button>
+      </div>
+      <p class="hint">You stay signed in as ${esc(short(s.address))} until the new wallet signs. Signing in moves no funds.</p>`);
+    return;
+  }
   if (m.type === "quote") {
     const q = state.quote;
     const rows = q.kind === "tool"
@@ -924,9 +1062,12 @@ function renderSidebar() {
   $("#side-nav").innerHTML = `
     <button class="side-allowance ${state.view === "allowance" ? "active" : ""}" data-action="go" data-view="allowance">${amountLine}</button>
     ${low ? `<button class="side-funds" data-action="add-funds">Wallet has ${usdc(a.ownerUsdcAtomic)} · <b>Add funds</b></button>` : ""}
-    <button class="side-account-btn ${state.accountMenu ? "open" : ""}" data-action="account-menu" aria-haspopup="menu"
-      aria-expanded="${Boolean(state.accountMenu)}"><span class="dot"></span><span class="mono">${esc(short(state.session.address))}</span>
-      <span class="chain-tag">${state.session.chain === "solana" ? "SOL" : "Base"}</span><span class="caret">⌃</span></button>`;
+    <div class="side-account">
+      <button class="side-account-btn ${state.accountMenu ? "open" : ""}" data-action="account-menu" aria-haspopup="menu"
+        aria-expanded="${Boolean(state.accountMenu)}"><span class="dot"></span><span class="mono">${esc(short(state.session.address))}</span>
+        <span class="chain-tag">${state.session.chain === "solana" ? "SOL" : "Base"}</span><span class="caret">⌃</span></button>
+      <button class="icon-btn side-switch" data-action="switch-wallet" title="Switch wallet" aria-label="Switch wallet">${icon("switch")}</button>
+    </div>`;
   renderAccountMenu();
   $("#app").classList.toggle("menu-open", state.menuOpen);
   $("#top-title").textContent = state.view === "chat"
@@ -1271,6 +1412,7 @@ const ICONS = {
   funds: '<path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>',
   check: '<path d="m5 12 5 5 9-10"/>',
   install: '<rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 7v7m-3-3 3 3 3-3"/><path d="M11 18h2"/>',
+  switch: '<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>',
 };
 const icon = (name) => name && ICONS[name]
   ? `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
@@ -1289,6 +1431,7 @@ function renderAccountMenu() {
       + LANGUAGES.map(([code, label, hint]) => item("set-reply-lang", state.replyLang === code ? "check" : "", label,
           hint ? `<kbd>${hint}</kbd>` : "", `data-lang="${code}"`)).join("")
     : `<div class="menu-head mono" title="${esc(state.session.address)}">${esc(short(state.session.address))}</div>`
+      + item("switch-wallet", "switch", "Switch wallet")
       + item("add-funds", "funds", "Add funds")
       + item("go", "usage", "Usage", "", 'data-view="usage"')
       + item("go", "purchases", "Purchases", "", 'data-view="purchases"')
@@ -1845,8 +1988,13 @@ const actions = {
     cardAction({ type: "buy_giftcard", slug: el.dataset.slug, package: pkg, name: el.dataset.name, lang: el.dataset.lang,
                  progress: newAttempt(), ...(price ? { priceUsd: price } : {}) });
   },
-  dismiss: () => { state.modal = null; render(); },
-  "dismiss-button": () => { state.modal = null; render(); },
+  "switch-wallet": openSwitch,
+  "switch-connect": connectAnotherWallet,
+  "switch-network": (el) => switchNetwork(el.dataset.chain),
+  "switch-sign-in": switchSignIn,
+  "switch-cancel": cancelSwitch,
+  dismiss: () => { if (state.switching) { cancelSwitch(); return; } state.modal = null; render(); },
+  "dismiss-button": () => { if (state.switching) { cancelSwitch(); return; } state.modal = null; render(); },
 };
 
 document.addEventListener("click", (event) => {
@@ -1936,7 +2084,11 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape" && state.accountMenu) { closeAccountMenu(); return; }
-  if (event.key === "Escape" && state.modal && state.modal.type !== "busy") { state.modal = null; render(); }
+  if (event.key === "Escape" && state.modal && state.modal.type !== "busy") {
+    if (state.switching) { cancelSwitch(); return; }
+    state.modal = null;
+    render();
+  }
   if (event.key === "Enter" && event.target.id === "bf-query") searchBitrefill();
 });
 
