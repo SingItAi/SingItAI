@@ -173,6 +173,30 @@ test("an empty unpaid request gets the standing offer, so directories can regist
   assert.equal(facilitator.calls.verify, 0);
 });
 
+test("the listing tells agents what to send and what comes back, within Coinbase's limits", async (t) => {
+  const { url } = await serve(t);
+  const required = await offer(url);
+  // Coinbase's facilitator rejects descriptions over 500 characters.
+  assert.ok(required.resource.description.length <= 500, `description is ${required.resource.description.length} characters`);
+  assert.match(required.resource.description, /Claude, GPT, Gemini/);
+  const bazaar = required.extensions.bazaar;
+  const body = bazaar.schema.properties.input.properties.body;
+  assert.deepEqual(body.properties.messages.items.properties.role.enum, ["system", "user", "assistant"]);
+  assert.equal(body.properties.max_tokens.maximum, LIMITS.maxTokens);
+  // The declared example must satisfy the declared schema, or the Bazaar rejects the listing.
+  const example = bazaar.info.input.body;
+  assert.ok(example.messages.length >= body.properties.messages.minItems);
+  for (const message of example.messages) {
+    assert.ok(body.properties.messages.items.properties.role.enum.includes(message.role));
+    assert.equal(typeof message.content, "string");
+  }
+  assert.ok(example.max_tokens <= body.properties.max_tokens.maximum && example.max_tokens >= body.properties.max_tokens.minimum);
+  // What comes back is described too, with a realistic charge: 6 micro-USD of tokens, 2 markup, 1000 fee.
+  assert.equal(bazaar.info.output.example.billing.totalAtomic, "1008");
+  assert.deepEqual(billUsage(bazaar.info.output.example.usage), bazaar.info.output.example.billing);
+  assert.ok(required.resource.tags.includes("claude"));
+});
+
 test("paying the offer with no question is refused and costs nothing", async (t) => {
   const { url, facilitator, asked } = await serve(t);
   const response = await fetch(`${url}${ROUTE}`, { method: "POST",

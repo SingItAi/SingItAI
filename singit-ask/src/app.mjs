@@ -113,13 +113,42 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
 }
 
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
+// Directories rank a listing by how completely it says what to send and what comes back (Coinbase's Bazaar:
+// docs.cdp.coinbase.com/x402/seller/get-discovered), so every field an agent fills in is described.
 const INPUT_SCHEMA = {
   properties: {
-    messages: { type: "array", items: { type: "object" } },
-    max_tokens: { type: "integer", maximum: LIMITS.maxTokens },
-    model: { type: "string", description: "Any model id from GET /v1/models; the ceiling follows its price." },
+    messages: { type: "array", minItems: 1, maxItems: LIMITS.messages, description: "The conversation, oldest first.",
+      items: { type: "object", required: ["role", "content"], properties: {
+        role: { type: "string", enum: ["system", "user", "assistant"] },
+        content: { type: "string", description: `Plain text; all messages together under ${LIMITS.chars} characters.` },
+      } } },
+    max_tokens: { type: "integer", minimum: 1, maximum: LIMITS.maxTokens, default: LIMITS.defaultTokens,
+      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+    model: { type: "string", examples: ["deepseek-v4.1-flash", "claude-opus-5.5", "gpt-5.5", "gemini-3.1-pro"],
+      description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
+    stream: { type: "boolean", enum: [false], description: "Streaming is not offered." },
   },
   required: ["messages"],
+};
+
+const OUTPUT_SCHEMA = {
+  type: "object", required: ["choices", "billing"],
+  properties: {
+    id: { type: "string" },
+    object: { type: "string", const: "chat.completion" },
+    created: { type: "integer", description: "Unix seconds" },
+    model: { type: "string" },
+    choices: { type: "array", items: { type: "object", properties: {
+      index: { type: "integer" },
+      message: { type: "object", properties: { role: { type: "string" }, content: { type: "string" } } },
+      finish_reason: { type: "string", description: "stop, or length when max_tokens ended the answer" },
+    } } },
+    usage: { type: "object", description: "Token counts and the model's own cost in micro-USD (buyer_cost_micro)" },
+    billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
+      providerCostAtomic: { type: "string" }, markupAtomic: { type: "string" },
+      totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" },
+    } },
+  },
 };
 
 const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
@@ -138,10 +167,14 @@ export async function priceRange(catalogue) {
 
 const EXAMPLE = {
   input: { messages: [{ role: "user", content: "Where is good coffee near the Colosseum?" }], max_tokens: 400 },
+  // A real answer's shape and charge (default model, Base): 6 micro-USD of tokens, 2 markup, 1000 settlement fee.
   output: {
-    object: "chat.completion",
-    model: "singit-ask",
-    choices: [{ index: 0, message: { role: "assistant", content: "Around the Colosseum, try…" }, finish_reason: "stop" }],
+    id: "singit-ask-1791932400000", object: "chat.completion", created: 1791932400, model: "singit-ask",
+    choices: [{ index: 0, message: { role: "assistant",
+      content: "Around the Colosseum, try Caffè Propaganda on Via Claudia or Bar Martini for an espresso with a view." },
+      finish_reason: "stop" }],
+    usage: { prompt_tokens: 14, completion_tokens: 31, total_tokens: 45, buyer_cost_micro: 6 },
+    billing: { ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" },
   },
 };
 
@@ -165,9 +198,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const origin = req => `${req.protocol}://${req.get("host")}`;
   // Public, read-only documents: the website reads them straight from the browser.
   const open = (_req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); next(); };
-  const DESCRIPTION = `One answer from any model listed at GET /v1/models (default ${config.model}), OpenAI-compatible. `
-    + "Pays actual token cost + 30% + settlement fee (0.002 USDC on Solana, 0.001 on Base), up to a ceiling that "
-    + "follows the model's price; nothing without an answer.";
+  // At most 500 characters with the "SingIt Ask: " prefix: Coinbase's facilitator rejects longer descriptions.
+  const DESCRIPTION = "Ask a language model without an API key: any model listed at GET /v1/models (Claude, GPT, Gemini, "
+    + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
+    + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
+    + "price; nothing is charged without an answer.";
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
@@ -218,7 +253,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           requestBody: { required: true, content: { "application/json": {
             schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE.input } } },
           responses: {
-            200: { description: "The answer, with what it was charged", content: { "application/json": { example: EXAMPLE.output } } },
+            200: { description: "The answer, with what it was charged",
+                   content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
+            429: { description: "Free answers (model free/…) used up for today, or busy; see Retry-After" },
             400: { description: "The question cannot be answered here; nothing was charged" },
             402: { description: "Payment Required: x402 challenge in the PAYMENT-REQUIRED header" },
             502: { description: "No billable answer came back; nothing was charged" },
@@ -255,14 +292,15 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   addUsageRoute(app, ROUTE, quotes => [solanaOffer(config, quotes), baseOffer(config, quotes)], {
     description: `SingIt Ask: ${DESCRIPTION}`,
     serviceName: "SingIt Ask",
-    tags: ["llm", "chat", "openai-compatible", "solana", "base", "singit"],
+    tags: ["llm", "chat", "openai-compatible", "inference", "claude", "gpt", "gemini", "deepseek", "pay-per-use",
+           "solana", "base", "singit"],
     extensions: {
       ...declareEip2612GasSponsoringExtension(),
       ...declareDiscoveryExtension({
         bodyType: "json",
         input: EXAMPLE.input,
         inputSchema: INPUT_SCHEMA,
-        output: { example: EXAMPLE.output },
+        output: { example: EXAMPLE.output, schema: OUTPUT_SCHEMA },
       }),
     },
   }, { ...route, offerEmptyProbe: true });
