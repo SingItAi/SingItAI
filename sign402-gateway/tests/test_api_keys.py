@@ -180,7 +180,6 @@ class PublicApiTests(Fixture):
                                                     body={}), 401),
             "a made-up key": (lambda: self.ask("sk_singit_" + "x" * 43), 401),
             "a browser": (lambda: self.ask(made["key"], origin="https://evil.test"), 403),
-            "streaming": (lambda: self.ask(made["key"], {"stream": True, "messages": []}), 400),
             "tools": (lambda: self.ask(made["key"], {"tools": [{}], "messages": []}), 400),
             "an unknown path": (lambda: self.api.keys.public("POST", "/embeddings", authorization=f"Bearer {made['key']}",
                                                              origin=None, body={}), 404),
@@ -190,6 +189,23 @@ class PublicApiTests(Fixture):
                 attempt()
             self.assertEqual(caught.exception.status, status)
         self.assertEqual(self.shop.calls, [])
+
+    def test_streaming_clients_get_the_whole_answer_as_openai_chunks(self):
+        made = self.make_key()
+        status, out, headers = self.ask(made["key"], {"model": "claude-opus-5.5", "stream": True,
+                                                     "stream_options": {"include_usage": True},
+                                                     "messages": [{"role": "user", "content": "Hello!"}]})
+        self.assertEqual((status, type(out).__name__), (200, "Stream"))
+        events = [line[len("data: "):] for line in out.decode().split("\n\n") if line]
+        self.assertEqual(events[-1], "[DONE]")
+        chunks = [json.loads(e) for e in events[:-1]]
+        self.assertEqual({c["object"] for c in chunks}, {"chat.completion.chunk"})
+        self.assertEqual(chunks[0]["choices"][0]["delta"], {"role": "assistant", "content": "Hello!"})
+        self.assertEqual(chunks[1]["choices"][0]["finish_reason"], "stop")
+        self.assertEqual(chunks[2]["usage"]["total_tokens"], 12)
+        self.assertEqual(headers["X-SingIt-Charged-Atomic"], "7100")
+        _, plain, _ = self.ask(made["key"], {"stream": True, "messages": [{"role": "user", "content": "Hi"}]})
+        self.assertEqual(len([e for e in plain.decode().split("\n\n") if e]), 3, "usage only when asked for")
 
     def test_an_expired_key_stops(self):
         made = self.make_key(days=1)
@@ -258,6 +274,16 @@ class PublicHttpTests(Fixture):
                                                          "messages": [{"role": "user", "content": long_question}]})
         self.assertEqual((status, out["choices"][0]["message"]["content"]), (200, "Hello!"))
         self.assertEqual(self.request("/models")[1]["data"][0]["id"], "claude-opus-5.5")
+
+    def test_streaming_over_http_is_server_sent_events(self):
+        request = urllib.request.Request(self.base + "/chat/completions", data=json.dumps({
+            "stream": True, "messages": [{"role": "user", "content": "Hi"}]}).encode(), headers={
+            "Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            self.assertEqual(response.headers.get_content_type(), "text/event-stream")
+            text = response.read().decode()
+        self.assertTrue(text.startswith("data: {"))
+        self.assertTrue(text.endswith("data: [DONE]\n\n"))
 
     def test_errors_keep_openai_shape(self):
         status, out = self.request("/chat/completions", {"messages": []}, {"Authorization": "Bearer nope"})

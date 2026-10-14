@@ -16,6 +16,7 @@ The key itself is shown once and stored only as a hash (web_accounts.WebAccountS
 
 from __future__ import annotations
 
+import json
 import re
 import secrets
 import threading
@@ -194,9 +195,7 @@ class ApiKeys:
         raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions and GET /v1/models.",
                        code="not_found")
 
-    def _chat(self, row, body: Mapping[str, Any]) -> tuple[int, dict[str, Any], dict[str, str]]:
-        if body.get("stream"):
-            raise ApiError(400, "Streaming is not offered yet; send stream: false.", code="stream_unsupported")
+    def _chat(self, row, body: Mapping[str, Any]) -> tuple[int, Any, dict[str, str]]:
         if body.get("tools") or body.get("functions"):
             raise ApiError(400, "Tools are not offered yet.", code="tools_unsupported")
         key_id, account = row["key_id"], row["account_id"]
@@ -235,7 +234,32 @@ class ApiKeys:
             "billing": {**(reply.get("billing") or {}), "chargedAtomic": cost, "txId": tx or None,
                         "paidFrom": "your SingIt limits"},
         }
-        return 200, out, {"X-SingIt-Charged-Atomic": str(cost)}
+        headers = {"X-SingIt-Charged-Atomic": str(cost)}
+        if body.get("stream"):
+            options = body.get("stream_options") if isinstance(body.get("stream_options"), dict) else {}
+            return 200, Stream(sse(out, include_usage=bool(options.get("include_usage")))), headers
+        return 200, out, headers
+
+
+class Stream(bytes):
+    """A finished answer, sent as OpenAI's server-sent events (text/event-stream)."""
+
+
+def sse(answer: Mapping[str, Any], *, include_usage: bool = False) -> bytes:
+    """One answer as the chunks OpenAI streams: the role and text, then why it stopped, then (asked for) the usage,
+    then [DONE]. The answer is whole before the first chunk: SingIt Ask pays for an answer once it came back, so
+    clients that only speak streaming get it all at once rather than word by word."""
+    base = {"id": answer["id"], "object": "chat.completion.chunk", "created": answer["created"], "model": answer["model"]}
+    choice = answer["choices"][0]
+    chunks = [
+        {**base, "choices": [{"index": 0, "delta": {"role": "assistant", "content": choice["message"]["content"]},
+                              "finish_reason": None}]},
+        {**base, "choices": [{"index": 0, "delta": {}, "finish_reason": choice["finish_reason"]}],
+         "billing": answer["billing"]},
+    ]
+    if include_usage:
+        chunks.append({**base, "choices": [], "usage": answer["usage"]})
+    return "".join(f"data: {json.dumps(c)}\n\n" for c in chunks).encode() + b"data: [DONE]\n\n"
 
 
 def _api_error(status: int, reply: Mapping[str, Any]) -> ApiError:

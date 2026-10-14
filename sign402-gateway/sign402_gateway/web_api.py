@@ -48,7 +48,7 @@ from .agent_allowance import AllowanceError, AllowanceService, AllowanceUnavaila
 from .web_accounts import (
     DEFAULT_WEB_DB, SESSION_SECONDS, WEB_DB_ENV, WebAccountStore, WebAuth, WebAuthError, chain_of_account,
 )
-from .web_api_keys import ApiError, ApiKeys
+from .web_api_keys import ApiError, ApiKeys, Stream
 
 logger = logging.getLogger(__name__)
 
@@ -560,6 +560,21 @@ class WebHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             logger.info("web api: %s: the page left before its answer", self.path.partition("?")[0])
 
+    def _send_stream(self, status: int, data: bytes, headers: Mapping[str, str] | None = None) -> None:
+        """Server-sent events, whole: the answer is complete before the first byte (web_api_keys.sse)."""
+        self.send_response(status)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        for key, value in (headers or {}).items():
+            self.send_header(key, value)
+        self.send_header("Content-Length", str(len(data)))
+        try:
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
     def do_OPTIONS(self) -> None:
         origin = self.headers.get("Origin")
         if origin != self.server.cors_origin:
@@ -654,7 +669,10 @@ class WebHandler(BaseHTTPRequestHandler):
             status, out, headers = self.server.api.keys.public(
                 method, path[len(API_PREFIX):], authorization=self.headers.get("Authorization"),
                 origin=self.headers.get("Origin"), body=body)
-            self._send(status, out, headers)
+            if isinstance(out, Stream):
+                self._send_stream(status, out, headers)
+            else:
+                self._send(status, out, headers)
         except ApiError as error:
             self.close_connection = True
             self._send(error.status, error.body())
