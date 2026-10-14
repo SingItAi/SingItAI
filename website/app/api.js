@@ -122,4 +122,8 @@ export const api = {
   pushSubscribe: (subscription) => call("POST", "/push/subscribe", { subscription }),
   pushUnsubscribe: (endpoint) => call("POST", "/push/unsubscribe", { endpoint }),
   pushTest: () => call("POST", "/push/test"),
+  apiKeys: () => call("GET", "/api-keys"),
+  apiKeyPrepare: (terms) => call("POST", "/api-keys/prepare", terms),
+  apiKeyCreate: (message, signature) => call("POST", "/api-keys", { message, signature }),
+  apiKeyRevoke: (id) => call("POST", "/api-keys/revoke", { id }),
 };

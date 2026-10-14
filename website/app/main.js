@@ -229,7 +229,7 @@ const accountState = () => ({
   allowance: null, quote: null, result: null, purchases: null, linkCode: null, revealed: {}, tab: "allowance",
   modal: null, view: "chat", chats: [], chatId: null, messages: [], done: {}, chatMenu: null, renaming: null,
   showArchived: false, models: null, accountMenu: null, usage: null, push: null, menuOpen: false, switching: false,
-  modelFilter: { query: "", category: "" },
+  modelFilter: { query: "", category: "" }, keys: null, newKey: null,
 });
 
 // -- switching wallets --
@@ -1072,13 +1072,15 @@ function renderSidebar() {
   $("#app").classList.toggle("menu-open", state.menuOpen);
   $("#top-title").textContent = state.view === "chat"
     ? (state.chats.find((c) => c.id === state.chatId)?.title || "New chat")
-    : { allowance: "Allowance", purchases: "Purchases", telegram: "Telegram", usage: "Usage", settings: "Settings" }[state.view];
+    : { allowance: "Allowance", purchases: "Purchases", telegram: "Telegram", usage: "Usage", settings: "Settings",
+        keys: "API keys" }[state.view];
 }
 
 function renderMain() {
   const host = $("#main");
   if (state.view !== "chat") {
     const page = { allowance: renderAllowance, purchases: renderPurchases, usage: renderUsage, settings: renderSettings,
+                   keys: renderKeys,
                    telegram: () => `<div class="page-head"><span class="eyebrow">Telegram</span><h1>Your agent in <em>Telegram</em>.</h1></div>${renderTelegram()}` }[state.view];
     host.innerHTML = `<div class="pane"><div class="pane-inner">${page()}</div></div>`;
     return;
@@ -1503,9 +1505,94 @@ function renderSettings() {
       ${notificationSetting()}
       <div class="setting"><div><h3>Allowance</h3><p class="faint">Your limits, approvals and emergency stop.</p></div>
         <button class="btn btn-ghost btn-sm" data-action="go" data-view="allowance">Open</button></div>
+      <div class="setting"><div><h3>API keys</h3><p class="faint">Ask any model from your own code with an OpenAI SDK, paid from your limits.</p></div>
+        <button class="btn btn-ghost btn-sm" data-action="go" data-view="keys">Manage</button></div>
       <div class="setting"><div><h3>Wallet</h3><p class="faint mono">${esc(state.session.address)}</p></div>
         <button class="btn btn-ghost btn-sm" data-action="sign-out">Sign out</button></div>
     </div></div>`;
+}
+
+// -- API keys (sign402_gateway/web_api_keys.py): code that pays from this account's own limits --
+
+const API_BASE = () => `${location.origin}/v1`;
+
+function keyExample(key) {
+  return `from openai import OpenAI
+
+client = OpenAI(base_url="${API_BASE()}", api_key="${key}")
+answer = client.chat.completions.create(
+    model="claude-opus-5.5",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(answer.choices[0].message.content)`;
+}
+
+function renderKeys() {
+  if (!state.keys) {
+    queueMicrotask(async () => {
+      try { state.keys = await api.apiKeys(); } catch (error) { state.keys = { failed: explain(error), keys: [] }; }
+      if (state.view === "keys") render();
+    });
+    return `<div class="page-head"><span class="eyebrow">Developers</span><h1>API <em>keys</em>.</h1></div>
+      <p class="faint">Loading…</p>`;
+  }
+  const a = state.allowance;
+  const ready = a?.configured && (a.state === "granted" || a.state === undefined);
+  const when = (ts) => ts ? new Date(ts * 1000).toLocaleDateString() : "never";
+  const money = (x) => `$${Number(x).toLocaleString("en-US", { maximumFractionDigits: 4 })}`;
+  const fresh = state.newKey ? `
+    <div class="bezel" style="margin-top:18px"><div class="core">
+      <h3>Copy your key now</h3>
+      <p class="faint">It is shown this once. SingIt keeps only a fingerprint of it.</p>
+      <div class="key-box"><code class="mono" id="new-key">${esc(state.newKey)}</code>
+        <button class="btn btn-primary btn-sm" data-action="copy-key">Copy</button></div>
+      <p class="faint" style="margin-top:14px">Use it with any OpenAI SDK:</p>
+      <pre class="key-code"><code>${esc(keyExample(state.newKey))}</code></pre>
+      <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-action="hide-key">I saved it</button></div>
+    </div></div>` : "";
+  const rows = (state.keys.keys || []).map((k) => `
+    <div class="usage-row key-row">
+      <span><b>${esc(k.name)}</b> <span class="mono faint">${esc(k.prefix)}…</span>
+        <span class="faint">· ${k.state === "active" ? `${money(k.spentTodayUsd)} of ${money(k.dailyCapUsd)} today · up to ${money(k.perRequestCapUsd)} an answer · until ${when(k.expiresAt)} · last used ${when(k.lastUsedAt)}` : esc(k.state)}</span></span>
+      ${k.state === "active" ? `<button class="btn btn-ghost btn-sm" data-action="revoke-key" data-id="${esc(k.id)}" data-name="${esc(k.name)}">Revoke</button>` : ""}
+    </div>`).join("");
+  return `
+    <div class="page-head"><span class="eyebrow">Developers</span><h1>API <em>keys</em>.</h1>
+      <p>Point any OpenAI SDK at <span class="mono">${esc(API_BASE())}</span> with a key. Each answer is paid from your own limits; the key can do nothing else.</p></div>
+    ${state.keys.failed ? `<p class="note warn">${esc(state.keys.failed)}</p>` : ""}
+    ${ready ? "" : `<p class="note warn">Keys pay from your allowance. Set your limits and approve them first.
+      <button class="btn btn-ghost btn-sm" data-action="go" data-view="allowance">Open Allowance</button></p>`}
+    ${fresh}
+    <div class="bezel" style="margin-top:18px"><div class="core">
+      <h3>Create a key</h3>
+      <p class="faint">Your wallet signs the exact terms. A key never spends more than its own limits, nor more than your allowance.</p>
+      <div class="field" style="margin-top:12px"><label for="key-name">Name</label><input class="input" id="key-name" maxlength="40" placeholder="My bot"></div>
+      <div class="fields" style="margin-top:12px">
+        <div class="field"><label for="key-daily">A day, USDC</label><input class="input" id="key-daily" inputmode="decimal" value="5"></div>
+        <div class="field"><label for="key-per">Per answer, USDC</label><input class="input" id="key-per" inputmode="decimal" value="0.25"></div>
+        <div class="field"><label for="key-days">Lasts, days</label><input class="input" id="key-days" type="number" min="1" max="365" value="90"></div>
+      </div>
+      <div class="row" style="margin-top:22px"><button class="btn btn-primary" data-action="create-key">Create key</button></div>
+    </div></div>
+    <div class="bezel" style="margin-top:18px"><div class="core">
+      <h3>Your keys</h3>
+      <div class="usage-rows">${rows || `<p class="faint">No keys yet.</p>`}</div>
+    </div></div>`;
+}
+
+async function createKey() {
+  const terms = { name: $("#key-name").value.trim(), dailyUsd: Number($("#key-daily").value),
+                  perRequestUsd: Number($("#key-per").value), days: Number($("#key-days").value) };
+  if (!terms.name) { toast("Name the key first.", true); return; }
+  await busy("Sign the key's terms in your wallet. It does not move any funds.", async () => {
+    const wallet = await needWallet();
+    const prepared = await api.apiKeyPrepare(terms);
+    const signature = await wallet.signMessage(prepared.message);
+    const made = await api.apiKeyCreate(prepared.message, signature);
+    state.newKey = made.key;
+    state.keys = await api.apiKeys();
+  });
+  render();
 }
 
 function setReplyLang(code) {
@@ -1762,6 +1849,17 @@ async function finishRename(input, save) {
 // -- events --
 
 const actions = {
+  "create-key": createKey,
+  "copy-key": async () => {
+    try { await navigator.clipboard.writeText(state.newKey || ""); toast("Key copied."); }
+    catch { toast("Select the key and copy it.", true); }
+  },
+  "hide-key": () => { state.newKey = null; render(); },
+  "revoke-key": async (el) => {
+    if (!confirm(`Revoke "${el.dataset.name}"? Code using it stops at once.`)) return;
+    await busy("Revoking…", async () => { await api.apiKeyRevoke(el.dataset.id); state.keys = await api.apiKeys(); });
+    render();
+  },
   connect: connectWallet,
   "connect-injected": (el) => { state.modal = null; connectInjected(el.dataset.uuid); },
   account: () => (state.session ? signOut() : connectWallet()),
@@ -1947,6 +2045,7 @@ const actions = {
     state.accountMenu = null;
     if (state.view === "usage") state.usage = null;
     if (state.view === "purchases") state.purchases = null;
+    if (state.view === "keys") { state.keys = null; state.newKey = null; }
     render();
     if (state.view === "settings") loadPush().then(() => { if (state.view === "settings") render(); });
   },

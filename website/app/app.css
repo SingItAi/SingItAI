@@ -601,3 +601,12 @@ details.card summary { cursor: pointer; color: var(--text-soft); }
 .code-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .code-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .code-value { font-size: 16px; letter-spacing: 0.04em; color: var(--ink); overflow-wrap: anywhere; user-select: all; }
+
+/* API keys (Settings → API keys) */
+.key-box { display: flex; gap: 10px; align-items: center; margin-top: 12px; padding: 12px 14px; background: var(--bone);
+  border-radius: var(--r-wash); }
+.key-box code { flex: 1; overflow-x: auto; white-space: nowrap; font-size: 13px; }
+.key-code { margin: 8px 0 0; padding: 14px 16px; background: var(--obsidian, #1a1919); color: #fff; border-radius: var(--r-wash);
+  overflow-x: auto; font-size: 12px; line-height: 1.6; }
+.key-row { align-items: center; }
+.key-row b { font-weight: 400; }

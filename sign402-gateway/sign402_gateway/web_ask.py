@@ -190,7 +190,6 @@ def _payment_context(messages: list[dict[str, str]], account: str, label: str = 
 
 
 def chat(server: Any, gw: Any, account: str, raw_messages: Any, context: Any = None) -> tuple[int, dict[str, Any]]:
-    from .web_internal import _limits_from_limiter
     from .web_venice import _messages, _with_data
 
     if not account.startswith(("wallet:", "solana:")):
@@ -206,22 +205,38 @@ def chat(server: Any, gw: Any, account: str, raw_messages: Any, context: Any = N
         messages.pop(1 if messages[0]["role"] == "system" else 0)
     if size() > 24000:
         raise ValueError("This question is too long for SingIt Ask. Shorten it and try again; nothing was paid.")
+    return 200, _paid_answer(server, gw, account, messages, current(server, account))
+
+
+def _paid_answer(server: Any, gw: Any, account: str, messages: list[dict[str, str]], model_id: str, *,
+                 max_tokens: int = MAX_TOKENS, limit: int | None = None) -> dict[str, Any]:
+    """One answer from `model_id`, paid from the account's own limits. `limit` lowers the most one answer may be
+    authorized for below the account's own (an API key's per-request cap); an answer that cannot fit it is refused
+    before anything is signed."""
+    from .web_internal import _limits_from_limiter
+
     if not account.startswith("solana:"):
         _limits_from_limiter(server, gw, account)
     gw._enforce_user_purchase_rate(account)
     server.user_event_store.preflight_write()
     payer = ask_solana if account.startswith("solana:") else ask_metered
-    label, surplus_id, info = _described(current(server, account))
-    max_tokens = MAX_TOKENS
+    label, surplus_id, info = _described(model_id)
+    own = _per_answer_limit(server, account)
+    fit = min((x for x in (own, limit) if x is not None), default=None)
+    tokens = max_tokens
     kwargs: dict[str, Any] = {}
     if info is not None:
         chars = sum(len(m["content"].encode("utf-16-le")) // 2 for m in messages)
-        def ceiling(tokens: int) -> int:
-            return ask_catalogue.ceiling(info, chars, tokens, markup_bps=ask_metered.MARKUP_BPS, fee=ask_metered.FEE)
-        max_tokens = _fit_tokens(ceiling, _per_answer_limit(server, account))
-        kwargs["cap"] = ceiling(max_tokens)
+        def ceiling(n: int) -> int:
+            return ask_catalogue.ceiling(info, chars, n, markup_bps=ask_metered.MARKUP_BPS, fee=ask_metered.FEE)
+        tokens = min(max_tokens, _fit_tokens(ceiling, fit))
+        kwargs["cap"] = ceiling(tokens)
+    needed = int(kwargs.get("cap", getattr(payer, "CAP", PRICE)))
+    if limit is not None and needed > limit:
+        raise AllowanceError(f"An answer from this model needs permission for up to {needed / 1_000_000:.4f} USDC; "
+                             f"this key allows {limit / 1_000_000:.4f} per answer. Nothing was paid.")
     amount, data, tx = payer.pay(server, gw, account,
-                                {"model": surplus_id or MODEL, "messages": messages, "max_tokens": max_tokens}, **kwargs)
+                                {"model": surplus_id or MODEL, "messages": messages, "max_tokens": tokens}, **kwargs)
     # Never retry a paid request on a missing or malformed answer.
     choices = data.get("choices") if isinstance(data, dict) else None
     first = choices[0] if isinstance(choices, list) and choices else None
@@ -230,9 +245,61 @@ def chat(server: Any, gw: Any, account: str, raw_messages: Any, context: Any = N
     if not isinstance(text, str) or not text.strip():
         raise AllowanceError("The paid response contained no answer. Do not pay again until its settlement is checked.")
     used = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-    def tokens(key: str) -> int:
+    def count(key: str) -> int:
         value = used.get(key)
         return value if type(value) is int and value >= 0 else 0
-    return 200, {"ok": True, "text": text, "model": current(server, account), "modelLabel": label,
-                 "costAtomic": amount, "billingMode": "actual_usage", "billing": data.get("billing"), "txId": tx,
-                 "promptTokens": tokens("prompt_tokens"), "completionTokens": tokens("completion_tokens")}
+    return {"ok": True, "text": text, "model": model_id, "modelLabel": label, "costAtomic": amount,
+            "billingMode": "actual_usage", "billing": data.get("billing"), "txId": tx,
+            "finishReason": first.get("finish_reason") or "stop",
+            "promptTokens": count("prompt_tokens"), "completionTokens": count("completion_tokens")}
+
+
+API_ROLES = ("system", "user", "assistant")
+API_MAX_MESSAGES = 40
+API_MAX_CHARS = 24000  # the merchant's limit, in UTF-16 code units
+
+
+def api_model(requested: Any) -> str | None:
+    """The Ask model an API caller names: the default, "ask:<id>", or a plain id from GET /v1/models.
+    None when no such model can be answered now."""
+    if requested in (None, "", MODEL):
+        return MODEL
+    if not isinstance(requested, str) or len(requested) > 160:
+        return None
+    model_id = requested if requested.startswith(ask_catalogue.PREFIX) else ask_catalogue.PREFIX + requested
+    if model_id[len(ask_catalogue.PREFIX):] == ask_catalogue.default_id():
+        return MODEL
+    return model_id if ask_catalogue.resolve(model_id[len(ask_catalogue.PREFIX):]) is not None else None
+
+
+def _api_messages(raw: Any) -> list[dict[str, str]]:
+    """OpenAI chat messages, text only: a string, or a list of text parts."""
+    if not isinstance(raw, list) or not 1 <= len(raw) <= API_MAX_MESSAGES:
+        raise ValueError(f"Send 1 to {API_MAX_MESSAGES} messages.")
+    out = []
+    for item in raw:
+        role = item.get("role") if isinstance(item, dict) else None
+        content = item.get("content") if isinstance(item, dict) else None
+        if isinstance(content, list):
+            parts = [p.get("text") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+            if len(parts) != len(content) or not all(isinstance(x, str) for x in parts):
+                raise ValueError("Only text messages are answered here.")
+            content = "\n".join(parts)
+        if role not in API_ROLES or not isinstance(content, str):
+            raise ValueError("Each message needs a role (system, user or assistant) and text content.")
+        out.append({"role": role, "content": content})
+    if sum(len(m["content"].encode("utf-16-le")) // 2 for m in out) > API_MAX_CHARS:
+        raise ValueError(f"Keep the messages under {API_MAX_CHARS} characters in all. Nothing was paid.")
+    return out
+
+
+def api_chat(server: Any, gw: Any, account: str, raw_messages: Any, model_id: str, *,
+             max_tokens: Any = None, limit: int | None = None) -> dict[str, Any]:
+    """An answer for an API key: the caller's own messages, unchanged and without the web chat's instructions."""
+    if not account.startswith(("wallet:", "solana:")):
+        raise AllowanceUnavailable("Unsupported account network. No payment was attempted.")
+    if getattr(gw, "_purchases_paused", lambda: False)():
+        raise AllowanceUnavailable("Payments are paused. No payment was attempted.")
+    messages = _api_messages(raw_messages)
+    tokens = max_tokens if type(max_tokens) is int and max_tokens > 0 else MAX_TOKENS
+    return _paid_answer(server, gw, account, messages, model_id, max_tokens=min(tokens, MAX_TOKENS), limit=limit)

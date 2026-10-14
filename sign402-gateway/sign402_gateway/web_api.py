@@ -48,6 +48,7 @@ from .agent_allowance import AllowanceError, AllowanceService, AllowanceUnavaila
 from .web_accounts import (
     DEFAULT_WEB_DB, SESSION_SECONDS, WEB_DB_ENV, WebAccountStore, WebAuth, WebAuthError, chain_of_account,
 )
+from .web_api_keys import ApiError, ApiKeys
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,8 @@ COOKIE = "singit_session"
 CSRF_HEADER = "X-SingIt-CSRF"
 ACCOUNT_HEADER = "X-SingIt-Account"
 MAX_BODY = 16 * 1024
+API_PREFIX = "/v1"            # the OpenAI-compatible API that API keys open (web_api_keys.py)
+API_MAX_BODY = 160 * 1024     # a question may be 24,000 characters, several bytes each
 REQUEST_READ_SECONDS = 15
 DEFAULT_PORT = 8130
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -176,6 +179,8 @@ class WebApi:
         self.link_by_account = RateLimit(10, 3600)
         self.push = None  # web_push.WebPush, when SIGN402_WEB_PUSH_VAPID_KEY is set
         self.push_by_account = RateLimit(20, 3600)
+        self.keys_by_account = RateLimit(20, 3600)
+        self.keys = ApiKeys(self, now=now)
 
     def handle(self, method: str, path: str, *, token: str, csrf: str | None, body: dict[str, Any],
                client: str, expected_account: str | None = None) -> tuple[int, dict[str, Any], dict[str, str]]:
@@ -230,6 +235,8 @@ class WebApi:
             return 200, {"telegramLinked": False}, {}
         if path.startswith("/push/"):
             return self._push(method, path, account, body)
+        if path == "/api-keys" or path.startswith("/api-keys/"):
+            return self.keys.manage(method, path, account, owner, body)
         if path == "/chats" or path.startswith("/chats/"):
             return self._chats(method, path, account, body)
         if method == "GET" and path == "/usage":
@@ -479,7 +486,7 @@ class WebHandler(BaseHTTPRequestHandler):
         super().setup()
         self.connection.settimeout(REQUEST_READ_SECONDS)
 
-    def _json_body(self) -> dict[str, Any]:
+    def _json_body(self, limit: int = MAX_BODY) -> dict[str, Any]:
         # This server does not decode transfer encodings. Never accept ambiguous
         # framing, signed lengths, or duplicate headers, even if they agree.
         lengths = self.headers.get_all("Content-Length", [])
@@ -489,7 +496,7 @@ class WebHandler(BaseHTTPRequestHandler):
         if not re.fullmatch(r"[0-9]+", value):
             raise WebError(400, "bad_length", "Invalid request length.")
         digits = value.lstrip("0") or "0"
-        if len(digits) > len(str(MAX_BODY)) or int(digits) > MAX_BODY:
+        if len(digits) > len(str(limit)) or int(digits) > limit:
             raise WebError(413, "too_large", "Request too large.")
         length = int(digits)
         deadline = time.monotonic() + REQUEST_READ_SECONDS
@@ -571,6 +578,9 @@ class WebHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        if self.path.startswith(API_PREFIX + "/"):
+            self._public("GET")
+            return
         if not self.path.startswith(PREFIX + "/") and self.server.static_root is not None:
             self._static()
             return
@@ -624,7 +634,35 @@ class WebHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def do_POST(self) -> None:
+        if self.path.startswith(API_PREFIX + "/"):
+            self._public("POST")
+            return
         self._dispatch("POST")
+
+    def _public(self, method: str) -> None:
+        """/v1: code holding an API key. Errors keep OpenAI's shape so SDKs show them as they are."""
+        path = self.path.partition("?")[0]
+        try:
+            body: dict[str, Any] = {}
+            if method == "POST":
+                if self.headers.get_content_type() != "application/json":
+                    raise ApiError(415, "Send JSON.", code="json_only")
+                try:
+                    body = self._json_body(API_MAX_BODY)
+                except WebError as error:
+                    raise ApiError(error.status, error.message, code=error.code) from None
+            status, out, headers = self.server.api.keys.public(
+                method, path[len(API_PREFIX):], authorization=self.headers.get("Authorization"),
+                origin=self.headers.get("Origin"), body=body)
+            self._send(status, out, headers)
+        except ApiError as error:
+            self.close_connection = True
+            self._send(error.status, error.body())
+        except WebError as error:
+            self._send(error.status, ApiError(error.status, error.message, type_="api_error", code=error.code).body())
+        except Exception:
+            logger.exception("web api: %s %s failed", method, path)
+            self._send(500, ApiError(500, "Something went wrong on our side.", type_="api_error").body())
 
     def _dispatch(self, method: str) -> None:
         path, _, query = self.path.partition("?")
