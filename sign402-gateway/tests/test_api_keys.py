@@ -201,7 +201,7 @@ class PublicApiTests(Fixture):
     def test_the_gateways_refusals_keep_their_words_in_openai_shape(self):
         made = self.make_key()
         for reply, (status, code) in {
-            (403, "not_enabled"): (403, "limits_not_ready"),
+            (403, "not_enabled"): (403, "payment_not_ready"),
             (404, "model_not_found"): (404, "model_not_found"),
             (400, "refused"): (400, "refused"),
             (429, "rate_limited"): (429, "rate_limit_exceeded"),
@@ -304,6 +304,13 @@ class GatewaySideTests(unittest.TestCase):
             web_ask.api_chat(self.server, self.gw, self.ACCOUNT, [{"role": "user", "content": "Hi"}],
                              web_ask.MODEL, limit=2000)  # the default model is authorized for up to 3000
         self.pay.assert_not_called()
+
+    def test_the_wallet_singit_ask_is_paid_to_cannot_pay_itself(self):
+        from sign402_gateway import ask_solana
+        with self.assertRaises(AllowanceError) as caught:
+            web_ask.api_chat(self.server, self.gw, "solana:" + ask_solana.PAY_TO, [{"role": "user", "content": "Hi"}],
+                             web_ask.MODEL)
+        self.assertIn("cannot pay itself", str(caught.exception))
 
     def test_model_names(self):
         with patch.object(web_ask.ask_catalogue, "default_id", return_value="deepseek-v4.1-flash"), \

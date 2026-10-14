@@ -188,9 +188,15 @@ def recover(server, account):
             _recover(lane, account, journal, checkpoint)
 
 
+SELF_PAY = ("This wallet is the one SingIt Ask is paid to, and a wallet cannot pay itself. "
+            "Sign in with another wallet to ask paid models. Nothing was paid.")
+
+
 def pay(server, gw, account, body, cap=CAP):
     if not account.startswith("solana:"):
         raise AllowanceUnavailable("A Solana account is required. No Base fallback is available.")
+    if account[len("solana:"):] == PAY_TO:  # the merchant refuses it too (invalid_identity), only without saying why
+        raise AllowanceError(SELF_PAY)
     lane = getattr(server, "solana_allowance", None)
     if lane is None:
         raise AllowanceUnavailable("Solana allowance payments are not configured.")

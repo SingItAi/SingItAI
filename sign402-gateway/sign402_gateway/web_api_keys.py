@@ -245,7 +245,7 @@ def _api_error(status: int, reply: Mapping[str, Any]) -> ApiError:
     if status == 404 or error == "model_not_found":
         return ApiError(404, text, code="model_not_found")
     if status == 403:  # the account's limits are not set, approved or active
-        return ApiError(403, text, type_="insufficient_quota", code="limits_not_ready")
+        return ApiError(403, text, type_="insufficient_quota", code="payment_not_ready")
     if status == 429:
         return ApiError(429, text, type_="rate_limit_error", code="rate_limit_exceeded")
     if status == 503:
