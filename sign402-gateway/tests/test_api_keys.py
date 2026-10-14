@@ -266,7 +266,8 @@ class PublicHttpTests(Fixture):
             with urllib.request.urlopen(request, timeout=10) as response:
                 return response.status, json.loads(response.read())
         except urllib.error.HTTPError as error:
-            return error.code, json.loads(error.read())
+            with error:  # closed here: an unclosed one warns later, inside whichever test is running
+                return error.code, json.loads(error.read())
 
     def test_chat_completions_and_models(self):
         long_question = "x" * 20_000  # larger than the web page's own 16 KB requests
@@ -358,6 +359,16 @@ class GatewaySideTests(unittest.TestCase):
             web_internal.handle(self.server, "api-chat", {"account": self.ACCOUNT, "messages": [], "limitAtomic": 250_000,
                                                           "maxTokens": 99})
         self.assertEqual(chat.call_args.kwargs, {"max_tokens": 99, "limit": 250_000})
+
+
+def tearDownModule():
+    # Collect this module's garbage here, quietly. On Python 3.13+ an unclosed SQLite connection warns when it
+    # is collected, and a warning printed in the middle of a later test that captures stderr fails that test.
+    import gc
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ResourceWarning)
+        gc.collect()
 
 
 if __name__ == "__main__":
