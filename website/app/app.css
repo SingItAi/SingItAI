@@ -610,3 +610,4 @@ details.card summary { cursor: pointer; color: var(--text-soft); }
   overflow-x: auto; font-size: 12px; line-height: 1.6; }
 .key-row { align-items: center; }
 .key-row b { font-weight: 400; }
+.ledger-amount { flex-shrink: 0; white-space: nowrap; }

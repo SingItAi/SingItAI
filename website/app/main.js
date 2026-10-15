@@ -1505,7 +1505,7 @@ function renderSettings() {
       ${notificationSetting()}
       <div class="setting"><div><h3>Allowance</h3><p class="faint">Your limits, approvals and emergency stop.</p></div>
         <button class="btn btn-ghost btn-sm" data-action="go" data-view="allowance">Open</button></div>
-      <div class="setting"><div><h3>API keys</h3><p class="faint">Ask any model from your own code with an OpenAI SDK, paid from your limits.</p></div>
+      <div class="setting"><div><h3>API keys</h3><p class="faint">Ask any model from your own code, Claude Code or an OpenAI SDK, paid from your limits.</p></div>
         <button class="btn btn-ghost btn-sm" data-action="go" data-view="keys">Manage</button></div>
       <div class="setting"><div><h3>Wallet</h3><p class="faint mono">${esc(state.session.address)}</p></div>
         <button class="btn btn-ghost btn-sm" data-action="sign-out">Sign out</button></div>
@@ -1527,10 +1527,73 @@ answer = client.chat.completions.create(
 print(answer.choices[0].message.content)`;
 }
 
+// Claude Code and the Anthropic SDK, once the balance is on: the same key, Anthropic's format.
+function claudeCodeExample(key) {
+  return `export ANTHROPIC_BASE_URL="${location.origin}"
+export ANTHROPIC_AUTH_TOKEN="${key}"
+export ANTHROPIC_MODEL="claude-sonnet-5.5"
+claude`;
+}
+
+// -- The balance API keys spend (sign402_gateway/web_balance.py): topped up from this account's own limits --
+
+const usdOf = (x) => `$${Number(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+
+function renderBalance() {
+  const b = state.balance;
+  if (!b || b.off) return "";
+  if (b.failed) return `<p class="note warn" style="margin-top:18px">${esc(b.failed)}</p>`;
+  const pending = (b.pendingTopups || []).map((p) => p.state === "uncertain"
+    ? `<p class="note warn" style="margin-top:12px">A top-up of ${usdOf(p.amountUsd)} is being checked. Nothing more is topped up until it is.</p>`
+    : `<p class="note" style="margin-top:12px">Topping up ${usdOf(p.amountUsd)}…</p>`).join("");
+  const kinds = { topup: "Top-up", charge: "Request", refund: "Refund" };
+  const lines = (b.ledger || []).map((l) => `
+    <div class="usage-row">
+      <span>${esc(kinds[l.kind] || l.kind)}${l.model ? ` · <span class="mono">${esc(l.model)}</span>` : ""}
+        <span class="faint">· ${new Date(l.at * 1000).toLocaleString()}${l.kind === "charge" && (l.inputTokens || l.outputTokens)
+          ? ` · ${Number(l.inputTokens || 0).toLocaleString()} in / ${Number(l.outputTokens || 0).toLocaleString()} out` : ""}${l.network ? ` · ${esc(l.network)}` : ""}</span></span>
+      <span class="mono ledger-amount">${l.amountUsd > 0 ? "+" : "−"}${usdOf(Math.abs(l.amountUsd))}</span>
+    </div>`).join("");
+  return `
+    <div class="bezel" style="margin-top:18px"><div class="core">
+      <h3>Balance</h3>
+      <p class="faint">What your keys spend: each request's actual model cost + 30%, nothing per call. When it runs low, your agent tops it up from your limits, one network fee per top-up.</p>
+      <div class="big">${usdOf(b.balanceUsd)}<small>USDC</small></div>
+      <div class="stats">
+        <div class="stat"><div class="label">Available now</div><div class="v">${usdOf(b.availableUsd)}</div></div>
+        <div class="stat"><div class="label">Top-up</div><div class="v">${usdOf(b.topupUsd)}</div></div>
+        <div class="stat"><div class="label">Tops up below</div><div class="v">${usdOf(b.thresholdUsd)}</div></div>
+      </div>
+      ${pending}
+      ${b.refundRequested ? `<p class="note warn" style="margin-top:12px">You asked for your balance back. It is frozen until SingIt sends it to your wallet.</p>` : `
+      <div class="fields" style="margin-top:18px">
+        <div class="field"><label for="bal-now">Top up now, USDC</label><input class="input" id="bal-now" inputmode="decimal" value="${b.topupUsd}"></div>
+        <div class="field"><label for="bal-topup">Each top-up, USDC</label><input class="input" id="bal-topup" inputmode="decimal" value="${b.topupUsd}"></div>
+        <div class="field"><label for="bal-threshold">Top up below, USDC</label><input class="input" id="bal-threshold" inputmode="decimal" value="${b.thresholdUsd}"></div>
+      </div>
+      <div class="row" style="margin-top:16px">
+        <button class="btn btn-primary btn-sm" data-action="balance-topup">Top up now</button>
+        <button class="btn btn-ghost btn-sm" data-action="balance-settings">Save top-up</button>
+        ${b.balanceUsd > 0 ? `<button class="btn btn-ghost btn-sm" data-action="balance-refund">Ask for it back</button>` : ""}
+      </div>`}
+      <h3 style="margin-top:22px">History</h3>
+      <div class="usage-rows">${lines || `<p class="faint">Nothing yet. The first request tops the balance up.</p>`}</div>
+    </div></div>`;
+}
+
+async function loadBalance() {
+  try { state.balance = await api.balance(); }
+  catch (error) {
+    // A server without the balance answers "not enabled": keys then pay per answer, as before.
+    state.balance = error instanceof ApiError && error.status === 400 ? { off: true } : { failed: explain(error) };
+  }
+}
+
 function renderKeys() {
   if (!state.keys) {
     queueMicrotask(async () => {
       try { state.keys = await api.apiKeys(); } catch (error) { state.keys = { failed: explain(error), keys: [] }; }
+      await loadBalance();
       if (state.view === "keys") render();
     });
     return `<div class="page-head"><span class="eyebrow">Developers</span><h1>API <em>keys</em>.</h1></div>
@@ -1548,6 +1611,9 @@ function renderKeys() {
         <button class="btn btn-primary btn-sm" data-action="copy-key">Copy</button></div>
       <p class="faint" style="margin-top:14px">Use it with any OpenAI SDK:</p>
       <pre class="key-code"><code>${esc(keyExample(state.newKey))}</code></pre>
+      ${state.balance && !state.balance.off && !state.balance.failed ? `
+      <p class="faint" style="margin-top:14px">Or in Claude Code (give the key at least $2 per request: a coding agent sends long contexts):</p>
+      <pre class="key-code"><code>${esc(claudeCodeExample(state.newKey))}</code></pre>` : ""}
       <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-action="hide-key">I saved it</button></div>
     </div></div>` : "";
   const rows = (state.keys.keys || []).map((k) => `
@@ -1558,14 +1624,17 @@ function renderKeys() {
     </div>`).join("");
   return `
     <div class="page-head"><span class="eyebrow">Developers</span><h1>API <em>keys</em>.</h1>
-      <p>Point any OpenAI SDK at <span class="mono">${esc(API_BASE())}</span> with a key. Each answer is paid from your own limits; the key can do nothing else.</p></div>
+      <p>${state.balance && !state.balance.off
+        ? `One key for the OpenAI SDK, the Anthropic SDK and Claude Code: <span class="mono">${esc(API_BASE())}</span>. Requests are paid from your SingIt balance, which your agent tops up from your own limits; the key can do nothing else.`
+        : `Point any OpenAI SDK at <span class="mono">${esc(API_BASE())}</span> with a key. Each answer is paid from your own limits; the key can do nothing else.`}</p></div>
     ${state.keys.failed ? `<p class="note warn">${esc(state.keys.failed)}</p>` : ""}
     ${ready ? "" : `<p class="note warn">Keys pay from your allowance. Set your limits and approve them first.
       <button class="btn btn-ghost btn-sm" data-action="go" data-view="allowance">Open Allowance</button></p>`}
     ${fresh}
+    ${renderBalance()}
     <div class="bezel" style="margin-top:18px"><div class="core">
       <h3>Create a key</h3>
-      <p class="faint">Your wallet signs the exact terms. A key never spends more than its own limits, nor more than your allowance.</p>
+      <p class="faint">Your wallet signs the exact terms. A key never spends more than its own limits, nor more than your allowance.${state.balance && !state.balance.off ? " For Claude Code or another coding agent, allow at least $2 per request: they send long contexts." : ""}</p>
       <div class="field" style="margin-top:12px"><label for="key-name">Name</label><input class="input" id="key-name" maxlength="40" placeholder="My bot"></div>
       <div class="fields" style="margin-top:12px">
         <div class="field"><label for="key-daily">A day, USDC</label><input class="input" id="key-daily" inputmode="decimal" value="5"></div>
@@ -1855,6 +1924,26 @@ const actions = {
     catch { toast("Select the key and copy it.", true); }
   },
   "hide-key": () => { state.newKey = null; render(); },
+  "balance-topup": async () => {
+    const amount = Number($("#bal-now").value);
+    if (!(amount >= 1 && amount <= 50)) { toast("Top up between $1 and $50.", true); return; }
+    await busy(`Your agent is buying ${usdOf(amount)} of SingIt credit from your limits…`, async () => {
+      await api.balanceTopup(amount);
+      await loadBalance();
+      toast("Balance topped up.");
+    });
+  },
+  "balance-settings": async () => {
+    await busy("Saving…", async () => {
+      await api.balanceSettings(Number($("#bal-topup").value), Number($("#bal-threshold").value));
+      await loadBalance();
+      toast("Top-up saved.");
+    });
+  },
+  "balance-refund": async () => {
+    if (!confirm(`Ask for your ${usdOf(state.balance.balanceUsd)} back? Your keys stop spending until SingIt sends it to your wallet.`)) return;
+    await busy("Sending your request…", async () => { await api.balanceRefund(); await loadBalance(); });
+  },
   "revoke-key": async (el) => {
     if (!confirm(`Revoke "${el.dataset.name}"? Code using it stops at once.`)) return;
     await busy("Revoking…", async () => { await api.apiKeyRevoke(el.dataset.id); state.keys = await api.apiKeys(); });
@@ -2045,7 +2134,7 @@ const actions = {
     state.accountMenu = null;
     if (state.view === "usage") state.usage = null;
     if (state.view === "purchases") state.purchases = null;
-    if (state.view === "keys") { state.keys = null; state.newKey = null; }
+    if (state.view === "keys") { state.keys = null; state.newKey = null; state.balance = null; }
     render();
     if (state.view === "settings") loadPush().then(() => { if (state.view === "settings") render(); });
   },

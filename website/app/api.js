@@ -126,4 +126,8 @@ export const api = {
   apiKeyPrepare: (terms) => call("POST", "/api-keys/prepare", terms),
   apiKeyCreate: (message, signature) => call("POST", "/api-keys", { message, signature }),
   apiKeyRevoke: (id) => call("POST", "/api-keys/revoke", { id }),
+  balance: () => call("GET", "/balance"),
+  balanceSettings: (topupUsd, thresholdUsd) => call("POST", "/balance/settings", { topupUsd, thresholdUsd }),
+  balanceTopup: (amountUsd) => call("POST", "/balance/topup", { amountUsd }),
+  balanceRefund: () => call("POST", "/balance/refund"),
 };
