@@ -37,7 +37,7 @@ MAX_DAILY_ATOMIC = 1_000_000_000          # $1,000 a day; the account's own limi
 MAX_PER_REQUEST_ATOMIC = 50_000_000       # $50 an answer
 MAX_DAYS = 365
 REQUESTS_PER_MINUTE = 60
-SEARCH_PATHS = ("/exa/search", "/exa/contents")
+SEARCH_PATHS = ("/exa/search", "/exa/contents", "/exa/answer")
 SEARCH_HOLD_ATOMIC = 67_000  # the most one search can cost (web_data.SEARCH_CAP_ATOMIC), held against the daily cap
 NAME = re.compile(r"[\w .,:()'-]{1,40}")
 
@@ -277,8 +277,8 @@ class ApiKeys:
             return self._chat(row, body)
         if self.proxy is not None:
             raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions, /v1/responses, "
-                           "/v1/messages, /v1/exa/search and /v1/exa/contents, and GET /v1/models, /v1/balance and "
-                           "/v1/usage.", code="not_found")
+                           "/v1/messages and /v1/exa/search, /contents and /answer, and GET /v1/models, /v1/balance "
+                           "and /v1/usage.", code="not_found")
         raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions and GET /v1/models.",
                        code="not_found")
 

@@ -506,11 +506,13 @@ class SearchTests(Fixture):
         _, keys, _ = self.call("GET", "/api-keys")
         self.assertEqual(keys["keys"][0]["spentTodayUsd"], 0.0101)
 
-    def test_page_contents_too_and_nothing_else(self):
+    def test_page_contents_and_answers_too_and_nothing_else(self):
         self.search("/exa/contents", {"urls": ["https://x402.org"], "text": True})
         self.assertEqual(self.shop.calls[-1][2]["path"], "/v1/exa/contents")
+        self.search("/exa/answer", {"query": "What is x402?"})
+        self.assertEqual(self.shop.calls[-1][2]["path"], "/v1/exa/answer")
         with self.assertRaises(ApiError) as caught:
-            self.search("/exa/answer")
+            self.search("/exa/research")
         self.assertEqual(caught.exception.status, 404)
 
     def test_a_key_signed_for_answers_only_cannot_search(self):
@@ -561,7 +563,7 @@ class GatewaySearchTests(unittest.TestCase):
 
     def test_what_is_refused_before_paying(self):
         from sign402_gateway import ask_solana
-        for path, body, account in (("/v1/exa/answer", {}, ACCOUNT), ("/v1/exa/search", "x", ACCOUNT),
+        for path, body, account in (("/v1/exa/research", {}, ACCOUNT), ("/v1/exa/search", "x", ACCOUNT),
                                     ("/v1/exa/search", {"query": "x"}, "solana:" + ask_solana.PAY_TO)):
             with self.subTest(path=path, account=account), self.assertRaises(AllowanceError):
                 self.web_data.search(self.server, self.gw, account, path, body)

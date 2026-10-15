@@ -74,7 +74,7 @@ test('another seller, a higher price, an unlisted host or no approval pays nothi
     [{}, { url: 'https://ask.singitai.app/v1/credit', method: 'GET' }, /Unsupported method/],
     [{}, { url: 'https://ask.singitai.app/v1/credit', method: 'POST', body: {}, maxAmount: '50002001' }, /Invalid maximum/],
     [{}, { url: 'https://ask.singitai.app/v1/exa/search', method: 'POST', body: {}, maxAmount: '67001' }, /Invalid maximum/],
-    [{}, { url: 'https://ask.singitai.app/v1/exa/answer', method: 'POST', body: {} }, /Only listed data sellers/],
+    [{}, { url: 'https://ask.singitai.app/v1/exa/research', method: 'POST', body: {} }, /Only listed data sellers/],
   ]) {
     const f = await fixture(options);
     await assert.rejects(f.payments.pay({ ...f.call, ...change }), pattern);

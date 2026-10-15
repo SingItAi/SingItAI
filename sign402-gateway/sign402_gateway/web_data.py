@@ -282,10 +282,11 @@ def pay_once(server: Any, gw: Any, account: str, tool: DataTool, method: str, ur
     return _pay_base(server, gw, account, tool, method, url, body, record=record)
 
 
-# SingIt's own web search and page contents (singit-ask/src/search.mjs): Exa's answer, sold at Exa's price + 30% + the
-# settlement fee and paid to SingIt's revenue address. An API key's search is bought here, from its account's limits.
+# SingIt's own web search, page contents and cited answers (singit-ask/src/search.mjs): Exa's, sold at Exa's list price
+# + 30% + the settlement fee and paid to SingIt's revenue address. An API key's search is bought here, from its
+# account's limits.
 SEARCH_URL = "https://ask.singitai.app"
-SEARCH_PATHS = ("/v1/exa/search", "/v1/exa/contents")
+SEARCH_PATHS = ("/v1/exa/search", "/v1/exa/contents", "/v1/exa/answer")
 SEARCH_CAP_ATOMIC = 67_000  # Exa's dearest request sold there ($0.05) + 30% + Solana's fee; the bridge holds it too
 
 

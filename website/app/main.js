@@ -1638,7 +1638,7 @@ function renderKeyList() {
         <pre class="key-code"><code>${esc(keyExample("sk_singit_…"))}</code></pre>
         ${balanceOn() ? `<p class="faint" style="margin-top:12px">In Claude Code:</p>
         <pre class="key-code"><code>${esc(claudeCodeExample("sk_singit_…"))}</code></pre>
-        <p class="faint" style="margin-top:12px">Web search and page contents, with Exa's SDK. Each search is paid from your wallet within your limits, about $0.01:</p>
+        <p class="faint" style="margin-top:12px">Web search, page contents and cited answers, with Exa's SDK. Each request is paid from your wallet within your limits, about $0.01:</p>
         <pre class="key-code"><code>${esc(exaExample("sk_singit_…"))}</code></pre>` : ""}</details>` : ""}
     </div></div>`;
 }

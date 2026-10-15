@@ -17,17 +17,12 @@
 //                              empty turns free answers off
 //   SINGIT_ASK_FREE_PER_VISITOR, SINGIT_ASK_FREE_PER_DAY  free answers a day per visitor and for everyone together
 //                              (defaults in src/free.mjs)
-//   SINGIT_ASK_SETTLEMENT_KEY  the settlement wallet's private key (Base): turns on /v1/exa/search and /contents,
-//                              which pay Exa from it. SingIt's own small float, topped up by hand (src/search.mjs)
-//   SINGIT_ASK_BASE_RPC        Base RPC for the settlement wallet's balance (https://mainnet.base.org)
+//   SINGIT_ASK_EXA_API_KEY     SingIt's Exa API key: turns on /v1/exa/search, /contents and /answer, resold over x402
+//                              at Exa's list price + 30% (src/search.mjs)
 
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
-import { createPublicClient, http } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { base } from "viem/chains";
 import { createApp } from "./app.mjs";
-import { settlementWallet } from "./search.mjs";
 
 function required(name) {
   const value = String(process.env[name] || "").trim();
@@ -65,14 +60,10 @@ required("CDP_API_KEY_ID"); required("CDP_API_KEY_SECRET");
 const requireCdp = createRequire(new URL("../../cdp-x402-service/package.json", import.meta.url));
 const facilitatorClient = new HTTPFacilitatorClient(requireCdp("@coinbase/x402").facilitator);
 
-const settlementKey = String(process.env.SINGIT_ASK_SETTLEMENT_KEY || "").trim();
-const wallet = settlementKey ? settlementWallet({ account: privateKeyToAccount(settlementKey),
-  publicClient: createPublicClient({ chain: base, transport: http(process.env.SINGIT_ASK_BASE_RPC || "https://mainnet.base.org",
-    { retryCount: 1, timeout: 10000 }) }) }) : null;
-delete process.env.SINGIT_ASK_SETTLEMENT_KEY;  // nothing later in this process reads it from the environment
-if (wallet) console.error(`singit-ask: search on, settlement wallet ${wallet.address}`);
+config.exaKey = String(process.env.SINGIT_ASK_EXA_API_KEY || "").trim() || null;
+if (config.exaKey) console.error("singit-ask: search on (Exa)");
 
-const app = createApp(config, { facilitatorClient, settlementWallet: wallet });
+const app = createApp(config, { facilitatorClient });
 // The model list and its live prices are read now and kept fresh, so no visitor waits for Surplus.
 app.locals.catalogue?.warm().catch(() => { /* the first read retries */ });
 app.listen(port, "127.0.0.1", () => {
