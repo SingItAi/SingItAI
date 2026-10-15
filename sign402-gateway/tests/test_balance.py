@@ -481,6 +481,75 @@ class BoughtBalanceTests(ProxyFixture):
         self.assertEqual([t["amountAtomic"] for t in self.topups], [5_000_000])
 
 
+class ExaTests(ProxyFixture):
+    """Web search, pages and cited answers from Exa, on the same key and balance."""
+
+    def setUp(self):
+        super().setUp()
+        self.exa = Surplus()
+        self.api.keys.proxy.exa = self.exa
+
+    def exa_reply(self, total, **extra):
+        return Response(200, {"requestId": "r1", "results": [{"title": "T", "url": "https://x.test"}],
+                              "costDollars": {"total": total, "search": {"neural": total}}, **extra})
+
+    def test_a_search_is_relayed_in_exas_format_and_charged_its_reported_cost_plus_30(self):
+        self.exa.replies.append(self.exa_reply(0.007))
+        status, relay = self.send("/exa/search", {"query": "x402 facilitators", "numResults": 5,
+                                                  "contents": {"text": {"maxCharacters": 500}}})
+        out = json.loads(self.body_of(relay))
+        self.assertEqual((status, out["results"][0]["url"]), (200, "https://x.test"))
+        self.assertNotIn("costDollars", out)
+        self.assertEqual(out["billing"]["chargedAtomic"], 9100)  # $0.007 + 30%
+        path, sent, _ = self.exa.sent[0]
+        self.assertEqual((path, sent["query"], sent["numResults"]), ("/search", "x402 facilitators", 5))
+        self.assertEqual(self.surplus.sent, [])
+        line = self.balances.ledger(self.account)[0]
+        self.assertEqual((line["model"], line["amount_atomic"], line["cost_atomic"]), ("exa/search", -9100, 7000))
+
+    def test_pages_and_answers_too(self):
+        self.exa.replies.append(self.exa_reply(0.002))
+        self.send("/exa/contents", {"urls": ["https://a.test", "https://b.test"], "text": True})
+        self.exa.replies.append(Response(200, {"answer": "42", "citations": [], "costDollars": {"total": 0.005}}))
+        _, relay = self.send("/exa/answer", {"query": "meaning of life?"})
+        self.assertEqual(json.loads(self.body_of(relay))["answer"], "42")
+        self.assertEqual([p for p, _, _ in self.exa.sent], ["/contents", "/answer"])
+        self.assertEqual([l["amount_atomic"] for l in self.balances.ledger(self.account)][:2], [-6500, -2600])
+
+    def test_what_is_refused_before_anything_is_paid(self):
+        for path, body in (("/exa/search", {}), ("/exa/search", {"query": "x", "type": "research"}),
+                           ("/exa/search", {"query": "x", "numResults": 500}), ("/exa/contents", {"urls": []}),
+                           ("/exa/answer", {"query": "x", "model": "exa-research"})):
+            with self.subTest(path=path, body=body), self.assertRaises(ApiError) as caught:
+                self.send(path, body)
+            self.assertEqual(caught.exception.status, 400)
+        with self.store._db() as db:
+            db.execute("UPDATE api_keys SET per_request_cap_atomic = 250000")  # the default key's $0.25
+        with self.assertRaises(ApiError) as caught:  # up to $0.40 at Exa, $0.52 with the markup
+            self.send("/exa/search", {"query": "x", "numResults": 100,
+                                      "contents": {"text": True, "highlights": True, "summary": True}})
+        self.assertEqual(caught.exception.code, "over_request_limit")
+        self.assertEqual((self.exa.sent, self.topups), ([], []))
+
+    def test_a_key_signed_for_answers_only_cannot_search(self):
+        with self.store._db() as db:
+            db.execute("UPDATE api_keys SET scopes = 'answers'")
+        with self.assertRaises(ApiError) as caught:
+            self.send("/exa/search", {"query": "x"})
+        self.assertEqual((caught.exception.status, caught.exception.code), (403, "scope_missing"))
+        self.assertEqual(self.exa.sent, [])
+
+    def test_search_is_off_without_an_exa_key(self):
+        self.api.keys.proxy.exa = None
+        with self.assertRaises(ApiError) as caught:
+            self.send("/exa/search", {"query": "x"})
+        self.assertEqual(caught.exception.status, 404)
+
+    def test_new_keys_may_search_and_say_so(self):
+        _, keys, _ = self.call("GET", "/api-keys")
+        self.assertEqual(keys["keys"][0]["scopes"], ["answers", "search"])
+
+
 class ProxyHttpTests(ProxyFixture):
     """Over HTTP, the way the SDKs and Claude Code call it: chunks reach the client as Surplus sends them."""
 

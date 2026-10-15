@@ -46,6 +46,7 @@ STATEMENT = "Sign in to SingIt. This signature does not move funds or approve an
 API_KEY_PREFIX = "sk_singit_"
 API_KEY_SHOWN = 14                 # characters of a key shown in lists: "sk_singit_Ab3x"
 API_KEYS_PER_ACCOUNT = 10          # live keys at once
+API_KEY_SCOPES = "answers search"  # what a new key may pay for: model answers, and web search and pages (Exa)
 ACCOUNT_PREFIX = "wallet:"         # an EVM wallet (Base)
 SOLANA_PREFIX = "solana:"          # a Solana wallet
 
@@ -180,7 +181,8 @@ class WebAccountStore:
                     created_at INTEGER NOT NULL,
                     expires_at INTEGER NOT NULL,
                     last_used_at INTEGER,
-                    revoked_at INTEGER
+                    revoked_at INTEGER,
+                    scopes TEXT NOT NULL DEFAULT 'answers'
                 );
                 CREATE INDEX IF NOT EXISTS api_keys_by_account ON api_keys(account_id);
                 CREATE TABLE IF NOT EXISTS api_key_spend (
@@ -200,6 +202,12 @@ class WebAccountStore:
                 );
                 """
             )
+            # What a key may pay for, as its owner signed it. Keys made before 16 October 2026 signed model
+            # answers only and keep exactly that.
+            try:
+                db.execute("ALTER TABLE api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT 'answers'")
+            except sqlite3.OperationalError:
+                pass  # the column is there
         try:
             self.path.chmod(0o600)
         except OSError:
@@ -346,7 +354,7 @@ class WebAccountStore:
             return row
 
     def add_api_key(self, account_id: str, name: str, daily: int, per_request: int, now: int,
-                    expires_at: int) -> tuple[str, sqlite3.Row]:
+                    expires_at: int, scopes: str = API_KEY_SCOPES) -> tuple[str, sqlite3.Row]:
         """A new key: the key itself, shown this once, and its row. Refused past API_KEYS_PER_ACCOUNT live keys."""
         key = API_KEY_PREFIX + secrets.token_urlsafe(32)
         key_id = "key_" + secrets.token_hex(8)
@@ -356,8 +364,9 @@ class WebAccountStore:
             if live >= API_KEYS_PER_ACCOUNT:
                 raise WebAuthError(f"An account can hold {API_KEYS_PER_ACCOUNT} keys at once. Revoke one first.")
             db.execute("INSERT INTO api_keys(key_hash, key_id, account_id, name, prefix, daily_cap_atomic,"
-                       " per_request_cap_atomic, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                       (_hash(key), key_id, account_id, name, key[:API_KEY_SHOWN], daily, per_request, now, expires_at))
+                       " per_request_cap_atomic, created_at, expires_at, scopes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                       (_hash(key), key_id, account_id, name, key[:API_KEY_SHOWN], daily, per_request, now, expires_at,
+                        scopes))
             row = db.execute("SELECT * FROM api_keys WHERE key_id = ?", (key_id,)).fetchone()
         return key, row
 

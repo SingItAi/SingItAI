@@ -81,11 +81,12 @@ def key_message(address: str, name: str, daily: int, per_request: int, until: in
     return (
         "SingIt: create an API key\n\n"
         f"Name: {name}\n"
-        f"Spends up to {daily / 1e6:g} USDC a day and {per_request / 1e6:g} USDC per answer, "
+        f"Spends up to {daily / 1e6:g} USDC a day and {per_request / 1e6:g} USDC per request, "
         "from your SingIt limits.\n"
         f"Valid until: {_date(until)}\n"
         f"Account: {address}\n\n"
-        "This key can only pay for answers from SingIt Ask. It cannot move your funds or change your limits.\n\n"
+        "This key can only pay for model answers and web search (Exa) in SingIt. It cannot move your funds or "
+        "change your limits.\n\n"
         f"Nonce: {nonce}\n"
         f"Issued At: {_date(issued)}"
     )
@@ -95,7 +96,7 @@ def public_key(row: Mapping[str, Any], spent: tuple[int, int], now: int) -> dict
     state = "revoked" if row["revoked_at"] is not None else ("expired" if row["expires_at"] <= now else "active")
     return {"id": row["key_id"], "name": row["name"], "prefix": row["prefix"], "state": state,
             "dailyCapUsd": row["daily_cap_atomic"] / 1e6, "perRequestCapUsd": row["per_request_cap_atomic"] / 1e6,
-            "spentTodayUsd": spent[0] / 1e6, "answersToday": spent[1],
+            "spentTodayUsd": spent[0] / 1e6, "answersToday": spent[1], "scopes": str(row["scopes"]).split(),
             "createdAt": row["created_at"], "expiresAt": row["expires_at"], "lastUsedAt": row["last_used_at"]}
 
 
@@ -254,7 +255,16 @@ class ApiKeys:
                            code="browser_request")
         row = self._key(authorization, headers.get("x-api-key"))
         if self.proxy is not None:
-            from .web_api_proxy import ROUTES  # noqa: PLC0415
+            from .web_api_proxy import EXA_ROUTES, ROUTES  # noqa: PLC0415
+            if method == "POST" and path in EXA_ROUTES:
+                if self.proxy.exa is None:
+                    raise ApiError(404, "Search is not enabled on this server.", code="not_found")
+                if "search" not in str(row["scopes"]).split():
+                    raise ApiError(403, "This key was made for model answers only. Create a new key in the SingIt app "
+                                   "to use search.", type_="permission_error", code="scope_missing")
+                self._rate(row["key_id"])
+                relay = self.proxy.relay(row, path, body, headers, ApiError, lambda amount: self._reserve(row, amount))
+                return relay.status, relay, {}
             if method == "POST" and path in ROUTES:
                 self._rate(row["key_id"])
                 relay = self.proxy.relay(row, path, body, headers, ApiError, lambda amount: self._reserve(row, amount))
@@ -271,8 +281,9 @@ class ApiKeys:
         if method == "POST" and path == "/chat/completions":
             return self._chat(row, body)
         if self.proxy is not None:
-            raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions, /v1/responses and "
-                           "/v1/messages, and GET /v1/models, /v1/balance and /v1/usage.", code="not_found")
+            raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions, /v1/responses, "
+                           "/v1/messages and /v1/exa/search, /contents and /answer, and GET /v1/models, /v1/balance "
+                           "and /v1/usage.", code="not_found")
         raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions and GET /v1/models.",
                        code="not_found")
 
