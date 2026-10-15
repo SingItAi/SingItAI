@@ -291,7 +291,7 @@ class ProxyTests(ProxyFixture):
             body={"model": "claude-opus-5-5-20260101", "max_tokens": 1000, "stream": True,
                   "messages": [{"role": "user", "content": "Hi"}]})
         self.assertEqual(relay.headers["Content-Type"], "text/event-stream")
-        self.assertEqual(self.body_of(relay), events)
+        self.assertEqual(self.body_of(relay), events.replace(b', "buyer_cost_micro": 20000', b""))
         path, sent, headers = self.surplus.sent[0]
         self.assertEqual((path, sent["model"]), ("/anthropic/v1/messages", "claude-opus-5.5"))
         self.assertNotIn("si_route", sent)
@@ -312,7 +312,8 @@ class ProxyTests(ProxyFixture):
                 _, relay = self.send("/chat/completions", body)
                 text = self.body_of(relay)
                 self.assertEqual(self.surplus.sent[-1][1]["stream_options"], {"include_usage": True})
-                self.assertEqual(b"buyer_cost_micro" in text, asked)
+                self.assertEqual(b'"usage"' in text, asked)
+                self.assertNotIn(b"buyer_cost_micro", text)
                 self.assertTrue(text.endswith(b"data: [DONE]\n\n"))
                 self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -650)
 
@@ -358,6 +359,47 @@ class ProxyTests(ProxyFixture):
         self.assertEqual(caught.exception.body()["error"]["type"], "billing_error")
         self.assertIn("per-purchase limit", caught.exception.body()["error"]["message"])
         self.assertEqual(self.surplus.sent, [])
+
+    def test_answers_carry_no_sign_of_who_sold_them(self):
+        """A real answer's shape (15 October): Surplus's seller, its cost fields and its own id are not passed on."""
+        self.surplus.replies.append(Response(200, {
+            "provider": "Morph", "service_tier": None, "id": "gen-1792027712-11J0cWlpBomOJcBCHht7",
+            "object": "chat.completion", "model": "deepseek-v4.1-flash",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hi"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 33, "completion_tokens": 47, "total_tokens": 80, "cost": 0, "is_byok": True,
+                      "cost_details": {"upstream_inference_cost": 2.8926e-05}, "buyer_cost_micro": 3,
+                      "prompt_tokens_details": {"cached_tokens": 0}}}))
+        _, relay = self.send("/chat/completions", {"messages": [{"role": "user", "content": "Hi"}]})
+        out = json.loads(self.body_of(relay))
+        self.assertNotIn("provider", out)
+        self.assertTrue(out["id"].startswith("chatcmpl-singit-"))
+        self.assertEqual(out["usage"], {"prompt_tokens": 33, "completion_tokens": 47, "total_tokens": 80,
+                                        "prompt_tokens_details": {"cached_tokens": 0}})
+        self.assertEqual((out["billing"]["chargedAtomic"], out["billing"]["costAtomic"]), (4, 3))
+        self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -4)
+
+    def test_a_stream_keeps_one_id_of_our_own_and_no_seller(self):
+        events = sse({"id": "gen-1", "provider": "Morph", "choices": [{"index": 0, "delta": {"content": "Hi"}}]},
+                     {"id": "gen-1", "provider": "Morph", "choices": [],
+                      "usage": {"prompt_tokens": 3, "completion_tokens": 1, "is_byok": True, "buyer_cost_micro": 500}},
+                     b"[DONE]")
+        self.surplus.replies.append(Response(200, events, {"Content-Type": "text/event-stream"}))
+        _, relay = self.send("/chat/completions", {"stream": True, "stream_options": {"include_usage": True},
+                                                   "messages": [{"role": "user", "content": "Hi"}]})
+        text = self.body_of(relay)
+        chunks = [json.loads(line[6:]) for line in text.split(b"\n") if line.startswith(b"data: {")]
+        self.assertEqual(len({c["id"] for c in chunks}), 1)
+        self.assertTrue(chunks[0]["id"].startswith("chatcmpl-singit-"))
+        for word in (b"Morph", b"gen-1", b"is_byok", b"buyer_cost_micro"):
+            self.assertNotIn(word, text)
+        self.assertEqual(chunks[1]["usage"], {"prompt_tokens": 3, "completion_tokens": 1})
+        self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -650)
+
+    def test_a_refusal_names_no_seller(self):
+        self.surplus.replies.append(Response(400, {"error": {"message": "Bad request", "code": 400,
+                                                             "metadata": {"provider_name": "Morph", "raw": "x"}}}))
+        _, relay = self.send("/chat/completions", {"messages": [{"role": "user", "content": "Hi"}]})
+        self.assertEqual(json.loads(self.body_of(relay)), {"error": {"message": "Bad request", "code": 400}})
 
     def test_counting_tokens_is_free(self):
         self.surplus.replies.append(Response(200, {"input_tokens": 7}))
@@ -474,7 +516,7 @@ class ProxyHttpTests(ProxyFixture):
             self.assertIn(b"first", first, "the first event came before the second was produced")
             gate.set()
             rest = response.read()
-        self.assertEqual(first + rest, events)
+        self.assertEqual(first + rest, events.replace(b', "buyer_cost_micro": 1000', b""))
         self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -1300)
 
     def test_anthropic_errors_keep_anthropics_shape(self):

@@ -79,6 +79,31 @@ def estimate(model_id: str, body: Mapping[str, Any]) -> int | None:
     return charge_for(worst)
 
 
+# What Surplus adds to a standard answer that only tells who sold it and for how much: the seller, its cost
+# breakdown and its own price field. The caller sees SingIt's charge in `billing` instead.
+UPSTREAM_FIELDS = ("provider",)
+UPSTREAM_USAGE_FIELDS = ("cost", "is_byok", "cost_details", "buyer_cost_micro")
+
+
+def scrub(data: Any, answer_id: str | None = None) -> Any:
+    """An answer or streamed event as the standard formats have it, without Surplus's own fields. A chat
+    completion's id becomes SingIt's own: Surplus's names where it was bought."""
+    if not isinstance(data, dict):
+        return data
+    for field in UPSTREAM_FIELDS:
+        data.pop(field, None)
+    if isinstance(data.get("error"), dict):
+        data["error"].pop("metadata", None)  # the seller's name and its raw reply, on a refusal
+    for holder in (data, data.get("response"), data.get("message")):
+        usage = holder.get("usage") if isinstance(holder, dict) else None
+        if isinstance(usage, dict):
+            for field in UPSTREAM_USAGE_FIELDS:
+                usage.pop(field, None)
+    if answer_id and isinstance(data.get("id"), str):
+        data["id"] = answer_id
+    return data
+
+
 def background(work: Callable[[], None]) -> None:
     threading.Thread(target=work, daemon=True, name="balance-topup").start()
 
@@ -293,6 +318,7 @@ class Proxy:
             self.refill_later(account, after)
             return charged
 
+        answer_id = "chatcmpl-singit-" + secrets.token_hex(12) if path == "/chat/completions" else None
         if streaming and status < 400 and "event-stream" in content_type:
             def chunks() -> Iterator[bytes]:
                 try:
@@ -303,6 +329,9 @@ class Proxy:
                                 and data.get("choices") == [] and "usage" in data):
                             response.readline()  # the blank line that ends the event
                             continue
+                        if data is not None:  # read for its cost above; sent on without Surplus's own fields
+                            ending = b"\r\n" if line.endswith(b"\r\n") else b"\n"
+                            line = b"data: " + json.dumps(scrub(data, answer_id)).encode() + ending
                         yield line
                 except OSError:
                     logger.warning("web api: %s stream from upstream broke off", model_id)
@@ -322,6 +351,9 @@ class Proxy:
             data = None
         meter.read(data)
         charged = settle()
+        if isinstance(data, dict):
+            scrub(data, answer_id if status < 400 else None)
+            raw = json.dumps(data).encode()
         if isinstance(data, dict) and status < 400:
             data["billing"] = {"chargedAtomic": charged, "costAtomic": meter.cost, "markupBps": MARKUP_BPS,
                                "currency": "USDC", "paidFrom": "your SingIt balance"}
