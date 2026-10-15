@@ -481,6 +481,107 @@ class BoughtBalanceTests(ProxyFixture):
         self.assertEqual([t["amountAtomic"] for t in self.topups], [5_000_000])
 
 
+class SearchTests(Fixture):
+    """Web search for an API key: bought per request from the owner's limits through the gateway, no balance."""
+
+    def setUp(self):
+        super().setUp()
+        self.key = self.make_key(dailyUsd=1, perRequestUsd=0.05)["key"]
+        self.shop.reply = (200, {"ok": True, "costAtomic": 10100, "txId": "0x" + "c" * 64, "network": "base",
+                                 "data": {"results": [{"url": "https://x402.org"}],
+                                          "billing": {"exaAtomic": "7000", "totalAtomic": "10100"}}})
+
+    def search(self, path="/exa/search", body=None, key=None):
+        return self.api.keys.public("POST", path, authorization=f"Bearer {key or self.key}", origin=None,
+                                    body=body or {"query": "x402"})
+
+    def test_a_search_is_paid_from_the_owners_limits_and_counted_against_the_key(self):
+        status, out, headers = self.search(body={"query": "x402", "numResults": 5})
+        self.assertEqual((status, out["results"][0]["url"]), (200, "https://x402.org"))
+        self.assertEqual((out["billing"]["chargedAtomic"], out["billing"]["exaAtomic"]), (10100, "7000"))
+        self.assertEqual(headers["X-SingIt-Charged-Atomic"], "10100")
+        action, account, body = self.shop.calls[-1]
+        self.assertEqual((action, account), ("api-search", self.account))
+        self.assertEqual(body, {"path": "/v1/exa/search", "body": {"query": "x402", "numResults": 5}, "limitAtomic": 50_000})
+        _, keys, _ = self.call("GET", "/api-keys")
+        self.assertEqual(keys["keys"][0]["spentTodayUsd"], 0.0101)
+
+    def test_page_contents_and_answers_too_and_nothing_else(self):
+        self.search("/exa/contents", {"urls": ["https://x402.org"], "text": True})
+        self.assertEqual(self.shop.calls[-1][2]["path"], "/v1/exa/contents")
+        self.search("/exa/answer", {"query": "What is x402?"})
+        self.assertEqual(self.shop.calls[-1][2]["path"], "/v1/exa/answer")
+        with self.assertRaises(ApiError) as caught:
+            self.search("/exa/research")
+        self.assertEqual(caught.exception.status, 404)
+
+    def test_a_key_signed_for_answers_only_cannot_search(self):
+        with self.store._db() as db:
+            db.execute("UPDATE api_keys SET scopes = 'answers'")
+        with self.assertRaises(ApiError) as caught:
+            self.search()
+        self.assertEqual((caught.exception.status, caught.exception.code), (403, "scope_missing"))
+        self.assertNotIn("api-search", [c[0] for c in self.shop.calls])
+
+    def test_the_gateways_refusal_keeps_its_words_and_costs_nothing(self):
+        self.shop.reply = (400, {"ok": False, "error": "refused", "text": "Web search costs more than your per-purchase limit."})
+        with self.assertRaises(ApiError) as caught:
+            self.search()
+        self.assertIn("per-purchase limit", caught.exception.message)
+        _, keys, _ = self.call("GET", "/api-keys")
+        self.assertEqual(keys["keys"][0]["spentTodayUsd"], 0)
+
+    def test_new_keys_may_search_and_say_so(self):
+        _, keys, _ = self.call("GET", "/api-keys")
+        self.assertEqual(keys["keys"][0]["scopes"], ["answers", "search"])
+
+
+class GatewaySearchTests(unittest.TestCase):
+    """web_data.search and the internal "api-search" action, with the payer mocked."""
+
+    def setUp(self):
+        from sign402_gateway import web_data
+        self.web_data = web_data
+        self.server = SimpleNamespace(allowance=SimpleNamespace(owner_lookup=lambda a: "0x1111"))
+        self.gw = SimpleNamespace(_purchases_paused=lambda: False)
+        self.pay = Mock(return_value=(10100, {"results": []}, "0x" + "d" * 64))
+        p = patch.object(web_data, "pay_once", self.pay)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_singits_search_is_bought_at_its_revenue_address_within_the_key_cap(self):
+        from sign402_gateway import ask_metered, ask_solana
+        out = self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/exa/search", {"query": "x"}, limit=50_000)
+        self.assertEqual((out["costAtomic"], out["network"]), (10100, "base"))
+        tool, method, url, body = self.pay.call_args.args[3:7]
+        self.assertEqual((method, url, body), ("POST", "https://ask.singitai.app/v1/exa/search", {"query": "x"}))
+        self.assertEqual(tool.pay_to, {"eip155:8453": ask_metered.PAY_TO,
+                                       "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": ask_solana.PAY_TO})
+        self.assertEqual(tool.cap_atomic, 50_000)
+        self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/exa/contents", {"urls": ["https://a.test"]})
+        self.assertEqual(self.pay.call_args.args[3].cap_atomic, 67_000)
+
+    def test_what_is_refused_before_paying(self):
+        from sign402_gateway import ask_solana
+        for path, body, account in (("/v1/exa/research", {}, ACCOUNT), ("/v1/exa/search", "x", ACCOUNT),
+                                    ("/v1/exa/search", {"query": "x"}, "solana:" + ask_solana.PAY_TO)):
+            with self.subTest(path=path, account=account), self.assertRaises(AllowanceError):
+                self.web_data.search(self.server, self.gw, account, path, body)
+        self.gw._purchases_paused = lambda: True
+        with self.assertRaises(AllowanceError):
+            self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/exa/search", {"query": "x"})
+        self.pay.assert_not_called()
+
+    def test_the_internal_action_is_a_paying_one(self):
+        self.assertIn("api-search", web_internal.PAYING_ACTIONS)
+        with patch.object(web_internal, "_limits_from_limiter") as limits:
+            status, out = web_internal.handle(self.server, "api-search", {
+                "account": ACCOUNT, "path": "/v1/exa/search", "body": {"query": "x"}, "limitAtomic": 30_000})
+        self.assertEqual((status, out["costAtomic"]), (200, 10100))
+        limits.assert_called_once()
+        self.assertEqual(self.pay.call_args.args[3].cap_atomic, 30_000)
+
+
 class ProxyHttpTests(ProxyFixture):
     """Over HTTP, the way the SDKs and Claude Code call it: chunks reach the client as Surplus sends them."""
 

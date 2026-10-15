@@ -37,6 +37,8 @@ MAX_DAILY_ATOMIC = 1_000_000_000          # $1,000 a day; the account's own limi
 MAX_PER_REQUEST_ATOMIC = 50_000_000       # $50 an answer
 MAX_DAYS = 365
 REQUESTS_PER_MINUTE = 60
+SEARCH_PATHS = ("/exa/search", "/exa/contents", "/exa/answer")
+SEARCH_HOLD_ATOMIC = 67_000  # the most one search can cost (web_data.SEARCH_CAP_ATOMIC), held against the daily cap
 NAME = re.compile(r"[\w .,:()'-]{1,40}")
 
 
@@ -81,11 +83,12 @@ def key_message(address: str, name: str, daily: int, per_request: int, until: in
     return (
         "SingIt: create an API key\n\n"
         f"Name: {name}\n"
-        f"Spends up to {daily / 1e6:g} USDC a day and {per_request / 1e6:g} USDC per answer, "
+        f"Spends up to {daily / 1e6:g} USDC a day and {per_request / 1e6:g} USDC per request, "
         "from your SingIt limits.\n"
         f"Valid until: {_date(until)}\n"
         f"Account: {address}\n\n"
-        "This key can only pay for answers from SingIt Ask. It cannot move your funds or change your limits.\n\n"
+        "This key can only pay for model answers and web search (Exa) in SingIt. It cannot move your funds or "
+        "change your limits.\n\n"
         f"Nonce: {nonce}\n"
         f"Issued At: {_date(issued)}"
     )
@@ -95,7 +98,7 @@ def public_key(row: Mapping[str, Any], spent: tuple[int, int], now: int) -> dict
     state = "revoked" if row["revoked_at"] is not None else ("expired" if row["expires_at"] <= now else "active")
     return {"id": row["key_id"], "name": row["name"], "prefix": row["prefix"], "state": state,
             "dailyCapUsd": row["daily_cap_atomic"] / 1e6, "perRequestCapUsd": row["per_request_cap_atomic"] / 1e6,
-            "spentTodayUsd": spent[0] / 1e6, "answersToday": spent[1],
+            "spentTodayUsd": spent[0] / 1e6, "answersToday": spent[1], "scopes": str(row["scopes"]).split(),
             "createdAt": row["created_at"], "expiresAt": row["expires_at"], "lastUsedAt": row["last_used_at"]}
 
 
@@ -253,6 +256,8 @@ class ApiKeys:
             raise ApiError(403, "API keys are for server code, not browsers. Keep the key out of web pages.",
                            code="browser_request")
         row = self._key(authorization, headers.get("x-api-key"))
+        if method == "POST" and path in SEARCH_PATHS:
+            return self._search(row, path, body)
         if self.proxy is not None:
             from .web_api_proxy import ROUTES  # noqa: PLC0415
             if method == "POST" and path in ROUTES:
@@ -271,10 +276,37 @@ class ApiKeys:
         if method == "POST" and path == "/chat/completions":
             return self._chat(row, body)
         if self.proxy is not None:
-            raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions, /v1/responses and "
-                           "/v1/messages, and GET /v1/models, /v1/balance and /v1/usage.", code="not_found")
+            raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions, /v1/responses, "
+                           "/v1/messages and /v1/exa/search, /contents and /answer, and GET /v1/models, /v1/balance "
+                           "and /v1/usage.", code="not_found")
         raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions and GET /v1/models.",
                        code="not_found")
+
+    def _search(self, row, path: str, body: Mapping[str, Any]) -> tuple[int, Any, dict[str, str]]:
+        """Web search or page contents from Exa, paid from the owner's wallet within its limits, per request: no
+        balance is involved. SingIt sells it at Exa's price + 30% + the network's settlement fee."""
+        if "search" not in str(row["scopes"]).split():
+            raise ApiError(403, "This key was made for model answers only. Create a new key in the SingIt app to use "
+                           "search.", type_="permission_error", code="scope_missing")
+        self._rate(row["key_id"])
+        per = int(row["per_request_cap_atomic"])
+        done = self._reserve(row, min(per, SEARCH_HOLD_ATOMIC))
+        try:
+            status, reply = self._shop("api-search", row["account_id"], {
+                "path": "/v1" + path, "body": dict(body), "limitAtomic": per})
+        except BaseException:
+            done(0)
+            raise
+        if status != 200:
+            done(0)
+            raise _api_error(status, reply)
+        cost = reply.get("costAtomic")
+        cost = cost if type(cost) is int and cost >= 0 else min(per, SEARCH_HOLD_ATOMIC)
+        done(cost)
+        data = reply.get("data") if isinstance(reply.get("data"), dict) else {}
+        data["billing"] = {**(data.get("billing") or {}), "chargedAtomic": cost, "txId": reply.get("txId") or None,
+                           "network": reply.get("network"), "paidFrom": "your wallet, within your SingIt limits"}
+        return 200, data, {"X-SingIt-Charged-Atomic": str(cost)}
 
     def _reserve(self, row, amount: int):
         """Counts `amount` against the key's daily cap while its request runs; the returned function records what

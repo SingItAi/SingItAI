@@ -73,6 +73,8 @@ test('another seller, a higher price, an unlisted host or no approval pays nothi
     [{}, { url: 'https://ask.singitai.app/v1/credit?x=1' }, /Only listed data sellers/],
     [{}, { url: 'https://ask.singitai.app/v1/credit', method: 'GET' }, /Unsupported method/],
     [{}, { url: 'https://ask.singitai.app/v1/credit', method: 'POST', body: {}, maxAmount: '50002001' }, /Invalid maximum/],
+    [{}, { url: 'https://ask.singitai.app/v1/exa/search', method: 'POST', body: {}, maxAmount: '67001' }, /Invalid maximum/],
+    [{}, { url: 'https://ask.singitai.app/v1/exa/research', method: 'POST', body: {} }, /Only listed data sellers/],
   ]) {
     const f = await fixture(options);
     await assert.rejects(f.payments.pay({ ...f.call, ...change }), pattern);
@@ -87,6 +89,14 @@ test('SingIt credit for the owner’s API balance is paid with its own ceiling, 
   const paid = await f.payments.pay({ ...f.call, url: CREDIT_URL, method: 'POST', body: { amountAtomic: '5000000' }, maxAmount: '5002000' });
   assert.equal(paid.state, 'accepted');
   assert.deepEqual(f.calls.map(c => [c.url, Boolean(c.signed)]), [[CREDIT_URL, false], [CREDIT_URL, true]]);
+  f.store.close();
+});
+
+test('SingIt search is paid from the owner’s account within its own ceiling', async () => {
+  const f = await fixture();
+  const paid = await f.payments.pay({ ...f.call, url: 'https://ask.singitai.app/v1/exa/search', method: 'POST',
+    body: { query: 'x402' }, maxAmount: '67000' });
+  assert.equal(paid.state, 'accepted');
   f.store.close();
 });
 

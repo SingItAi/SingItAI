@@ -17,6 +17,8 @@
 //                              empty turns free answers off
 //   SINGIT_ASK_FREE_PER_VISITOR, SINGIT_ASK_FREE_PER_DAY  free answers a day per visitor and for everyone together
 //                              (defaults in src/free.mjs)
+//   SINGIT_ASK_EXA_API_KEY     SingIt's Exa API key: turns on /v1/exa/search, /contents and /answer, resold over x402
+//                              at Exa's list price + 30% (src/search.mjs)
 
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
@@ -57,6 +59,9 @@ required("CDP_API_KEY_ID"); required("CDP_API_KEY_SECRET");
 // The CDP component's installed, authenticated SDK signs each facilitator call.
 const requireCdp = createRequire(new URL("../../cdp-x402-service/package.json", import.meta.url));
 const facilitatorClient = new HTTPFacilitatorClient(requireCdp("@coinbase/x402").facilitator);
+
+config.exaKey = String(process.env.SINGIT_ASK_EXA_API_KEY || "").trim() || null;
+if (config.exaKey) console.error("singit-ask: search on (Exa)");
 
 const app = createApp(config, { facilitatorClient });
 // The model list and its live prices are read now and kept fresh, so no visitor waits for Surplus.

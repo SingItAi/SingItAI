@@ -19,6 +19,7 @@ import { LIMITS, THINKING_HEADROOM } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { addCreditRoute } from "./credit.mjs";
+import { SEARCH_ROUTES, addSearchRoutes } from "./search.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
@@ -180,6 +181,7 @@ const EXAMPLE = {
 };
 
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
+                                    exaKey = config.exaKey ?? null, exaFetch = fetchImpl,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [] }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }) }) {
   const app = express();
@@ -263,6 +265,19 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           },
           security: [{ x402: [] }],
         } },
+        ...(exaKey ? Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [route, { post: {
+          operationId: { "/v1/exa/search": "exaSearch", "/v1/exa/contents": "exaContents", "/v1/exa/answer": "exaAnswer" }[route],
+          summary: { "/v1/exa/search": "Web search from Exa", "/v1/exa/contents": "Page contents from Exa, by URL",
+                     "/v1/exa/answer": "An answer with cited sources, from Exa" }[route],
+          description: "Exa's own request and answer, paid per request over x402: Exa's list price + 30% + a settlement fee "
+            + "(0.001 USDC on Base, 0.002 on Solana). Nothing is charged without an answer.",
+          "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.0023", max: "0.067" }, protocols: [{ x402: {} }] },
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+          responses: { 200: { description: "Exa's answer, with billing" }, 400: { description: "Not offered; nothing charged" },
+                       402: { description: "Payment Required" }, 502: { description: "No answer; nothing charged" },
+                       503: { description: "Paused or Exa unavailable; nothing charged" } },
+          security: [{ x402: [] }],
+        } }])) : {}),
         "/v1/models": { get: {
           operationId: "listModels", summary: "Models that can be asked for now, with their prices",
           responses: { 200: { description: "Model list" } }, security: [],
@@ -274,7 +289,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     });
   });
   app.get("/.well-known/x402", open, (req, res) => {
-    res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`],
+    res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
+        ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
@@ -289,6 +305,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const route = { facilitatorClient, config, readRequest, choose, upstream: learning, fetchImpl, log };
   // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
   addCreditRoute(app, config, { facilitatorClient });
+  // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
+  if (exaKey) addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl: exaFetch, log });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
   addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.

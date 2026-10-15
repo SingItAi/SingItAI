@@ -1537,6 +1537,15 @@ answer = client.chat.completions.create(
 print(answer.choices[0].message.content)`;
 }
 
+// Web search and page contents from Exa: the same key, Exa's own format and SDK.
+function exaExample(key) {
+  return `from exa_py import Exa
+
+exa = Exa(api_key="${key}", base_url="${API_BASE()}/exa")
+results = exa.search("x402 payment facilitators", num_results=5, contents={"text": True})
+print(results.results[0].title)`;
+}
+
 // Claude Code and the Anthropic SDK: the same key, Anthropic's format.
 function claudeCodeExample(key) {
   return `export ANTHROPIC_BASE_URL="${location.origin}"
@@ -1604,7 +1613,7 @@ function renderBalanceCard() {
           ${b.refundRequested ? "" : `· <button class="linkish" data-action="open-auto-topup">Change</button>`}</span>
         ${b.balanceUsd > 0 && !b.refundRequested ? `<button class="linkish quiet" data-action="open-refund">Ask for the balance back</button>` : ""}
       </div>
-      <p class="hint">Only your API keys spend it: each request costs the model's price + 30%, nothing per call. Your chat here still pays per answer.</p>
+      <p class="hint">Only your API keys spend it, on models: each request costs the model's price + 30%, nothing per call. Web search is paid per search from your wallet instead, and your chat here still pays per answer.</p>
     </div></div>`;
 }
 
@@ -1615,7 +1624,8 @@ function renderKeyList() {
   const rows = live.map((k) => `
     <div class="usage-row key-row">
       <span><b>${esc(k.name)}</b> <span class="mono faint">${esc(k.prefix)}…</span>
-        <span class="faint">· ${usdOf(k.spentTodayUsd)} of ${usdOf(k.dailyCapUsd)} today · up to ${usdOf(k.perRequestCapUsd)} a request · last used ${when(k.lastUsedAt)}</span></span>
+        <span class="faint">· ${usdOf(k.spentTodayUsd)} of ${usdOf(k.dailyCapUsd)} today · up to ${usdOf(k.perRequestCapUsd)} a request${
+          (k.scopes || []).includes("search") ? "" : " · models only"} · last used ${when(k.lastUsedAt)}</span></span>
       <button class="btn btn-ghost btn-sm" data-action="revoke-key" data-id="${esc(k.id)}" data-name="${esc(k.name)}">Revoke</button>
     </div>`).join("");
   return `
@@ -1627,7 +1637,9 @@ function renderKeyList() {
         <p class="faint">Base URL <span class="mono">${esc(API_BASE())}</span>. With the OpenAI SDK:</p>
         <pre class="key-code"><code>${esc(keyExample("sk_singit_…"))}</code></pre>
         ${balanceOn() ? `<p class="faint" style="margin-top:12px">In Claude Code:</p>
-        <pre class="key-code"><code>${esc(claudeCodeExample("sk_singit_…"))}</code></pre>` : ""}</details>` : ""}
+        <pre class="key-code"><code>${esc(claudeCodeExample("sk_singit_…"))}</code></pre>
+        <p class="faint" style="margin-top:12px">Web search, page contents and cited answers, with Exa's SDK. Each request is paid from your wallet within your limits, about $0.01:</p>
+        <pre class="key-code"><code>${esc(exaExample("sk_singit_…"))}</code></pre>` : ""}</details>` : ""}
     </div></div>`;
 }
 
