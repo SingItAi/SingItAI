@@ -127,7 +127,7 @@ export const api = {
   apiKeyCreate: (message, signature) => call("POST", "/api-keys", { message, signature }),
   apiKeyRevoke: (id) => call("POST", "/api-keys/revoke", { id }),
   balance: () => call("GET", "/balance"),
-  balanceSettings: (topupUsd, thresholdUsd) => call("POST", "/balance/settings", { topupUsd, thresholdUsd }),
+  balanceSettings: (topupUsd, thresholdUsd, autoTopup) => call("POST", "/balance/settings", { topupUsd, thresholdUsd, autoTopup }),
   balanceTopup: (amountUsd) => call("POST", "/balance/topup", { amountUsd }),
   balanceRefund: () => call("POST", "/balance/refund"),
 };

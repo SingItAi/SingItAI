@@ -5,7 +5,8 @@ Design: docs/singit-gateway-spec.md, section 4A, and docs/singit-balance-plan.md
 and images as the model offers them: the request goes upstream as it came, apart from the model's name, and the
 answer comes back as Surplus sends it, chunk by chunk.
 
-Money: before a request, its likely cost is held on the account's balance (web_balance.Balances); a balance too low
+Money: before a request, its likely cost is held on the account's balance (web_balance.Balances), which the owner
+bought in the app. A balance too low refuses the request, unless the owner switched on automatic top-ups: then it
 is topped up first, from the owner's limits (the gateway's `credit-topup`). Surplus reports what each answer cost
 (`usage.buyer_cost_micro`, in the body or the last streamed event); that cost plus the markup is charged and the
 hold let go. A failed request costs nothing.
@@ -165,7 +166,8 @@ class Proxy:
     # -- money --
 
     def fund(self, account: str, need: int, error: Callable[..., Exception]) -> None:
-        """Makes `need` available on the balance, topping it up from the owner's limits when it is short."""
+        """Makes sure `need` is available on the balance: topped up from the owner's limits when it is short and they
+        turned automatic top-ups on, refused otherwise."""
         with self._funding[account]:
             state = self.balances.state(account)
             if state["refundRequestedAt"] is not None:
@@ -174,6 +176,10 @@ class Proxy:
             short = need - state["availableAtomic"]
             if short <= 0:
                 return
+            if not state["autoTopup"]:
+                raise error(402, f"Your SingIt API balance is ${max(state['availableAtomic'], 0) / 1e6:.2f}, not enough "
+                            f"for this request (about ${need / 1e6:.2f}). Top it up in the SingIt app: Settings → "
+                            "API keys.", type_="insufficient_quota", code="balance_low")
             amount = min(MAX_TOPUP, max(state["topupAtomic"] or DEFAULT_TOPUP, -(-short // TOPUP_STEP) * TOPUP_STEP))
             status, reply = self.keys._shop("credit-topup", account, {
                 "topupId": new_topup_id(), "amountAtomic": amount, "minAtomic": short})
@@ -190,7 +196,8 @@ class Proxy:
     def refill_later(self, account: str, balance_after: int) -> None:
         """Tops up in the background once the balance runs under its threshold, so the next request need not wait."""
         state = self.balances.state(account)
-        if state["availableAtomic"] >= state["thresholdAtomic"] or state["pending"] or state["refundRequestedAt"]:
+        if (not state["autoTopup"] or state["availableAtomic"] >= state["thresholdAtomic"] or state["pending"]
+                or state["refundRequestedAt"]):
             return
         lock = self._funding[account]
         if lock.locked():

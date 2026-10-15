@@ -1557,27 +1557,31 @@ function renderBalance() {
   return `
     <div class="bezel" style="margin-top:18px"><div class="core">
       <h3>Balance</h3>
-      <p class="faint">What your keys spend: each request's actual model cost + 30%, nothing per call. When it runs low, your agent tops it up from your limits, one network fee per top-up.</p>
+      <p class="faint">Buy an amount for your keys to spend: each request costs its actual model price + 30%, with no fee per call. When it runs out, keys stop until you top up. Your chat here is not affected: it still pays per answer.</p>
       <div class="big">${usdOf(b.balanceUsd)}<small>USDC</small></div>
-      <div class="stats">
+      <div class="stats two">
         <div class="stat"><div class="label">Available now</div><div class="v">${usdOf(b.availableUsd)}</div></div>
-        <div class="stat"><div class="label">Top-up</div><div class="v">${usdOf(b.topupUsd)}</div></div>
-        <div class="stat"><div class="label">Tops up below</div><div class="v">${usdOf(b.thresholdUsd)}</div></div>
+        <div class="stat"><div class="label">Automatic top-up</div><div class="v">${b.autoTopup ? `${usdOf(b.topupUsd)} below ${usdOf(b.thresholdUsd)}` : "Off"}</div></div>
       </div>
       ${pending}
       ${b.refundRequested ? `<p class="note warn" style="margin-top:12px">You asked for your balance back. It is frozen until SingIt sends it to your wallet.</p>` : `
-      <div class="fields" style="margin-top:18px">
-        <div class="field"><label for="bal-now">Top up now, USDC</label><input class="input" id="bal-now" inputmode="decimal" value="${b.topupUsd}"></div>
-        <div class="field"><label for="bal-topup">Each top-up, USDC</label><input class="input" id="bal-topup" inputmode="decimal" value="${b.topupUsd}"></div>
-        <div class="field"><label for="bal-threshold">Top up below, USDC</label><input class="input" id="bal-threshold" inputmode="decimal" value="${b.thresholdUsd}"></div>
-      </div>
-      <div class="row" style="margin-top:16px">
-        <button class="btn btn-primary btn-sm" data-action="balance-topup">Top up now</button>
-        <button class="btn btn-ghost btn-sm" data-action="balance-settings">Save top-up</button>
+      <div class="field" style="margin-top:18px"><label for="bal-now">Amount, USDC</label><input class="input" id="bal-now" inputmode="decimal" value="10"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn btn-primary btn-sm" data-action="balance-topup">Top up</button>
         ${b.balanceUsd > 0 ? `<button class="btn btn-ghost btn-sm" data-action="balance-refund">Ask for it back</button>` : ""}
-      </div>`}
+      </div>
+      <details class="auto-topup" style="margin-top:18px" ${b.autoTopup ? "open" : ""}>
+        <summary>Automatic top-up · ${b.autoTopup ? "on" : "off"}</summary>
+        <p class="faint">Your agent buys more by itself when the balance runs low, so your code never stops. Off unless you turn it on.</p>
+        <label class="check"><input type="checkbox" id="bal-auto" ${b.autoTopup ? "checked" : ""}> Top up automatically from my limits</label>
+        <div class="fields" style="margin-top:12px">
+          <div class="field"><label for="bal-topup">Each time, USDC</label><input class="input" id="bal-topup" inputmode="decimal" value="${b.topupUsd}"></div>
+          <div class="field"><label for="bal-threshold">When below, USDC</label><input class="input" id="bal-threshold" inputmode="decimal" value="${b.thresholdUsd}"></div>
+        </div>
+        <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-action="balance-settings">Save</button></div>
+      </details>`}
       <h3 style="margin-top:22px">History</h3>
-      <div class="usage-rows">${lines || `<p class="faint">Nothing yet. The first request tops the balance up.</p>`}</div>
+      <div class="usage-rows">${lines || `<p class="faint">Nothing yet. Top up to start using your keys.</p>`}</div>
     </div></div>`;
 }
 
@@ -1625,7 +1629,7 @@ function renderKeys() {
   return `
     <div class="page-head"><span class="eyebrow">Developers</span><h1>API <em>keys</em>.</h1>
       <p>${state.balance && !state.balance.off
-        ? `One key for the OpenAI SDK, the Anthropic SDK and Claude Code: <span class="mono">${esc(API_BASE())}</span>. Requests are paid from your SingIt balance, which your agent tops up from your own limits; the key can do nothing else.`
+        ? `One key for the OpenAI SDK, the Anthropic SDK and Claude Code: <span class="mono">${esc(API_BASE())}</span>. Requests are paid from the balance you buy below; the key can do nothing else.`
         : `Point any OpenAI SDK at <span class="mono">${esc(API_BASE())}</span> with a key. Each answer is paid from your own limits; the key can do nothing else.`}</p></div>
     ${state.keys.failed ? `<p class="note warn">${esc(state.keys.failed)}</p>` : ""}
     ${ready ? "" : `<p class="note warn">Keys pay from your allowance. Set your limits and approve them first.
@@ -1934,10 +1938,12 @@ const actions = {
     });
   },
   "balance-settings": async () => {
+    // Read before busy(): it redraws the page, and the form with it.
+    const auto = $("#bal-auto").checked, topup = Number($("#bal-topup").value), below = Number($("#bal-threshold").value);
     await busy("Saving…", async () => {
-      await api.balanceSettings(Number($("#bal-topup").value), Number($("#bal-threshold").value));
+      await api.balanceSettings(topup, below, auto);
       await loadBalance();
-      toast("Top-up saved.");
+      toast(auto ? "Automatic top-up is on." : "Automatic top-up is off.");
     });
   },
   "balance-refund": async () => {

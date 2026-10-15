@@ -1,4 +1,8 @@
-"""An account's SingIt balance: what its API keys spend, topped up from the owner's own limits.
+"""An account's SingIt balance: what its API keys spend, bought by the owner for an amount they choose.
+
+The web chat does not use it: each chat answer is still paid on its own. API keys spend from this balance, which
+the owner tops up in the app ("Top up now"); only if they switch on automatic top-ups does the agent buy more by
+itself when the balance runs low.
 
 The balance is credit bought over x402: the account's agent pays `ask.singitai.app/v1/credit` (singit-ask's
 credit.mjs) from the owner's limits, on Base through the limiter and on Solana as their delegate, the same way it
@@ -56,6 +60,7 @@ class Balances:
                     held_atomic INTEGER NOT NULL DEFAULT 0,
                     topup_atomic INTEGER,
                     threshold_atomic INTEGER,
+                    auto_topup INTEGER NOT NULL DEFAULT 0,
                     refund_requested_at INTEGER,
                     updated_at INTEGER NOT NULL
                 );
@@ -124,6 +129,7 @@ class Balances:
         return {"balanceAtomic": balance, "heldAtomic": held, "availableAtomic": balance - held,
                 "topupAtomic": int(row["topup_atomic"] or DEFAULT_TOPUP) if row else DEFAULT_TOPUP,
                 "thresholdAtomic": int(row["threshold_atomic"] or DEFAULT_THRESHOLD) if row else DEFAULT_THRESHOLD,
+                "autoTopup": bool(row["auto_topup"]) if row else False,
                 "refundRequestedAt": row["refund_requested_at"] if row else None,
                 "pending": [{"id": p["topup_id"], "state": p["state"], "amountAtomic": int(p["amount_atomic"])}
                             for p in pending]}
@@ -145,11 +151,12 @@ class Balances:
 
     # -- settings --
 
-    def set_terms(self, account: str, topup: int, threshold: int, now: int) -> None:
+    def set_terms(self, account: str, topup: int, threshold: int, auto: bool, now: int) -> None:
+        """Automatic top-ups, off unless the owner turns them on: `topup` bought whenever under `threshold`."""
         with self._db() as db:
             self._ensure(db, account, now)
-            db.execute("UPDATE balances SET topup_atomic = ?, threshold_atomic = ?, updated_at = ? WHERE account_id = ?",
-                       (topup, threshold, now, account))
+            db.execute("UPDATE balances SET topup_atomic = ?, threshold_atomic = ?, auto_topup = ?, updated_at = ?"
+                       " WHERE account_id = ?", (topup, threshold, int(bool(auto)), now, account))
 
     def request_refund(self, account: str, now: int) -> bool:
         """Freezes the balance for a refund by hand: nothing more is spent or topped up until it is resolved."""

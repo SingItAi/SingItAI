@@ -245,6 +245,7 @@ class ProxyFixture(Fixture):
             p.start()
             self.addCleanup(p.stop)
         self.key = self.make_key(dailyUsd=10, perRequestUsd=1)["key"]
+        self.balances.set_terms(self.account, 5_000_000, 1_000_000, True, NOW)  # these tests top up on their own
 
     def send(self, path, body, headers=None):
         status, out, _ = self.api.keys.public("POST", path, authorization=f"Bearer {self.key}", origin=None,
@@ -406,6 +407,36 @@ class ProxyTests(ProxyFixture):
         self.assertEqual(surplus_model("gpt-5.5"), "gpt-5.5")
         self.assertEqual(charge_for(1), 2)
         self.assertEqual(charge_for(1000), 1300)
+
+
+class BoughtBalanceTests(ProxyFixture):
+    """The default: a key spends only what its owner bought; nothing is bought for them."""
+
+    def setUp(self):
+        super().setUp()
+        self.balances.set_terms(self.account, 5_000_000, 1_000_000, False, NOW)
+
+    def test_an_empty_balance_refuses_and_buys_nothing(self):
+        with self.assertRaises(ApiError) as caught:
+            self.send("/chat/completions", {"messages": [{"role": "user", "content": "Hi"}]})
+        self.assertEqual((caught.exception.status, caught.exception.code), (402, "balance_low"))
+        self.assertIn("Top it up in the SingIt app", caught.exception.message)
+        self.assertEqual((self.topups, self.surplus.sent), ([], []))
+
+    def test_what_the_owner_bought_is_spent_and_never_refilled_by_itself(self):
+        _, out, _ = self.call("POST", "/balance/topup", {"amountUsd": 1.2})
+        self.assertEqual(out["balanceUsd"], 1.2)
+        self.surplus.replies.append(Response(200, {"usage": {"buyer_cost_micro": 200_000}}))
+        self.send("/chat/completions", {"messages": [{"role": "user", "content": "Hi"}]})
+        self.assertEqual(len(self.topups), 1, "under the threshold, but automatic top-ups are off")
+        state = self.balances.state(self.account)
+        self.assertEqual((state["balanceAtomic"], state["autoTopup"]), (1_200_000 - 260_000, False))
+
+    def test_the_owner_can_turn_automatic_top_ups_on(self):
+        _, out, _ = self.call("POST", "/balance/settings", {"topupUsd": 5, "thresholdUsd": 1, "autoTopup": True})
+        self.assertTrue(out["autoTopup"])
+        self.send("/chat/completions", {"messages": [{"role": "user", "content": "Hi"}]})
+        self.assertEqual([t["amountAtomic"] for t in self.topups], [5_000_000])
 
 
 class ProxyHttpTests(ProxyFixture):

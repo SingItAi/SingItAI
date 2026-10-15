@@ -187,7 +187,7 @@ class ApiKeys:
                 raise ValueError("Give the top-up and the threshold in whole cents.")
             if threshold >= topup:
                 raise ValueError("The threshold must be below the top-up.")
-            balances.set_terms(account, topup, threshold, now)
+            balances.set_terms(account, topup, threshold, body.get("autoTopup") is True, now)
             return 200, self._balance(account), {}
         if method == "POST" and path == "/balance/topup":
             amount = _usd_atomic(body.get("amountUsd"), 0, low=MIN_TOPUP, high=MAX_TOPUP, what="The top-up")
@@ -305,6 +305,7 @@ class ApiKeys:
         return {"object": "balance", "currency": "USDC", "balanceUsd": state["balanceAtomic"] / 1e6,
                 "availableUsd": state["availableAtomic"] / 1e6, "heldUsd": state["heldAtomic"] / 1e6,
                 "topupUsd": state["topupAtomic"] / 1e6, "thresholdUsd": state["thresholdAtomic"] / 1e6,
+                "autoTopup": state["autoTopup"],
                 "refundRequested": state["refundRequestedAt"] is not None,
                 "pendingTopups": [{"id": p["id"], "state": p["state"], "amountUsd": p["amountAtomic"] / 1e6}
                                   for p in state["pending"]]}

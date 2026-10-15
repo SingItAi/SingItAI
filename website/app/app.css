@@ -152,6 +152,7 @@ p { color: var(--text-soft); }
 .meter { height: 6px; border-radius: 3px; background: var(--bone); overflow: hidden; margin: 16px 0 8px; }
 .meter > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 24px; }
+.stats.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .stat { border-radius: var(--r-wash); padding: 12px 16px; background: var(--bone); }
 .stat .v { font: 400 16px var(--mono); margin-top: 4px; }
 .status { display: inline-flex; align-items: center; gap: 6px; font: 400 12px var(--sans); letter-spacing: 0.05em;
@@ -260,7 +261,7 @@ pre.result { white-space: pre-wrap; word-break: break-word; font: 13px/1.6 var(-
   .core { padding: 20px; }
   .hero .sub { font-size: 18px; }
   .hero .row .btn { flex: 1 1 100%; }
-  .fields, .presets, .stats { grid-template-columns: 1fr; }
+  .fields, .presets, .stats, .stats.two { grid-template-columns: 1fr; }
 }
 
 /* ======================================================================
@@ -611,3 +612,6 @@ details.card summary { cursor: pointer; color: var(--text-soft); }
 .key-row { align-items: center; }
 .key-row b { font-weight: 400; }
 .ledger-amount { flex-shrink: 0; white-space: nowrap; }
+.auto-topup { border-top: 1px solid var(--hairline); padding-top: 14px; }
+.auto-topup summary { cursor: pointer; font-size: 14px; color: var(--ink); }
+.auto-topup .check { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 14px; }
