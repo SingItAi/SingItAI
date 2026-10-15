@@ -831,8 +831,9 @@ function modal(inner) {
 
 function renderModal() {
   const m = state.modal;
-  if (!m) { modalEl.innerHTML = ""; return; }
+  if (!m) { modalEl.innerHTML = ""; delete modalEl.dataset.shown; return; }
   if (m.type === "busy") {
+    delete modalEl.dataset.shown;
     modalEl.innerHTML = `<div class="overlay"><div class="modal bezel"><div class="core busy">
       <div class="spinner"></div><p>${esc(m.text)}</p></div></div></div>`;
     return;
@@ -876,6 +877,15 @@ function renderModal() {
       <p class="hint">You stay signed in as ${esc(short(s.address))} until the new wallet signs. Signing in moves no funds.</p>`);
     return;
   }
+  const developers = renderDevModal(m);
+  if (developers) {
+    modalEl.innerHTML = developers;
+    // A choice inside the window redraws it: it should not fade in again.
+    if (modalEl.dataset.shown === m.type) modalEl.querySelector(".overlay")?.classList.add("still");
+    modalEl.dataset.shown = m.type;
+    return;
+  }
+  delete modalEl.dataset.shown;
   if (m.type === "quote") {
     const q = state.quote;
     const rows = q.kind === "tool"
@@ -1512,7 +1522,7 @@ function renderSettings() {
     </div></div>`;
 }
 
-// -- API keys (sign402_gateway/web_api_keys.py): code that pays from this account's own limits --
+// -- API keys and the balance they spend (sign402_gateway/web_api_keys.py, web_balance.py) --
 
 const API_BASE = () => `${location.origin}/v1`;
 
@@ -1527,7 +1537,7 @@ answer = client.chat.completions.create(
 print(answer.choices[0].message.content)`;
 }
 
-// Claude Code and the Anthropic SDK, once the balance is on: the same key, Anthropic's format.
+// Claude Code and the Anthropic SDK: the same key, Anthropic's format.
 function claudeCodeExample(key) {
   return `export ANTHROPIC_BASE_URL="${location.origin}"
 export ANTHROPIC_AUTH_TOKEN="${key}"
@@ -1535,55 +1545,21 @@ export ANTHROPIC_MODEL="claude-sonnet-5.5"
 claude`;
 }
 
-// -- The balance API keys spend (sign402_gateway/web_balance.py): topped up from this account's own limits --
-
-const usdOf = (x) => `$${Number(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
-
-function renderBalance() {
-  const b = state.balance;
-  if (!b || b.off) return "";
-  if (b.failed) return `<p class="note warn" style="margin-top:18px">${esc(b.failed)}</p>`;
-  const pending = (b.pendingTopups || []).map((p) => p.state === "uncertain"
-    ? `<p class="note warn" style="margin-top:12px">A top-up of ${usdOf(p.amountUsd)} is being checked. Nothing more is topped up until it is.</p>`
-    : `<p class="note" style="margin-top:12px">Topping up ${usdOf(p.amountUsd)}…</p>`).join("");
-  const kinds = { topup: "Top-up", charge: "Request", refund: "Refund" };
-  const lines = (b.ledger || []).map((l) => `
-    <div class="usage-row">
-      <span>${esc(kinds[l.kind] || l.kind)}${l.model ? ` · <span class="mono">${esc(l.model)}</span>` : ""}
-        <span class="faint">· ${new Date(l.at * 1000).toLocaleString()}${l.kind === "charge" && (l.inputTokens || l.outputTokens)
-          ? ` · ${Number(l.inputTokens || 0).toLocaleString()} in / ${Number(l.outputTokens || 0).toLocaleString()} out` : ""}${l.network ? ` · ${esc(l.network)}` : ""}</span></span>
-      <span class="mono ledger-amount">${l.amountUsd > 0 ? "+" : "−"}${usdOf(Math.abs(l.amountUsd))}</span>
-    </div>`).join("");
-  return `
-    <div class="bezel" style="margin-top:18px"><div class="core">
-      <h3>Balance</h3>
-      <p class="faint">Buy an amount for your keys to spend: each request costs its actual model price + 30%, with no fee per call. When it runs out, keys stop until you top up. Your chat here is not affected: it still pays per answer.</p>
-      <div class="big">${usdOf(b.balanceUsd)}<small>USDC</small></div>
-      <div class="stats two">
-        <div class="stat"><div class="label">Available now</div><div class="v">${usdOf(b.availableUsd)}</div></div>
-        <div class="stat"><div class="label">Automatic top-up</div><div class="v">${b.autoTopup ? `${usdOf(b.topupUsd)} below ${usdOf(b.thresholdUsd)}` : "Off"}</div></div>
-      </div>
-      ${pending}
-      ${b.refundRequested ? `<p class="note warn" style="margin-top:12px">You asked for your balance back. It is frozen until SingIt sends it to your wallet.</p>` : `
-      <div class="field" style="margin-top:18px"><label for="bal-now">Amount, USDC</label><input class="input" id="bal-now" inputmode="decimal" value="10"></div>
-      <div class="row" style="margin-top:12px">
-        <button class="btn btn-primary btn-sm" data-action="balance-topup">Top up</button>
-        ${b.balanceUsd > 0 ? `<button class="btn btn-ghost btn-sm" data-action="balance-refund">Ask for it back</button>` : ""}
-      </div>
-      <details class="auto-topup" style="margin-top:18px" ${b.autoTopup ? "open" : ""}>
-        <summary>Automatic top-up · ${b.autoTopup ? "on" : "off"}</summary>
-        <p class="faint">Your agent buys more by itself when the balance runs low, so your code never stops. Off unless you turn it on.</p>
-        <label class="check"><input type="checkbox" id="bal-auto" ${b.autoTopup ? "checked" : ""}> Top up automatically from my limits</label>
-        <div class="fields" style="margin-top:12px">
-          <div class="field"><label for="bal-topup">Each time, USDC</label><input class="input" id="bal-topup" inputmode="decimal" value="${b.topupUsd}"></div>
-          <div class="field"><label for="bal-threshold">When below, USDC</label><input class="input" id="bal-threshold" inputmode="decimal" value="${b.thresholdUsd}"></div>
-        </div>
-        <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-action="balance-settings">Save</button></div>
-      </details>`}
-      <h3 style="margin-top:22px">History</h3>
-      <div class="usage-rows">${lines || `<p class="faint">Nothing yet. Top up to start using your keys.</p>`}</div>
-    </div></div>`;
+// Dollars to the cent, and the fractions of a cent a single request costs: $1.00, $0.999996, $0.000004.
+function usdOf(x) {
+  const n = Number(x) || 0;
+  const fixed = Math.abs(n).toFixed(6).replace(/0+$/, "");
+  const [whole, cents = ""] = fixed.split(".");
+  return `${n < 0 ? "−" : ""}$${Number(whole).toLocaleString("en-US")}.${cents.padEnd(2, "0")}`;
 }
+
+const TOPUP_PRESETS = [5, 10, 20, 50];
+const KEY_KINDS = {
+  code: { label: "My code", daily: "5", per: "0.25", hint: "Scripts, bots and apps: short questions." },
+  agent: { label: "Claude Code", daily: "20", per: "2", hint: "Coding agents send long contexts: up to $2 a request." },
+};
+const networkFee = () => (state.session?.chain === "solana" ? 0.002 : 0.001);
+const balanceOn = () => state.balance && !state.balance.off && !state.balance.failed;
 
 async function loadBalance() {
   try { state.balance = await api.balance(); }
@@ -1593,76 +1569,220 @@ async function loadBalance() {
   }
 }
 
-function renderKeys() {
-  if (!state.keys) {
-    queueMicrotask(async () => {
-      try { state.keys = await api.apiKeys(); } catch (error) { state.keys = { failed: explain(error), keys: [] }; }
-      await loadBalance();
-      if (state.view === "keys") render();
-    });
-    return `<div class="page-head"><span class="eyebrow">Developers</span><h1>API <em>keys</em>.</h1></div>
-      <p class="faint">Loading…</p>`;
-  }
-  const a = state.allowance;
-  const ready = a?.configured && (a.state === "granted" || a.state === undefined);
+async function loadDevelopers() {
+  try { state.keys = await api.apiKeys(); } catch (error) { state.keys = { failed: explain(error), keys: [] }; }
+  await loadBalance();
+}
+
+// What the keys spent today, from the latest lines of the balance's history.
+function spentToday(ledger) {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const today = (ledger || []).filter((l) => l.kind === "charge" && l.at * 1000 >= start.getTime());
+  return { requests: today.length, usd: today.reduce((sum, l) => sum - l.amountUsd, 0) };
+}
+
+function renderBalanceCard() {
+  const b = state.balance;
+  if (!balanceOn()) return b?.failed ? `<p class="note warn" style="margin-top:18px">${esc(b.failed)}</p>` : "";
+  const today = spentToday(b.ledger);
+  const pending = (b.pendingTopups || []).map((p) => p.state === "uncertain"
+    ? `<p class="note warn" style="margin-top:14px">A top-up of ${usdOf(p.amountUsd)} is being checked. Nothing more is topped up until it is.</p>`
+    : `<p class="note" style="margin-top:14px">Topping up ${usdOf(p.amountUsd)}…</p>`).join("");
+  return `
+    <div class="bezel" style="margin-top:18px"><div class="core">
+      <h3>Balance</h3>
+      <div class="big">${usdOf(b.balanceUsd)}<small>USDC</small></div>
+      <p class="faint balance-today">${today.requests
+        ? `Today: ${today.requests} request${today.requests === 1 ? "" : "s"} · ${usdOf(today.usd)}`
+        : b.balanceUsd > 0 ? "No requests today." : "Top up to start using your keys."}</p>
+      ${pending}
+      ${b.refundRequested
+        ? `<p class="note warn" style="margin-top:14px">You asked for your balance back. Your keys stop until SingIt sends it to your wallet.</p>`
+        : `<div class="row" style="margin-top:18px"><button class="btn btn-primary" data-action="open-topup">Top up</button></div>`}
+      <div class="balance-foot">
+        <span>Automatic top-up: <b>${b.autoTopup ? `${usdOf(b.topupUsd)} when below ${usdOf(b.thresholdUsd)}` : "off"}</b>
+          ${b.refundRequested ? "" : `· <button class="linkish" data-action="open-auto-topup">Change</button>`}</span>
+        ${b.balanceUsd > 0 && !b.refundRequested ? `<button class="linkish quiet" data-action="open-refund">Ask for the balance back</button>` : ""}
+      </div>
+      <p class="hint">Only your API keys spend it: each request costs the model's price + 30%, nothing per call. Your chat here still pays per answer.</p>
+    </div></div>`;
+}
+
+function renderKeyList() {
   const when = (ts) => ts ? new Date(ts * 1000).toLocaleDateString() : "never";
-  const money = (x) => `$${Number(x).toLocaleString("en-US", { maximumFractionDigits: 4 })}`;
-  const fresh = state.newKey ? `
+  const keys = state.keys.keys || [];
+  const live = keys.filter((k) => k.state === "active");
+  const rows = live.map((k) => `
+    <div class="usage-row key-row">
+      <span><b>${esc(k.name)}</b> <span class="mono faint">${esc(k.prefix)}…</span>
+        <span class="faint">· ${usdOf(k.spentTodayUsd)} of ${usdOf(k.dailyCapUsd)} today · up to ${usdOf(k.perRequestCapUsd)} a request · last used ${when(k.lastUsedAt)}</span></span>
+      <button class="btn btn-ghost btn-sm" data-action="revoke-key" data-id="${esc(k.id)}" data-name="${esc(k.name)}">Revoke</button>
+    </div>`).join("");
+  return `
+    <div class="bezel" style="margin-top:18px"><div class="core">
+      <div class="balance-head"><h3>Keys</h3>
+        <button class="btn ${live.length ? "btn-ghost" : "btn-primary"} btn-sm" data-action="open-create-key">Create key</button></div>
+      <div class="usage-rows">${rows || `<p class="faint">No keys yet. A key works in the OpenAI SDK, the Anthropic SDK and Claude Code.</p>`}</div>
+      ${live.length ? `<details class="connect-help"><summary>How to connect</summary>
+        <p class="faint">Base URL <span class="mono">${esc(API_BASE())}</span>. With the OpenAI SDK:</p>
+        <pre class="key-code"><code>${esc(keyExample("sk_singit_…"))}</code></pre>
+        ${balanceOn() ? `<p class="faint" style="margin-top:12px">In Claude Code:</p>
+        <pre class="key-code"><code>${esc(claudeCodeExample("sk_singit_…"))}</code></pre>` : ""}</details>` : ""}
+    </div></div>`;
+}
+
+function renderNewKey() {
+  if (!state.newKey) return "";
+  return `
     <div class="bezel" style="margin-top:18px"><div class="core">
       <h3>Copy your key now</h3>
       <p class="faint">It is shown this once. SingIt keeps only a fingerprint of it.</p>
       <div class="key-box"><code class="mono" id="new-key">${esc(state.newKey)}</code>
         <button class="btn btn-primary btn-sm" data-action="copy-key">Copy</button></div>
-      <p class="faint" style="margin-top:14px">Use it with any OpenAI SDK:</p>
-      <pre class="key-code"><code>${esc(keyExample(state.newKey))}</code></pre>
-      ${state.balance && !state.balance.off && !state.balance.failed ? `
-      <p class="faint" style="margin-top:14px">Or in Claude Code (give the key at least $2 per request: a coding agent sends long contexts):</p>
+      ${balanceOn() ? `<p class="faint" style="margin-top:14px">In Claude Code:</p>
       <pre class="key-code"><code>${esc(claudeCodeExample(state.newKey))}</code></pre>` : ""}
+      <p class="faint" style="margin-top:14px">With the OpenAI SDK:</p>
+      <pre class="key-code"><code>${esc(keyExample(state.newKey))}</code></pre>
       <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-action="hide-key">I saved it</button></div>
-    </div></div>` : "";
-  const rows = (state.keys.keys || []).map((k) => `
-    <div class="usage-row key-row">
-      <span><b>${esc(k.name)}</b> <span class="mono faint">${esc(k.prefix)}…</span>
-        <span class="faint">· ${k.state === "active" ? `${money(k.spentTodayUsd)} of ${money(k.dailyCapUsd)} today · up to ${money(k.perRequestCapUsd)} an answer · until ${when(k.expiresAt)} · last used ${when(k.lastUsedAt)}` : esc(k.state)}</span></span>
-      ${k.state === "active" ? `<button class="btn btn-ghost btn-sm" data-action="revoke-key" data-id="${esc(k.id)}" data-name="${esc(k.name)}">Revoke</button>` : ""}
-    </div>`).join("");
-  return `
-    <div class="page-head"><span class="eyebrow">Developers</span><h1>API <em>keys</em>.</h1>
-      <p>${state.balance && !state.balance.off
-        ? `One key for the OpenAI SDK, the Anthropic SDK and Claude Code: <span class="mono">${esc(API_BASE())}</span>. Requests are paid from the balance you buy below; the key can do nothing else.`
-        : `Point any OpenAI SDK at <span class="mono">${esc(API_BASE())}</span> with a key. Each answer is paid from your own limits; the key can do nothing else.`}</p></div>
-    ${state.keys.failed ? `<p class="note warn">${esc(state.keys.failed)}</p>` : ""}
-    ${ready ? "" : `<p class="note warn">Keys pay from your allowance. Set your limits and approve them first.
-      <button class="btn btn-ghost btn-sm" data-action="go" data-view="allowance">Open Allowance</button></p>`}
-    ${fresh}
-    ${renderBalance()}
-    <div class="bezel" style="margin-top:18px"><div class="core">
-      <h3>Create a key</h3>
-      <p class="faint">Your wallet signs the exact terms. A key never spends more than its own limits, nor more than your allowance.${state.balance && !state.balance.off ? " For Claude Code or another coding agent, allow at least $2 per request: they send long contexts." : ""}</p>
-      <div class="field" style="margin-top:12px"><label for="key-name">Name</label><input class="input" id="key-name" maxlength="40" placeholder="My bot"></div>
-      <div class="fields" style="margin-top:12px">
-        <div class="field"><label for="key-daily">A day, USDC</label><input class="input" id="key-daily" inputmode="decimal" value="5"></div>
-        <div class="field"><label for="key-per">Per answer, USDC</label><input class="input" id="key-per" inputmode="decimal" value="0.25"></div>
-        <div class="field"><label for="key-days">Lasts, days</label><input class="input" id="key-days" type="number" min="1" max="365" value="90"></div>
-      </div>
-      <div class="row" style="margin-top:22px"><button class="btn btn-primary" data-action="create-key">Create key</button></div>
-    </div></div>
-    <div class="bezel" style="margin-top:18px"><div class="core">
-      <h3>Your keys</h3>
-      <div class="usage-rows">${rows || `<p class="faint">No keys yet.</p>`}</div>
     </div></div>`;
 }
 
+function renderUsageTab() {
+  const b = state.balance;
+  const kinds = { topup: "Top-up", charge: "Request", refund: "Refund" };
+  const keyName = Object.fromEntries((state.keys.keys || []).map((k) => [k.id, k.name]));
+  const lines = (b?.ledger || []).map((l) => `
+    <div class="usage-row">
+      <span>${l.kind === "charge" ? `<span class="mono">${esc(l.model || "request")}</span>` : esc(kinds[l.kind] || l.kind)}
+        <span class="faint">· ${new Date(l.at * 1000).toLocaleString()}${l.key && keyName[l.key] ? ` · ${esc(keyName[l.key])}` : ""}${
+          l.kind === "charge" && (l.inputTokens || l.outputTokens) ? ` · ${Number(l.inputTokens || 0).toLocaleString()} in / ${Number(l.outputTokens || 0).toLocaleString()} out` : ""}${
+          l.network ? ` · ${esc(l.network)}` : ""}</span></span>
+      <span class="mono ledger-amount">${l.amountUsd > 0 ? "+" : ""}${usdOf(l.amountUsd)}</span>
+    </div>`).join("");
+  return `
+    <div class="bezel" style="margin-top:18px"><div class="core">
+      <div class="balance-head"><h3>History</h3><button class="linkish" data-action="dev-refresh">Refresh</button></div>
+      <p class="faint">Balance now ${usdOf(b?.balanceUsd)}. The latest 50 top-ups and requests.</p>
+      <div class="usage-rows">${lines || `<p class="faint">Nothing yet.</p>`}</div>
+    </div></div>`;
+}
+
+function renderKeys() {
+  if (!state.keys) {
+    queueMicrotask(async () => { await loadDevelopers(); if (state.view === "keys") render(); });
+    return `<div class="page-head"><span class="eyebrow">Developers</span><h1>API <em>keys</em>.</h1></div>
+      <p class="faint">Loading…</p>`;
+  }
+  const a = state.allowance;
+  const ready = a?.configured && (a.state === "granted" || a.state === undefined);
+  const tab = balanceOn() ? state.devTab || "overview" : "overview";
+  return `
+    <div class="page-head"><span class="eyebrow">Developers</span><h1>API <em>keys</em>.</h1>
+      <p>${balanceOn()
+        ? "One key for your code, the OpenAI and Anthropic SDKs and Claude Code. Requests are paid from the balance you buy here."
+        : `Point any OpenAI SDK at <span class="mono">${esc(API_BASE())}</span> with a key. Each answer is paid from your own limits; the key can do nothing else.`}</p></div>
+    ${state.keys.failed ? `<p class="note warn">${esc(state.keys.failed)}</p>` : ""}
+    ${ready ? "" : `<p class="note warn">Top-ups and keys pay from your allowance. Set your limits and approve them first.
+      <button class="btn btn-ghost btn-sm" data-action="go" data-view="allowance">Open Allowance</button></p>`}
+    ${balanceOn() ? `<div class="segmented dev-tabs" role="tablist">
+      <button class="${tab === "overview" ? "on" : ""}" data-action="dev-tab" data-dev-tab="overview" aria-pressed="${tab === "overview"}">Overview</button>
+      <button class="${tab === "usage" ? "on" : ""}" data-action="dev-tab" data-dev-tab="usage" aria-pressed="${tab === "usage"}">History</button></div>` : ""}
+    ${renderNewKey()}
+    ${tab === "usage" ? renderUsageTab() : renderBalanceCard() + renderKeyList()}`;
+}
+
+// The windows the page opens (renderModal).
+function renderDevModal(m) {
+  if (m.type === "topup") {
+    const amount = Number(m.amount) || 0;
+    const fee = networkFee();
+    return modal(`
+      <div class="approval-head"><div class="avatar">${mark()}</div>
+        <div><strong>Top up your API balance</strong><span>Paid by your agent from your limits</span></div></div>
+      <div class="presets topup-presets">${TOPUP_PRESETS.map((x) => `
+        <button class="preset ${x === amount && !m.custom ? "selected" : ""}" data-action="topup-preset" data-amount="${x}"><b>$${x}</b></button>`).join("")}</div>
+      <div class="field"><label for="topup-custom">Or another amount, $1 to $50</label>
+        <input class="input" id="topup-custom" inputmode="decimal" placeholder="25" value="${m.custom ? esc(m.amount) : ""}"></div>
+      <dl class="rows" id="topup-rows">${topupRows(amount, fee)}</dl>
+      <div class="actions">
+        <button class="btn btn-primary" data-action="balance-topup">Top up</button>
+        <button class="btn btn-ghost" data-action="dismiss-button">Cancel</button>
+      </div>
+      <p class="hint">One payment from your wallet within your limits. Only your API keys spend it.</p>`);
+  }
+  if (m.type === "auto-topup") {
+    const b = state.balance;
+    const on = m.on ?? b.autoTopup;
+    return modal(`
+      <div class="approval-head"><div class="avatar">${mark()}</div>
+        <div><strong>Automatic top-up</strong><span>So your code never stops</span></div></div>
+      <div class="segmented" role="group" aria-label="Automatic top-up">
+        <button class="${on ? "" : "on"}" data-action="auto-toggle" data-on="0" aria-pressed="${!on}">Off</button>
+        <button class="${on ? "on" : ""}" data-action="auto-toggle" data-on="1" aria-pressed="${on}">On</button></div>
+      <p class="faint" style="margin-top:14px">${on
+        ? "When the balance runs low, your agent buys more from your limits by itself."
+        : "Your keys stop when the balance runs out, until you top up."}</p>
+      ${on ? `<div class="fields two-fields" style="margin-top:12px">
+        <div class="field"><label for="auto-amount">Top up, USDC</label><input class="input" id="auto-amount" inputmode="decimal" value="${esc(b.topupUsd)}"></div>
+        <div class="field"><label for="auto-below">When below, USDC</label><input class="input" id="auto-below" inputmode="decimal" value="${esc(b.thresholdUsd)}"></div>
+      </div>` : ""}
+      <div class="actions" style="margin-top:16px">
+        <button class="btn btn-primary" data-action="balance-settings">Save</button>
+        <button class="btn btn-ghost" data-action="dismiss-button">Cancel</button>
+      </div>`);
+  }
+  if (m.type === "create-key") {
+    const kind = KEY_KINDS[m.kind] || KEY_KINDS.code;
+    return modal(`
+      <div class="approval-head"><div class="avatar">${mark()}</div>
+        <div><strong>Create an API key</strong><span>Your wallet signs its limits</span></div></div>
+      <div class="segmented" role="group" aria-label="For">${Object.entries(KEY_KINDS).map(([id, k]) => `
+        <button class="${id === m.kind ? "on" : ""}" data-action="key-kind" data-kind="${id}" aria-pressed="${id === m.kind}">${k.label}</button>`).join("")}</div>
+      <p class="faint" style="margin-top:10px">${kind.hint}</p>
+      <div class="field" style="margin-top:12px"><label for="key-name">Name</label><input class="input" id="key-name" maxlength="40" value="${esc(m.name || kind.label)}"></div>
+      <div class="fields" style="margin-top:12px">
+        <div class="field"><label for="key-daily">$ a day</label><input class="input" id="key-daily" inputmode="decimal" value="${kind.daily}"></div>
+        <div class="field"><label for="key-per">$ a request</label><input class="input" id="key-per" inputmode="decimal" value="${kind.per}"></div>
+        <div class="field"><label for="key-days">Days</label><input class="input" id="key-days" type="number" min="1" max="365" value="90"></div>
+      </div>
+      <div class="actions" style="margin-top:16px">
+        <button class="btn btn-primary" data-action="create-key">Create key</button>
+        <button class="btn btn-ghost" data-action="dismiss-button">Cancel</button>
+      </div>
+      <p class="hint">A key never spends more than these limits. It cannot move your funds or change your limits.</p>`);
+  }
+  if (m.type === "refund") {
+    return modal(`
+      <div class="approval-head"><div class="avatar">${mark()}</div>
+        <div><strong>Ask for your balance back</strong><span>${usdOf(state.balance.balanceUsd)} to your wallet</span></div></div>
+      <p>SingIt sends what is left to your wallet by hand, usually within a day. Until then your keys stop spending.</p>
+      <div class="actions" style="margin-top:16px">
+        <button class="btn btn-primary" data-action="balance-refund">Ask for it back</button>
+        <button class="btn btn-ghost" data-action="dismiss-button">Keep it</button>
+      </div>`);
+  }
+  return null;
+}
+
+function topupRows(amount, fee) {
+  if (!(amount >= 1 && amount <= 50)) return `<div><dt>Amount</dt><dd>$1 to $50</dd></div>`;
+  return `<div><dt>To your balance</dt><dd>${usdOf(amount)}</dd></div>
+    <div><dt>Network fee</dt><dd>${usdOf(fee)}</dd></div>
+    <div><dt>From your limits</dt><dd>${usdOf(amount + fee)}</dd></div>`;
+}
+
 async function createKey() {
+  const kind = state.modal?.kind || "code";
   const terms = { name: $("#key-name").value.trim(), dailyUsd: Number($("#key-daily").value),
                   perRequestUsd: Number($("#key-per").value), days: Number($("#key-days").value) };
   if (!terms.name) { toast("Name the key first.", true); return; }
-  await busy("Sign the key's terms in your wallet. It does not move any funds.", async () => {
+  await busy("Sign the key's limits in your wallet. It does not move any funds.", async () => {
     const wallet = await needWallet();
     const prepared = await api.apiKeyPrepare(terms);
     const signature = await wallet.signMessage(prepared.message);
     const made = await api.apiKeyCreate(prepared.message, signature);
     state.newKey = made.key;
+    state.newKeyKind = kind;
     state.keys = await api.apiKeys();
   });
   render();
@@ -1928,26 +2048,36 @@ const actions = {
     catch { toast("Select the key and copy it.", true); }
   },
   "hide-key": () => { state.newKey = null; render(); },
+  "dev-tab": (el) => { state.devTab = el.dataset.devTab; render(); },
+  "dev-refresh": async () => { await loadDevelopers(); render(); },
+  "open-topup": () => { state.modal = { type: "topup", amount: 10 }; render(); },
+  "topup-preset": (el) => { state.modal = { type: "topup", amount: Number(el.dataset.amount) }; render(); },
+  "open-auto-topup": () => { state.modal = { type: "auto-topup" }; render(); },
+  "auto-toggle": (el) => { state.modal = { ...state.modal, on: el.dataset.on === "1" }; render(); },
+  "open-create-key": () => { state.modal = { type: "create-key", kind: "code" }; render(); },
+  "key-kind": (el) => { state.modal = { type: "create-key", kind: el.dataset.kind }; render(); },
+  "open-refund": () => { state.modal = { type: "refund" }; render(); },
   "balance-topup": async () => {
-    const amount = Number($("#bal-now").value);
+    const amount = Number(state.modal?.amount);
     if (!(amount >= 1 && amount <= 50)) { toast("Top up between $1 and $50.", true); return; }
-    await busy(`Your agent is buying ${usdOf(amount)} of SingIt credit from your limits…`, async () => {
+    await busy(`Your agent is paying ${usdOf(amount + networkFee())} from your limits…`, async () => {
       await api.balanceTopup(amount);
       await loadBalance();
-      toast("Balance topped up.");
+      toast(`${usdOf(amount)} added to your balance.`);
     });
   },
   "balance-settings": async () => {
-    // Read before busy(): it redraws the page, and the form with it.
-    const auto = $("#bal-auto").checked, topup = Number($("#bal-topup").value), below = Number($("#bal-threshold").value);
+    // Read before busy(): it redraws the page, and the window with it.
+    const on = state.modal?.on ?? state.balance.autoTopup;
+    const topup = on ? Number($("#auto-amount").value) : state.balance.topupUsd;
+    const below = on ? Number($("#auto-below").value) : state.balance.thresholdUsd;
     await busy("Saving…", async () => {
-      await api.balanceSettings(topup, below, auto);
+      await api.balanceSettings(topup, below, on);
       await loadBalance();
-      toast(auto ? "Automatic top-up is on." : "Automatic top-up is off.");
+      toast(on ? "Automatic top-up is on." : "Automatic top-up is off.");
     });
   },
   "balance-refund": async () => {
-    if (!confirm(`Ask for your ${usdOf(state.balance.balanceUsd)} back? Your keys stop spending until SingIt sends it to your wallet.`)) return;
     await busy("Sending your request…", async () => { await api.balanceRefund(); await loadBalance(); });
   },
   "revoke-key": async (el) => {
@@ -2140,7 +2270,7 @@ const actions = {
     state.accountMenu = null;
     if (state.view === "usage") state.usage = null;
     if (state.view === "purchases") state.purchases = null;
-    if (state.view === "keys") { state.keys = null; state.newKey = null; state.balance = null; }
+    if (state.view === "keys") { state.keys = null; state.newKey = null; state.balance = null; state.devTab = "overview"; }
     render();
     if (state.view === "settings") loadPush().then(() => { if (state.view === "settings") render(); });
   },
@@ -2249,6 +2379,13 @@ document.addEventListener("input", (event) => {
     return;
   }
   if (event.target.id === "composer") autosize(event.target);
+  if (event.target.id === "topup-custom" && state.modal?.type === "topup") {
+    const value = event.target.value.trim();
+    state.modal = { type: "topup", amount: value ? Number(value) : 10, custom: Boolean(value) };
+    $("#topup-rows").innerHTML = topupRows(Number(state.modal.amount) || 0, networkFee());
+    document.querySelectorAll(".topup-presets .preset").forEach((b) => b.classList.toggle("selected",
+      !state.modal.custom && Number(b.dataset.amount) === state.modal.amount));
+  }
 });
 
 const MENU_KEYS = { p: "chat-pin", r: "chat-rename", c: "chat-copy", a: "chat-archive", d: "chat-delete" };
