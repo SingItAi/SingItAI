@@ -73,14 +73,15 @@ class ToolQuotes:
 # paused (SIGN402_PURCHASES_PAUSED). A new paying action belongs here. The chat checks the pause itself,
 # before each paid search or answer, so the chat stays open while only spending stops.
 PAYING_ACTIONS = frozenset({"tool-buy", "bitrefill-buy", "bitrefill-solana-buy", "venice-solana-topup", "data-buy",
-                            "email-send", "call-start"})
+                            "email-send", "call-start", "api-chat", "credit-topup"})
 
 # What a Solana account may do before the Solana allowance exists: look, never pay.
 SOLANA_READ_ONLY = {"tools", "catalog-search", "purchases", "purchase-reveal", "purchase-progress", "venice-models", "venice-model",
                     "venice-usage", "bitrefill-packages", "buyer-email", "buyer-email-set",
                     # these pay, and only through the account's own Solana allowance:
                     "venice-chat", "venice-solana-topup", "bitrefill-solana-buy", "data-buy",
-                    "email-address", "email-address-set", "email-send", "call-start", "call-status"}
+                    "email-address", "email-address-set", "email-send", "call-start", "call-status",
+                    "api-chat", "api-models", "credit-topup"}
 
 
 def _account(server: Any, payload: dict[str, Any], action: str = "") -> str:
@@ -203,6 +204,31 @@ def _handle(server: Any, action: str, payload: dict[str, Any]) -> tuple[int, dic
         if not account.startswith(SOLANA_PREFIX):
             _limits_from_limiter(server, gw, account)
         return 200, web_data.buy(server, gw, account, payload.get("tool"), payload.get("params"))
+
+    if action == "api-models":  # what an API key can name in "model": the default and every model Ask can answer
+        from . import ask_catalogue, web_ask  # noqa: PLC0415
+        listed = [{"id": web_ask.MODEL, "object": "model", "owned_by": "singit", "name": web_ask.LABEL}]
+        listed += [{"id": m["id"], "object": "model", "owned_by": m.get("provider") or "surplus", "name": m["label"]}
+                   for m in ask_catalogue.models()]
+        return 200, {"object": "list", "data": listed}
+
+    if action == "api-chat":  # an answer for an API key (web_api.py), paid from this account's own limits
+        from . import web_ask  # noqa: PLC0415
+        model_id = web_ask.api_model(payload.get("model"))
+        if model_id is None:
+            return 404, {"ok": False, "error": "model_not_found",
+                         "text": "No such model can be asked for right now. See GET /v1/models. Nothing was paid."}
+        limit = payload.get("limitAtomic")
+        result = web_ask.api_chat(server, gw, account, payload.get("messages"), model_id,
+                                  max_tokens=payload.get("maxTokens"),
+                                  limit=limit if type(limit) is int and limit > 0 else None)
+        return 200, result
+
+    if action == "credit-topup":  # SingIt credit for this account's API balance, bought from its own limits
+        from . import web_balance  # noqa: PLC0415
+        if not account.startswith(SOLANA_PREFIX):
+            _limits_from_limiter(server, gw, account)
+        return 200, web_balance.topup(server, gw, account, payload)
 
     if action in ("venice-chat", "venice-models", "venice-model", "venice-usage", "venice-solana-topup"):
         from . import web_ask

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getBase58Encoder } from '@solana/kit';
-import { ResourcePayments, selectDataRequirement } from '../src/resource.mjs';
+import { CREDIT_URL, ResourcePayments, selectDataRequirement } from '../src/resource.mjs';
 import { dispatch } from '../src/gateway.mjs';
 import { Store } from '../src/store.mjs';
 import { NETWORK, USDC, TOKEN_PROGRAM } from '../src/config.mjs';
@@ -69,6 +69,10 @@ test('another seller, a higher price, an unlisted host or no approval pays nothi
     [{}, { url: 'http://x402.ottoai.services/weather' }, /Only listed data sellers/],
     [{ delegated: 0n }, {}, /does not cover/],
     [{}, { maxAmount: '60000' }, /Invalid maximum/],
+    [{}, { url: 'https://ask.singitai.app/v1/chat/completions' }, /Only listed data sellers/],
+    [{}, { url: 'https://ask.singitai.app/v1/credit?x=1' }, /Only listed data sellers/],
+    [{}, { url: 'https://ask.singitai.app/v1/credit', method: 'GET' }, /Unsupported method/],
+    [{}, { url: 'https://ask.singitai.app/v1/credit', method: 'POST', body: {}, maxAmount: '50002001' }, /Invalid maximum/],
   ]) {
     const f = await fixture(options);
     await assert.rejects(f.payments.pay({ ...f.call, ...change }), pattern);
@@ -76,6 +80,14 @@ test('another seller, a higher price, an unlisted host or no approval pays nothi
     assert.equal(f.store.invoiceAttempt(f.call.callId), null);
     f.store.close();
   }
+});
+
+test('SingIt credit for the owner’s API balance is paid with its own ceiling, by POST only', async () => {
+  const f = await fixture();
+  const paid = await f.payments.pay({ ...f.call, url: CREDIT_URL, method: 'POST', body: { amountAtomic: '5000000' }, maxAmount: '5002000' });
+  assert.equal(paid.state, 'accepted');
+  assert.deepEqual(f.calls.map(c => [c.url, Boolean(c.signed)]), [[CREDIT_URL, false], [CREDIT_URL, true]]);
+  f.store.close();
 });
 
 test('an unclear answer is recorded and never retried', async () => {

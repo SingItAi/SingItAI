@@ -23,6 +23,8 @@ function fakeFacilitator() {
       return {
         kinds: [
           { x402Version: 2, scheme: "upto", network: BASE, extra: { facilitatorAddress: "0x" + "3".repeat(40) } },
+          { x402Version: 2, scheme: "exact", network: BASE },
+          { x402Version: 2, scheme: "exact", network: SOLANA, extra: { feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88" } },
           { x402Version: 2, scheme: "upto", network: SOLANA, extra: {
             feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88", receiverAuthorizer: "9dpHxn3XFZMZv59vE5MKxhfwGUCCgkcCUzYZLpdEm7ox" } },
         ],
@@ -156,6 +158,103 @@ test("a malformed question is refused before any payment is asked for", async (t
   assert.equal(response.headers.get("payment-required"), null);
   assert.equal(asked.length, 0);
   assert.equal(facilitator.calls.verify, 0);
+});
+
+test("an empty unpaid request gets the standing offer, so directories can register the route", async (t) => {
+  const { url, facilitator, asked } = await serve(t);
+  for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }]) {
+    const response = await fetch(`${url}${ROUTE}`, init);
+    assert.equal(response.status, 402);
+    const required = decode(response.headers.get("payment-required"));
+    assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[SOLANA, "3000"], [BASE, "3000"]]);
+    assert.ok(required.extensions?.bazaar?.info, "x402scan needs the input schema to index the route");
+    assert.match(required.resource.description, /any model listed at GET \/v1\/models/);
+    assert.doesNotMatch(required.resource.description, /at most 0\.003/);
+  }
+  assert.equal(asked.length, 0);
+  assert.equal(facilitator.calls.verify, 0);
+});
+
+test("the listing tells agents what to send and what comes back, within Coinbase's limits", async (t) => {
+  const { url } = await serve(t);
+  const required = await offer(url);
+  // Coinbase's facilitator rejects descriptions over 500 characters.
+  assert.ok(required.resource.description.length <= 500, `description is ${required.resource.description.length} characters`);
+  assert.match(required.resource.description, /Claude, GPT, Gemini/);
+  const bazaar = required.extensions.bazaar;
+  const body = bazaar.schema.properties.input.properties.body;
+  assert.deepEqual(body.properties.messages.items.properties.role.enum, ["system", "user", "assistant"]);
+  assert.equal(body.properties.max_tokens.maximum, LIMITS.maxTokens);
+  // The declared example must satisfy the declared schema, or the Bazaar rejects the listing.
+  const example = bazaar.info.input.body;
+  assert.ok(example.messages.length >= body.properties.messages.minItems);
+  for (const message of example.messages) {
+    assert.ok(body.properties.messages.items.properties.role.enum.includes(message.role));
+    assert.equal(typeof message.content, "string");
+  }
+  assert.ok(example.max_tokens <= body.properties.max_tokens.maximum && example.max_tokens >= body.properties.max_tokens.minimum);
+  // What comes back is described too, with a realistic charge: 6 micro-USD of tokens, 2 markup, 1000 fee.
+  assert.equal(bazaar.info.output.example.billing.totalAtomic, "1008");
+  assert.deepEqual(billUsage(bazaar.info.output.example.usage), bazaar.info.output.example.billing);
+  assert.ok(required.resource.tags.includes("claude"));
+});
+
+test("paying the offer with no question is refused and costs nothing", async (t) => {
+  const { url, facilitator, asked } = await serve(t);
+  const response = await fetch(`${url}${ROUTE}`, { method: "POST",
+    headers: { "PAYMENT-SIGNATURE": baseSignature(await offer(url)) } });
+  assert.equal(response.status, 400);
+  assert.equal(asked.length, 0);
+  assert.equal(facilitator.calls.verify, 0);
+  assert.deepEqual(facilitator.calls.settle, []);
+});
+
+test("the web agent's metered route still refuses an empty request before any offer", async (t) => {
+  const { url } = await serve(t);
+  const response = await fetch(`${url}/v1/chat/completions/metered`, { method: "POST" });
+  assert.equal(response.status, 400);
+  assert.equal(response.headers.get("payment-required"), null);
+});
+
+test("the OpenAPI document lists the paid route the way x402scan reads it", async (t) => {
+  const { url, facilitator } = await serve(t);
+  const response = await fetch(`${url}/openapi.json`);
+  assert.equal(response.status, 200);
+  const doc = await response.json();
+  assert.equal(doc.openapi, "3.1.0");
+  assert.ok(doc.info.title && doc.info.version);
+  assert.equal(doc.servers[0].url, url);
+  const op = doc.paths[ROUTE].post;
+  assert.deepEqual(op["x-payment-info"].protocols, [{ x402: {} }]);
+  const price = op["x-payment-info"].price;
+  assert.equal(price.mode, "dynamic");
+  assert.equal(price.currency, "USD");
+  assert.equal(price.min, "0.001");
+  // The dearest listed model (PRICEY) at the largest question and answer, on Solana's terms.
+  const most = ceilingAtomic(PRICEY, { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, headroom: THINKING_HEADROOM }, SOLANA_TERMS);
+  assert.equal(Number(price.max), Number(most) / 1e6);
+  assert.ok(op.responses[402]);
+  assert.deepEqual(op.security, [{ x402: [] }]);
+  assert.ok(doc.components.securitySchemes.x402);
+  assert.deepEqual(op.requestBody.content["application/json"].schema.required, ["messages"]);
+  assert.equal(doc.paths["/v1/models"].get["x-payment-info"], undefined, "the model list is free");
+  assert.equal(doc.paths["/v1/chat/completions/metered"], undefined, "the web agent's private route is not listed");
+  assert.equal(facilitator.calls.verify, 0);
+});
+
+test("/.well-known/x402 points to the paid route at its public URL", async (t) => {
+  const { url } = await serve(t);
+  const response = await new Promise((resolve, reject) => {
+    const req = httpRequest(`${url}/.well-known/x402`, { headers: { Host: "ask.singitai.app", "X-Forwarded-Proto": "https" } },
+      (res) => { let body = ""; res.on("data", (c) => { body += c; }); res.on("end", () => resolve({ status: res.statusCode, body })); res.on("error", reject); });
+    req.on("error", reject);
+    req.end();
+  });
+  assert.equal(response.status, 200);
+  const doc = JSON.parse(response.body);
+  assert.equal(doc.version, 1);
+  assert.deepEqual(doc.resources, ["https://ask.singitai.app/v1/chat/completions"]);
+  assert.match(doc.instructions, /GET https:\/\/ask\.singitai\.app\/v1\/models/);
 });
 
 test("health and the model list are free, and the old test page is gone", async (t) => {

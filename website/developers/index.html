@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SingIt for developers - any model, one key, below list price</title>
+<meta name="description" content="Claude, GPT, Gemini, DeepSeek and hundreds more with one SingIt API key: the OpenAI SDK, the Anthropic SDK and Claude Code. Below list price. Or pay per answer in USDC over x402, with no key at all.">
+<meta property="og:title" content="SingIt for developers: any model, one key, below list price">
+<meta property="og:description" content="One API key for the OpenAI SDK, the Anthropic SDK and Claude Code. Or pay per answer over x402. Try it free.">
+<meta property="og:url" content="https://singitai.app/developers/">
+<meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@SingItAgent">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css?v=bb7061fc">
+<link rel="stylesheet" href="/dev.css?v=1">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="singit-mark" viewBox="0 0 240 240" fill="none">
+    <path d="M192 108 V152 Q192 176 168 176 H112 Q88 176 88 152 V88 Q88 64 112 64 H168 Q192 64 192 78"
+          stroke="currentColor" stroke-width="12.5" stroke-linecap="round"/>
+    <path d="M116 118 L139 143 L188 86 H206" stroke="currentColor" stroke-width="11.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="216" cy="86" r="8" stroke="currentColor" stroke-width="8.5"/>
+    <g stroke="currentColor" stroke-width="9" stroke-linecap="round">
+      <line x1="58" y1="94"  x2="88" y2="94"/>
+      <line x1="58" y1="121" x2="88" y2="121"/>
+      <line x1="58" y1="148" x2="88" y2="148"/>
+    </g>
+    <g fill="currentColor">
+      <circle cx="49" cy="94"  r="9"/>
+      <circle cx="49" cy="121" r="9"/>
+      <circle cx="49" cy="148" r="9"/>
+    </g>
+  </symbol>
+  <symbol id="ic-copy" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="nav-wrap">
+  <div class="nav-bar">
+    <a class="brand" href="/" aria-label="SingIt home">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/developers/" aria-current="page">Developers</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="#quickstart">Quickstart</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="https://app.singitai.app/app/">
+      Open SingIt
+      <span class="btn-arrow" aria-hidden="true">&#8599;</span>
+    </a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- Statement left, the live price right -->
+  <section class="hero dev-hero">
+    <div class="shell hero-grid">
+      <div class="hero-copy" data-hero-reveal>
+        <p class="eyebrow">For agents and developers</p>
+        <h1>Any model. <em>One key, or none.</em></h1>
+        <p class="hero-sub"><span data-model-count>150+</span> models, Claude, GPT, Gemini and DeepSeek among them, below list price. One SingIt API key works in the OpenAI SDK, the Anthropic SDK and Claude Code. Agents with a wallet need no key: they pay per answer over x402. Try it free first.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#quickstart">
+            Try it free
+            <span class="btn-arrow" aria-hidden="true">&#8595;</span>
+          </a>
+          <a class="btn btn-outline" href="https://app.singitai.app/app/">Get an API key</a>
+        </div>
+        <p class="chat-link">Just want to chat with these models? <a href="https://app.singitai.app/app/">Open SingIt</a>, no code needed.</p>
+        <span class="endpoint-label">Base URL with an API key</span>
+        <div class="endpoint">
+          <code id="base-url">https://app.singitai.app/v1</code>
+          <button type="button" class="copy-btn" data-copy="base-url" aria-label="Copy the base URL for API keys">
+            <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+            <span data-copy-label>Copy</span>
+          </button>
+        </div>
+        <span class="endpoint-label">Without a key: free model and x402</span>
+        <div class="endpoint">
+          <code id="base-url-x402">https://ask.singitai.app/v1</code>
+          <button type="button" class="copy-btn" data-copy="base-url-x402" aria-label="Copy the base URL for x402">
+            <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+            <span data-copy-label>Copy</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="hero-visual" data-hero-card>
+        <figure class="price-card is-loading" data-price-card aria-label="Live price of a popular model on SingIt against its list price">
+          <div class="price-card-head">
+            <strong>Same model, lower price</strong>
+            <span class="live-dot">Live</span>
+          </div>
+          <div class="chips" data-price-chips aria-label="Model"></div>
+          <p class="price-model" data-price-model>Claude Opus 5.5 · output, per 1M tokens</p>
+          <b class="price-saving" data-price-saving>−75%</b>
+          <span class="price-saving-note">below the model's list price, markup included</span>
+          <div class="price-bars">
+            <div class="price-bar-row"><span>List price</span><span class="price-bar" aria-hidden="true"><i></i></span><b data-price-list>$20.00</b></div>
+            <div class="price-bar-row"><span>SingIt</span><span class="price-bar is-ours" aria-hidden="true"><i data-price-ours-bar style="width:25%"></i></span><b data-price-ours>$5.07</b></div>
+          </div>
+          <p class="price-foot">Expected price: what answers from this model cost us, plus 30%. You pay what each answer actually used, and nothing without an answer. With a key, that is all; over x402, plus $0.001 per answer on Base.</p>
+          <p class="price-foot" data-live-fallback hidden>Live prices did not load. They are at <a href="https://ask.singitai.app/v1/models">ask.singitai.app/v1/models</a>.</p>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quickstart: free first, then paid -->
+  <section class="quick" id="quickstart">
+    <div class="shell quick-grid">
+      <div>
+        <p class="eyebrow" data-reveal>Quickstart</p>
+        <h2 class="section-title" data-reveal>Your first answer <em>in one request.</em></h2>
+        <p class="quick-who" data-reveal>For your own code or agent. To chat, <a href="https://app.singitai.app/app/">open SingIt</a> instead.</p>
+        <ol class="quick-steps" data-batch>
+          <li><b>Start free</b><span>Model <span class="mono">free/deepseek-v4.1-flash</span> answers with no wallet and no key: 20 answers a day.</span></li>
+          <li><b>Get a key</b><span>In <a href="https://app.singitai.app/app/">the SingIt app</a>, Settings → API keys. Your wallet signs the key's limits: a day, a request, how many days.</span></li>
+          <li><b>Top up</b><span>Buy a balance for your keys, $1 to $50 at a time, in USDC from your wallet. Each request costs what it used + 30%, with no fee per call.</span></li>
+          <li><b>Use it anywhere</b><span>The OpenAI SDK, the Anthropic SDK or Claude Code, at <span class="mono">app.singitai.app/v1</span>, with any id from <a href="/models/">the model list</a>. Agents with a wallet can skip the key and pay per answer over x402.</span></li>
+        </ol>
+      </div>
+
+      <div data-reveal>
+        <div class="tabs" role="tablist" aria-label="Quickstart examples" data-tabs>
+          <span class="tab-pill" aria-hidden="true"></span>
+          <button type="button" class="tab" role="tab" id="tab-curl" aria-controls="panel-curl" aria-selected="true">curl · free</button>
+          <button type="button" class="tab" role="tab" id="tab-py" aria-controls="panel-py" aria-selected="false" tabindex="-1">Python · key</button>
+          <button type="button" class="tab" role="tab" id="tab-cc" aria-controls="panel-cc" aria-selected="false" tabindex="-1">Claude Code</button>
+          <button type="button" class="tab" role="tab" id="tab-ts" aria-controls="panel-ts" aria-selected="false" tabindex="-1">x402 · no key</button>
+          <button type="button" class="tab" role="tab" id="tab-find" aria-controls="panel-find" aria-selected="false" tabindex="-1">Discovery</button>
+        </div>
+        <div class="tab-panels">
+          <section class="tab-panel" role="tabpanel" id="panel-curl" aria-labelledby="tab-curl" tabindex="0">
+            <h3>curl · free</h3>
+            <div class="code">
+<pre><code id="code-curl">curl https://ask.singitai.app/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "free/deepseek-v4.1-flash",
+       "messages": [{"role": "user", "content": "Hello!"}]}'</code></pre>
+              <button type="button" class="copy-btn" data-copy="code-curl" aria-label="Copy the curl example">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <p class="tab-note">No wallet, no key. Drop the <span class="mono">free/</span> prefix or pick another model and the same request returns a 402 asking for payment.</p>
+          </section>
+
+          <section class="tab-panel" role="tabpanel" id="panel-py" aria-labelledby="tab-py" tabindex="0" hidden>
+            <h3>Python · key</h3>
+            <div class="code">
+<pre><code id="code-py">from openai import OpenAI
+
+<span class="c"># The official OpenAI SDK, pointed at SingIt, with a key from the SingIt app.</span>
+client = OpenAI(base_url="https://app.singitai.app/v1", api_key="sk_singit_...")
+answer = client.chat.completions.create(
+    model="claude-opus-5.5",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(answer.choices[0].message.content)</code></pre>
+              <button type="button" class="copy-btn" data-copy="code-py" aria-label="Copy the Python example">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <p class="tab-note">Streaming, tools and images work as the model offers them. Each answer carries <span class="mono">billing.chargedAtomic</span>: what it took from your balance, in USDC micro-units. <span class="mono">/v1/responses</span>, <span class="mono">/v1/balance</span> and <span class="mono">/v1/usage</span> answer too.</p>
+          </section>
+
+          <section class="tab-panel" role="tabpanel" id="panel-cc" aria-labelledby="tab-cc" tabindex="0" hidden>
+            <h3>Claude Code</h3>
+            <div class="code">
+<pre><code id="code-cc"><span class="c"># Your SingIt key, in Anthropic's format</span>
+export ANTHROPIC_BASE_URL="https://app.singitai.app"
+export ANTHROPIC_AUTH_TOKEN="sk_singit_..."
+export ANTHROPIC_MODEL="claude-sonnet-5.5"
+claude</code></pre>
+              <button type="button" class="copy-btn" data-copy="code-cc" aria-label="Copy the Claude Code setup">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <p class="tab-note">Make the key with at least $2 a request: a coding agent sends long contexts. The Anthropic SDK works the same way: <span class="mono">base_url="https://app.singitai.app"</span> and the key as <span class="mono">api_key</span>. Any model from the list answers here, not only Claude.</p>
+          </section>
+
+          <section class="tab-panel" role="tabpanel" id="panel-ts" aria-labelledby="tab-ts" tabindex="0" hidden>
+            <h3>x402 · no key</h3>
+            <div class="code">
+<pre><code id="code-ts">import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
+import { UptoEvmScheme } from "@x402/evm/upto/client";
+import { createPublicClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { base } from "viem/chains";
+
+<span class="c">// A wallet holding a little USDC on Base. No ETH: the facilitator pays the gas.</span>
+const account = privateKeyToAccount(process.env.AGENT_KEY);
+const chain = createPublicClient({ chain: base, transport: http() });
+const client = x402Client.fromConfig({ schemes: [{ network: "eip155:8453",
+  client: new UptoEvmScheme({ address: account.address, signTypedData: account.signTypedData,
+                              readContract: chain.readContract.bind(chain) }) }] });
+const pay = wrapFetchWithPayment(fetch, client);
+
+const res = await pay("https://ask.singitai.app/v1/chat/completions", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ model: "claude-opus-5.5",
+                         messages: [{ role: "user", content: "Hello!" }] }),
+});
+const answer = await res.json();
+console.log(answer.choices[0].message.content, answer.billing.totalAtomic);</code></pre>
+              <button type="button" class="copy-btn" data-copy="code-ts" aria-label="Copy the TypeScript example">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <p class="tab-note">For agents with their own wallet: no account and no key, just a little USDC on Base. The payment is <span class="mono">upto</span>: you sign a ceiling, and Coinbase's facilitator settles only what the answer used (<span class="mono">billing.totalAtomic</span>, in USDC micro-units). A failed answer is never settled.</p>
+          </section>
+
+          <section class="tab-panel" role="tabpanel" id="panel-find" aria-labelledby="tab-find" tabindex="0" hidden>
+            <h3>Discovery</h3>
+            <div class="code">
+<pre><code id="code-find"><span class="c"># Models, our prices, list prices and fees</span>
+GET https://ask.singitai.app/v1/models
+
+<span class="c"># OpenAPI 3.1 with x402 payment info (x402scan reads this)</span>
+GET https://ask.singitai.app/openapi.json
+
+<span class="c"># x402 resource list</span>
+GET https://ask.singitai.app/.well-known/x402</code></pre>
+              <button type="button" class="copy-btn" data-copy="code-find" aria-label="Copy the discovery URLs">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <p class="tab-note">Listed on Coinbase's x402 Bazaar and on x402scan, so agents can find SingIt on their own.</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Where it works today, and what is next -->
+  <section class="works" id="works">
+    <div class="shell">
+      <p class="eyebrow" data-reveal>Works with</p>
+      <h2 class="section-title" data-reveal>Where you already work.</h2>
+      <ul class="works-grid" data-batch>
+        <li><span class="status is-live">Live</span><b>Any OpenAI client</b><p>Base URL <span class="mono">app.singitai.app/v1</span> and a SingIt key. Chat completions and the Responses API, streaming included.</p></li>
+        <li><span class="status is-live">Live</span><b>Claude Code and the Anthropic SDK</b><p>The same key, in Anthropic's format at <span class="mono">app.singitai.app</span>. Every model in the list, not only Claude.</p></li>
+        <li><span class="status is-live">Live</span><b>Any x402 agent</b><p>Listed on Coinbase's x402 Bazaar and x402scan. Agents find the endpoint and pay with their own wallet, no key.</p></li>
+        <li><span class="status is-live">Live</span><b>SingIt app and Telegram</b><p>Your own agent, paying from limits held in your wallet. <a href="https://app.singitai.app/app/">Open SingIt</a></p></li>
+        <li><span class="status">Soon</span><b>An MCP server</b><p>Purchases and live data from your SingIt limits inside Claude Code, Codex and Cursor, installed with one command.</p></li>
+        <li><span class="status">Soon</span><b>More than models</b><p>Search, web pages, images, voice and data with the same key.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Popular models, live -->
+  <section class="prices" id="prices">
+    <div class="shell">
+      <p class="eyebrow" data-reveal>Prices</p>
+      <h2 class="section-title" data-reveal>Popular models, <em>below list price.</em></h2>
+      <div class="table-wrap" data-reveal>
+        <table class="mtable">
+          <caption>Per million tokens. Ours is the expected price (cost + 30%); list price crossed out; <b>est.</b> means it comes from sellers' quotes, not yet from answers we paid for. With a key, nothing more; over x402, plus $0.001 per answer on Base, $0.002 on Solana. <a href="/models/">All models</a></caption>
+          <thead>
+            <tr>
+              <th scope="col">Model</th>
+              <th scope="col" class="hide-sm">Provider</th>
+              <th scope="col" class="num hide-sm">Input</th>
+              <th scope="col" class="num">Output</th>
+              <th scope="col" class="num">Saving</th>
+            </tr>
+          </thead>
+          <tbody data-popular-rows>
+            <tr><td colspan="5" class="table-state">Live prices load from <a href="https://ask.singitai.app/v1/models">ask.singitai.app/v1/models</a>.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- The moment other agent wallets do not have -->
+  <section class="demo" id="demo">
+    <div class="shell demo-grid">
+      <div>
+        <p class="eyebrow" data-reveal>How payment works</p>
+        <h2 class="section-title" data-reveal>Pays what it used. <em>Stops at your limit.</em></h2>
+        <p class="section-sub" data-reveal>The agent signs a ceiling and is charged the actual cost of the answer. Paying from a SingIt budget, it cannot go past the limits you set, and says why when it stops.</p>
+      </div>
+      <div data-reveal>
+        <div class="term" data-term role="img" aria-label="An agent pays for an answer below the ceiling it signed, then a purchase over the per-purchase limit is refused and nothing is paid.">
+          <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="term-line cmd">ask claude-opus-5.5 "Review this pull request"</div>
+          <div class="term-line out">← 402 Payment Required · ceiling 0.054 USDC</div>
+          <div class="term-line out">→ signed upto 0.054 USDC on Base</div>
+          <div class="term-line ok">✓ 200 · answered · charged 0.0071 USDC, what it used</div>
+          <div class="term-line gap"></div>
+          <div class="term-line cmd">buy "Steam gift card, $25"</div>
+          <div class="term-line out">→ Bitrefill · Steam $25 · 25.13 USDC</div>
+          <div class="term-line stop">✕ Over your $10 per-purchase limit. Nothing was paid.</div>
+          <div class="term-line out">  One signature in your wallet raises it.</div>
+        </div>
+        <p class="term-caption">An example run. Ceilings and charges depend on the model and the answer.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- The one dark band -->
+  <section class="safety band-dark" id="safety">
+    <div class="shell">
+      <p class="eyebrow" data-reveal>Safety</p>
+      <h2 class="section-title" data-reveal>A budget, <em>not a hot wallet.</em></h2>
+      <div class="compare" data-batch>
+        <div>
+          <h3>A key on disk</h3>
+          <ul>
+            <li>The agent's key holds the whole balance</li>
+            <li>A leaked key is lost money</li>
+            <li>Limits live in the agent's own software</li>
+            <li>Stopping it means moving the funds out</li>
+          </ul>
+        </div>
+        <div class="ours">
+          <h3>SingIt</h3>
+          <ul>
+            <li>USDC stays in your own wallet</li>
+            <li>Daily and per-purchase limits in a contract on Base</li>
+            <li>An API key spends only the balance you bought, within its own limits</li>
+            <li>One click revokes a key; one signature revokes the limits</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Real numbers only -->
+  <section class="proof" id="proof">
+    <div class="shell">
+      <p class="eyebrow" data-reveal>In the open</p>
+      <h2 class="section-title" data-reveal>Check it yourself.</h2>
+      <div class="proof-grid" data-batch>
+        <div><b data-model-count>150+</b><span>models you can ask for now, from <a href="https://ask.singitai.app/v1/models">the live list</a></span></div>
+        <div><b>2 networks</b><span>USDC on Base and Solana, settled by Coinbase CDP</span></div>
+        <div><b>Listed</b><span>on Coinbase's x402 Bazaar and <a href="https://www.x402scan.com/recipient/0xC23d1Dc0f5fCe1abfFB051e06cB93f0329968B4e" target="_blank" rel="noopener">x402scan</a></span></div>
+        <div><b>Open source</b><span>the code is on <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="shell">
+      <h2 data-reveal>One key for every model. <em>Start free.</em></h2>
+      <p data-reveal>Try the free model with no key, then get a key in the SingIt app and top it up from your wallet.</p>
+      <div class="hero-cta" data-reveal>
+        <a class="btn btn-primary btn-lg" href="https://app.singitai.app/app/">
+          Get an API key
+          <span class="btn-arrow" aria-hidden="true">&#8599;</span>
+        </a>
+        <a class="btn btn-outline btn-lg" href="#quickstart">Try it free</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="shell footer-inner">
+    <a class="brand brand-footer" href="/">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/">For everyone</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="https://app.singitai.app/app/">Open SingIt</a>
+      <a href="https://x.com/SingItAgent" target="_blank" rel="noopener">X</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://bubon-ik.github.io/SingItAI/" target="_blank" rel="noopener">Privacy policy</a>
+      <a href="mailto:Exkalibur1919@proton.me">Contact</a>
+    </nav>
+    <p class="footer-fine">&copy; 2026 SingIt</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="/app.js?v=bb7061fc"></script>
+<script type="module" src="/dev.mjs?v=1"></script>
+
+</body>
+</html>

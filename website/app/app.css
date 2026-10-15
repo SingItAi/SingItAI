@@ -601,3 +601,28 @@ details.card summary { cursor: pointer; color: var(--text-soft); }
 .code-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .code-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
 .code-value { font-size: 16px; letter-spacing: 0.04em; color: var(--ink); overflow-wrap: anywhere; user-select: all; }
+
+/* API keys (Settings → API keys) */
+.key-box { display: flex; gap: 10px; align-items: center; margin-top: 12px; padding: 12px 14px; background: var(--bone);
+  border-radius: var(--r-wash); }
+.key-box code { flex: 1; overflow-x: auto; white-space: nowrap; font-size: 13px; }
+.key-code { margin: 8px 0 0; padding: 14px 16px; background: var(--obsidian, #1a1919); color: #fff; border-radius: var(--r-wash);
+  overflow-x: auto; font-size: 12px; line-height: 1.6; }
+.key-row { align-items: center; }
+.key-row b { font-weight: 400; }
+.ledger-amount { flex-shrink: 0; white-space: nowrap; }
+/* Developers: the balance API keys spend, the keys, the top-up windows */
+.dev-tabs { margin-top: 4px; }
+.balance-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.balance-today { margin-top: 6px; }
+.balance-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px 16px; flex-wrap: wrap;
+  margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--hairline); font-size: 14px; }
+.balance-foot b { font-weight: 400; }
+.balance-foot .linkish.quiet { color: var(--ash); }
+.connect-help { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.connect-help summary { cursor: pointer; font-size: 14px; color: var(--ink); }
+.topup-presets { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 16px 0; }
+.topup-presets .preset { text-align: center; }
+.overlay.still, .overlay.still .modal { animation: none; }
+.two-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 620px) { .topup-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

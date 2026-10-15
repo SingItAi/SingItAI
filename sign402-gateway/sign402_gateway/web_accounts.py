@@ -11,7 +11,10 @@ An account is `wallet:<checksummed address>` for an EVM wallet and
 `solana:<base58 address>` for a Solana one. Its owner address is that address;
 the Base allowance lane reads EVM owners through `WebAccountStore.owner_for`.
 
-Session and CSRF tokens are random, shown once, and stored only as hashes.
+Session and CSRF tokens are random, shown once, and stored only as hashes. So are API keys
+(`sk_singit_…`): a key spends from its account's own limits through SingIt Ask and nothing else,
+within a daily and a per-answer cap of its own, until it expires or is revoked. Creating one
+takes a signature from the account's wallet over the exact terms, like signing in.
 """
 
 from __future__ import annotations
@@ -40,6 +43,9 @@ NONCE_SECONDS = 300
 LINK_CODE_SECONDS = 600
 SESSION_SECONDS = 12 * 3600
 STATEMENT = "Sign in to SingIt. This signature does not move funds or approve any spending."
+API_KEY_PREFIX = "sk_singit_"
+API_KEY_SHOWN = 14                 # characters of a key shown in lists: "sk_singit_Ab3x"
+API_KEYS_PER_ACCOUNT = 10          # live keys at once
 ACCOUNT_PREFIX = "wallet:"         # an EVM wallet (Base)
 SOLANA_PREFIX = "solana:"          # a Solana wallet
 
@@ -163,6 +169,35 @@ class WebAccountStore:
                     created_at INTEGER NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS push_by_account ON push_subscriptions(account_id);
+                CREATE TABLE IF NOT EXISTS api_keys (
+                    key_hash TEXT PRIMARY KEY,
+                    key_id TEXT NOT NULL UNIQUE,
+                    account_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    prefix TEXT NOT NULL,
+                    daily_cap_atomic INTEGER NOT NULL,
+                    per_request_cap_atomic INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    last_used_at INTEGER,
+                    revoked_at INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS api_keys_by_account ON api_keys(account_id);
+                CREATE TABLE IF NOT EXISTS api_key_spend (
+                    key_id TEXT NOT NULL,
+                    day INTEGER NOT NULL,
+                    spent_atomic INTEGER NOT NULL DEFAULT 0,
+                    calls INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (key_id, day)
+                );
+                CREATE TABLE IF NOT EXISTS api_key_requests (
+                    nonce TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    daily_cap_atomic INTEGER NOT NULL,
+                    per_request_cap_atomic INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL
+                );
                 """
             )
         try:
@@ -291,6 +326,75 @@ class WebAccountStore:
     def drop_push(self, endpoint: str) -> None:
         with self._db() as db:
             db.execute("DELETE FROM push_subscriptions WHERE endpoint = ?", (endpoint,))
+
+    # -- API keys --
+
+    def add_key_request(self, nonce: str, account_id: str, name: str, daily: int, per_request: int,
+                        key_expires_at: int) -> None:
+        """The terms a key will have once its owner signs them; the signed message is kept with the nonce."""
+        with self._db() as db:
+            # Requests never signed die with their nonce (add_nonce clears those a day past their expiry).
+            db.execute("DELETE FROM api_key_requests WHERE nonce NOT IN (SELECT nonce FROM auth_nonces)")
+            db.execute("INSERT INTO api_key_requests(nonce, account_id, name, daily_cap_atomic, per_request_cap_atomic,"
+                       " expires_at) VALUES (?, ?, ?, ?, ?, ?)", (nonce, account_id, name, daily, per_request,
+                                                                   key_expires_at))
+
+    def take_key_request(self, nonce: str) -> sqlite3.Row | None:
+        with self._lock, self._db() as db:
+            row = db.execute("SELECT * FROM api_key_requests WHERE nonce = ?", (nonce,)).fetchone()
+            db.execute("DELETE FROM api_key_requests WHERE nonce = ?", (nonce,))
+            return row
+
+    def add_api_key(self, account_id: str, name: str, daily: int, per_request: int, now: int,
+                    expires_at: int) -> tuple[str, sqlite3.Row]:
+        """A new key: the key itself, shown this once, and its row. Refused past API_KEYS_PER_ACCOUNT live keys."""
+        key = API_KEY_PREFIX + secrets.token_urlsafe(32)
+        key_id = "key_" + secrets.token_hex(8)
+        with self._lock, self._db() as db:
+            live = db.execute("SELECT COUNT(*) FROM api_keys WHERE account_id = ? AND revoked_at IS NULL"
+                              " AND expires_at > ?", (account_id, now)).fetchone()[0]
+            if live >= API_KEYS_PER_ACCOUNT:
+                raise WebAuthError(f"An account can hold {API_KEYS_PER_ACCOUNT} keys at once. Revoke one first.")
+            db.execute("INSERT INTO api_keys(key_hash, key_id, account_id, name, prefix, daily_cap_atomic,"
+                       " per_request_cap_atomic, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                       (_hash(key), key_id, account_id, name, key[:API_KEY_SHOWN], daily, per_request, now, expires_at))
+            row = db.execute("SELECT * FROM api_keys WHERE key_id = ?", (key_id,)).fetchone()
+        return key, row
+
+    def api_key(self, key: str, now: int) -> sqlite3.Row | None:
+        """The live key behind this secret: None when unknown, revoked or expired."""
+        if not isinstance(key, str) or not key.startswith(API_KEY_PREFIX) or len(key) > 128:
+            return None
+        with self._db() as db:
+            row = db.execute("SELECT * FROM api_keys WHERE key_hash = ?", (_hash(key),)).fetchone()
+        if row is None or row["revoked_at"] is not None or row["expires_at"] <= now:
+            return None
+        return row
+
+    def api_keys(self, account_id: str) -> list[sqlite3.Row]:
+        with self._db() as db:
+            return db.execute("SELECT * FROM api_keys WHERE account_id = ? ORDER BY created_at DESC",
+                              (account_id,)).fetchall()
+
+    def revoke_api_key(self, account_id: str, key_id: str, now: int) -> bool:
+        with self._db() as db:
+            done = db.execute("UPDATE api_keys SET revoked_at = ? WHERE account_id = ? AND key_id = ?"
+                              " AND revoked_at IS NULL", (now, account_id, key_id)).rowcount
+        return bool(done)
+
+    def key_spent(self, key_id: str, day: int) -> tuple[int, int]:
+        """(USDC micro-units spent, answers) by this key on this UTC day."""
+        with self._db() as db:
+            row = db.execute("SELECT spent_atomic, calls FROM api_key_spend WHERE key_id = ? AND day = ?",
+                             (key_id, day)).fetchone()
+        return (int(row["spent_atomic"]), int(row["calls"])) if row else (0, 0)
+
+    def record_key_spend(self, key_id: str, day: int, atomic: int, now: int) -> None:
+        with self._db() as db:
+            db.execute("INSERT INTO api_key_spend(key_id, day, spent_atomic, calls) VALUES (?, ?, ?, 1)"
+                       " ON CONFLICT(key_id, day) DO UPDATE SET spent_atomic = spent_atomic + excluded.spent_atomic,"
+                       " calls = calls + 1", (key_id, day, max(0, int(atomic))))
+            db.execute("UPDATE api_keys SET last_used_at = ? WHERE key_id = ?", (now, key_id))
 
     # -- sessions --
 

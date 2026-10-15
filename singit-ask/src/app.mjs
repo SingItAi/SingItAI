@@ -1,5 +1,6 @@
 // SingIt Ask: one answer from a language model, paid over x402 in USDC on Solana or Base for what it
-// actually cost: model tokens + 30% + the network's settlement fee, up to 0.003 USDC. Coinbase CDP settles.
+// actually cost: model tokens + 30% + the network's settlement fee, up to a ceiling that follows the model's
+// price (0.003 USDC for the default and cheap ones). Coinbase CDP settles.
 //
 // The payer is charged only when the answer came back: @x402/express holds the response, and a
 // handler that answers 400 or above is never settled (checked in its source, 2.28). So a model
@@ -16,7 +17,9 @@ import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue } from "./catalogue.mjs";
 import { LIMITS, THINKING_HEADROOM } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS } from "./pricing.mjs";
+import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
+import { addCreditRoute } from "./credit.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -110,12 +113,69 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
   return { content, finishReason: data.choices[0].finish_reason ?? "stop", usage: data.usage ?? null };
 }
 
+// The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
+// Directories rank a listing by how completely it says what to send and what comes back (Coinbase's Bazaar:
+// docs.cdp.coinbase.com/x402/seller/get-discovered), so every field an agent fills in is described.
+const INPUT_SCHEMA = {
+  properties: {
+    messages: { type: "array", minItems: 1, maxItems: LIMITS.messages, description: "The conversation, oldest first.",
+      items: { type: "object", required: ["role", "content"], properties: {
+        role: { type: "string", enum: ["system", "user", "assistant"] },
+        content: { type: "string", description: `Plain text; all messages together under ${LIMITS.chars} characters.` },
+      } } },
+    max_tokens: { type: "integer", minimum: 1, maximum: LIMITS.maxTokens, default: LIMITS.defaultTokens,
+      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+    model: { type: "string", examples: ["deepseek-v4.1-flash", "claude-opus-5.5", "gpt-5.5", "gemini-3.1-pro"],
+      description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
+    stream: { type: "boolean", enum: [false], description: "Streaming is not offered." },
+  },
+  required: ["messages"],
+};
+
+const OUTPUT_SCHEMA = {
+  type: "object", required: ["choices", "billing"],
+  properties: {
+    id: { type: "string" },
+    object: { type: "string", const: "chat.completion" },
+    created: { type: "integer", description: "Unix seconds" },
+    model: { type: "string" },
+    choices: { type: "array", items: { type: "object", properties: {
+      index: { type: "integer" },
+      message: { type: "object", properties: { role: { type: "string" }, content: { type: "string" } } },
+      finish_reason: { type: "string", description: "stop, or length when max_tokens ended the answer" },
+    } } },
+    usage: { type: "object", description: "Token counts and the model's own cost in micro-USD (buyer_cost_micro)" },
+    billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
+      providerCostAtomic: { type: "string" }, markupAtomic: { type: "string" },
+      totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" },
+    } },
+  },
+};
+
+const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+
+// The least and the most one answer can be charged, for discovery. The least is Base's settlement fee; the most is
+// the dearest listed model's ceiling for the largest question and answer this service takes, on Solana's terms.
+export async function priceRange(catalogue) {
+  const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, headroom: THINKING_HEADROOM };
+  const listed = catalogue ? await catalogue.list().catch(() => []) : [];
+  const most = listed.reduce((top, m) => {
+    const c = BigInt(ceilingAtomic(m, size, SOLANA_TERMS));
+    return c > top ? c : top;
+  }, BigInt(SOLANA_TERMS.maxChargeAtomic));
+  return { min: usd(TERMS.settlementFeeAtomic), max: usd(most) };
+}
+
 const EXAMPLE = {
   input: { messages: [{ role: "user", content: "Where is good coffee near the Colosseum?" }], max_tokens: 400 },
+  // A real answer's shape and charge (default model, Base): 6 micro-USD of tokens, 2 markup, 1000 settlement fee.
   output: {
-    object: "chat.completion",
-    model: "singit-ask",
-    choices: [{ index: 0, message: { role: "assistant", content: "Around the Colosseum, try…" }, finish_reason: "stop" }],
+    id: "singit-ask-1791932400000", object: "chat.completion", created: 1791932400, model: "singit-ask",
+    choices: [{ index: 0, message: { role: "assistant",
+      content: "Around the Colosseum, try Caffè Propaganda on Via Claudia or Bar Martini for an espresso with a view." },
+      finish_reason: "stop" }],
+    usage: { prompt_tokens: 14, completion_tokens: 31, total_tokens: 45, buyer_cost_micro: 6 },
+    billing: { ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" },
   },
 };
 
@@ -130,30 +190,93 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
 
   const pricing = { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS };
+  const free = freeTerms(config);
+  const freeOffer = free.models.length ? { models: free.models.map((m) => FREE_PREFIX + m), endpoint: ROUTE,
+    perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars } : null;
+  // What a payer pays on top of the model's own cost: the markup, and one settlement fee per answer.
+  const fees = { markupPct: TERMS.markupBps / 100,
+    perAnswerUsd: { [BASE]: Number(usd(TERMS.settlementFeeAtomic)), [SOLANA]: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) } };
+  const origin = req => `${req.protocol}://${req.get("host")}`;
+  // Public, read-only documents: the website reads them straight from the browser.
+  const open = (_req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); next(); };
+  // At most 500 characters with the "SingIt Ask: " prefix: Coinbase's facilitator rejects longer descriptions.
+  const DESCRIPTION = "Ask a language model without an API key: any model listed at GET /v1/models (Claude, GPT, Gemini, "
+    + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
+    + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
+    + "price; nothing is charged without an answer.";
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing,
+    res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
   });
   // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
-  app.get("/v1/models", async (_req, res) => {
+  app.get("/v1/models", open, async (_req, res) => {
     // Only the models that can be answered now (the default always is).
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
     const answerable = await Promise.all(listed.map((m) => (catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
     const models = listed.filter((m, i) => answerable[i] || m.id === config.model);
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
-    res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing,
+    res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
         ...models.map(m => {
           // The price an answer is expected to cost: what this service's own answers from the model cost, or,
           // before the first, the share of list price Surplus's trusted sellers ask. Never the best offer.
           const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
           const share = seen ?? trusted ?? null;
+          // What a payer is expected to pay per million tokens: that cost plus the markup (the per-answer fee is in
+          // `fees`), and how much below the model's list price that is.
+          // A model Surplus lists at no price has no saving to show.
+          const listed = m.promptUsdPerToken > 0 || m.completionUsdPerToken > 0;
+          const ours = share === null || !listed ? null : share * (1 + TERMS.markupBps / 10_000);
           return { id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name, contextLength: m.contextLength,
             tags: m.tags ?? [],
             usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
             ...(share === null ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
-              output: m.completionUsdPerToken * 1e6 * share, basis: seen === null ? "trusted" : "observed" } }) };
+              output: m.completionUsdPerToken * 1e6 * share, basis: seen === null ? "trusted" : "observed" } }),
+            ...(ours === null ? {} : {
+              singitUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * ours, output: m.completionUsdPerToken * 1e6 * ours },
+              savingsVsListPct: Math.round((1 - ours) * 100) }) };
         })] });
+  });
+
+  // Free: how directories (x402scan, agents) find the paid route. x402scan reads this first, then /.well-known/x402.
+  app.get("/openapi.json", open, async (req, res) => {
+    const price = await priceRange(catalogue);
+    res.json({
+      openapi: "3.1.0",
+      info: { title: "SingIt Ask", version: "1.0.0",
+              description: "Language-model answers paid per answer over x402 in USDC on Base or Solana. No accounts or API keys."
+                + (freeOffer ? ` Free to try: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day, no payment.` : "") },
+      servers: [{ url: origin(req) }],
+      paths: {
+        [ROUTE]: { post: {
+          operationId: "createChatCompletion", summary: "One answer from a language model", description: DESCRIPTION,
+          "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
+          requestBody: { required: true, content: { "application/json": {
+            schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE.input } } },
+          responses: {
+            200: { description: "The answer, with what it was charged",
+                   content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
+            429: { description: "Free answers (model free/…) used up for today, or busy; see Retry-After" },
+            400: { description: "The question cannot be answered here; nothing was charged" },
+            402: { description: "Payment Required: x402 challenge in the PAYMENT-REQUIRED header" },
+            502: { description: "No billable answer came back; nothing was charged" },
+          },
+          security: [{ x402: [] }],
+        } },
+        "/v1/models": { get: {
+          operationId: "listModels", summary: "Models that can be asked for now, with their prices",
+          responses: { 200: { description: "Model list" } }, security: [],
+        } },
+      },
+      components: { securitySchemes: { x402: { type: "apiKey", in: "header", name: "PAYMENT-SIGNATURE",
+        description: "x402 v2 payment. Call without it, read the PAYMENT-REQUIRED header of the 402 response, sign an "
+          + "`upto` USDC authorization on Base or Solana for the ceiling it names, and retry with the signature here." } } },
+    });
+  });
+  app.get("/.well-known/x402", open, (req, res) => {
+    res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`],
+      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
+        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
 
   const choose = input => chooseModel(config, catalogue, input);
@@ -164,29 +287,26 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     return answer;
   };
   const route = { facilitatorClient, config, readRequest, choose, upstream: learning, fetchImpl, log };
+  // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
+  addCreditRoute(app, config, { facilitatorClient });
+  // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
+  addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.
   addUsageRoute(app, ROUTE, quotes => [solanaOffer(config, quotes), baseOffer(config, quotes)], {
-    description: `SingIt Ask: one answer from ${config.model}, OpenAI-compatible. Pays actual token cost + 30% `
-                 + "+ settlement fee (0.002 USDC on Solana, 0.001 on Base), at most 0.003 USDC; nothing without an answer.",
+    description: `SingIt Ask: ${DESCRIPTION}`,
     serviceName: "SingIt Ask",
-    tags: ["llm", "chat", "openai-compatible", "solana", "base", "singit"],
+    tags: ["llm", "chat", "openai-compatible", "inference", "claude", "gpt", "gemini", "deepseek", "pay-per-use",
+           "solana", "base", "singit"],
     extensions: {
       ...declareEip2612GasSponsoringExtension(),
       ...declareDiscoveryExtension({
         bodyType: "json",
         input: EXAMPLE.input,
-        inputSchema: {
-          properties: {
-            messages: { type: "array", items: { type: "object" } },
-            max_tokens: { type: "integer", maximum: LIMITS.maxTokens },
-            model: { type: "string", description: "Any model id from GET /v1/models; the ceiling follows its price." },
-          },
-          required: ["messages"],
-        },
-        output: { example: EXAMPLE.output },
+        inputSchema: INPUT_SCHEMA,
+        output: { example: EXAMPLE.output, schema: OUTPUT_SCHEMA },
       }),
     },
-  }, route);
+  }, { ...route, offerEmptyProbe: true });
   // The web agent's Base payments, pinned to this address by the gateway's buyer.
   addUsageRoute(app, METERED_ROUTE, quotes => [baseOffer(config, quotes)], {
     description: "SingIt Ask: actual model cost + 30% markup + 0.001 USDC settlement fee. Authorize at most 0.003 USDC.",
