@@ -25,7 +25,9 @@ function facilitator() {
   return { calls,
     async getSupported() { return { kinds: [
       { x402Version: 2, scheme: "upto", network: BASE, extra: { facilitatorAddress: "0x" + "3".repeat(40) } },
-      { x402Version: 2, scheme: "upto", network: SOLANA, extra: { feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88",
+      { x402Version: 2, scheme: "exact", network: BASE },
+          { x402Version: 2, scheme: "exact", network: SOLANA, extra: { feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88" } },
+          { x402Version: 2, scheme: "upto", network: SOLANA, extra: { feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88",
         receiverAuthorizer: "9dpHxn3XFZMZv59vE5MKxhfwGUCCgkcCUzYZLpdEm7ox" } } ], extensions: ["bazaar", "eip2612GasSponsoring"], signers: {} }; },
     async verify() { calls.verify += 1; return { isValid: true }; },
     async settle() { calls.settle += 1; return { success: true }; } };

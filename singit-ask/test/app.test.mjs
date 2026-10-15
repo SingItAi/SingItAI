@@ -23,6 +23,8 @@ function fakeFacilitator() {
       return {
         kinds: [
           { x402Version: 2, scheme: "upto", network: BASE, extra: { facilitatorAddress: "0x" + "3".repeat(40) } },
+          { x402Version: 2, scheme: "exact", network: BASE },
+          { x402Version: 2, scheme: "exact", network: SOLANA, extra: { feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88" } },
           { x402Version: 2, scheme: "upto", network: SOLANA, extra: {
             feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88", receiverAuthorizer: "9dpHxn3XFZMZv59vE5MKxhfwGUCCgkcCUzYZLpdEm7ox" } },
         ],

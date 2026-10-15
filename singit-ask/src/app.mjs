@@ -18,6 +18,7 @@ import { UnknownModel, ModelCatalogue } from "./catalogue.mjs";
 import { LIMITS, THINKING_HEADROOM } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
+import { addCreditRoute } from "./credit.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
@@ -286,6 +287,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     return answer;
   };
   const route = { facilitatorClient, config, readRequest, choose, upstream: learning, fetchImpl, log };
+  // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
+  addCreditRoute(app, config, { facilitatorClient });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
   addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.
