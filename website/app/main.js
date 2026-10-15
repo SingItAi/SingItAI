@@ -1613,7 +1613,7 @@ function renderBalanceCard() {
           ${b.refundRequested ? "" : `· <button class="linkish" data-action="open-auto-topup">Change</button>`}</span>
         ${b.balanceUsd > 0 && !b.refundRequested ? `<button class="linkish quiet" data-action="open-refund">Ask for the balance back</button>` : ""}
       </div>
-      <p class="hint">Only your API keys spend it: each request costs its price at the model or at Exa + 30%, nothing per call. Your chat here still pays per answer.</p>
+      <p class="hint">Only your API keys spend it, on models: each request costs the model's price + 30%, nothing per call. Web search is paid per search from your wallet instead, and your chat here still pays per answer.</p>
     </div></div>`;
 }
 
@@ -1638,7 +1638,7 @@ function renderKeyList() {
         <pre class="key-code"><code>${esc(keyExample("sk_singit_…"))}</code></pre>
         ${balanceOn() ? `<p class="faint" style="margin-top:12px">In Claude Code:</p>
         <pre class="key-code"><code>${esc(claudeCodeExample("sk_singit_…"))}</code></pre>
-        <p class="faint" style="margin-top:12px">Web search and page contents, with Exa's SDK:</p>
+        <p class="faint" style="margin-top:12px">Web search and page contents, with Exa's SDK. Each search is paid from your wallet within your limits, about $0.01:</p>
         <pre class="key-code"><code>${esc(exaExample("sk_singit_…"))}</code></pre>` : ""}</details>` : ""}
     </div></div>`;
 }

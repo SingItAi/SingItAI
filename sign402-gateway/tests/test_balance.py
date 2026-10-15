@@ -481,73 +481,103 @@ class BoughtBalanceTests(ProxyFixture):
         self.assertEqual([t["amountAtomic"] for t in self.topups], [5_000_000])
 
 
-class ExaTests(ProxyFixture):
-    """Web search, pages and cited answers from Exa, on the same key and balance."""
+class SearchTests(Fixture):
+    """Web search for an API key: bought per request from the owner's limits through the gateway, no balance."""
 
     def setUp(self):
         super().setUp()
-        self.exa = Surplus()
-        self.api.keys.proxy.exa = self.exa
+        self.key = self.make_key(dailyUsd=1, perRequestUsd=0.05)["key"]
+        self.shop.reply = (200, {"ok": True, "costAtomic": 10100, "txId": "0x" + "c" * 64, "network": "base",
+                                 "data": {"results": [{"url": "https://x402.org"}],
+                                          "billing": {"exaAtomic": "7000", "totalAtomic": "10100"}}})
 
-    def exa_reply(self, total, **extra):
-        return Response(200, {"requestId": "r1", "results": [{"title": "T", "url": "https://x.test"}],
-                              "costDollars": {"total": total, "search": {"neural": total}}, **extra})
+    def search(self, path="/exa/search", body=None, key=None):
+        return self.api.keys.public("POST", path, authorization=f"Bearer {key or self.key}", origin=None,
+                                    body=body or {"query": "x402"})
 
-    def test_a_search_is_relayed_in_exas_format_and_charged_its_reported_cost_plus_30(self):
-        self.exa.replies.append(self.exa_reply(0.007))
-        status, relay = self.send("/exa/search", {"query": "x402 facilitators", "numResults": 5,
-                                                  "contents": {"text": {"maxCharacters": 500}}})
-        out = json.loads(self.body_of(relay))
-        self.assertEqual((status, out["results"][0]["url"]), (200, "https://x.test"))
-        self.assertNotIn("costDollars", out)
-        self.assertEqual(out["billing"]["chargedAtomic"], 9100)  # $0.007 + 30%
-        path, sent, _ = self.exa.sent[0]
-        self.assertEqual((path, sent["query"], sent["numResults"]), ("/search", "x402 facilitators", 5))
-        self.assertEqual(self.surplus.sent, [])
-        line = self.balances.ledger(self.account)[0]
-        self.assertEqual((line["model"], line["amount_atomic"], line["cost_atomic"]), ("exa/search", -9100, 7000))
+    def test_a_search_is_paid_from_the_owners_limits_and_counted_against_the_key(self):
+        status, out, headers = self.search(body={"query": "x402", "numResults": 5})
+        self.assertEqual((status, out["results"][0]["url"]), (200, "https://x402.org"))
+        self.assertEqual((out["billing"]["chargedAtomic"], out["billing"]["exaAtomic"]), (10100, "7000"))
+        self.assertEqual(headers["X-SingIt-Charged-Atomic"], "10100")
+        action, account, body = self.shop.calls[-1]
+        self.assertEqual((action, account), ("api-search", self.account))
+        self.assertEqual(body, {"path": "/v1/exa/search", "body": {"query": "x402", "numResults": 5}, "limitAtomic": 50_000})
+        _, keys, _ = self.call("GET", "/api-keys")
+        self.assertEqual(keys["keys"][0]["spentTodayUsd"], 0.0101)
 
-    def test_pages_and_answers_too(self):
-        self.exa.replies.append(self.exa_reply(0.002))
-        self.send("/exa/contents", {"urls": ["https://a.test", "https://b.test"], "text": True})
-        self.exa.replies.append(Response(200, {"answer": "42", "citations": [], "costDollars": {"total": 0.005}}))
-        _, relay = self.send("/exa/answer", {"query": "meaning of life?"})
-        self.assertEqual(json.loads(self.body_of(relay))["answer"], "42")
-        self.assertEqual([p for p, _, _ in self.exa.sent], ["/contents", "/answer"])
-        self.assertEqual([l["amount_atomic"] for l in self.balances.ledger(self.account)][:2], [-6500, -2600])
-
-    def test_what_is_refused_before_anything_is_paid(self):
-        for path, body in (("/exa/search", {}), ("/exa/search", {"query": "x", "type": "research"}),
-                           ("/exa/search", {"query": "x", "numResults": 500}), ("/exa/contents", {"urls": []}),
-                           ("/exa/answer", {"query": "x", "model": "exa-research"})):
-            with self.subTest(path=path, body=body), self.assertRaises(ApiError) as caught:
-                self.send(path, body)
-            self.assertEqual(caught.exception.status, 400)
-        with self.store._db() as db:
-            db.execute("UPDATE api_keys SET per_request_cap_atomic = 250000")  # the default key's $0.25
-        with self.assertRaises(ApiError) as caught:  # up to $0.40 at Exa, $0.52 with the markup
-            self.send("/exa/search", {"query": "x", "numResults": 100,
-                                      "contents": {"text": True, "highlights": True, "summary": True}})
-        self.assertEqual(caught.exception.code, "over_request_limit")
-        self.assertEqual((self.exa.sent, self.topups), ([], []))
+    def test_page_contents_too_and_nothing_else(self):
+        self.search("/exa/contents", {"urls": ["https://x402.org"], "text": True})
+        self.assertEqual(self.shop.calls[-1][2]["path"], "/v1/exa/contents")
+        with self.assertRaises(ApiError) as caught:
+            self.search("/exa/answer")
+        self.assertEqual(caught.exception.status, 404)
 
     def test_a_key_signed_for_answers_only_cannot_search(self):
         with self.store._db() as db:
             db.execute("UPDATE api_keys SET scopes = 'answers'")
         with self.assertRaises(ApiError) as caught:
-            self.send("/exa/search", {"query": "x"})
+            self.search()
         self.assertEqual((caught.exception.status, caught.exception.code), (403, "scope_missing"))
-        self.assertEqual(self.exa.sent, [])
+        self.assertNotIn("api-search", [c[0] for c in self.shop.calls])
 
-    def test_search_is_off_without_an_exa_key(self):
-        self.api.keys.proxy.exa = None
+    def test_the_gateways_refusal_keeps_its_words_and_costs_nothing(self):
+        self.shop.reply = (400, {"ok": False, "error": "refused", "text": "Web search costs more than your per-purchase limit."})
         with self.assertRaises(ApiError) as caught:
-            self.send("/exa/search", {"query": "x"})
-        self.assertEqual(caught.exception.status, 404)
+            self.search()
+        self.assertIn("per-purchase limit", caught.exception.message)
+        _, keys, _ = self.call("GET", "/api-keys")
+        self.assertEqual(keys["keys"][0]["spentTodayUsd"], 0)
 
     def test_new_keys_may_search_and_say_so(self):
         _, keys, _ = self.call("GET", "/api-keys")
         self.assertEqual(keys["keys"][0]["scopes"], ["answers", "search"])
+
+
+class GatewaySearchTests(unittest.TestCase):
+    """web_data.search and the internal "api-search" action, with the payer mocked."""
+
+    def setUp(self):
+        from sign402_gateway import web_data
+        self.web_data = web_data
+        self.server = SimpleNamespace(allowance=SimpleNamespace(owner_lookup=lambda a: "0x1111"))
+        self.gw = SimpleNamespace(_purchases_paused=lambda: False)
+        self.pay = Mock(return_value=(10100, {"results": []}, "0x" + "d" * 64))
+        p = patch.object(web_data, "pay_once", self.pay)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_singits_search_is_bought_at_its_revenue_address_within_the_key_cap(self):
+        from sign402_gateway import ask_metered, ask_solana
+        out = self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/exa/search", {"query": "x"}, limit=50_000)
+        self.assertEqual((out["costAtomic"], out["network"]), (10100, "base"))
+        tool, method, url, body = self.pay.call_args.args[3:7]
+        self.assertEqual((method, url, body), ("POST", "https://ask.singitai.app/v1/exa/search", {"query": "x"}))
+        self.assertEqual(tool.pay_to, {"eip155:8453": ask_metered.PAY_TO,
+                                       "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": ask_solana.PAY_TO})
+        self.assertEqual(tool.cap_atomic, 50_000)
+        self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/exa/contents", {"urls": ["https://a.test"]})
+        self.assertEqual(self.pay.call_args.args[3].cap_atomic, 67_000)
+
+    def test_what_is_refused_before_paying(self):
+        from sign402_gateway import ask_solana
+        for path, body, account in (("/v1/exa/answer", {}, ACCOUNT), ("/v1/exa/search", "x", ACCOUNT),
+                                    ("/v1/exa/search", {"query": "x"}, "solana:" + ask_solana.PAY_TO)):
+            with self.subTest(path=path, account=account), self.assertRaises(AllowanceError):
+                self.web_data.search(self.server, self.gw, account, path, body)
+        self.gw._purchases_paused = lambda: True
+        with self.assertRaises(AllowanceError):
+            self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/exa/search", {"query": "x"})
+        self.pay.assert_not_called()
+
+    def test_the_internal_action_is_a_paying_one(self):
+        self.assertIn("api-search", web_internal.PAYING_ACTIONS)
+        with patch.object(web_internal, "_limits_from_limiter") as limits:
+            status, out = web_internal.handle(self.server, "api-search", {
+                "account": ACCOUNT, "path": "/v1/exa/search", "body": {"query": "x"}, "limitAtomic": 30_000})
+        self.assertEqual((status, out["costAtomic"]), (200, 10100))
+        limits.assert_called_once()
+        self.assertEqual(self.pay.call_args.args[3].cap_atomic, 30_000)
 
 
 class ProxyHttpTests(ProxyFixture):

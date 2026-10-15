@@ -25,8 +25,6 @@ Environment:
     SIGN402_WEB_SURPLUS_API_KEY          a Surplus buyer key (inf_…): turns on the universal /v1 paid from the
                                          account's balance (web_api_proxy.py); without it /v1 pays per answer
     SIGN402_WEB_SURPLUS_URL              Surplus's API (https://api.surplusintelligence.ai)
-    SIGN402_WEB_EXA_API_KEY              an Exa API key: turns on /v1/exa/search, /contents and /answer, paid from
-                                         the balance too (needs the Surplus key above)
 plus everything SIGN402_ALLOWANCE_* the lane itself needs.
 """
 
@@ -798,13 +796,11 @@ def build_web_api_from_env(allowance: AllowanceService, env: Mapping[str, str] |
     api.solana = solana
     surplus_key = str(values.get("SIGN402_WEB_SURPLUS_API_KEY", "")).strip()
     if surplus_key and shop is not None:
-        from .web_api_proxy import EXA_URL, SURPLUS_URL, Proxy, Upstream
+        from .web_api_proxy import SURPLUS_URL, Proxy, Upstream
         from .web_balance import Balances
 
-        exa_key = str(values.get("SIGN402_WEB_EXA_API_KEY", "")).strip()
         api.keys.proxy = Proxy(api.keys, Upstream(surplus_key, str(values.get("SIGN402_WEB_SURPLUS_URL", "")
-                                                                   or SURPLUS_URL)), Balances(store.path),
-                               exa=Upstream(exa_key, EXA_URL) if exa_key else None)
+                                                                   or SURPLUS_URL)), Balances(store.path))
     from .web_push import from_env as push_from_env
 
     try:

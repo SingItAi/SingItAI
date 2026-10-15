@@ -11,10 +11,12 @@ import { assertDelegated, TokenAllowance } from './allowance.mjs';
 export const DATA_HOSTS = new Set(['x402.ottoai.services', 'api.exa.ai', 'stabletravel.dev', 'tripadvisor.x402.paysponge.com',
   'stableemail.dev']);  // an email the user sent to themselves, after pressing Send
 export const MAX_DATA_ATOMIC = 50000n;  // $0.05: data, never a purchase
-// The one exception: SingIt credit, a top-up of the owner's own API balance at app.singitai.app, bought from
-// their limits. One URL, its own ceiling ($50 of credit and the settlement fee).
+// SingIt's own routes, each at one exact URL with its own ceiling: credit for the owner's API balance ($50 and the
+// settlement fee), and web search and page contents (Exa's price, at most $0.05, + 30% + the fee).
 export const CREDIT_URL = 'https://ask.singitai.app/v1/credit';
 export const MAX_CREDIT_ATOMIC = 50_002_000n;
+export const SINGIT_URLS = new Map([[CREDIT_URL, MAX_CREDIT_ATOMIC],
+  ['https://ask.singitai.app/v1/exa/search', 67_000n], ['https://ask.singitai.app/v1/exa/contents', 67_000n]]);
 const MAX_BODY = 1_500_000;
 
 function decode(header) {
@@ -54,12 +56,12 @@ export function checkDataCall({ callId, url, method, body, payTo, maxAmount, own
   if (typeof callId !== 'string' || !/^data-[A-Za-z0-9_-]{8,64}$/.test(callId)) throw new ClientError('INVALID_CALL', 'Invalid call id.');
   let parsed;
   try { parsed = new URL(url); } catch { throw new ClientError('UNSUPPORTED_MERCHANT', 'Invalid data URL.'); }
-  const credit = url === CREDIT_URL;
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !(credit || DATA_HOSTS.has(parsed.hostname))) throw new ClientError('UNSUPPORTED_MERCHANT', 'Only listed data sellers are paid here.');
-  if (!['GET', 'POST'].includes(method) || (credit && method !== 'POST')) throw new ClientError('INVALID_CALL', 'Unsupported method.');
+  const singit = SINGIT_URLS.get(url);
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || !(singit || DATA_HOSTS.has(parsed.hostname))) throw new ClientError('UNSUPPORTED_MERCHANT', 'Only listed data sellers are paid here.');
+  if (!['GET', 'POST'].includes(method) || (singit && method !== 'POST')) throw new ClientError('INVALID_CALL', 'Unsupported method.');
   if (method === 'GET' && body != null) throw new ClientError('INVALID_CALL', 'A GET request has no body.');
   if (!isAddress(String(payTo || ''))) throw new ClientError('INVALID_CALL', 'Invalid recipient.');
-  if (!/^[1-9][0-9]*$/.test(String(maxAmount)) || BigInt(maxAmount) > (credit ? MAX_CREDIT_ATOMIC : MAX_DATA_ATOMIC)) throw new ClientError('INVALID_AMOUNT', 'Invalid maximum amount.');
+  if (!/^[1-9][0-9]*$/.test(String(maxAmount)) || BigInt(maxAmount) > (singit ?? MAX_DATA_ATOMIC)) throw new ClientError('INVALID_AMOUNT', 'Invalid maximum amount.');
   if (!isAddress(String(owner || ''))) throw new ClientError('INVALID_CALL', 'Data is paid from the owner’s account only.');
 }
 

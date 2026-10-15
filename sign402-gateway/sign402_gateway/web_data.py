@@ -282,6 +282,31 @@ def pay_once(server: Any, gw: Any, account: str, tool: DataTool, method: str, ur
     return _pay_base(server, gw, account, tool, method, url, body, record=record)
 
 
+# SingIt's own web search and page contents (singit-ask/src/search.mjs): Exa's answer, sold at Exa's price + 30% + the
+# settlement fee and paid to SingIt's revenue address. An API key's search is bought here, from its account's limits.
+SEARCH_URL = "https://ask.singitai.app"
+SEARCH_PATHS = ("/v1/exa/search", "/v1/exa/contents")
+SEARCH_CAP_ATOMIC = 67_000  # Exa's dearest request sold there ($0.05) + 30% + Solana's fee; the bridge holds it too
+
+
+def search(server: Any, gw: Any, account: str, path: Any, body: Any, *, limit: int | None = None) -> dict[str, Any]:
+    """One search or page read for an API key, paid from this account's own limits; Exa's answer as it came."""
+    from . import ask_metered, ask_solana  # noqa: PLC0415
+    if path not in SEARCH_PATHS or not isinstance(body, dict):
+        raise AllowanceError("Unknown search request.")
+    if network_of(account) == SOLANA and account[len(SOLANA_PREFIX):] == ask_solana.PAY_TO:
+        raise AllowanceError(ask_solana.SELF_PAY)
+    if getattr(gw, "_purchases_paused", lambda: False)():
+        raise AllowanceError("Purchases are paused right now. Try again later.")
+    cap = min(SEARCH_CAP_ATOMIC, limit) if limit else SEARCH_CAP_ATOMIC
+    url = SEARCH_URL + path
+    tool = DataTool("singit_search", "Web search", "SingIt · Exa", {BASE: ask_metered.PAY_TO, SOLANA: ask_solana.PAY_TO},
+                    cap, lambda _p: ("POST", url, body))
+    paid, data, tx = pay_once(server, gw, account, tool, "POST", url, body)
+    return {"ok": True, "data": data, "costAtomic": paid, "txId": tx,
+            "network": "solana" if network_of(account) == SOLANA else "base"}
+
+
 def buy(server: Any, gw: Any, account: str, tool_id: Any, params: Any) -> dict[str, Any]:
     """One question's data: the request, any follow-ups of the same seller, digested for the answer."""
     tool = TOOLS.get(str(tool_id or ""))

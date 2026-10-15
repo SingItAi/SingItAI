@@ -45,16 +45,6 @@ ROUTES = {
     "/messages/count_tokens": ("/anthropic/v1/messages/count_tokens", "anthropic"),
 }
 FREE_PATHS = {"/messages/count_tokens"}
-# Web search, page contents and cited answers, bought from Exa with SingIt's key, in Exa's own format, so Exa's
-# SDKs work with base URL app.singitai.app/v1/exa. Its slower, dearer endpoints (research, agents) are not offered.
-EXA_URL = "https://api.exa.ai"
-EXA_ROUTES = {"/exa/search": "/search", "/exa/contents": "/contents", "/exa/answer": "/answer"}
-# Exa's prices (exa.ai/pricing, 16 October 2026), in micro-USD: a search of up to 10 results by type, each result
-# past 10, each page of contents per kind (text, highlights, summary), an answer. They only size the hold: the
-# charge is the cost Exa reports for the request (costDollars.total).
-EXA_SEARCH = {"instant": 4000, "fast": 7000, "auto": 7000, "deep-lite": 12000, "deep": 12000, "deep-reasoning": 15000}
-EXA_RESULT, EXA_PAGE, EXA_ANSWER = 1000, 1000, 5000
-EXA_ANSWER_MODELS = ("exa", "exa-fast")
 FORWARDED_HEADERS = ("anthropic-version", "anthropic-beta")
 # Claude Code and the Anthropic SDK name models as Anthropic does (claude-sonnet-5-5, maybe dated); Surplus as
 # claude-sonnet-5.5.
@@ -64,37 +54,6 @@ ANTHROPIC_ID = re.compile(r"(claude-(?:opus|sonnet|haiku))-(\d+)-(\d+)(?:-\d{8})
 def charge_for(cost: int) -> int:
     """What a request that cost `cost` micro-USD upstream is charged: the cost and the markup, rounded up."""
     return cost + (cost * MARKUP_BPS + 9999) // 10000
-
-
-def exa_estimate(path: str, body: Mapping[str, Any]) -> int:
-    """The most an Exa request should cost, with the markup, in micro-USD. ValueError for a request outside what
-    is offered here."""
-    def kinds(options: Any) -> int:
-        options = options if isinstance(options, dict) else {}
-        return sum(1 for kind in ("text", "highlights", "summary") if options.get(kind))
-
-    if path == "/exa/search":
-        if not isinstance(body.get("query"), str) or not body["query"].strip():
-            raise ValueError("Send a query.")
-        kind = body.get("type", "auto")
-        if kind not in EXA_SEARCH:
-            raise ValueError(f"type must be one of {', '.join(EXA_SEARCH)}.")
-        results = body.get("numResults", 10)
-        if type(results) is not int or not 1 <= results <= 100:
-            raise ValueError("numResults must be 1 to 100.")
-        cost = EXA_SEARCH[kind] + max(0, results - 10) * EXA_RESULT + results * kinds(body.get("contents")) * EXA_PAGE
-    elif path == "/exa/contents":
-        pages = body.get("urls") or body.get("ids")
-        if not isinstance(pages, list) or not 1 <= len(pages) <= 100:
-            raise ValueError("Send 1 to 100 urls.")
-        cost = len(pages) * max(1, kinds(body)) * EXA_PAGE
-    else:
-        if not isinstance(body.get("query"), str) or not body["query"].strip():
-            raise ValueError("Send a query.")
-        if body.get("model", "exa") not in EXA_ANSWER_MODELS:
-            raise ValueError(f"model must be one of {', '.join(EXA_ANSWER_MODELS)}.")
-        cost = EXA_ANSWER * 2  # the answer and the pages it reads
-    return charge_for(cost)
 
 
 def surplus_model(name: Any) -> str:
@@ -122,7 +81,7 @@ def estimate(model_id: str, body: Mapping[str, Any]) -> int | None:
 
 # What Surplus adds to a standard answer that only tells who sold it and for how much: the seller, its cost
 # breakdown and its own price field. The caller sees SingIt's charge in `billing` instead.
-UPSTREAM_FIELDS = ("provider", "costDollars")
+UPSTREAM_FIELDS = ("provider",)
 UPSTREAM_USAGE_FIELDS = ("cost", "is_byok", "cost_details", "buyer_cost_micro")
 
 
@@ -160,9 +119,6 @@ class Meter:
     def read(self, data: Any) -> None:
         if not isinstance(data, dict):
             return
-        exa = data.get("costDollars")  # Exa: an estimate in dollars, for the whole request
-        if isinstance(exa, dict) and isinstance(exa.get("total"), (int, float)) and exa["total"] >= 0:
-            self.cost = -int(-exa["total"] * 1_000_000 // 1)
         for usage in (data.get("usage"), (data.get("response") or {}).get("usage") if isinstance(data.get("response"), dict) else None,
                       (data.get("message") or {}).get("usage") if isinstance(data.get("message"), dict) else None):
             if not isinstance(usage, dict):
@@ -228,8 +184,8 @@ class Upstream:
 class Proxy:
     """The paid part of /v1, for ApiKeys.public."""
 
-    def __init__(self, keys: Any, upstream: Upstream, balances: Balances, exa: Upstream | None = None):
-        self.keys, self.upstream, self.balances, self.exa = keys, upstream, balances, exa
+    def __init__(self, keys: Any, upstream: Upstream, balances: Balances):
+        self.keys, self.upstream, self.balances = keys, upstream, balances
         self._funding: dict[str, threading.Lock] = defaultdict(threading.Lock)
 
     # -- money --
@@ -284,12 +240,9 @@ class Proxy:
 
     def relay(self, row: Any, path: str, body: Mapping[str, Any], headers: Mapping[str, str | None],
               error: Callable[..., Exception], reserve: Callable[[int], Callable[[int], None]]) -> Relay:
-        request = dict(body)
-        if path in EXA_ROUTES:
-            return self._pay_and_relay(row, path, request, {}, error, reserve, upstream=self.exa,
-                                       upstream_path=EXA_ROUTES[path], label="exa" + EXA_ROUTES[path],
-                                       streaming=path == "/exa/answer" and bool(request.get("stream")))
         upstream_path, _dialect = ROUTES[path]
+        account, key_id, per = row["account_id"], row["key_id"], int(row["per_request_cap_atomic"])
+        request = dict(body)
         model_id = surplus_model(request.get("model"))
         request["model"] = model_id
         forward = {h: str(headers[h]) for h in FORWARDED_HEADERS if headers.get(h)}
@@ -307,24 +260,7 @@ class Proxy:
                 options = dict(request.get("stream_options") or {}) if isinstance(request.get("stream_options"), dict) else {}
                 asked_usage = bool(options.get("include_usage"))
                 request["stream_options"] = {**options, "include_usage": True}  # the cost comes in the usage chunk
-        return self._pay_and_relay(row, path, request, forward, error, reserve, upstream=self.upstream,
-                                   upstream_path=upstream_path, label=model_id, streaming=streaming,
-                                   asked_usage=asked_usage)
-
-    def _pay_and_relay(self, row: Any, path: str, request: dict[str, Any], forward: Mapping[str, str],
-                       error: Callable[..., Exception], reserve: Callable[[int], Callable[[int], None]], *,
-                       upstream: Upstream, upstream_path: str, label: str, streaming: bool,
-                       asked_usage: bool = False) -> Relay:
-        """Holds the request's likely cost on the balance, sends it upstream and charges what it cost."""
-        account, key_id, per = row["account_id"], row["key_id"], int(row["per_request_cap_atomic"])
-        model_id = label
-        if path in EXA_ROUTES:
-            try:
-                likely = exa_estimate(path, request)
-            except ValueError as exc:
-                raise error(400, str(exc), code="invalid_request") from None
-        else:
-            likely = estimate(model_id, request)
+        likely = estimate(model_id, request)
         if likely is not None and likely > per:
             raise error(400, f"This request may cost up to {likely / 1e6:.4f} USDC, above this key's limit of "
                         f"{per / 1e6:g} USDC per request. Ask for fewer tokens, or make a key with a higher limit.",
@@ -343,19 +279,18 @@ class Proxy:
             done(0)
             raise
         try:
-            response = upstream.send(upstream_path, request, forward)
+            response = self.upstream.send(upstream_path, request, forward)
         except Exception:
             self.balances.release(hold_id)
             done(0)
-            raise error(502, "The service could not be reached. You were not charged.", type_="api_error",
+            raise error(502, "The model could not be reached. You were not charged.", type_="api_error",
                         code="upstream_unreachable") from None
         status = int(response.status)
         if status in (401, 402, 403):  # SingIt's own key or prepaid balance upstream, not the caller's fault
             response.close()
             self.balances.release(hold_id)
             done(0)
-            logger.error("web api: %s refused SingIt's key with HTTP %s; check its key and prepaid balance",
-                         "Exa" if path in EXA_ROUTES else "Surplus", status)
+            logger.error("web api: Surplus refused SingIt's key with HTTP %s; check its key and prepaid balance", status)
             raise error(503, "Answers are unavailable right now. You were not charged; try again later.",
                         type_="api_error", code="upstream_unavailable")
         meter = Meter()

@@ -73,7 +73,7 @@ class ToolQuotes:
 # paused (SIGN402_PURCHASES_PAUSED). A new paying action belongs here. The chat checks the pause itself,
 # before each paid search or answer, so the chat stays open while only spending stops.
 PAYING_ACTIONS = frozenset({"tool-buy", "bitrefill-buy", "bitrefill-solana-buy", "venice-solana-topup", "data-buy",
-                            "email-send", "call-start", "api-chat", "credit-topup"})
+                            "email-send", "call-start", "api-chat", "credit-topup", "api-search"})
 
 # What a Solana account may do before the Solana allowance exists: look, never pay.
 SOLANA_READ_ONLY = {"tools", "catalog-search", "purchases", "purchase-reveal", "purchase-progress", "venice-models", "venice-model",
@@ -81,7 +81,7 @@ SOLANA_READ_ONLY = {"tools", "catalog-search", "purchases", "purchase-reveal", "
                     # these pay, and only through the account's own Solana allowance:
                     "venice-chat", "venice-solana-topup", "bitrefill-solana-buy", "data-buy",
                     "email-address", "email-address-set", "email-send", "call-start", "call-status",
-                    "api-chat", "api-models", "credit-topup"}
+                    "api-chat", "api-models", "credit-topup", "api-search"}
 
 
 def _account(server: Any, payload: dict[str, Any], action: str = "") -> str:
@@ -223,6 +223,14 @@ def _handle(server: Any, action: str, payload: dict[str, Any]) -> tuple[int, dic
                                   max_tokens=payload.get("maxTokens"),
                                   limit=limit if type(limit) is int and limit > 0 else None)
         return 200, result
+
+    if action == "api-search":  # web search for an API key (web_api.py), paid from this account's own limits
+        from . import web_data  # noqa: PLC0415
+        if not account.startswith(SOLANA_PREFIX):
+            _limits_from_limiter(server, gw, account)
+        limit = payload.get("limitAtomic")
+        return 200, web_data.search(server, gw, account, payload.get("path"), payload.get("body"),
+                                    limit=limit if type(limit) is int and limit > 0 else None)
 
     if action == "credit-topup":  # SingIt credit for this account's API balance, bought from its own limits
         from . import web_balance  # noqa: PLC0415
