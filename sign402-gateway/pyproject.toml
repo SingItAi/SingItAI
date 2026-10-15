@@ -9,6 +9,9 @@ dependencies = [
   "mcp>=1.27,<2",
   "pyserial>=3.5",
   "spending-memory @ git+https://github.com/bubon-ik/spending-memory@443743ea2d69ef765528bd70b28a7e2d8c80e564",
+  # Its store. 0.9.0 (16 October 2026) refuses to store or recall anything until an account is linked
+  # (`sibyl init`); spending memory runs locally and has no such account.
+  "sibyl-memory-client>=0.8.0,<0.9",
   "toons>=0.7,<1",
 ]
 
