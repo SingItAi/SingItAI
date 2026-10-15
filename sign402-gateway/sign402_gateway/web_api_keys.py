@@ -17,6 +17,7 @@ The key itself is shown once and stored only as a hash (web_accounts.WebAccountS
 from __future__ import annotations
 
 import json
+import logging
 import re
 import secrets
 import threading
@@ -26,6 +27,8 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from .web_accounts import NONCE_SECONDS, WebAuthError, chain_of_account
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_DAILY_ATOMIC = 5_000_000          # $5 a day
 DEFAULT_PER_REQUEST_ATOMIC = 250_000      # $0.25 an answer
@@ -43,9 +46,18 @@ class ApiError(Exception):
     def __init__(self, status: int, message: str, *, type_: str = "invalid_request_error", code: str | None = None):
         super().__init__(message)
         self.status, self.message, self.type, self.code = status, message, type_, code
+        self.anthropic = False  # set for /v1/messages: Anthropic's SDK and Claude Code read their own shape
 
     def body(self) -> dict[str, Any]:
+        if self.anthropic:
+            return {"type": "error", "error": {"type": ANTHROPIC_TYPES.get(self.status, "api_error"),
+                                               "message": self.message}}
         return {"error": {"message": self.message, "type": self.type, "code": self.code}}
+
+
+ANTHROPIC_TYPES = {400: "invalid_request_error", 401: "authentication_error", 402: "billing_error",
+                   403: "permission_error", 404: "not_found_error", 413: "request_too_large", 429: "rate_limit_error",
+                   503: "overloaded_error"}
 
 
 def _usd_atomic(value: Any, default: int, *, low: int, high: int, what: str) -> int:
@@ -96,6 +108,7 @@ class ApiKeys:
         self._lock = threading.Lock()
         self._reserved: dict[str, int] = defaultdict(int)  # key_id -> most the answers in flight may cost
         self._calls: dict[str, list[float]] = defaultdict(list)
+        self.proxy = None  # web_api_proxy.Proxy when a Surplus key is set: every format, paid from the balance
 
     @property
     def store(self):
@@ -153,11 +166,55 @@ class ApiKeys:
             return 200, {"ok": True, "id": body.get("id"), "state": "revoked"}, {}
         raise ValueError("No such key action.")
 
+    # -- the balance API keys spend (session + CSRF, behind WebApi.handle) --
+
+    def manage_balance(self, method: str, path: str, account: str, body: Mapping[str, Any]) -> tuple[int, dict, dict]:
+        if self.proxy is None:
+            raise ValueError("The SingIt balance is not enabled on this server.")
+        from .web_balance import MAX_TOPUP, MIN_TOPUP, TOPUP_STEP, new_topup_id  # noqa: PLC0415
+        balances, now = self.proxy.balances, int(self.now())
+        if method == "GET" and path == "/balance":
+            lines = [{"id": r["id"], "at": r["at"], "kind": r["kind"], "amountUsd": r["amount_atomic"] / 1e6,
+                      "balanceUsd": r["balance_after"] / 1e6, "model": r["model"], "key": r["key_id"],
+                      "inputTokens": r["input_tokens"], "outputTokens": r["output_tokens"], "txId": r["tx_id"],
+                      "network": r["network"]} for r in balances.ledger(account, limit=50)]
+            return 200, {**self._balance(account), "ledger": lines}, {}
+        self.api.keys_by_account.hit(account)
+        if method == "POST" and path == "/balance/settings":
+            topup = _usd_atomic(body.get("topupUsd"), 0, low=MIN_TOPUP, high=MAX_TOPUP, what="The top-up")
+            threshold = _usd_atomic(body.get("thresholdUsd"), 0, low=0, high=MAX_TOPUP, what="The threshold")
+            if not topup or topup % TOPUP_STEP or threshold % TOPUP_STEP:
+                raise ValueError("Give the top-up and the threshold in whole cents.")
+            if threshold >= topup:
+                raise ValueError("The threshold must be below the top-up.")
+            balances.set_terms(account, topup, threshold, now)
+            return 200, self._balance(account), {}
+        if method == "POST" and path == "/balance/topup":
+            amount = _usd_atomic(body.get("amountUsd"), 0, low=MIN_TOPUP, high=MAX_TOPUP, what="The top-up")
+            if amount % TOPUP_STEP:
+                raise ValueError("Give the top-up in whole cents.")
+            status, reply = self._shop("credit-topup", account, {"topupId": new_topup_id(), "amountAtomic": amount,
+                                                                 "minAtomic": amount})
+            if status != 200:
+                raise ValueError(str(reply.get("text") or "The balance could not be topped up. Nothing was paid."))
+            return 200, {**self._balance(account), "topup": {k: reply.get(k) for k in (
+                "creditedAtomic", "paidAtomic", "feeAtomic", "txId", "network")}}, {}
+        if method == "POST" and path == "/balance/refund":
+            state = balances.state(account)
+            if state["balanceAtomic"] <= 0:
+                raise ValueError("There is nothing to refund.")
+            if balances.request_refund(account, now):
+                logger.warning("web api: refund requested by %s: %s USDC", account, state["balanceAtomic"] / 1e6)
+            return 200, self._balance(account), {}
+        raise ValueError("No such balance action.")
+
     # -- the public /v1, for code holding a key --
 
-    def _key(self, authorization: str | None):
+    def _key(self, authorization: str | None, api_key: str | None = None):
         scheme, _, token = str(authorization or "").partition(" ")
-        row = self.store.api_key(token.strip(), int(self.now())) if scheme.lower() == "bearer" else None
+        token = token.strip() if scheme.lower() == "bearer" else ""
+        token = token or str(api_key or "").strip()  # x-api-key: the Anthropic SDK's and Claude Code's header
+        row = self.store.api_key(token, int(self.now())) if token else None
         if row is None:
             raise ApiError(401, "Invalid or revoked API key. Create one in the SingIt app.",
                            type_="authentication_error", code="invalid_api_key")
@@ -179,12 +236,33 @@ class ApiKeys:
         return self.api.shop(action, account, body)
 
     def public(self, method: str, path: str, *, authorization: str | None, origin: str | None,
-               body: Mapping[str, Any]) -> tuple[int, dict[str, Any], dict[str, str]]:
+               body: Mapping[str, Any], headers: Mapping[str, Any] | None = None,
+               query: Mapping[str, str] | None = None) -> tuple[int, Any, dict[str, str]]:
+        try:
+            return self._public(method, path, authorization=authorization, origin=origin, body=body,
+                                headers=headers or {}, query=query or {})
+        except ApiError as error:
+            error.anthropic = path.startswith("/messages")
+            raise
+
+    def _public(self, method: str, path: str, *, authorization: str | None, origin: str | None,
+                body: Mapping[str, Any], headers: Mapping[str, Any],
+                query: Mapping[str, str]) -> tuple[int, Any, dict[str, str]]:
         if origin:
             # A key belongs in server code. A page that holds one gives it to everyone who opens it.
             raise ApiError(403, "API keys are for server code, not browsers. Keep the key out of web pages.",
                            code="browser_request")
-        row = self._key(authorization)
+        row = self._key(authorization, headers.get("x-api-key"))
+        if self.proxy is not None:
+            from .web_api_proxy import ROUTES  # noqa: PLC0415
+            if method == "POST" and path in ROUTES:
+                self._rate(row["key_id"])
+                relay = self.proxy.relay(row, path, body, headers, ApiError, lambda amount: self._reserve(row, amount))
+                return relay.status, relay, {}
+            if method == "GET" and path == "/balance":
+                return 200, self._balance(row["account_id"]), {}
+            if method == "GET" and path == "/usage":
+                return 200, self._usage(row["account_id"], query.get("days")), {}
         if method == "GET" and path == "/models":
             status, reply = self._shop("api-models", row["account_id"], {})
             if status != 200:
@@ -192,8 +270,58 @@ class ApiKeys:
             return 200, {"object": "list", "data": reply.get("data") or []}, {}
         if method == "POST" and path == "/chat/completions":
             return self._chat(row, body)
+        if self.proxy is not None:
+            raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions, /v1/responses and "
+                           "/v1/messages, and GET /v1/models, /v1/balance and /v1/usage.", code="not_found")
         raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions and GET /v1/models.",
                        code="not_found")
+
+    def _reserve(self, row, amount: int):
+        """Counts `amount` against the key's daily cap while its request runs; the returned function records what
+        was charged in the end and lets the reservation go."""
+        key_id, daily, day = row["key_id"], int(row["daily_cap_atomic"]), self._day()
+        with self._lock:
+            spent, _ = self.store.key_spent(key_id, day)
+            if spent + self._reserved[key_id] + amount > daily:
+                raise ApiError(429, f"This key's daily limit of {daily / 1e6:g} USDC is used up, counting requests "
+                               "still running. It starts again at 00:00 UTC, or raise it with a new key.",
+                               type_="insufficient_quota", code="insufficient_quota")
+            self._reserved[key_id] += amount
+        settled = []
+
+        def done(charged: int) -> None:
+            if settled:
+                return
+            settled.append(charged)
+            with self._lock:
+                self._reserved[key_id] -= amount
+            if charged:
+                self.store.record_key_spend(key_id, day, charged, int(self.now()))
+
+        return done
+
+    def _balance(self, account: str) -> dict[str, Any]:
+        state = self.proxy.balances.state(account)
+        return {"object": "balance", "currency": "USDC", "balanceUsd": state["balanceAtomic"] / 1e6,
+                "availableUsd": state["availableAtomic"] / 1e6, "heldUsd": state["heldAtomic"] / 1e6,
+                "topupUsd": state["topupAtomic"] / 1e6, "thresholdUsd": state["thresholdAtomic"] / 1e6,
+                "refundRequested": state["refundRequestedAt"] is not None,
+                "pendingTopups": [{"id": p["id"], "state": p["state"], "amountUsd": p["amountAtomic"] / 1e6}
+                                  for p in state["pending"]]}
+
+    def _usage(self, account: str, days: Any) -> dict[str, Any]:
+        try:
+            days = max(1, min(int(days or 1), 90))
+        except (TypeError, ValueError):
+            raise ApiError(400, "days must be a whole number from 1 to 90.", code="bad_days") from None
+        since = (self._day() - days + 1) * 86400
+        rows = self.proxy.balances.usage(account, since)
+        names = {r["key_id"]: r["name"] for r in self.store.api_keys(account)}
+        data = [{"date": datetime.fromtimestamp(r["day"] * 86400, tz=timezone.utc).strftime("%Y-%m-%d"),
+                 "key": r["key_id"], "keyName": names.get(r["key_id"]), "model": r["model"], "requests": r["calls"],
+                 "chargedUsd": (r["charged_atomic"] or 0) / 1e6, "inputTokens": r["input_tokens"] or 0,
+                 "outputTokens": r["output_tokens"] or 0} for r in rows]
+        return {"object": "list", "days": days, "totalUsd": sum(d["chargedUsd"] for d in data), "data": data}
 
     def _chat(self, row, body: Mapping[str, Any]) -> tuple[int, Any, dict[str, str]]:
         if body.get("tools") or body.get("functions"):

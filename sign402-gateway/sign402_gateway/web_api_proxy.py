@@ -1,0 +1,323 @@
+"""The universal /v1: any request an API key sends, relayed to Surplus Intelligence and paid from the balance.
+
+Design: docs/singit-gateway-spec.md, section 4A, and docs/singit-balance-plan.md. One key works in the OpenAI SDK
+(`/v1/chat/completions`, `/v1/responses`), the Anthropic SDK and Claude Code (`/v1/messages`), with streaming, tools
+and images as the model offers them: the request goes upstream as it came, apart from the model's name, and the
+answer comes back as Surplus sends it, chunk by chunk.
+
+Money: before a request, its likely cost is held on the account's balance (web_balance.Balances); a balance too low
+is topped up first, from the owner's limits (the gateway's `credit-topup`). Surplus reports what each answer cost
+(`usage.buyer_cost_micro`, in the body or the last streamed event); that cost plus the markup is charged and the
+hold let go. A failed request costs nothing.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import re
+import secrets
+import threading
+import urllib.error
+import urllib.request
+from collections import defaultdict
+from typing import Any, Callable, Iterable, Iterator, Mapping
+
+from . import ask_catalogue
+from .web_balance import DEFAULT_TOPUP, MAX_TOPUP, TOPUP_STEP, Balances, new_topup_id
+
+logger = logging.getLogger(__name__)
+
+SURPLUS_URL = "https://api.surplusintelligence.ai"
+USER_AGENT = ask_catalogue.USER_AGENT
+MARKUP_BPS = 3000                 # cost + 30%, as at SingIt Ask
+DEFAULT_MODEL = "deepseek-v4.1-flash"
+DEFAULT_OUTPUT_TOKENS = 4096      # the answer length a request that names none is held for
+CHARS_PER_TOKEN = 3               # a fair guess for the hold; the charge is what Surplus reports
+UPSTREAM_SECONDS = 600            # a long answer streams for minutes
+MAX_ANSWER_BYTES = 64 * 1024 * 1024
+# Where each public path goes upstream, and the dialect its errors speak.
+ROUTES = {
+    "/chat/completions": ("/v1/chat/completions", "openai"),
+    "/responses": ("/v1/responses", "openai"),
+    "/messages": ("/anthropic/v1/messages", "anthropic"),
+    "/messages/count_tokens": ("/anthropic/v1/messages/count_tokens", "anthropic"),
+}
+FREE_PATHS = {"/messages/count_tokens"}
+FORWARDED_HEADERS = ("anthropic-version", "anthropic-beta")
+# Claude Code and the Anthropic SDK name models as Anthropic does (claude-sonnet-5-5, maybe dated); Surplus as
+# claude-sonnet-5.5.
+ANTHROPIC_ID = re.compile(r"(claude-(?:opus|sonnet|haiku))-(\d+)-(\d+)(?:-\d{8})?")
+
+
+def charge_for(cost: int) -> int:
+    """What a request that cost `cost` micro-USD upstream is charged: the cost and the markup, rounded up."""
+    return cost + (cost * MARKUP_BPS + 9999) // 10000
+
+
+def surplus_model(name: Any) -> str:
+    if name in (None, "", "singit-ask"):
+        return ask_catalogue.default_id() or DEFAULT_MODEL
+    name = str(name)
+    match = ANTHROPIC_ID.fullmatch(name)
+    return f"{match.group(1)}-{match.group(2)}.{match.group(3)}" if match else name
+
+
+def estimate(model_id: str, body: Mapping[str, Any]) -> int | None:
+    """A likely cost of this request in micro-USD with the markup, from the model's list price; None when the
+    model is not in the list."""
+    model = ask_catalogue.resolve(model_id)
+    if model is None:
+        return None
+    tokens = body.get("max_tokens", body.get("max_completion_tokens", body.get("max_output_tokens")))
+    output = tokens if type(tokens) is int and tokens > 0 else DEFAULT_OUTPUT_TOKENS
+    chars = len(json.dumps(body.get("messages") or body.get("input") or "", ensure_ascii=False))
+    chars += len(json.dumps(body.get("system") or body.get("instructions") or "", ensure_ascii=False))
+    chars += len(json.dumps(body.get("tools") or "", ensure_ascii=False))
+    worst = -int(-(chars / CHARS_PER_TOKEN * model["input"] + output * model["output"]) // 1)
+    return charge_for(worst)
+
+
+def background(work: Callable[[], None]) -> None:
+    threading.Thread(target=work, daemon=True, name="balance-topup").start()
+
+
+class Meter:
+    """What an answer cost and used, read from its body or its events as they pass."""
+
+    def __init__(self) -> None:
+        self.cost: int | None = None
+        self.input_tokens = 0
+        self.output_tokens = 0
+
+    def read(self, data: Any) -> None:
+        if not isinstance(data, dict):
+            return
+        for usage in (data.get("usage"), (data.get("response") or {}).get("usage") if isinstance(data.get("response"), dict) else None,
+                      (data.get("message") or {}).get("usage") if isinstance(data.get("message"), dict) else None):
+            if not isinstance(usage, dict):
+                continue
+            raw = usage.get("buyer_cost_micro")
+            if type(raw) is int and raw >= 0 or isinstance(raw, str) and raw.isdigit():
+                self.cost = int(raw)
+            for field, names in (("input_tokens", ("prompt_tokens", "input_tokens")),
+                                 ("output_tokens", ("completion_tokens", "output_tokens"))):
+                for name in names:
+                    if type(usage.get(name)) is int:
+                        setattr(self, field, max(getattr(self, field), usage[name]))
+
+    def event(self, line: bytes) -> dict | None:
+        """One SSE line: the event's JSON when it is a data line, read for cost on the way."""
+        if not line.startswith(b"data:"):
+            return None
+        payload = line[5:].strip()
+        if not payload or payload == b"[DONE]":
+            return None
+        try:
+            data = json.loads(payload)
+        except ValueError:
+            return None
+        self.read(data)
+        return data if isinstance(data, dict) else None
+
+
+class Relay:
+    """An upstream answer on its way to the client: status, headers and the body in pieces. Reading it to the end
+    settles the charge, so the handler reads it all even after the client went away."""
+
+    def __init__(self, status: int, headers: Mapping[str, str], chunks: Iterable[bytes], length: int | None = None):
+        self.status, self.headers, self.chunks, self.length = status, dict(headers), chunks, length
+
+    def __iter__(self) -> Iterator[bytes]:
+        return iter(self.chunks)
+
+    def close(self) -> None:
+        close = getattr(self.chunks, "close", None)
+        if close is not None:
+            close()
+
+
+class Upstream:
+    """Surplus Intelligence, with SingIt's own buyer key."""
+
+    def __init__(self, key: str, url: str = SURPLUS_URL, opener: Callable[..., Any] = urllib.request.urlopen):
+        self.key, self.url, self.opener = key, url.rstrip("/"), opener
+
+    def send(self, path: str, body: Mapping[str, Any], headers: Mapping[str, str]) -> Any:
+        """The upstream response, open for reading; an HTTP error is returned as a response too."""
+        request = urllib.request.Request(
+            self.url + path, data=json.dumps(body).encode(), method="POST",
+            headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+                     "Authorization": f"Bearer {self.key}", "User-Agent": USER_AGENT, **headers})
+        try:
+            return self.opener(request, timeout=UPSTREAM_SECONDS)
+        except urllib.error.HTTPError as error:
+            return error
+
+
+class Proxy:
+    """The paid part of /v1, for ApiKeys.public."""
+
+    def __init__(self, keys: Any, upstream: Upstream, balances: Balances):
+        self.keys, self.upstream, self.balances = keys, upstream, balances
+        self._funding: dict[str, threading.Lock] = defaultdict(threading.Lock)
+
+    # -- money --
+
+    def fund(self, account: str, need: int, error: Callable[..., Exception]) -> None:
+        """Makes `need` available on the balance, topping it up from the owner's limits when it is short."""
+        with self._funding[account]:
+            state = self.balances.state(account)
+            if state["refundRequestedAt"] is not None:
+                raise error(403, "A refund of this balance was requested; it is frozen until the refund is done.",
+                            type_="insufficient_quota", code="balance_frozen")
+            short = need - state["availableAtomic"]
+            if short <= 0:
+                return
+            amount = min(MAX_TOPUP, max(state["topupAtomic"] or DEFAULT_TOPUP, -(-short // TOPUP_STEP) * TOPUP_STEP))
+            status, reply = self.keys._shop("credit-topup", account, {
+                "topupId": new_topup_id(), "amountAtomic": amount, "minAtomic": short})
+            if status != 200:
+                text = str(reply.get("text") or "The balance could not be topped up. Nothing was paid.")[:500]
+                if status == 503:
+                    raise error(503, text, type_="api_error", code="payments_paused")
+                if status == 403:
+                    raise error(403, text, type_="insufficient_quota", code="payment_not_ready")
+                raise error(402, f"Your SingIt balance is too low and could not be topped up: {text}",
+                            type_="insufficient_quota", code="balance_low")
+            logger.info("web api: balance of %s topped up by %s", account, reply.get("creditedAtomic"))
+
+    def refill_later(self, account: str, balance_after: int) -> None:
+        """Tops up in the background once the balance runs under its threshold, so the next request need not wait."""
+        state = self.balances.state(account)
+        if state["availableAtomic"] >= state["thresholdAtomic"] or state["pending"] or state["refundRequestedAt"]:
+            return
+        lock = self._funding[account]
+        if lock.locked():
+            return
+
+        def work() -> None:
+            try:
+                self.fund(account, state["thresholdAtomic"], lambda *a, **k: RuntimeError(a[1] if len(a) > 1 else ""))
+            except Exception as exc:  # noqa: BLE001 - the next request tries again and says why
+                logger.info("web api: background top-up of %s did not happen (%s)", account, exc)
+
+        background(work)
+
+    # -- relaying --
+
+    def relay(self, row: Any, path: str, body: Mapping[str, Any], headers: Mapping[str, str | None],
+              error: Callable[..., Exception], reserve: Callable[[int], Callable[[int], None]]) -> Relay:
+        upstream_path, _dialect = ROUTES[path]
+        account, key_id, per = row["account_id"], row["key_id"], int(row["per_request_cap_atomic"])
+        request = dict(body)
+        model_id = surplus_model(request.get("model"))
+        request["model"] = model_id
+        forward = {h: str(headers[h]) for h in FORWARDED_HEADERS if headers.get(h)}
+        if path in FREE_PATHS:
+            response = self.upstream.send(upstream_path, request, forward)
+            data = response.read(MAX_ANSWER_BYTES)
+            response.close()
+            return Relay(response.status, {"Content-Type": response.headers.get("Content-Type", "application/json")},
+                         [data], len(data))
+        streaming = bool(request.get("stream"))
+        asked_usage = False
+        if path == "/chat/completions":
+            request.setdefault("si_route", {"objective": "price"})  # the cheapest seller, as SingIt Ask asks
+            if streaming:
+                options = dict(request.get("stream_options") or {}) if isinstance(request.get("stream_options"), dict) else {}
+                asked_usage = bool(options.get("include_usage"))
+                request["stream_options"] = {**options, "include_usage": True}  # the cost comes in the usage chunk
+        likely = estimate(model_id, request)
+        if likely is not None and likely > per:
+            raise error(400, f"This request may cost up to {likely / 1e6:.4f} USDC, above this key's limit of "
+                        f"{per / 1e6:g} USDC per request. Ask for fewer tokens, or make a key with a higher limit.",
+                        code="over_request_limit")
+        hold = likely if likely is not None else per
+        done = reserve(hold)  # the key's own daily cap, counting requests in flight
+        hold_id = "hold_" + secrets.token_hex(10)
+        try:
+            self.fund(account, hold, error)
+            if not self.balances.hold(account, hold_id, hold, int(self.keys.now())):
+                self.fund(account, hold, error)  # another request took what was there
+                if not self.balances.hold(account, hold_id, hold, int(self.keys.now())):
+                    raise error(402, "Your SingIt balance is in use by other requests. Try again in a moment.",
+                                type_="insufficient_quota", code="balance_low")
+        except BaseException:
+            done(0)
+            raise
+        try:
+            response = self.upstream.send(upstream_path, request, forward)
+        except Exception:
+            self.balances.release(hold_id)
+            done(0)
+            raise error(502, "The model could not be reached. You were not charged.", type_="api_error",
+                        code="upstream_unreachable") from None
+        status = int(response.status)
+        if status in (401, 402, 403):  # SingIt's own key or prepaid balance upstream, not the caller's fault
+            response.close()
+            self.balances.release(hold_id)
+            done(0)
+            logger.error("web api: Surplus refused SingIt's key with HTTP %s; check its key and prepaid balance", status)
+            raise error(503, "Answers are unavailable right now. You were not charged; try again later.",
+                        type_="api_error", code="upstream_unavailable")
+        meter = Meter()
+        request_id = str(response.headers.get("x-request-id") or "")[:80] or None
+        content_type = response.headers.get("Content-Type", "application/json")
+
+        def settle() -> int:
+            if status >= 400:
+                self.balances.release(hold_id)
+                done(0)
+                return 0
+            cost = meter.cost
+            if cost is None:
+                header = str(response.headers.get("x-si-buyer-cost-micro") or "")
+                cost = int(header) if header.isdigit() else None
+            if cost is None:  # an answer that came back without its cost is charged its hold, and logged
+                logger.warning("web api: %s answered %s with no cost; charged the hold", model_id, request_id)
+                charged = hold
+            else:
+                charged = charge_for(cost)
+            after = self.balances.charge(account, hold_id, charged, int(self.keys.now()), key_id=key_id,
+                                         model=model_id, ref=request_id, cost=cost, input_tokens=meter.input_tokens,
+                                         output_tokens=meter.output_tokens)
+            done(charged)
+            self.refill_later(account, after)
+            return charged
+
+        if streaming and status < 400 and "event-stream" in content_type:
+            def chunks() -> Iterator[bytes]:
+                try:
+                    for line in iter(response.readline, b""):
+                        data = meter.event(line)
+                        # A usage-only chunk the client did not ask for is dropped: some read choices[0] blindly.
+                        if (data is not None and not asked_usage and path == "/chat/completions"
+                                and data.get("choices") == [] and "usage" in data):
+                            response.readline()  # the blank line that ends the event
+                            continue
+                        yield line
+                except OSError:
+                    logger.warning("web api: %s stream from upstream broke off", model_id)
+                finally:
+                    response.close()
+                    settle()
+
+            return Relay(status, {"Content-Type": content_type, "Cache-Control": "no-store"}, chunks())
+
+        try:
+            raw = response.read(MAX_ANSWER_BYTES)
+        finally:
+            response.close()
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            data = None
+        meter.read(data)
+        charged = settle()
+        if isinstance(data, dict) and status < 400:
+            data["billing"] = {"chargedAtomic": charged, "costAtomic": meter.cost, "markupBps": MARKUP_BPS,
+                               "currency": "USDC", "paidFrom": "your SingIt balance"}
+            raw = json.dumps(data).encode()
+        return Relay(status, {"Content-Type": "application/json" if data is not None else content_type,
+                              "X-SingIt-Charged-Atomic": str(charged)}, [raw], len(raw))

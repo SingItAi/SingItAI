@@ -22,6 +22,9 @@ Environment:
     SIGN402_WEB_STATIC_DIR               the site's website/ folder: serves /app/ and /assets/ too
     SIGN402_WEB_PUSH_VAPID_KEY           turns on notifications to the installed page (web_push.py)
     SIGN402_WEB_PUSH_SUBJECT             how push services reach us (default: SIGN402_WEB_URI)
+    SIGN402_WEB_SURPLUS_API_KEY          a Surplus buyer key (inf_…): turns on the universal /v1 paid from the
+                                         account's balance (web_api_proxy.py); without it /v1 pays per answer
+    SIGN402_WEB_SURPLUS_URL              Surplus's API (https://api.surplusintelligence.ai)
 plus everything SIGN402_ALLOWANCE_* the lane itself needs.
 """
 
@@ -49,6 +52,7 @@ from .web_accounts import (
     DEFAULT_WEB_DB, SESSION_SECONDS, WEB_DB_ENV, WebAccountStore, WebAuth, WebAuthError, chain_of_account,
 )
 from .web_api_keys import ApiError, ApiKeys, Stream
+from .web_api_proxy import Relay
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,7 @@ ACCOUNT_HEADER = "X-SingIt-Account"
 MAX_BODY = 16 * 1024
 API_PREFIX = "/v1"            # the OpenAI-compatible API that API keys open (web_api_keys.py)
 API_MAX_BODY = 160 * 1024     # a question may be 24,000 characters, several bytes each
+PROXY_MAX_BODY = 16 * 1024 * 1024  # relayed requests: a coding agent's whole context, images included
 REQUEST_READ_SECONDS = 15
 DEFAULT_PORT = 8130
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -237,6 +242,8 @@ class WebApi:
             return self._push(method, path, account, body)
         if path == "/api-keys" or path.startswith("/api-keys/"):
             return self.keys.manage(method, path, account, owner, body)
+        if path == "/balance" or path.startswith("/balance/"):
+            return self.keys.manage_balance(method, path, account, body)
         if path == "/chats" or path.startswith("/chats/"):
             return self._chats(method, path, account, body)
         if method == "GET" and path == "/usage":
@@ -560,6 +567,35 @@ class WebHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             logger.info("web api: %s: the page left before its answer", self.path.partition("?")[0])
 
+    def _send_relay(self, relay: Relay) -> None:
+        """An upstream answer as it comes (web_api_proxy.Relay). It is read to the end even when the client left,
+        because its last event says what it cost."""
+        self.close_connection = True  # HTTP/1.0: the end of a stream of unknown length is the end of the connection
+        gone = False
+        try:
+            self.send_response(relay.status)
+            for key, value in relay.headers.items():
+                self.send_header(key, value)
+            self.send_header("X-Content-Type-Options", "nosniff")
+            if relay.length is not None:
+                self.send_header("Content-Length", str(relay.length))
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError):
+            gone = True
+        try:
+            for chunk in relay:
+                if gone:
+                    continue
+                try:
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                    gone = True
+                    logger.info("web api: %s: the client left mid-answer; reading it to the end for its cost",
+                                self.path.partition("?")[0])
+        finally:
+            relay.close()
+
     def _send_stream(self, status: int, data: bytes, headers: Mapping[str, str] | None = None) -> None:
         """Server-sent events, whole: the answer is complete before the first byte (web_api_keys.sse)."""
         self.send_response(status)
@@ -656,20 +692,24 @@ class WebHandler(BaseHTTPRequestHandler):
 
     def _public(self, method: str) -> None:
         """/v1: code holding an API key. Errors keep OpenAI's shape so SDKs show them as they are."""
-        path = self.path.partition("?")[0]
+        path, _, query = self.path.partition("?")
         try:
             body: dict[str, Any] = {}
             if method == "POST":
                 if self.headers.get_content_type() != "application/json":
                     raise ApiError(415, "Send JSON.", code="json_only")
                 try:
-                    body = self._json_body(API_MAX_BODY)
+                    body = self._json_body(PROXY_MAX_BODY if self.server.api.keys.proxy is not None else API_MAX_BODY)
                 except WebError as error:
-                    raise ApiError(error.status, error.message, code=error.code) from None
+                    error_ = ApiError(error.status, error.message, code=error.code)
+                    error_.anthropic = path.startswith(API_PREFIX + "/messages")
+                    raise error_ from None
             status, out, headers = self.server.api.keys.public(
                 method, path[len(API_PREFIX):], authorization=self.headers.get("Authorization"),
-                origin=self.headers.get("Origin"), body=body)
-            if isinstance(out, Stream):
+                origin=self.headers.get("Origin"), body=body, headers=self.headers, query=dict(parse_qsl(query)))
+            if isinstance(out, Relay):
+                self._send_relay(out)
+            elif isinstance(out, Stream):
                 self._send_stream(status, out, headers)
             else:
                 self._send(status, out, headers)
@@ -754,6 +794,13 @@ def build_web_api_from_env(allowance: AllowanceService, env: Mapping[str, str] |
         shop=shop,
     )
     api.solana = solana
+    surplus_key = str(values.get("SIGN402_WEB_SURPLUS_API_KEY", "")).strip()
+    if surplus_key and shop is not None:
+        from .web_api_proxy import SURPLUS_URL, Proxy, Upstream
+        from .web_balance import Balances
+
+        api.keys.proxy = Proxy(api.keys, Upstream(surplus_key, str(values.get("SIGN402_WEB_SURPLUS_URL", "")
+                                                                   or SURPLUS_URL)), Balances(store.path))
     from .web_push import from_env as push_from_env
 
     try:
