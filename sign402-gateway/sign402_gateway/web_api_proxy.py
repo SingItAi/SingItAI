@@ -322,6 +322,7 @@ class Proxy:
             if cost is None:
                 header = str(response.headers.get("x-si-buyer-cost-micro") or "")
                 cost = int(header) if header.isdigit() else None
+                meter.cost = cost  # an image's cost comes only in the header; billing shows it too
             if cost is None:  # an answer that came back without its cost is charged its hold, and logged
                 logger.warning("web api: %s answered %s with no cost; charged the hold", model_id, request_id)
                 charged = hold

@@ -467,7 +467,7 @@ class ImageTests(ProxyFixture):
         _, relay = self.send("/images/generations", {"model": "venice-seedream-v5-lite", "prompt": "a robot", "n": 1})
         out = json.loads(self.body_of(relay))
         self.assertEqual(out["data"], [{"b64_json": "aW1hZ2U="}])
-        self.assertEqual(out["billing"]["chargedAtomic"], 5148)  # 3960 + 30%
+        self.assertEqual((out["billing"]["chargedAtomic"], out["billing"]["costAtomic"]), (5148, 3960))  # 3960 + 30%
         path, sent, _ = self.surplus.sent[0]
         self.assertEqual((path, sent), ("/v1/images/generations", {"model": "venice-seedream-v5-lite", "prompt": "a robot", "n": 1}))
         line = self.balances.ledger(self.account)[0]
