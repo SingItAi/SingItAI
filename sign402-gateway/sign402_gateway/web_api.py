@@ -64,7 +64,9 @@ MAX_BODY = 16 * 1024
 API_PREFIX = "/v1"            # the OpenAI-compatible API that API keys open (web_api_keys.py)
 API_MAX_BODY = 160 * 1024     # a question may be 24,000 characters, several bytes each
 PROXY_MAX_BODY = 16 * 1024 * 1024  # relayed requests: a coding agent's whole context, images included
+MAX_UPLOAD = 25 * 1024 * 1024      # an audio file to transcribe, OpenAI's own limit
 REQUEST_READ_SECONDS = 15
+MIN_UPLOAD_BYTES_PER_SECOND = 500_000
 DEFAULT_PORT = 8130
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
                 ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
@@ -494,6 +496,16 @@ class WebHandler(BaseHTTPRequestHandler):
         self.connection.settimeout(REQUEST_READ_SECONDS)
 
     def _json_body(self, limit: int = MAX_BODY) -> dict[str, Any]:
+        raw = self._raw_body(limit)
+        try:
+            body = json.loads(raw if raw else b"{}")
+        except (ValueError, UnicodeError):
+            raise WebError(400, "bad_json", "Send a JSON object.") from None
+        if not isinstance(body, dict):
+            raise WebError(400, "bad_json", "Send a JSON object.")
+        return body
+
+    def _raw_body(self, limit: int) -> bytes:
         # This server does not decode transfer encodings. Never accept ambiguous
         # framing, signed lengths, or duplicate headers, even if they agree.
         lengths = self.headers.get_all("Content-Length", [])
@@ -506,7 +518,9 @@ class WebHandler(BaseHTTPRequestHandler):
         if len(digits) > len(str(limit)) or int(digits) > limit:
             raise WebError(413, "too_large", "Request too large.")
         length = int(digits)
-        deadline = time.monotonic() + REQUEST_READ_SECONDS
+        # Small bodies get the usual deadline; a large one (a coding agent's context, an audio file) gets as long again
+        # as it takes at MIN_UPLOAD_BYTES_PER_SECOND.
+        deadline = time.monotonic() + REQUEST_READ_SECONDS + length / MIN_UPLOAD_BYTES_PER_SECOND
         raw = bytearray()
         try:
             while len(raw) < length:
@@ -522,13 +536,7 @@ class WebHandler(BaseHTTPRequestHandler):
             raise WebError(408, "request_timeout", "Request body timed out.") from None
         finally:
             self.connection.settimeout(REQUEST_READ_SECONDS)
-        try:
-            body = json.loads(raw if length else b"{}")
-        except (ValueError, UnicodeError):
-            raise WebError(400, "bad_json", "Send a JSON object.") from None
-        if not isinstance(body, dict):
-            raise WebError(400, "bad_json", "Send a JSON object.")
-        return body
+        return bytes(raw)
 
     def log_message(self, fmt: str, *args: Any) -> None:  # no request lines with cookies or tokens
         logger.debug("web %s", fmt % args)
@@ -695,7 +703,20 @@ class WebHandler(BaseHTTPRequestHandler):
         path, _, query = self.path.partition("?")
         try:
             body: dict[str, Any] = {}
-            if method == "POST":
+            raw = None
+            if method == "POST" and path == API_PREFIX + "/audio/transcriptions":
+                # A file, as OpenAI's SDK uploads it: sent on as it came; only its model is read here.
+                content_type = self.headers.get("Content-Type", "")
+                if self.headers.get_content_type() != "multipart/form-data":
+                    raise ApiError(415, "Upload the audio as multipart/form-data.", code="multipart_only")
+                try:
+                    data = self._raw_body(MAX_UPLOAD)
+                except WebError as error:
+                    raise ApiError(error.status, error.message, code=error.code) from None
+                found = re.search(rb'name="model"\r\n(?:[^\r\n]*\r\n)*?\r\n([^\r\n]{1,120})\r\n', data)
+                body = {"model": found.group(1).decode("utf-8", "replace") if found else None}
+                raw = (data, content_type)
+            elif method == "POST":
                 if self.headers.get_content_type() != "application/json":
                     raise ApiError(415, "Send JSON.", code="json_only")
                 try:
@@ -706,7 +727,7 @@ class WebHandler(BaseHTTPRequestHandler):
                     raise error_ from None
             status, out, headers = self.server.api.keys.public(
                 method, path[len(API_PREFIX):], authorization=self.headers.get("Authorization"),
-                origin=self.headers.get("Origin"), body=body, headers=self.headers, query=dict(parse_qsl(query)))
+                origin=self.headers.get("Origin"), body=body, headers=self.headers, query=dict(parse_qsl(query)), raw=raw)
             if isinstance(out, Relay):
                 self._send_relay(out)
             elif isinstance(out, Stream):

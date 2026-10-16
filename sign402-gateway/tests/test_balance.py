@@ -60,6 +60,11 @@ class Surplus:
     def __init__(self):
         self.sent, self.replies = [], []
 
+    def send_raw(self, path, data, content_type):
+        self.sent.append((path, data, {"Content-Type": content_type}))
+        reply = self.replies.pop(0)
+        return reply() if callable(reply) else reply
+
     def send(self, path, body, headers):
         self.sent.append((path, json.loads(json.dumps(body)), dict(headers)))
         reply = self.replies.pop(0) if self.replies else Response(200, {
@@ -467,7 +472,7 @@ class ImageTests(ProxyFixture):
         _, relay = self.send("/images/generations", {"model": "venice-seedream-v5-lite", "prompt": "a robot", "n": 1})
         out = json.loads(self.body_of(relay))
         self.assertEqual(out["data"], [{"b64_json": "aW1hZ2U="}])
-        self.assertEqual(out["billing"]["chargedAtomic"], 5148)  # 3960 + 30%
+        self.assertEqual((out["billing"]["chargedAtomic"], out["billing"]["costAtomic"]), (5148, 3960))  # 3960 + 30%
         path, sent, _ = self.surplus.sent[0]
         self.assertEqual((path, sent), ("/v1/images/generations", {"model": "venice-seedream-v5-lite", "prompt": "a robot", "n": 1}))
         line = self.balances.ledger(self.account)[0]
@@ -479,6 +484,53 @@ class ImageTests(ProxyFixture):
                            ({"model": "venice-gpt-image-2", "prompt": "x", "n": 4}, "over_request_limit")):
             with self.subTest(code=code), self.assertRaises(ApiError) as caught:
                 self.send("/images/generations", body)
+            self.assertEqual(caught.exception.code, code)
+        self.assertEqual(self.surplus.sent, [])
+
+
+class VoiceTests(ProxyFixture):
+    """Speech and transcription for an API key, paid from the balance at what Surplus charged + 30%."""
+
+    def setUp(self):
+        super().setUp()
+        for name, prices in (("speech_list_usd", {"venice-kokoro-tts": 0.0035}),
+                             ("transcription_list_usd", {"venice-whisper-1": 0.006})):
+            p = patch.object(web_api_proxy.ask_catalogue, name, side_effect=lambda m, prices=prices: prices.get(m))
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_speech_comes_back_as_audio_and_is_charged_what_it_cost(self):
+        self.surplus.replies.append(Response(200, b"ID3\x04audio", {"Content-Type": "audio/mpeg", "x-si-buyer-cost-micro": "80"}))
+        _, relay = self.send("/audio/speech", {"model": "venice-kokoro-tts", "input": "Hello from SingIt.", "voice": "af_heart"})
+        self.assertEqual((relay.status, relay.headers["Content-Type"]), (200, "audio/mpeg"))
+        self.assertEqual(self.body_of(relay), b"ID3\x04audio")
+        self.assertEqual(relay.headers["X-SingIt-Charged-Atomic"], "104")
+        self.assertEqual(self.surplus.sent[0][:2], ("/v1/audio/speech", {"model": "venice-kokoro-tts",
+                                                                        "input": "Hello from SingIt.", "voice": "af_heart"}))
+        line = self.balances.ledger(self.account)[0]
+        self.assertEqual((line["model"], line["amount_atomic"], line["cost_atomic"]), ("venice-kokoro-tts", -104, 80))
+
+    def test_a_transcription_upload_goes_on_as_it_came(self):
+        upload = (b'--b\r\nContent-Disposition: form-data; name="model"\r\n\r\nvenice-whisper-1\r\n'
+                  b'--b\r\nContent-Disposition: form-data; name="file"; filename="a.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n'
+                  + b"x" * 1000 + b"\r\n--b--\r\n")
+        self.surplus.replies.append(Response(200, {"text": "hi", "duration": 4.1}, {"x-si-buyer-cost-micro": "40"}))
+        status, relay, _ = self.api.keys.public("POST", "/audio/transcriptions", authorization=f"Bearer {self.key}",
+                                                origin=None, body={"model": "venice-whisper-1"},
+                                                raw=(upload, "multipart/form-data; boundary=b"))
+        out = json.loads(self.body_of(relay))
+        self.assertEqual((out["text"], out["billing"]["chargedAtomic"], out["billing"]["costAtomic"]), ("hi", 52, 40))
+        self.assertEqual(self.surplus.sent[0], ("/v1/audio/transcriptions", upload,
+                                                {"Content-Type": "multipart/form-data; boundary=b"}))
+
+    def test_what_is_refused_before_anything_is_paid(self):
+        for path, body, code in (("/audio/speech", {"input": "x"}, "model_required"),
+                                 ("/audio/speech", {"model": "tts-9", "input": "x"}, "model_not_found"),
+                                 ("/audio/speech", {"model": "venice-kokoro-tts", "input": ""}, "invalid_input"),
+                                 ("/audio/speech", {"model": "venice-kokoro-tts", "input": "x" * 5000}, "invalid_input"),
+                                 ("/audio/transcriptions", {"model": "venice-whisper-1"}, "invalid_file")):
+            with self.subTest(code=code), self.assertRaises(ApiError) as caught:
+                self.send(path, body)
             self.assertEqual(caught.exception.code, code)
         self.assertEqual(self.surplus.sent, [])
 
@@ -651,6 +703,26 @@ class ProxyHttpTests(ProxyFixture):
             rest = response.read()
         self.assertEqual(first + rest, events.replace(b', "buyer_cost_micro": 1000', b""))
         self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -1300)
+
+    def test_an_audio_file_is_uploaded_and_transcribed(self):
+        p = patch.object(web_api_proxy.ask_catalogue, "transcription_list_usd", return_value=0.006)
+        p.start()
+        self.addCleanup(p.stop)
+        self.surplus.replies.append(Response(200, {"text": "hello"}, {"x-si-buyer-cost-micro": "40"}))
+        upload = (b'--XyZ\r\nContent-Disposition: form-data; name="file"; filename="a.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n'
+                  + b"\x00\x01" * 500 + b'\r\n--XyZ\r\nContent-Disposition: form-data; name="model"\r\n\r\nvenice-whisper-1\r\n--XyZ--\r\n')
+        request = urllib.request.Request(self.base + "/audio/transcriptions", data=upload, headers={
+            "Authorization": f"Bearer {self.key}", "Content-Type": "multipart/form-data; boundary=XyZ"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            out = json.loads(response.read())
+        self.assertEqual((out["text"], out["billing"]["chargedAtomic"]), ("hello", 52))
+        self.assertEqual(self.surplus.sent[0][1], upload)
+        request = urllib.request.Request(self.base + "/audio/transcriptions", data=b"{}", headers={
+            "Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(request, timeout=10)
+        with caught.exception as error:
+            self.assertEqual((error.code, json.loads(error.read())["error"]["code"]), (415, "multipart_only"))
 
     def test_anthropic_errors_keep_anthropics_shape(self):
         request = urllib.request.Request(self.base + "/messages", data=b"{}", headers={

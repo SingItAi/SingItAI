@@ -106,31 +106,48 @@ def resolve(model_id: str, **kwargs) -> dict | None:
 
 
 IMAGES_URL = "https://ask.singitai.app/v1/images/models"
-_images: dict = {"at": 0.0, "prices": None}
+AUDIO_URL = "https://ask.singitai.app/v1/audio/models"
+_lists: dict = {}  # url -> {"at": seconds, "prices": {(id, field): usd}}
 
 
-def image_list_usd(model_id: str, now=time.time, fetch=None) -> float | None:
-    """An image model's list price for one 1024x1024 image, from SingIt Ask's free list (cached ten minutes); None
-    for a model not sold there, or while the list cannot be read."""
+def _listed(url: str, model_id: str, field: str, now=time.time, fetch=None) -> float | None:
+    """A price `field` of a model in one of SingIt Ask's free media lists (cached ten minutes); None for a model not
+    sold there, or while the list cannot be read."""
     with _lock:
-        fresh = _images["prices"] is not None and now() - _images["at"] < TTL_SECONDS
+        cached = _lists.get(url)
+        fresh = cached is not None and now() - cached["at"] < TTL_SECONDS
     if not fresh:
         try:
             if fetch is not None:
                 data = fetch()
             else:
-                request = urllib.request.Request(IMAGES_URL, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
+                request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
                 with urllib.request.urlopen(request, timeout=10) as response:
                     data = json.loads(response.read(2_000_000))
-            prices = {str(m["id"]): float(m["listUsdPerImage"]) for m in data.get("data") or []
-                      if isinstance(m, dict) and isinstance(m.get("listUsdPerImage"), (int, float))}
+            prices = {(str(m["id"]), key): float(value) for m in data.get("data") or [] if isinstance(m, dict)
+                      for key, value in m.items() if key.startswith("listUsd") and isinstance(value, (int, float))}
             if prices:
                 with _lock:
-                    _images.update(at=now(), prices=prices)
+                    _lists[url] = {"at": now(), "prices": prices}
         except (OSError, ValueError, KeyError, TypeError) as error:
-            logger.warning("SingIt Ask image list unavailable (%s)", type(error).__name__)
+            logger.warning("SingIt Ask media list unavailable (%s)", type(error).__name__)
     with _lock:
-        return (_images["prices"] or {}).get(model_id)
+        return (_lists.get(url) or {}).get("prices", {}).get((model_id, field))
+
+
+def image_list_usd(model_id: str, **kwargs) -> float | None:
+    """An image model's list price for one 1024x1024 image."""
+    return _listed(IMAGES_URL, model_id, "listUsdPerImage", **kwargs)
+
+
+def speech_list_usd(model_id: str, **kwargs) -> float | None:
+    """A voice model's list price per 1000 characters read aloud."""
+    return _listed(AUDIO_URL, model_id, "listUsdPer1kChars", **kwargs)
+
+
+def transcription_list_usd(model_id: str, **kwargs) -> float | None:
+    """A transcription model's list price per minute of audio."""
+    return _listed(AUDIO_URL, model_id, "listUsdPerMinute", **kwargs)
 
 
 def ceiling(model: dict, chars: int, max_tokens: int, *, markup_bps: int, fee: int) -> int:
