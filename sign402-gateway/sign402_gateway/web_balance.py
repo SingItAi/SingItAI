@@ -8,8 +8,9 @@ The balance is credit bought over x402: the account's agent pays `ask.singitai.a
 credit.mjs) from the owner's limits, on Base through the limiter and on Solana as their delegate, the same way it
 pays any seller (web_data.pay_once). SingIt's revenue address is paid; this ledger records the credit.
 
-Spending it involves no chain: a request holds its ceiling, the answer's actual cost is charged and the rest is
-let go. Every movement is a line in `balance_ledger`, with the balance after it.
+Spending it involves no chain: a request holds its ceiling, and the charge is the answer's cost up to that
+hold. Anything Surplus billed beyond the hold stays SingIt's loss; it is not taken from the balance and cannot
+push it below zero. Every movement is a line in `balance_ledger`, with the balance after it.
 
 The ledger lives in web.db, shared by web_api (which spends) and the gateway (which tops up). Every change is one
 SQL transaction whose conditions are in the statement itself, so the two processes never overwrite each other.
@@ -20,6 +21,7 @@ it; an unclear one leaves it `uncertain`, and the account tops up no more until 
 
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 import sqlite3
@@ -29,6 +31,8 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .agent_allowance import AllowanceError, AllowanceUnavailable
+
+logger = logging.getLogger(__name__)
 
 CREDIT_URL = "https://ask.singitai.app/v1/credit"
 MIN_TOPUP = 1_000_000          # $1 of credit, singit-ask's least
@@ -212,19 +216,32 @@ class Balances:
     def charge(self, account: str, hold_id: str, amount: int, now: int, *, key_id: str | None = None,
                model: str | None = None, ref: str | None = None, cost: int | None = None,
                input_tokens: int | None = None, output_tokens: int | None = None) -> int:
-        """Charges what the request cost, lets its hold go, and returns the balance after.
+        """Charges up to the live hold, lets that hold go, and returns the balance after.
 
-        The charge is what was used even when it passed the hold: the model already answered.
+        The model may already have answered for more. That extra is not collected here: a missing hold bills
+        nothing, and a live one bills at most what it reserved, so the balance cannot be driven negative by a
+        charge.
         """
         with self._db() as db:
+            row = db.execute("SELECT account_id, amount_atomic FROM balance_holds WHERE hold_id = ?",
+                             (hold_id,)).fetchone()
+            if row is None or str(row["account_id"]) != account:
+                current = db.execute("SELECT balance_atomic FROM balances WHERE account_id = ?", (account,)).fetchone()
+                return int(current[0]) if current is not None else 0
+            reserved = int(row["amount_atomic"])
+            asked = amount if type(amount) is int and amount > 0 else 0
+            billed = min(asked, reserved)
+            if asked > reserved:
+                logger.warning("balance: charge of %s for %s capped at its hold of %s", asked, account, reserved)
             self._drop_hold(db, hold_id)
             self._ensure(db, account, now)
-            db.execute("UPDATE balances SET balance_atomic = balance_atomic - ?, updated_at = ? WHERE account_id = ?",
-                       (amount, now, account))
+            if billed:
+                db.execute("UPDATE balances SET balance_atomic = balance_atomic - ?, updated_at = ? WHERE account_id = ?",
+                           (billed, now, account))
             after = int(db.execute("SELECT balance_atomic FROM balances WHERE account_id = ?", (account,)).fetchone()[0])
             db.execute("INSERT INTO balance_ledger(account_id, at, kind, amount_atomic, balance_after, ref, key_id, model,"
                        " cost_atomic, input_tokens, output_tokens) VALUES (?, ?, 'charge', ?, ?, ?, ?, ?, ?, ?, ?)",
-                       (account, now, -amount, after, ref, key_id, model, cost, input_tokens, output_tokens))
+                       (account, now, -billed, after, ref, key_id, model, cost, input_tokens, output_tokens))
         return after
 
     # -- topping up --

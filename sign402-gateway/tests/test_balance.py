@@ -1,4 +1,4 @@
-"""The SingIt balance: topped up from the owner's limits, spent by API keys in any format at actual cost + 30%.
+"""The SingIt balance: topped up from the owner's limits, spent by API keys at actual cost + 30%, never past the hold.
 
 Offline: a fake Surplus answers, a fake shop stands for the gateway's top-up, and the gateway side runs with its
 payer mocked.
@@ -97,11 +97,16 @@ class BalanceStoreTests(unittest.TestCase):
         self.balances.release("h3")
         self.assertEqual(self.balances.state(ACCOUNT)["heldAtomic"], 0)
 
-    def test_what_was_used_is_charged_even_past_its_hold(self):
+    def test_a_charge_cannot_pass_its_hold_or_bill_without_one(self):
         self.credit(1_000_000)
         self.balances.hold(ACCOUNT, "h1", 1_000, NOW)
-        self.assertEqual(self.balances.charge(ACCOUNT, "h1", 1_500_000, NOW), -500_000)
-        self.assertFalse(self.balances.hold(ACCOUNT, "h2", 1, NOW))
+        with self.assertLogs("sign402_gateway.web_balance", "WARNING"):
+            self.assertEqual(self.balances.charge(ACCOUNT, "h1", 1_500_000, NOW, cost=1_500_000), 999_000)
+        state = self.balances.state(ACCOUNT)
+        self.assertEqual((state["balanceAtomic"], state["heldAtomic"]), (999_000, 0))
+        self.assertEqual(self.balances.ledger(ACCOUNT)[0]["amount_atomic"], -1_000)
+        self.assertEqual(self.balances.charge(ACCOUNT, "h1", 1_500_000, NOW), 999_000)
+        self.assertEqual(len(self.balances.ledger(ACCOUNT)), 2)  # the missed hold adds no second charge
 
     def test_a_forgotten_hold_is_let_go(self):
         self.credit(1_000_000)
@@ -137,7 +142,7 @@ class BalanceStoreTests(unittest.TestCase):
     def test_usage_adds_up_per_day_key_and_model(self):
         self.credit(5_000_000)
         for hold, model in (("h1", "a"), ("h2", "a"), ("h3", "b")):
-            self.balances.hold(ACCOUNT, hold, 10, NOW)
+            self.balances.hold(ACCOUNT, hold, 200, NOW)
             self.balances.charge(ACCOUNT, hold, 130, NOW, key_id="key_1", model=model, cost=100, input_tokens=5,
                                  output_tokens=1)
         rows = {r["model"]: (r["calls"], r["charged_atomic"], r["input_tokens"]) for r in self.balances.usage(ACCOUNT, 0)}
@@ -355,6 +360,33 @@ class ProxyTests(ProxyFixture):
         self.assertEqual(caught.exception.code, "over_request_limit")
         self.assertEqual((self.topups, self.surplus.sent), ([], []))
 
+    def test_an_answer_dearer_than_its_hold_is_charged_the_hold(self):
+        body = {"model": "claude-opus-5.5", "max_tokens": 1, "messages": [{"role": "user", "content": "Hi"}]}
+        request = {**body, "si_route": {"objective": "price"}}
+        hold = web_api_proxy.estimate("claude-opus-5.5", request)
+        self.surplus.replies.append(Response(200, {"usage": {"buyer_cost_micro": 500_000}}, {"x-request-id": "req_dear"}))
+        with self.assertLogs("sign402_gateway.web_api_proxy", "WARNING") as logs:
+            _, relay = self.send("/chat/completions", body)
+        out = json.loads(self.body_of(relay))
+        self.assertLess(hold, charge_for(500_000))
+        self.assertEqual(out["billing"]["chargedAtomic"], hold)
+        self.assertEqual(out["billing"]["costAtomic"], 500_000)
+        state = self.balances.state(self.account)
+        self.assertEqual((state["balanceAtomic"], state["heldAtomic"]), (5_000_000 - hold, 0))
+        line = self.balances.ledger(self.account)[0]
+        self.assertEqual((line["amount_atomic"], line["cost_atomic"]), (-hold, 500_000))
+        _, keys, _ = self.call("GET", "/api-keys")
+        self.assertEqual(keys["keys"][0]["spentTodayUsd"], hold / 1e6)
+        self.assertTrue(any("charged the hold" in line for line in logs.output))
+
+    def test_a_token_limit_that_is_not_an_integer_is_refused_before_anything_is_paid(self):
+        for limit in ("100000", 1000.5, True, 0, -1):
+            with self.subTest(limit=limit), self.assertRaises(ApiError) as caught:
+                self.send("/chat/completions", {"model": "claude-opus-5.5", "max_tokens": limit,
+                                                "messages": [{"role": "user", "content": "Hi"}]})
+            self.assertEqual(caught.exception.code, "invalid_max_tokens")
+        self.assertEqual((self.topups, self.surplus.sent), ([], []))
+
     def test_a_top_up_the_limits_refuse_says_why_in_the_callers_dialect(self):
         self.refuse_topup = "Your per-purchase limit allows $0.50. Raise the limit in Settings."
         with self.assertRaises(ApiError) as caught:
@@ -489,7 +521,7 @@ class ImageTests(ProxyFixture):
 
 
 class VoiceTests(ProxyFixture):
-    """Speech and transcription for an API key, paid from the balance at what Surplus charged + 30%."""
+    """Speech and transcription for an API key, paid from the balance at Surplus's cost + 30%, up to the list-price hold."""
 
     def setUp(self):
         super().setUp()
@@ -504,11 +536,11 @@ class VoiceTests(ProxyFixture):
         _, relay = self.send("/audio/speech", {"model": "venice-kokoro-tts", "input": "Hello from SingIt.", "voice": "af_heart"})
         self.assertEqual((relay.status, relay.headers["Content-Type"]), (200, "audio/mpeg"))
         self.assertEqual(self.body_of(relay), b"ID3\x04audio")
-        self.assertEqual(relay.headers["X-SingIt-Charged-Atomic"], "104")
+        self.assertEqual(relay.headers["X-SingIt-Charged-Atomic"], "82")  # list-price hold; 80 + 30% would be 104
         self.assertEqual(self.surplus.sent[0][:2], ("/v1/audio/speech", {"model": "venice-kokoro-tts",
                                                                         "input": "Hello from SingIt.", "voice": "af_heart"}))
         line = self.balances.ledger(self.account)[0]
-        self.assertEqual((line["model"], line["amount_atomic"], line["cost_atomic"]), ("venice-kokoro-tts", -104, 80))
+        self.assertEqual((line["model"], line["amount_atomic"], line["cost_atomic"]), ("venice-kokoro-tts", -82, 80))
 
     def test_a_transcription_upload_goes_on_as_it_came(self):
         upload = (b'--b\r\nContent-Disposition: form-data; name="model"\r\n\r\nvenice-whisper-1\r\n'
@@ -519,7 +551,7 @@ class VoiceTests(ProxyFixture):
                                                 origin=None, body={"model": "venice-whisper-1"},
                                                 raw=(upload, "multipart/form-data; boundary=b"))
         out = json.loads(self.body_of(relay))
-        self.assertEqual((out["text"], out["billing"]["chargedAtomic"], out["billing"]["costAtomic"]), ("hi", 52, 40))
+        self.assertEqual((out["text"], out["billing"]["chargedAtomic"], out["billing"]["costAtomic"]), ("hi", 39, 40))
         self.assertEqual(self.surplus.sent[0], ("/v1/audio/transcriptions", upload,
                                                 {"Content-Type": "multipart/form-data; boundary=b"}))
 
@@ -715,7 +747,7 @@ class ProxyHttpTests(ProxyFixture):
             "Authorization": f"Bearer {self.key}", "Content-Type": "multipart/form-data; boundary=XyZ"})
         with urllib.request.urlopen(request, timeout=10) as response:
             out = json.loads(response.read())
-        self.assertEqual((out["text"], out["billing"]["chargedAtomic"]), ("hello", 52))
+        self.assertEqual((out["text"], out["billing"]["chargedAtomic"]), ("hello", 39))
         self.assertEqual(self.surplus.sent[0][1], upload)
         request = urllib.request.Request(self.base + "/audio/transcriptions", data=b"{}", headers={
             "Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})

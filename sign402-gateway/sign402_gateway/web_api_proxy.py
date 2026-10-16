@@ -8,8 +8,9 @@ answer comes back as Surplus sends it, chunk by chunk.
 Money: before a request, its likely cost is held on the account's balance (web_balance.Balances), which the owner
 bought in the app. A balance too low refuses the request, unless the owner switched on automatic top-ups: then it
 is topped up first, from the owner's limits (the gateway's `credit-topup`). Surplus reports what each answer cost
-(`usage.buyer_cost_micro`, in the body or the last streamed event); that cost plus the markup is charged and the
-hold let go. A failed request costs nothing.
+(`usage.buyer_cost_micro`, in the body or the last streamed event); that cost plus the markup is charged, and never
+more than the hold. A dearer answer is SingIt's loss, logged, and not a debt on the balance. A failed request
+costs nothing.
 """
 
 from __future__ import annotations
@@ -34,7 +35,8 @@ USER_AGENT = ask_catalogue.USER_AGENT
 MARKUP_BPS = 3000                 # cost + 30%, as at SingIt Ask
 DEFAULT_MODEL = "deepseek-v4.1-flash"
 DEFAULT_OUTPUT_TOKENS = 4096      # the answer length a request that names none is held for
-CHARS_PER_TOKEN = 3               # a fair guess for the hold; the charge is what Surplus reports
+CHARS_PER_TOKEN = 3               # a fair guess for the hold; the charge is the reported cost, capped at the hold
+TOKEN_LIMITS = ("max_tokens", "max_completion_tokens", "max_output_tokens")
 UPSTREAM_SECONDS = 600            # a long answer streams for minutes
 MAX_ANSWER_BYTES = 64 * 1024 * 1024
 # Where each public path goes upstream, and the dialect its errors speak.
@@ -74,14 +76,37 @@ def surplus_model(name: Any) -> str:
     return f"{match.group(1)}-{match.group(2)}.{match.group(3)}" if match else name
 
 
+class UnpricedRequest(ValueError):
+    """A token limit this estimate cannot price, so it must not be forwarded."""
+
+    def __init__(self, field: str):
+        super().__init__(field)
+        self.field = field
+
+
+def output_tokens(body: Mapping[str, Any]) -> int:
+    """The answer length the hold is built from. Every limit that is present has to be a positive integer:
+    a string or a float would be forwarded as-is and billed for more than the 4096 this used to assume."""
+    chosen: int | None = None
+    for key in TOKEN_LIMITS:
+        if key not in body or body[key] is None:
+            continue
+        value = body[key]
+        if type(value) is not int or value <= 0:
+            raise UnpricedRequest(key)
+        if chosen is None:
+            chosen = value
+    return DEFAULT_OUTPUT_TOKENS if chosen is None else chosen
+
+
 def estimate(model_id: str, body: Mapping[str, Any]) -> int | None:
     """A likely cost of this request in micro-USD with the markup, from the model's list price; None when the
     model is not in the list."""
     model = ask_catalogue.resolve(model_id)
     if model is None:
+        output_tokens(body)  # still refuse a limit we would otherwise forward unpriced
         return None
-    tokens = body.get("max_tokens", body.get("max_completion_tokens", body.get("max_output_tokens")))
-    output = tokens if type(tokens) is int and tokens > 0 else DEFAULT_OUTPUT_TOKENS
+    output = output_tokens(body)
     chars = len(json.dumps(body.get("messages") or body.get("input") or "", ensure_ascii=False))
     chars += len(json.dumps(body.get("system") or body.get("instructions") or "", ensure_ascii=False))
     chars += len(json.dumps(body.get("tools") or "", ensure_ascii=False))
@@ -280,6 +305,10 @@ class Proxy:
         else:
             model_id = surplus_model(request.get("model"))
         request["model"] = model_id
+        try:
+            output_tokens(request)
+        except UnpricedRequest as exc:
+            raise error(400, f"{exc.field} must be a positive integer.", code="invalid_max_tokens") from None
         forward = {h: str(headers[h]) for h in FORWARDED_HEADERS if headers.get(h)}
         if path in FREE_PATHS:
             response = self.upstream.send(upstream_path, request, forward)
@@ -358,7 +387,11 @@ class Proxy:
                 logger.warning("web api: %s answered %s with no cost; charged the hold", model_id, request_id)
                 charged = hold
             else:
-                charged = charge_for(cost)
+                priced = charge_for(cost)
+                charged = min(priced, hold)
+                if priced > hold:
+                    logger.warning("web api: %s cost %s micro-USD, above the hold of %s; charged the hold",
+                                   model_id, cost, hold)
             after = self.balances.charge(account, hold_id, charged, int(self.keys.now()), key_id=key_id,
                                          model=model_id, ref=request_id, cost=cost, input_tokens=meter.input_tokens,
                                          output_tokens=meter.output_tokens)
