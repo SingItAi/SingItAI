@@ -44,8 +44,16 @@ ROUTES = {
     "/messages": ("/anthropic/v1/messages", "anthropic"),
     "/messages/count_tokens": ("/anthropic/v1/messages/count_tokens", "anthropic"),
     "/images/generations": ("/v1/images/generations", "openai"),
+    "/audio/speech": ("/v1/audio/speech", "openai"),
+    "/audio/transcriptions": ("/v1/audio/transcriptions", "openai"),
 }
 MAX_IMAGES = 4
+MEDIA_PATHS = {"/images/generations": "https://ask.singitai.app/v1/images/models",
+               "/audio/speech": "https://ask.singitai.app/v1/audio/models",
+               "/audio/transcriptions": "https://ask.singitai.app/v1/audio/models"}
+MAX_SPEECH_CHARS = 4096
+MAX_AUDIO_BYTES = 25 * 1024 * 1024  # OpenAI's own limit for a transcription
+AUDIO_BITS_PER_SECOND = 32_000      # the hold counts an audio file as speech this compact; the charge is what was used
 FREE_PATHS = {"/messages/count_tokens"}
 FORWARDED_HEADERS = ("anthropic-version", "anthropic-beta")
 # Claude Code and the Anthropic SDK name models as Anthropic does (claude-sonnet-5-5, maybe dated); Surplus as
@@ -171,6 +179,17 @@ class Upstream:
     def __init__(self, key: str, url: str = SURPLUS_URL, opener: Callable[..., Any] = urllib.request.urlopen):
         self.key, self.url, self.opener = key, url.rstrip("/"), opener
 
+    def send_raw(self, path: str, data: bytes, content_type: str) -> Any:
+        """A request whose body goes on as the client sent it (a file upload)."""
+        request = urllib.request.Request(
+            self.url + path, data=data, method="POST",
+            headers={"Content-Type": content_type, "Accept": "application/json",
+                     "Authorization": f"Bearer {self.key}", "User-Agent": USER_AGENT})
+        try:
+            return self.opener(request, timeout=UPSTREAM_SECONDS)
+        except urllib.error.HTTPError as error:
+            return error
+
     def send(self, path: str, body: Mapping[str, Any], headers: Mapping[str, str]) -> Any:
         """The upstream response, open for reading; an HTTP error is returned as a response too."""
         request = urllib.request.Request(
@@ -241,17 +260,23 @@ class Proxy:
     # -- relaying --
 
     def relay(self, row: Any, path: str, body: Mapping[str, Any], headers: Mapping[str, str | None],
-              error: Callable[..., Exception], reserve: Callable[[int], Callable[[int], None]]) -> Relay:
+              error: Callable[..., Exception], reserve: Callable[[int], Callable[[int], None]],
+              raw: tuple[bytes, str] | None = None) -> Relay:
+        """`raw` is a file upload (bytes, content type) sent on as it came; `body` then holds only its model."""
         upstream_path, _dialect = ROUTES[path]
         account, key_id, per = row["account_id"], row["key_id"], int(row["per_request_cap_atomic"])
         request = dict(body)
-        if path == "/images/generations":
+        if path in MEDIA_PATHS:
             model_id = request.get("model")
-            images = request.get("n", 1)
             if not isinstance(model_id, str) or not model_id.strip():
-                raise error(400, "Name an image model: see https://ask.singitai.app/v1/images/models.", code="model_required")
-            if type(images) is not int or not 1 <= images <= MAX_IMAGES:
+                raise error(400, f"Name a model: see {MEDIA_PATHS[path]}.", code="model_required")
+            if path == "/images/generations" and (type(request.get("n", 1)) is not int or not 1 <= request.get("n", 1) <= MAX_IMAGES):
                 raise error(400, f"n must be 1 to {MAX_IMAGES}.", code="invalid_n")
+            if path == "/audio/speech" and (not isinstance(request.get("input"), str) or not request["input"].strip()
+                                            or len(request["input"]) > MAX_SPEECH_CHARS):
+                raise error(400, f"Send input text of up to {MAX_SPEECH_CHARS} characters.", code="invalid_input")
+            if path == "/audio/transcriptions" and (raw is None or not raw[0] or len(raw[0]) > MAX_AUDIO_BYTES):
+                raise error(400, "Send the audio as a multipart file upload, up to 25 MB.", code="invalid_file")
         else:
             model_id = surplus_model(request.get("model"))
         request["model"] = model_id
@@ -270,16 +295,21 @@ class Proxy:
                 options = dict(request.get("stream_options") or {}) if isinstance(request.get("stream_options"), dict) else {}
                 asked_usage = bool(options.get("include_usage"))
                 request["stream_options"] = {**options, "include_usage": True}  # the cost comes in the usage chunk
-        if path == "/images/generations":
-            listed = ask_catalogue.image_list_usd(model_id)
+        if path in MEDIA_PATHS:
+            if path == "/images/generations":
+                listed, units = ask_catalogue.image_list_usd(model_id), request.get("n", 1)
+            elif path == "/audio/speech":
+                listed, units = ask_catalogue.speech_list_usd(model_id), len(request["input"]) / 1000
+            else:
+                listed, units = ask_catalogue.transcription_list_usd(model_id), len(raw[0]) * 8 / AUDIO_BITS_PER_SECOND / 60
             if listed is None:
-                raise error(404, "No such image model. See https://ask.singitai.app/v1/images/models.", code="model_not_found")
-            likely = charge_for(-int(-listed * 1_000_000 // 1) * request.get("n", 1))
+                raise error(404, f"No such model here. See {MEDIA_PATHS[path]}.", code="model_not_found")
+            likely = charge_for(max(1, -int(-listed * units * 1_000_000 // 1)))
         else:
             likely = estimate(model_id, request)
         if likely is not None and likely > per:
             raise error(400, f"This request may cost up to {likely / 1e6:.4f} USDC, above this key's limit of "
-                        f"{per / 1e6:g} USDC per request. Ask for fewer tokens, or make a key with a higher limit.",
+                        f"{per / 1e6:g} USDC per request. Ask for less, or make a key with a higher limit.",
                         code="over_request_limit")
         hold = likely if likely is not None else per
         done = reserve(hold)  # the key's own daily cap, counting requests in flight
@@ -295,7 +325,8 @@ class Proxy:
             done(0)
             raise
         try:
-            response = self.upstream.send(upstream_path, request, forward)
+            response = (self.upstream.send_raw(upstream_path, *raw) if raw is not None
+                        else self.upstream.send(upstream_path, request, forward))
         except Exception:
             self.balances.release(hold_id)
             done(0)
@@ -322,6 +353,7 @@ class Proxy:
             if cost is None:
                 header = str(response.headers.get("x-si-buyer-cost-micro") or "")
                 cost = int(header) if header.isdigit() else None
+                meter.cost = cost  # an image's cost comes only in the header; billing shows it too
             if cost is None:  # an answer that came back without its cost is charged its hold, and logged
                 logger.warning("web api: %s answered %s with no cost; charged the hold", model_id, request_id)
                 charged = hold

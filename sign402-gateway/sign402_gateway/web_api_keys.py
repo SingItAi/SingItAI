@@ -240,17 +240,17 @@ class ApiKeys:
 
     def public(self, method: str, path: str, *, authorization: str | None, origin: str | None,
                body: Mapping[str, Any], headers: Mapping[str, Any] | None = None,
-               query: Mapping[str, str] | None = None) -> tuple[int, Any, dict[str, str]]:
+               query: Mapping[str, str] | None = None, raw: tuple[bytes, str] | None = None) -> tuple[int, Any, dict[str, str]]:
         try:
             return self._public(method, path, authorization=authorization, origin=origin, body=body,
-                                headers=headers or {}, query=query or {})
+                                headers=headers or {}, query=query or {}, raw=raw)
         except ApiError as error:
             error.anthropic = path.startswith("/messages")
             raise
 
     def _public(self, method: str, path: str, *, authorization: str | None, origin: str | None,
                 body: Mapping[str, Any], headers: Mapping[str, Any],
-                query: Mapping[str, str]) -> tuple[int, Any, dict[str, str]]:
+                query: Mapping[str, str], raw: tuple[bytes, str] | None = None) -> tuple[int, Any, dict[str, str]]:
         if origin:
             # A key belongs in server code. A page that holds one gives it to everyone who opens it.
             raise ApiError(403, "API keys are for server code, not browsers. Keep the key out of web pages.",
@@ -262,7 +262,8 @@ class ApiKeys:
             from .web_api_proxy import ROUTES  # noqa: PLC0415
             if method == "POST" and path in ROUTES:
                 self._rate(row["key_id"])
-                relay = self.proxy.relay(row, path, body, headers, ApiError, lambda amount: self._reserve(row, amount))
+                relay = self.proxy.relay(row, path, body, headers, ApiError, lambda amount: self._reserve(row, amount),
+                                         raw=raw)
                 return relay.status, relay, {}
             if method == "GET" and path == "/balance":
                 return 200, self._balance(row["account_id"]), {}
@@ -277,8 +278,9 @@ class ApiKeys:
             return self._chat(row, body)
         if self.proxy is not None:
             raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions, /v1/responses, "
-                           "/v1/messages, /v1/images/generations and /v1/exa/search, /contents and /answer, and GET "
-                           "/v1/models, /v1/balance and /v1/usage.", code="not_found")
+                           "/v1/messages, /v1/images/generations, /v1/audio/speech and /transcriptions, and "
+                           "/v1/exa/search, /contents and /answer, and GET /v1/models, /v1/balance and /v1/usage.",
+                           code="not_found")
         raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions and GET /v1/models.",
                        code="not_found")
 

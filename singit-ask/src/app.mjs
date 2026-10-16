@@ -21,6 +21,7 @@ import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes } from "./search.mjs";
 import { IMAGE_ROUTE, addImageRoutes } from "./images.mjs";
+import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
@@ -293,7 +294,24 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                        502: { description: "No image; nothing charged" } },
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "Image models and their prices",
-          responses: { 200: { description: "Model list" } }, security: [] } } } : {}),
+          responses: { 200: { description: "Model list" } }, security: [] } },
+          [SPEECH_ROUTE]: { post: {
+            operationId: "createSpeech", summary: "Text read aloud by any of 11 voice models",
+            description: "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: the "
+              + "model's list price for the text + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models: "
+              + "GET /v1/audio/models. Nothing is charged without audio.",
+            "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
+            requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "input"],
+              properties: { model: { type: "string" }, input: { type: "string", maxLength: 4096 }, voice: { type: "string" },
+                            response_format: { type: "string", enum: ["mp3", "opus", "aac", "flac", "wav", "pcm"] },
+                            speed: { type: "number" } } } } } },
+            responses: { 200: { description: "The audio", content: { "audio/mpeg": {} } }, 400: { description: "Not offered; nothing charged" },
+                         402: { description: "Payment Required" }, 404: { description: "No such voice model" },
+                         502: { description: "No audio; nothing charged" } },
+            security: [{ x402: [] }],
+          } },
+          "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "Voice models and their prices",
+            responses: { 200: { description: "Model list" } }, security: [] } } } : {}),
         "/v1/models": { get: {
           operationId: "listModels", summary: "Models that can be asked for now, with their prices",
           responses: { 200: { description: "Model list" } }, security: [],
@@ -305,7 +323,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     });
   });
   app.get("/.well-known/x402", open, (req, res) => {
-    res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`, ...(catalogue ? [`${origin(req)}${IMAGE_ROUTE}`] : []),
+    res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
+        ...(catalogue ? [`${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
@@ -325,6 +344,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (exaKey) addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl: exaFetch, log });
   // Images from Surplus's image models, with this service's own Surplus key.
   if (catalogue) addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  // Speech from Surplus's voice models, the same way.
+  if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
   addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.

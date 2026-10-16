@@ -69,6 +69,22 @@ export function parseImageModels(data) {
   return models;
 }
 
+// Voice models, from the same list: text to speech priced per 1000 characters, speech to text per minute of audio.
+export function parseVoiceModels(data) {
+  const speech = new Map(), transcription = new Map();
+  for (const entry of Array.isArray(data?.data) ? data.data : []) {
+    const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+    const modality = entry?.architecture?.modality;
+    const price = Number(entry?.pricing?.image), unit = entry?.pricing?.media_unit;
+    if (!id || NOT_SOLD.test(id) || !(price > 0)) continue;
+    const model = { id, name: String(entry.name || id), provider: String(entry.provider || ""), usdPerUnit: price,
+      voices: Array.isArray(entry.voices) && entry.voices.length ? entry.voices.map(String) : null };
+    if (modality === "text->audio" && unit === "1K characters") speech.set(id, model);
+    if (modality === "audio->text" && unit === "minute") transcription.set(id, model);
+  }
+  return { speech, transcription };
+}
+
 // What Surplus's trusted sellers ask per model, as a share of list price (best_trusted_offer_discount_pct). Measured
 // on 12 October it was the closest of Surplus's figures to what answers really cost; the best offer was not.
 function parseMarket(data) {
@@ -102,6 +118,7 @@ export class ModelCatalogue {
     this.loadingServed = null;
     this.models = null;
     this.images = null;   // image models, from the same list
+    this.voice = null;    // { speech, transcription } models, from the same list
     this.loadedAt = 0;
     this.prices = null;
     this.pricesAt = 0;
@@ -118,6 +135,8 @@ export class ModelCatalogue {
         const models = parseModels(body), images = parseImageModels(body);
         if (models.size) { this.models = models; this.loadedAt = this.now(); }
         if (images.size) this.images = images;
+        const voice = parseVoiceModels(body);
+        if (voice.speech.size) this.voice = voice;
       } catch { /* keep the last list: a failed refresh must not take the endpoint down */ }
       finally { this.loadingModels = null; }
     })();
@@ -213,6 +232,18 @@ export class ModelCatalogue {
     await this.all().catch(() => null);
     if (!this.images) throw new UnknownModel("The image model list is unavailable. Try again.");
     return this.images;
+  }
+
+  async voiceModels() {
+    await this.all().catch(() => null);
+    if (!this.voice) throw new UnknownModel("The voice model list is unavailable. Try again.");
+    return this.voice;
+  }
+
+  async resolveSpeech(id) {
+    const model = (await this.voiceModels()).speech.get(String(id ?? "").trim());
+    if (!model) throw new UnknownModel("That speech model is not available. See GET /v1/audio/models.");
+    return model;
   }
 
   async resolveImage(id) {
