@@ -105,6 +105,34 @@ def resolve(model_id: str, **kwargs) -> dict | None:
     return next((m for m in models(**kwargs) if m["id"] == model_id), None)
 
 
+IMAGES_URL = "https://ask.singitai.app/v1/images/models"
+_images: dict = {"at": 0.0, "prices": None}
+
+
+def image_list_usd(model_id: str, now=time.time, fetch=None) -> float | None:
+    """An image model's list price for one 1024x1024 image, from SingIt Ask's free list (cached ten minutes); None
+    for a model not sold there, or while the list cannot be read."""
+    with _lock:
+        fresh = _images["prices"] is not None and now() - _images["at"] < TTL_SECONDS
+    if not fresh:
+        try:
+            if fetch is not None:
+                data = fetch()
+            else:
+                request = urllib.request.Request(IMAGES_URL, headers={"Accept": "application/json", "User-Agent": USER_AGENT})
+                with urllib.request.urlopen(request, timeout=10) as response:
+                    data = json.loads(response.read(2_000_000))
+            prices = {str(m["id"]): float(m["listUsdPerImage"]) for m in data.get("data") or []
+                      if isinstance(m, dict) and isinstance(m.get("listUsdPerImage"), (int, float))}
+            if prices:
+                with _lock:
+                    _images.update(at=now(), prices=prices)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            logger.warning("SingIt Ask image list unavailable (%s)", type(error).__name__)
+    with _lock:
+        return (_images["prices"] or {}).get(model_id)
+
+
 def ceiling(model: dict, chars: int, max_tokens: int, *, markup_bps: int, fee: int) -> int:
     """The most one answer can cost, in USDC micro-units: the model's worst case for this question and answer
     size, plus the markup and the fee. Input counts one token per character, the output its whole budget with

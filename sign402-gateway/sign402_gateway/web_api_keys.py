@@ -277,8 +277,8 @@ class ApiKeys:
             return self._chat(row, body)
         if self.proxy is not None:
             raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions, /v1/responses, "
-                           "/v1/messages and /v1/exa/search, /contents and /answer, and GET /v1/models, /v1/balance "
-                           "and /v1/usage.", code="not_found")
+                           "/v1/messages, /v1/images/generations and /v1/exa/search, /contents and /answer, and GET "
+                           "/v1/models, /v1/balance and /v1/usage.", code="not_found")
         raise ApiError(404, "No such endpoint. This API answers POST /v1/chat/completions and GET /v1/models.",
                        code="not_found")
 
