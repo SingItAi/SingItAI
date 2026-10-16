@@ -85,6 +85,23 @@ export function parseVoiceModels(data) {
   return { speech, transcription };
 }
 
+// Video models, from the same list: text to video, priced per job (Surplus runs them as asynchronous jobs).
+export function parseVideoModels(data) {
+  const models = new Map();
+  for (const entry of Array.isArray(data?.data) ? data.data : []) {
+    const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+    const params = Array.isArray(entry?.supported_parameters) ? entry.supported_parameters.map(String) : [];
+    const price = Number(entry?.pricing?.image);
+    if (!id || NOT_SOLD.test(id) || entry?.architecture?.modality !== "video") continue;
+    if (!params.includes("text-to-video") || entry?.pricing?.media_unit !== "job" || !(price > 0)) continue;
+    const list = (value) => (Array.isArray(value) && value.length ? value.map(String) : null);
+    models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""), usdPerJob: price,
+      durations: Array.isArray(entry.durations_seconds) && entry.durations_seconds.length ? entry.durations_seconds.map(Number) : null,
+      resolutions: list(entry.resolutions), aspectRatios: list(entry.aspect_ratios), audio: params.includes("audio") });
+  }
+  return models;
+}
+
 // What Surplus's trusted sellers ask per model, as a share of list price (best_trusted_offer_discount_pct). Measured
 // on 12 October it was the closest of Surplus's figures to what answers really cost; the best offer was not.
 function parseMarket(data) {
@@ -119,6 +136,7 @@ export class ModelCatalogue {
     this.models = null;
     this.images = null;   // image models, from the same list
     this.voice = null;    // { speech, transcription } models, from the same list
+    this.videos = null;   // text-to-video models, from the same list
     this.loadedAt = 0;
     this.prices = null;
     this.pricesAt = 0;
@@ -137,6 +155,8 @@ export class ModelCatalogue {
         if (images.size) this.images = images;
         const voice = parseVoiceModels(body);
         if (voice.speech.size) this.voice = voice;
+        const videos = parseVideoModels(body);
+        if (videos.size) this.videos = videos;
       } catch { /* keep the last list: a failed refresh must not take the endpoint down */ }
       finally { this.loadingModels = null; }
     })();
@@ -232,6 +252,18 @@ export class ModelCatalogue {
     await this.all().catch(() => null);
     if (!this.images) throw new UnknownModel("The image model list is unavailable. Try again.");
     return this.images;
+  }
+
+  async videoModels() {
+    await this.all().catch(() => null);
+    if (!this.videos) throw new UnknownModel("The video model list is unavailable. Try again.");
+    return this.videos;
+  }
+
+  async resolveVideo(id) {
+    const model = (await this.videoModels()).get(String(id ?? "").trim());
+    if (!model) throw new UnknownModel("That video model is not available. See GET /v1/video/models.");
+    return model;
   }
 
   async voiceModels() {

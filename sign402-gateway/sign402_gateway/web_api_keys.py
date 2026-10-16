@@ -22,6 +22,8 @@ import re
 import secrets
 import threading
 import time
+import urllib.error
+import urllib.request
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Mapping
@@ -37,8 +39,11 @@ MAX_DAILY_ATOMIC = 1_000_000_000          # $1,000 a day; the account's own limi
 MAX_PER_REQUEST_ATOMIC = 50_000_000       # $50 an answer
 MAX_DAYS = 365
 REQUESTS_PER_MINUTE = 60
-SEARCH_PATHS = ("/exa/search", "/exa/contents", "/exa/answer")
+SEARCH_PATHS = ("/exa/search", "/exa/contents", "/exa/answer", "/video/generations")
 SEARCH_HOLD_ATOMIC = 67_000  # the most one search can cost (web_data.SEARCH_CAP_ATOMIC), held against the daily cap
+VIDEO_HOLD_ATOMIC = 1_302_000  # the most one video job can cost (web_data.VIDEO_CAP_ATOMIC)
+VIDEO_JOB = re.compile(r"/video/generations/([A-Za-z0-9_-]{6,80})(/content)?")
+ASK_URL = "https://ask.singitai.app"
 NAME = re.compile(r"[\w .,:()'-]{1,40}")
 
 
@@ -258,6 +263,9 @@ class ApiKeys:
         row = self._key(authorization, headers.get("x-api-key"))
         if method == "POST" and path in SEARCH_PATHS:
             return self._search(row, path, body)
+        job = VIDEO_JOB.fullmatch(path) if method == "GET" else None
+        if job:
+            return self._video_job(job.group(1), bool(job.group(2)), headers, query)
         if self.proxy is not None:
             from .web_api_proxy import ROUTES  # noqa: PLC0415
             if method == "POST" and path in ROUTES:
@@ -285,14 +293,16 @@ class ApiKeys:
                        code="not_found")
 
     def _search(self, row, path: str, body: Mapping[str, Any]) -> tuple[int, Any, dict[str, str]]:
-        """Web search or page contents from Exa, paid from the owner's wallet within its limits, per request: no
-        balance is involved. SingIt sells it at Exa's price + 30% + the network's settlement fee."""
-        if "search" not in str(row["scopes"]).split():
+        """Web search or page contents from Exa, or a video job, bought at SingIt Ask's x402 price from the owner's
+        wallet within its limits, per request: no balance is involved."""
+        video = path == "/video/generations"
+        hold = VIDEO_HOLD_ATOMIC if video else SEARCH_HOLD_ATOMIC
+        if not video and "search" not in str(row["scopes"]).split():
             raise ApiError(403, "This key was made for model answers only. Create a new key in the SingIt app to use "
                            "search.", type_="permission_error", code="scope_missing")
         self._rate(row["key_id"])
         per = int(row["per_request_cap_atomic"])
-        done = self._reserve(row, min(per, SEARCH_HOLD_ATOMIC))
+        done = self._reserve(row, min(per, hold))
         try:
             status, reply = self._shop("api-search", row["account_id"], {
                 "path": "/v1" + path, "body": dict(body), "limitAtomic": per})
@@ -303,12 +313,43 @@ class ApiKeys:
             done(0)
             raise _api_error(status, reply)
         cost = reply.get("costAtomic")
-        cost = cost if type(cost) is int and cost >= 0 else min(per, SEARCH_HOLD_ATOMIC)
+        cost = cost if type(cost) is int and cost >= 0 else min(per, hold)
         done(cost)
         data = reply.get("data") if isinstance(reply.get("data"), dict) else {}
         data["billing"] = {**(data.get("billing") or {}), "chargedAtomic": cost, "txId": reply.get("txId") or None,
                            "network": reply.get("network"), "paidFrom": "your wallet, within your SingIt limits"}
+        if video and data.get("id"):  # poll here, with the same key and the job's token
+            data["poll"] = f"/v1/video/generations/{data['id']}"
+            data["results"] = [{**r, "url": str(r.get("url", "")).replace(ASK_URL, "")} for r in data.get("results") or []
+                               if isinstance(r, dict)]
         return 200, data, {"X-SingIt-Charged-Atomic": str(cost)}
+
+    def _video_job(self, job_id: str, content: bool, headers: Mapping[str, Any],
+                   query: Mapping[str, str]) -> tuple[int, Any, dict[str, str]]:
+        """A video job's status, or its file: SingIt Ask's free routes, opened with the job's own token."""
+        from urllib.parse import quote  # noqa: PLC0415
+        from .web_api_proxy import Relay  # noqa: PLC0415
+        token = str(headers.get("x-job-token") or query.get("token") or "")[:400]
+        if not token:
+            raise ApiError(400, "Send the job's token in the X-Job-Token header.", code="token_missing")
+        index = str(query.get("index") or "0")
+        url = f"{ASK_URL}/v1/video/generations/{job_id}" + (f"/content?index={quote(index)}" if content else "")
+        request = urllib.request.Request(url, headers={"X-Job-Token": token, "User-Agent": "SingIt-App/1.0 (+https://singitai.app)"})
+        try:
+            response = urllib.request.urlopen(request, timeout=120 if content else 20)
+        except urllib.error.HTTPError as error:
+            response = error
+        except OSError:
+            raise ApiError(503, "Try again shortly.", type_="api_error", code="unavailable") from None
+        with response:
+            data = response.read(512 * 1024 * 1024 if content else 1_000_000)
+            kind = response.headers.get("Content-Type", "application/json")
+            status = response.status if hasattr(response, "status") else response.code
+        if not content and status in (200, 202):
+            job = json.loads(data)
+            job["results"] = [{**r, "url": str(r.get("url", "")).replace(ASK_URL, "")} for r in job.get("results") or []]
+            data, kind = json.dumps(job).encode(), "application/json"
+        return status, Relay(status, {"Content-Type": kind}, [data], len(data)), {}
 
     def _reserve(self, row, amount: int):
         """Counts `amount` against the key's daily cap while its request runs; the returned function records what

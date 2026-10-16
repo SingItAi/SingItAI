@@ -17,6 +17,7 @@ from eth_account import Account
 
 from sign402_gateway import web_api as wa
 from sign402_gateway import web_api_proxy, web_balance, web_internal
+from sign402_gateway import web_api_keys as web_api_keys_module
 from sign402_gateway.agent_allowance import AllowanceError, AllowanceUnavailable
 from sign402_gateway.web_api_proxy import Proxy, charge_for, surplus_model
 from sign402_gateway.web_balance import Balances, TopupBusy, new_topup_id
@@ -620,6 +621,51 @@ class SearchTests(Fixture):
         self.assertEqual(keys["keys"][0]["scopes"], ["answers", "search"])
 
 
+class VideoKeyTests(Fixture):
+    """Video for an API key: the job bought at SingIt Ask's x402 price from the owner's wallet, polled with its token."""
+
+    def setUp(self):
+        super().setUp()
+        self.key = self.make_key(dailyUsd=5, perRequestUsd=1)["key"]
+        with self.store._db() as db:
+            db.execute("UPDATE api_keys SET scopes = 'answers'")  # video is a model's answer: no search scope needed
+        self.shop.reply = (200, {"ok": True, "costAtomic": 105000, "txId": "0x" + "e" * 64, "network": "base",
+                                 "data": {"id": "vj_123456", "object": "video.generation", "status": "queued", "job_token": "tok",
+                                          "results": [], "billing": {"totalAtomic": "105000"}}})
+
+    def test_a_video_job_is_bought_from_the_owners_limits_and_polled_here(self):
+        status, out, _ = self.api.keys.public("POST", "/video/generations", authorization=f"Bearer {self.key}", origin=None,
+                                              body={"model": "venice-seedance-2-fast-t2v", "prompt": "a robot waves"})
+        self.assertEqual((status, out["id"], out["job_token"], out["poll"]), (200, "vj_123456", "tok", "/v1/video/generations/vj_123456"))
+        self.assertEqual(out["billing"]["chargedAtomic"], 105000)
+        self.assertEqual(self.shop.calls[-1][2], {"path": "/v1/video/generations", "limitAtomic": 1_000_000,
+                                                  "body": {"model": "venice-seedance-2-fast-t2v", "prompt": "a robot waves"}})
+
+    def test_polling_passes_the_token_and_points_files_here(self):
+        sent = []
+
+        class Answer:
+            status, headers = 200, {"Content-Type": "application/json"}
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return json.dumps({"id": "vj_123456", "status": "succeeded", "results": [
+                {"index": 0, "url": "https://ask.singitai.app/v1/video/generations/vj_123456/content?index=0"}]}).encode()
+
+        def opener(request, timeout):
+            sent.append((request.full_url, request.get_header("X-job-token")))
+            return Answer()
+
+        with patch.object(web_api_keys_module.urllib.request, "urlopen", opener):
+            status, relay, _ = self.api.keys.public("GET", "/video/generations/vj_123456", authorization=f"Bearer {self.key}",
+                                                    origin=None, body={}, headers={"x-job-token": "tok"})
+        job = json.loads(b"".join(relay))
+        self.assertEqual((status, job["results"][0]["url"]), (200, "/v1/video/generations/vj_123456/content?index=0"))
+        self.assertEqual(sent, [("https://ask.singitai.app/v1/video/generations/vj_123456", "tok")])
+        with self.assertRaises(ApiError) as caught:
+            self.api.keys.public("GET", "/video/generations/vj_123456", authorization=f"Bearer {self.key}", origin=None, body={})
+        self.assertEqual(caught.exception.code, "token_missing")
+
+
 class GatewaySearchTests(unittest.TestCase):
     """web_data.search and the internal "api-search" action, with the payer mocked."""
 
@@ -644,6 +690,11 @@ class GatewaySearchTests(unittest.TestCase):
         self.assertEqual(tool.cap_atomic, 50_000)
         self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/exa/contents", {"urls": ["https://a.test"]})
         self.assertEqual(self.pay.call_args.args[3].cap_atomic, 67_000)
+
+    def test_a_video_job_has_its_own_ceiling(self):
+        self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/video/generations", {"model": "m", "prompt": "x"})
+        tool, method, url = self.pay.call_args.args[3:6]
+        self.assertEqual((tool.cap_atomic, tool.name, url), (1_302_000, "Video", "https://ask.singitai.app/v1/video/generations"))
 
     def test_what_is_refused_before_paying(self):
         from sign402_gateway import ask_solana

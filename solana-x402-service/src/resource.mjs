@@ -17,7 +17,9 @@ export const CREDIT_URL = 'https://ask.singitai.app/v1/credit';
 export const MAX_CREDIT_ATOMIC = 50_002_000n;
 export const SINGIT_URLS = new Map([[CREDIT_URL, MAX_CREDIT_ATOMIC],
   ['https://ask.singitai.app/v1/exa/search', 67_000n], ['https://ask.singitai.app/v1/exa/contents', 67_000n],
-  ['https://ask.singitai.app/v1/exa/answer', 67_000n]]);
+  ['https://ask.singitai.app/v1/exa/answer', 67_000n],
+  // A video clip: the dearest sold there ($1.00 a job) + 30% + the fee.
+  ['https://ask.singitai.app/v1/video/generations', 1_302_000n]]);
 const MAX_BODY = 1_500_000;
 
 function decode(header) {

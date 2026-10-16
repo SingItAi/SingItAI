@@ -286,8 +286,9 @@ def pay_once(server: Any, gw: Any, account: str, tool: DataTool, method: str, ur
 # + 30% + the settlement fee and paid to SingIt's revenue address. An API key's search is bought here, from its
 # account's limits.
 SEARCH_URL = "https://ask.singitai.app"
-SEARCH_PATHS = ("/v1/exa/search", "/v1/exa/contents", "/v1/exa/answer")
+SEARCH_PATHS = ("/v1/exa/search", "/v1/exa/contents", "/v1/exa/answer", "/v1/video/generations")
 SEARCH_CAP_ATOMIC = 67_000  # Exa's dearest request sold there ($0.05) + 30% + Solana's fee; the bridge holds it too
+VIDEO_CAP_ATOMIC = 1_302_000  # the dearest video job sold there ($1.00) + 30% + Solana's fee; the bridge holds it too
 
 
 def search(server: Any, gw: Any, account: str, path: Any, body: Any, *, limit: int | None = None) -> dict[str, Any]:
@@ -299,9 +300,12 @@ def search(server: Any, gw: Any, account: str, path: Any, body: Any, *, limit: i
         raise AllowanceError(ask_solana.SELF_PAY)
     if getattr(gw, "_purchases_paused", lambda: False)():
         raise AllowanceError("Purchases are paused right now. Try again later.")
-    cap = min(SEARCH_CAP_ATOMIC, limit) if limit else SEARCH_CAP_ATOMIC
+    video = path == "/v1/video/generations"
+    ceiling = VIDEO_CAP_ATOMIC if video else SEARCH_CAP_ATOMIC
+    cap = min(ceiling, limit) if limit else ceiling
     url = SEARCH_URL + path
-    tool = DataTool("singit_search", "Web search", "SingIt · Exa", {BASE: ask_metered.PAY_TO, SOLANA: ask_solana.PAY_TO},
+    tool = DataTool("singit_video" if video else "singit_search", "Video" if video else "Web search",
+                    "SingIt" if video else "SingIt · Exa", {BASE: ask_metered.PAY_TO, SOLANA: ask_solana.PAY_TO},
                     cap, lambda _p: ("POST", url, body))
     paid, data, tx = pay_once(server, gw, account, tool, "POST", url, body)
     return {"ok": True, "data": data, "costAtomic": paid, "txId": tx,

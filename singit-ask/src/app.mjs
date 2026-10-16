@@ -23,6 +23,7 @@ import { SEARCH_ROUTES, addSearchRoutes } from "./search.mjs";
 import { IMAGE_ROUTE, addImageRoutes } from "./images.mjs";
 import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
+import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
@@ -312,6 +313,26 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             security: [{ x402: [] }],
           } },
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "Voice models and their prices",
+            responses: { 200: { description: "Model list" } }, security: [] } },
+          [VIDEO_ROUTE]: { post: {
+            operationId: "createVideo", summary: "A video clip from any of 36 text-to-video models, as a job",
+            description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio. Paid per clip "
+              + "over x402: the model's list price + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), charged "
+              + "once the job is accepted. Answers with the job id and job_token; poll GET /v1/video/generations/{id} "
+              + "with header X-Job-Token for free, then GET /v1/video/generations/{id}/content. Models: GET /v1/video/models.",
+            "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.105", max: "1.302" }, protocols: [{ x402: {} }] },
+            requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "prompt"],
+              properties: { model: { type: "string" }, prompt: { type: "string", maxLength: 2000 }, duration_seconds: { type: "integer" },
+                            resolution: { type: "string" }, aspect_ratio: { type: "string" }, audio: { type: "boolean" } } } } } },
+            responses: { 200: { description: "The accepted job, its token and billing" }, 400: { description: "Not offered; nothing charged" },
+                         402: { description: "Payment Required" }, 404: { description: "No such video model" },
+                         502: { description: "Not started; nothing charged" } },
+            security: [{ x402: [] }],
+          } },
+          [`${VIDEO_ROUTE}/{id}`]: { get: { operationId: "getVideo", security: [],
+            summary: "Free: a video job's status and files (header X-Job-Token, or ?token=)",
+            responses: { 200: { description: "Finished" }, 202: { description: "Still running" }, 403: { description: "Wrong token" } } } },
+          "/v1/video/models": { get: { operationId: "listVideoModels", summary: "Video models and their prices",
             responses: { 200: { description: "Model list" } }, security: [] } } } : {}),
         ...(priceBook ? {
           "/v1/prices": { get: { operationId: "listPrices", summary: "Free prices: what can be asked for", security: [],
@@ -343,7 +364,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   });
   app.get("/.well-known/x402", open, (req, res) => {
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
-        ...(catalogue ? [`${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`] : []),
+        ...(catalogue ? [`${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, `${origin(req)}${VIDEO_ROUTE}`] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
@@ -365,6 +386,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (catalogue) addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
   if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  // Video from Surplus's text-to-video models, as jobs.
+  if (catalogue) addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
   if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
