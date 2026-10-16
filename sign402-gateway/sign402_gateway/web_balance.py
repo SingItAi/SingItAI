@@ -9,7 +9,8 @@ credit.mjs) from the owner's limits, on Base through the limiter and on Solana a
 pays any seller (web_data.pay_once). SingIt's revenue address is paid; this ledger records the credit.
 
 Spending it involves no chain: a request holds its ceiling, and the charge is the answer's cost up to that
-hold. Anything Surplus billed beyond the hold stays SingIt's loss; it is not taken from the balance and cannot
+hold. A request still being read refreshes its hold, so a long answer is not mistaken for one that was
+abandoned. Anything Surplus billed beyond the hold stays SingIt's loss; it is not taken from the balance and cannot
 push it below zero. Every movement is a line in `balance_ledger`, with the balance after it.
 
 The ledger lives in web.db, shared by web_api (which spends) and the gateway (which tops up). Every change is one
@@ -40,7 +41,7 @@ MAX_TOPUP = 50_000_000         # $50, its most
 TOPUP_STEP = 10_000            # whole cents
 DEFAULT_TOPUP = 5_000_000      # one portion: $5
 DEFAULT_THRESHOLD = 1_000_000  # top up below $1 left
-HOLD_SECONDS = 15 * 60         # a hold older than any answer is let go
+HOLD_SECONDS = 15 * 60         # a hold nobody has touched this long is let go
 TOPUP_ID = re.compile(r"top_[0-9a-f]{16,32}")
 
 
@@ -198,6 +199,12 @@ class Balances:
                 db.execute("INSERT INTO balance_holds(hold_id, account_id, amount_atomic, created_at) VALUES (?, ?, ?, ?)",
                            (hold_id, account, amount, now))
         return bool(taken)
+
+    def touch(self, hold_id: str, now: int) -> bool:
+        """Keeps a request's hold from being treated as forgotten while that request is still being read."""
+        with self._db() as db:
+            return bool(db.execute("UPDATE balance_holds SET created_at = ? WHERE hold_id = ?",
+                                   (now, hold_id)).rowcount)
 
     def release(self, hold_id: str) -> None:
         with self._db() as db:

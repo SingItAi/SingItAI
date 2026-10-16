@@ -113,6 +113,25 @@ class BalanceStoreTests(unittest.TestCase):
         self.balances.hold(ACCOUNT, "h1", 1_000_000, NOW)
         self.assertTrue(self.balances.hold(ACCOUNT, "h2", 1_000_000, NOW + web_balance.HOLD_SECONDS + 1))
 
+    def test_a_hold_still_being_read_is_not_let_go(self):
+        self.credit(1_000_000)
+        self.balances.hold(ACCOUNT, "h1", 1_000_000, NOW)
+        self.assertTrue(self.balances.touch("h1", NOW + web_balance.HOLD_SECONDS))
+        self.assertFalse(self.balances.hold(ACCOUNT, "h2", 1, NOW + web_balance.HOLD_SECONDS + 1))
+        self.assertEqual(self.balances.state(ACCOUNT)["heldAtomic"], 1_000_000)
+
+    def test_a_watch_stops_when_the_answer_outlives_its_deadline(self):
+        self.credit(1)
+        self.balances.hold(ACCOUNT, "h1", 1, NOW)
+        clock = [0.0]
+        watch = web_api_proxy.HoldWatch(self.balances, "h1", lambda: NOW + 10, deadline=100, clock=lambda: clock[0])
+        watch.keep()
+        self.assertFalse(watch.stopped)
+        clock[0] = 100
+        watch.keep()
+        self.assertTrue(watch.stopped)
+        self.assertFalse(self.balances.hold(ACCOUNT, "h2", 1, NOW + 10 + web_balance.HOLD_SECONDS))
+
     def test_one_top_up_at_a_time_credited_once_and_an_unclear_one_stops_more(self):
         self.balances.claim_topup("top_" + "a" * 24, ACCOUNT, 5_000_000, NOW)
         with self.assertRaises(TopupBusy):
@@ -288,6 +307,69 @@ class ProxyTests(ProxyFixture):
         self.send("/chat/completions", {"messages": [{"role": "user", "content": "Again"}]})
         self.assertEqual(len(self.topups), 1, "a balance that covers the request is not topped up again")
         self.assertEqual(self.surplus.sent[1][1]["model"], "deepseek-v4.1-flash")
+
+    def _credit_one_hold(self):
+        self.balances.set_terms(self.account, 5_000_000, 1_000_000, False, NOW)
+        topup = new_topup_id()
+        self.balances.claim_topup(topup, self.account, 1_000_000, NOW)
+        self.balances.credit_topup(topup, 1_001_000, 1_000_000, "0xtx", "base", NOW)
+
+    def test_a_long_answer_keeps_its_hold_past_the_moment_it_would_have_expired(self):
+        self._credit_one_hold()
+        payload = json.dumps({
+            "id": "c1", "object": "chat.completion",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": "Hi"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 2, "buyer_cost_micro": 1000},
+        }).encode()
+        mono = [1_000.0]
+
+        class Trickle(Response):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.n = 0
+
+            def read(self_, limit=-1):
+                self_.n += 1
+                if self_.n == 1:
+                    # This chunk took almost the hold's whole life. Another spend tries the deposit now.
+                    self.clock[0] = NOW + web_balance.HOLD_SECONDS - 1
+                    self.early = self.balances.hold(self.account, "other", 1, self.clock[0])
+                    mono[0] += web_api_proxy.HOLD_TOUCH_SECONDS  # the next check refreshes the hold
+                    return payload[:8]
+                if self_.n == 2:
+                    # The original hold would be gone by now. The refresh between chunks keeps it.
+                    self.clock[0] = NOW + web_balance.HOLD_SECONDS + 30
+                    self.late = self.balances.hold(self.account, "other2", 1, self.clock[0])
+                    return payload[8:]
+                return b""
+
+        self.surplus.replies.append(Trickle(200, b"", {"x-request-id": "req_1"}))
+        with patch.object(web_api_proxy.time, "monotonic", lambda: mono[0]):
+            _, relay = self.send("/chat/completions", {"messages": [{"role": "user", "content": "Hi"}]})
+        self.assertEqual(json.loads(self.body_of(relay))["choices"][0]["message"]["content"], "Hi")
+        self.assertFalse(self.early)
+        self.assertFalse(self.late)
+        self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -1300)
+        self.assertEqual(self.balances.state(self.account)["heldAtomic"], 0)
+
+    def test_an_answer_past_its_deadline_stops_instead_of_reading_forever(self):
+        self._credit_one_hold()
+        clock = [1_000.0]
+        reads = []
+
+        class Endless(Response):
+            def read(self_, limit=-1):
+                reads.append(1)
+                clock[0] += web_api_proxy.ANSWER_DEADLINE_SECONDS
+                return b"x" * 32
+
+        self.surplus.replies.append(Endless(200, b""))
+        with patch.object(web_api_proxy.time, "monotonic", lambda: clock[0]), \
+                self.assertLogs("sign402_gateway.web_api_proxy", "WARNING"):
+            _, relay = self.send("/chat/completions", {"messages": [{"role": "user", "content": "Hi"}]})
+        self.assertLess(len(reads), 5)
+        self.assertEqual(self.body_of(relay), b"x" * 32)
+        self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -1_000_000)
 
     def test_claude_code_speaks_anthropic_with_x_api_key_and_streams_as_it_comes(self):
         events = sse({"type": "message_start", "message": {"usage": {"input_tokens": 12}}},

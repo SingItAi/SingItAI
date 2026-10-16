@@ -340,10 +340,11 @@ async function createLimiter() {
     daily = $("#daily").value.trim(); per = $("#per").value.trim(); days = $("#days").value.trim();
     if (atomicFromUsdc(per) > atomicFromUsdc(daily)) throw new Error("The per-purchase limit cannot be above the daily limit.");
   } catch (error) { toast(error.message, true); return; }
-  await busy("Creating your limiter on Base. This takes about a minute.", async () => {
+  const solana = state.session?.chain === "solana" || state.allowance?.chain === "solana";
+  await busy(solana ? "Saving your limits." : "Creating your limiter on Base. This takes about a minute.", async () => {
     await api.setup(daily, per, days);
     await loadAllowance();
-    toast("Your limiter is ready. Now allow it to spend.");
+    toast(solana ? "Limits saved. Now approve them in your wallet." : "Your limiter is ready. Now allow it to spend.");
   });
 }
 
@@ -620,6 +621,29 @@ function renderSolanaAllowance(a) {
     </div></div>`;
 }
 
+// Solana setup saves limits on SingIt, then the owner approves a total in their wallet. No Base contract.
+function renderSolanaSetup() {
+  const p = PRESETS[state.preset] || PRESETS[0];
+  return `
+    <div class="page-head"><span class="eyebrow">Step 2 of 3 · Solana</span>
+      <h1>Set your agent's <em>limits</em>.</h1>
+      <p>Your USDC stays in your wallet. Solana enforces the total you approve. SingIt enforces the daily and per-purchase limits.</p></div>
+    <div class="bezel glow"><div class="core">
+      <h2>Choose your limits</h2>
+      <p>Saving these limits moves no money and deploys no contract. Next you approve the total once in your wallet.</p>
+      <div class="presets">${PRESETS.map((x, i) => `
+        <button class="preset ${i === state.preset ? "selected" : ""}" data-action="preset" data-index="${i}">
+          <b>$${x.daily}<span> / day</span></b><span>${x.name} · up to $${x.per} a purchase · ${x.days} days</span>
+        </button>`).join("")}</div>
+      <div class="fields">
+        <div class="field"><label for="daily">Daily limit, USDC</label><input class="input" id="daily" inputmode="decimal" value="${esc(p.daily)}"></div>
+        <div class="field"><label for="per">Per purchase, USDC</label><input class="input" id="per" inputmode="decimal" value="${esc(p.per)}"></div>
+        <div class="field"><label for="days">Lasts, days</label><input class="input" id="days" type="number" min="1" max="90" value="${esc(p.days)}"></div>
+      </div>
+      <div class="row" style="margin-top:22px"><button class="btn btn-primary has-orb" data-action="create-limiter">Save my limits${orb}</button></div>
+    </div></div>`;
+}
+
 function renderAllowance() {
   const a = state.allowance;
   if (!a) return `<p class="faint">Loading…</p>`;
@@ -628,6 +652,7 @@ function renderAllowance() {
       <p>${esc(a.text || "")}</p></div>`;
   }
   if (a.chain === "solana" && a.configured) return renderSolanaAllowance(a);
+  if (a.chain === "solana") return renderSolanaSetup();
   if (!a.configured) {
     return `<div class="page-head"><span class="eyebrow">Step 2 of 3</span>
       <h1>Set your agent's <em>limits</em>.</h1>

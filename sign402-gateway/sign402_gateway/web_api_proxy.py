@@ -10,7 +10,8 @@ bought in the app. A balance too low refuses the request, unless the owner switc
 is topped up first, from the owner's limits (the gateway's `credit-topup`). Surplus reports what each answer cost
 (`usage.buyer_cost_micro`, in the body or the last streamed event); that cost plus the markup is charged, and never
 more than the hold. A dearer answer is SingIt's loss, logged, and not a debt on the balance. A failed request
-costs nothing.
+costs nothing. While the answer is being read the hold is refreshed, and the read stops after twelve minutes, so a
+slow stream cannot outlive the hold and let another request spend the same deposit.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import logging
 import re
 import secrets
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections import defaultdict
@@ -37,7 +39,9 @@ DEFAULT_MODEL = "deepseek-v4.1-flash"
 DEFAULT_OUTPUT_TOKENS = 4096      # the answer length a request that names none is held for
 CHARS_PER_TOKEN = 3               # a fair guess for the hold; the charge is the reported cost, capped at the hold
 TOKEN_LIMITS = ("max_tokens", "max_completion_tokens", "max_output_tokens")
-UPSTREAM_SECONDS = 600            # a long answer streams for minutes
+UPSTREAM_SECONDS = 600            # one socket read; idle, not the whole request
+ANSWER_DEADLINE_SECONDS = 12 * 60  # the whole request, shorter than a hold's life
+HOLD_TOUCH_SECONDS = 60
 MAX_ANSWER_BYTES = 64 * 1024 * 1024
 # Where each public path goes upstream, and the dialect its errors speak.
 ROUTES = {
@@ -180,6 +184,32 @@ class Meter:
             return None
         self.read(data)
         return data if isinstance(data, dict) else None
+
+
+class HoldWatch:
+    """Keeps one request's hold alive while its answer is still being read, and stops that read before the hold
+    can be treated as forgotten."""
+
+    def __init__(self, balances: Balances, hold_id: str, now: Callable[[], int], *, deadline: float,
+                 touch_every: float = HOLD_TOUCH_SECONDS, clock: Callable[[], float] | None = None):
+        self.balances = balances
+        self.hold_id = hold_id
+        self.now = now
+        self.deadline = deadline
+        self.touch_every = touch_every
+        self.clock = time.monotonic if clock is None else clock
+        self.stopped = False
+        self.balances.touch(self.hold_id, int(self.now()))
+        self._touched = self.clock()
+
+    def keep(self) -> None:
+        moment = self.clock()
+        if moment >= self.deadline:
+            self.stopped = True
+            return
+        if moment - self._touched >= self.touch_every:
+            self.balances.touch(self.hold_id, int(self.now()))
+            self._touched = moment
 
 
 class Relay:
@@ -400,10 +430,25 @@ class Proxy:
             return charged
 
         answer_id = "chatcmpl-singit-" + secrets.token_hex(12) if path == "/chat/completions" else None
+        watch = HoldWatch(self.balances, hold_id, lambda: int(self.keys.now()),
+                          deadline=time.monotonic() + ANSWER_DEADLINE_SECONDS)
+
+        def stop_if_late() -> bool:
+            watch.keep()
+            if not watch.stopped:
+                return False
+            logger.warning("web api: %s answer ran past %ss; stopping", model_id, ANSWER_DEADLINE_SECONDS)
+            return True
+
         if streaming and status < 400 and "event-stream" in content_type:
             def chunks() -> Iterator[bytes]:
                 try:
-                    for line in iter(response.readline, b""):
+                    while True:
+                        if stop_if_late():
+                            break
+                        line = response.readline()
+                        if not line:
+                            break
                         data = meter.event(line)
                         # A usage-only chunk the client did not ask for is dropped: some read choices[0] blindly.
                         if (data is not None and not asked_usage and path == "/chat/completions"
@@ -422,10 +467,20 @@ class Proxy:
 
             return Relay(status, {"Content-Type": content_type, "Cache-Control": "no-store"}, chunks())
 
+        parts: list[bytes] = []
+        size = 0
         try:
-            raw = response.read(MAX_ANSWER_BYTES)
+            while size < MAX_ANSWER_BYTES:
+                if stop_if_late():
+                    break
+                piece = response.read(min(64 * 1024, MAX_ANSWER_BYTES - size))
+                if not piece:
+                    break
+                parts.append(piece)
+                size += len(piece)
         finally:
             response.close()
+        raw = b"".join(parts)
         try:
             data = json.loads(raw)
         except ValueError:
