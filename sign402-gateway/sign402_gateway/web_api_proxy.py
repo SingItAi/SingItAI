@@ -43,7 +43,9 @@ ROUTES = {
     "/responses": ("/v1/responses", "openai"),
     "/messages": ("/anthropic/v1/messages", "anthropic"),
     "/messages/count_tokens": ("/anthropic/v1/messages/count_tokens", "anthropic"),
+    "/images/generations": ("/v1/images/generations", "openai"),
 }
+MAX_IMAGES = 4
 FREE_PATHS = {"/messages/count_tokens"}
 FORWARDED_HEADERS = ("anthropic-version", "anthropic-beta")
 # Claude Code and the Anthropic SDK name models as Anthropic does (claude-sonnet-5-5, maybe dated); Surplus as
@@ -243,7 +245,15 @@ class Proxy:
         upstream_path, _dialect = ROUTES[path]
         account, key_id, per = row["account_id"], row["key_id"], int(row["per_request_cap_atomic"])
         request = dict(body)
-        model_id = surplus_model(request.get("model"))
+        if path == "/images/generations":
+            model_id = request.get("model")
+            images = request.get("n", 1)
+            if not isinstance(model_id, str) or not model_id.strip():
+                raise error(400, "Name an image model: see https://ask.singitai.app/v1/images/models.", code="model_required")
+            if type(images) is not int or not 1 <= images <= MAX_IMAGES:
+                raise error(400, f"n must be 1 to {MAX_IMAGES}.", code="invalid_n")
+        else:
+            model_id = surplus_model(request.get("model"))
         request["model"] = model_id
         forward = {h: str(headers[h]) for h in FORWARDED_HEADERS if headers.get(h)}
         if path in FREE_PATHS:
@@ -260,7 +270,13 @@ class Proxy:
                 options = dict(request.get("stream_options") or {}) if isinstance(request.get("stream_options"), dict) else {}
                 asked_usage = bool(options.get("include_usage"))
                 request["stream_options"] = {**options, "include_usage": True}  # the cost comes in the usage chunk
-        likely = estimate(model_id, request)
+        if path == "/images/generations":
+            listed = ask_catalogue.image_list_usd(model_id)
+            if listed is None:
+                raise error(404, "No such image model. See https://ask.singitai.app/v1/images/models.", code="model_not_found")
+            likely = charge_for(-int(-listed * 1_000_000 // 1) * request.get("n", 1))
+        else:
+            likely = estimate(model_id, request)
         if likely is not None and likely > per:
             raise error(400, f"This request may cost up to {likely / 1e6:.4f} USDC, above this key's limit of "
                         f"{per / 1e6:g} USDC per request. Ask for fewer tokens, or make a key with a higher limit.",

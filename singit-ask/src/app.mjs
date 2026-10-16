@@ -20,6 +20,7 @@ import { ObservedPrices } from "./observed.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes } from "./search.mjs";
+import { IMAGE_ROUTE, addImageRoutes } from "./images.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
@@ -278,6 +279,21 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                        503: { description: "Paused or Exa unavailable; nothing charged" } },
           security: [{ x402: [] }],
         } }])) : {}),
+        ...(catalogue ? { [IMAGE_ROUTE]: { post: {
+          operationId: "createImage", summary: "Images from any of 36 image models",
+          description: "OpenAI images request (model, prompt, n, size). Paid per request over x402: the model's list price "
+            + "+ 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models and prices: GET /v1/images/models. "
+            + "Nothing is charged without an image.",
+          "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.014", max: "2.602" }, protocols: [{ x402: {} }] },
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "prompt"],
+            properties: { model: { type: "string" }, prompt: { type: "string" }, n: { type: "integer", minimum: 1, maximum: 4 },
+                          size: { type: "string", examples: ["1024x1024"] }, response_format: { type: "string", enum: ["b64_json", "url"] } } } } } },
+          responses: { 200: { description: "The images, with billing" }, 400: { description: "Not offered; nothing charged" },
+                       402: { description: "Payment Required" }, 404: { description: "No such image model" },
+                       502: { description: "No image; nothing charged" } },
+          security: [{ x402: [] }],
+        } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "Image models and their prices",
+          responses: { 200: { description: "Model list" } }, security: [] } } } : {}),
         "/v1/models": { get: {
           operationId: "listModels", summary: "Models that can be asked for now, with their prices",
           responses: { 200: { description: "Model list" } }, security: [],
@@ -289,7 +305,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     });
   });
   app.get("/.well-known/x402", open, (req, res) => {
-    res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
+    res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`, ...(catalogue ? [`${origin(req)}${IMAGE_ROUTE}`] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
@@ -307,6 +323,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   addCreditRoute(app, config, { facilitatorClient });
   // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
   if (exaKey) addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl: exaFetch, log });
+  // Images from Surplus's image models, with this service's own Surplus key.
+  if (catalogue) addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
   addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.

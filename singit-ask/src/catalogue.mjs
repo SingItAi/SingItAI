@@ -44,6 +44,31 @@ function parseModels(data) {
   return models;
 }
 
+// Image models: text in, one image out, priced per image, per megapixel or per token. Edits, background removal and
+// upscaling take an image in and are another service (Surplus lists them as text->image all the same, so they are
+// told by name); models made for adult or uncensored output are not sold.
+const NOT_SOLD = /lustify|uncensored|nsfw|edit|remover|upscale/i;
+const METERINGS = new Set(["per_image", "per_megapixel", "per_token"]);
+export function parseImageModels(data) {
+  const models = new Map();
+  for (const entry of Array.isArray(data?.data) ? data.data : []) {
+    const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+    const arch = entry?.architecture ?? {};
+    const inputs = arch.input_modalities ?? String(arch.modality ?? "").split("->")[0].split("+");
+    const outputs = arch.output_modalities ?? [String(arch.modality ?? "").split("->")[1]];
+    if (!id || NOT_SOLD.test(id) || !METERINGS.has(entry.metering)) continue;
+    if (inputs.length !== 1 || inputs[0] !== "text" || outputs.length !== 1 || outputs[0] !== "image") continue;
+    const image = Number(entry.pricing?.image), prompt = Number(entry.pricing?.prompt), completion = Number(entry.pricing?.completion);
+    if (entry.metering !== "per_token" && !(image > 0)) continue;
+    if (entry.metering === "per_token" && !(completion > 0 && prompt >= 0)) continue;
+    models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""), metering: entry.metering,
+      imageUsd: image > 0 ? image : 0, promptUsdPerToken: prompt || 0, completionUsdPerToken: completion || 0,
+      sizes: Array.isArray(entry.sizes) && entry.sizes.length ? entry.sizes.map(String) : null,
+      params: Array.isArray(entry.supported_parameters) ? entry.supported_parameters.map(String) : [] });
+  }
+  return models;
+}
+
 // What Surplus's trusted sellers ask per model, as a share of list price (best_trusted_offer_discount_pct). Measured
 // on 12 October it was the closest of Surplus's figures to what answers really cost; the best offer was not.
 function parseMarket(data) {
@@ -76,6 +101,7 @@ export class ModelCatalogue {
     this.servedAt = 0;
     this.loadingServed = null;
     this.models = null;
+    this.images = null;   // image models, from the same list
     this.loadedAt = 0;
     this.prices = null;
     this.pricesAt = 0;
@@ -88,8 +114,10 @@ export class ModelCatalogue {
     this.loadingModels ??= (async () => {
       try {
         const response = await this.fetchImpl(`${this.url}/v1/models`, { signal: AbortSignal.timeout(10_000) });
-        const models = response.ok ? parseModels(await response.json().catch(() => null)) : new Map();
+        const body = response.ok ? await response.json().catch(() => null) : null;
+        const models = parseModels(body), images = parseImageModels(body);
         if (models.size) { this.models = models; this.loadedAt = this.now(); }
+        if (images.size) this.images = images;
       } catch { /* keep the last list: a failed refresh must not take the endpoint down */ }
       finally { this.loadingModels = null; }
     })();
@@ -179,5 +207,17 @@ export class ModelCatalogue {
 
   async list() {
     return [...(await this.all()).values()].sort((a, b) => a.completionUsdPerToken - b.completionUsdPerToken);
+  }
+
+  async imageModels() {
+    await this.all().catch(() => null);
+    if (!this.images) throw new UnknownModel("The image model list is unavailable. Try again.");
+    return this.images;
+  }
+
+  async resolveImage(id) {
+    const model = (await this.imageModels()).get(String(id ?? "").trim());
+    if (!model) throw new UnknownModel("That image model is not available. See GET /v1/images/models.");
+    return model;
   }
 }

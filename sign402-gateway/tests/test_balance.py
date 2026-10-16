@@ -451,6 +451,38 @@ class ProxyTests(ProxyFixture):
         self.assertEqual(charge_for(1000), 1300)
 
 
+class ImageTests(ProxyFixture):
+    """Images for an API key: OpenAI's images request, paid from the balance at what Surplus charged + 30%."""
+
+    def setUp(self):
+        super().setUp()
+        p = patch.object(web_api_proxy.ask_catalogue, "image_list_usd",
+                         side_effect=lambda m: {"venice-seedream-v5-lite": 0.01, "venice-gpt-image-2": 0.27}.get(m))
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_an_image_is_relayed_and_charged_what_surplus_charged_plus_30(self):
+        self.surplus.replies.append(Response(200, {"created": 1, "data": [{"b64_json": "aW1hZ2U="}]},
+                                             {"x-si-buyer-cost-micro": "3960", "x-request-id": "req_img"}))
+        _, relay = self.send("/images/generations", {"model": "venice-seedream-v5-lite", "prompt": "a robot", "n": 1})
+        out = json.loads(self.body_of(relay))
+        self.assertEqual(out["data"], [{"b64_json": "aW1hZ2U="}])
+        self.assertEqual(out["billing"]["chargedAtomic"], 5148)  # 3960 + 30%
+        path, sent, _ = self.surplus.sent[0]
+        self.assertEqual((path, sent), ("/v1/images/generations", {"model": "venice-seedream-v5-lite", "prompt": "a robot", "n": 1}))
+        line = self.balances.ledger(self.account)[0]
+        self.assertEqual((line["model"], line["amount_atomic"], line["ref"]), ("venice-seedream-v5-lite", -5148, "req_img"))
+
+    def test_what_is_refused_before_anything_is_paid(self):
+        for body, code in (({"prompt": "x"}, "model_required"), ({"model": "dall-e-9", "prompt": "x"}, "model_not_found"),
+                           ({"model": "venice-seedream-v5-lite", "prompt": "x", "n": 9}, "invalid_n"),
+                           ({"model": "venice-gpt-image-2", "prompt": "x", "n": 4}, "over_request_limit")):
+            with self.subTest(code=code), self.assertRaises(ApiError) as caught:
+                self.send("/images/generations", body)
+            self.assertEqual(caught.exception.code, code)
+        self.assertEqual(self.surplus.sent, [])
+
+
 class BoughtBalanceTests(ProxyFixture):
     """The default: a key spends only what its owner bought; nothing is bought for them."""
 
