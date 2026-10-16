@@ -19,10 +19,14 @@
 //                              (defaults in src/free.mjs)
 //   SINGIT_ASK_EXA_API_KEY     SingIt's Exa API key: turns on /v1/exa/search, /contents and /answer, resold over x402
 //                              at Exa's list price + 30% (src/search.mjs)
+//   SINGIT_ASK_BASE_RPC        the Base RPC free prices read Chainlink from (https://mainnet.base.org)
 
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { createPublicClient, http } from "viem";
+import { base } from "viem/chains";
 import { createApp } from "./app.mjs";
+import { PriceBook } from "./prices.mjs";
 
 function required(name) {
   const value = String(process.env[name] || "").trim();
@@ -63,7 +67,11 @@ const facilitatorClient = new HTTPFacilitatorClient(requireCdp("@coinbase/x402")
 config.exaKey = String(process.env.SINGIT_ASK_EXA_API_KEY || "").trim() || null;
 if (config.exaKey) console.error("singit-ask: search on (Exa)");
 
-const app = createApp(config, { facilitatorClient });
+const priceBook = new PriceBook({ publicClient: createPublicClient({ chain: base,
+  transport: http(process.env.SINGIT_ASK_BASE_RPC || "https://mainnet.base.org", { retryCount: 1, timeout: 10_000 }),
+  batch: { multicall: true } }) });
+
+const app = createApp(config, { facilitatorClient, priceBook });
 // The model list and its live prices are read now and kept fresh, so no visitor waits for Surplus.
 app.locals.catalogue?.warm().catch(() => { /* the first read retries */ });
 app.listen(port, "127.0.0.1", () => {

@@ -1,0 +1,567 @@
+{
+ "source": "Chainlink Data Feeds on Base (reference-data-directory.vercel.app/feeds-ethereum-mainnet-base-1.json)",
+ "read": "2026-10-16",
+ "rule": "X / USD feeds of risk category low or medium; of several for a pair, the one not shared, then the shortest path; symbols upper-cased, the first kept on a clash",
+ "feeds": {
+  "AAVE": {
+   "class": "crypto",
+   "name": "Aave",
+   "address": "0x3d6774EF702A10b20FCa8Ed40FC022f7E4938e07",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "AAVE"
+  },
+  "ADA": {
+   "class": "crypto",
+   "name": "Cardano",
+   "address": "0x5299a0e1e79BaebA0EAB96C10727DF35489aAA38",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "ADA"
+  },
+  "AERO": {
+   "class": "crypto",
+   "name": "Aerodrome Finance",
+   "address": "0x4EC5970fC728C5f65ba413992CD5fF6FD70fcfF0",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "AERO"
+  },
+  "AMP": {
+   "class": "crypto",
+   "name": "Amp",
+   "address": "0x1688e4B274a4CC9fD398EbA6Ae4dfb6528A9D2bc",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "AMP"
+  },
+  "APT": {
+   "class": "crypto",
+   "name": "Aptos",
+   "address": "0x88a98431C25329AA422B21D147c1518b34dD36F4",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "APT"
+  },
+  "AUD": {
+   "class": "fiat",
+   "name": "Australian Dollar",
+   "address": "0x46e51B8cA41d709928EdA9Ae43e42193E6CDf229",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "AUD"
+  },
+  "AVAX": {
+   "class": "crypto",
+   "name": "Avalanche",
+   "address": "0xE70f2D34Fd04046aaEC26a198A35dD8F2dF5cd92",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "AVAX"
+  },
+  "AXL": {
+   "class": "crypto",
+   "name": "Axelar",
+   "address": "0x676C4C6C31D97A5581D3204C04A8125B350E2F9D",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "AXL"
+  },
+  "BNB": {
+   "class": "crypto",
+   "name": "BNB",
+   "address": "0x4b7836916781CAAfbb7Bd1E5FDd20ED544B453b1",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "BNB"
+  },
+  "BRL": {
+   "class": "fiat",
+   "name": "Brazilian Real",
+   "address": "0x0b0E64c05083FdF9ED7C5D3d8262c4216eFc9394",
+   "decimals": 8,
+   "heartbeat": 3600,
+   "symbol": "BRL"
+  },
+  "BTC": {
+   "class": "crypto",
+   "name": "Bitcoin",
+   "address": "0x32F587986D3fb47601157c19615d568BeD0BCabc",
+   "decimals": 8,
+   "heartbeat": 1200,
+   "symbol": "BTC"
+  },
+  "CAD": {
+   "class": "fiat",
+   "name": "Canadian Dollar",
+   "address": "0xA840145F87572E82519d578b1F36340368a25D5d",
+   "decimals": 8,
+   "heartbeat": 3600,
+   "symbol": "CAD"
+  },
+  "CBBTC": {
+   "class": "crypto",
+   "name": "Coinbase Wrapped Bitcoin",
+   "address": "0x10509b4053385b49145Fab2D6B1c58e96Eac5b79",
+   "decimals": 18,
+   "heartbeat": 86400,
+   "symbol": "CBBTC"
+  },
+  "CBETH": {
+   "class": "crypto",
+   "name": "Coinbase Wrapped Staked ETH",
+   "address": "0xd7818272B9e248357d13057AAb0B417aF31E817d",
+   "decimals": 8,
+   "heartbeat": 1200,
+   "symbol": "CBETH"
+  },
+  "CHF": {
+   "class": "fiat",
+   "name": "Swiss Franc",
+   "address": "0x3A1d6444fb6a402470098E23DaD0B7E86E14252F",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "CHF"
+  },
+  "COMP": {
+   "class": "crypto",
+   "name": "Compound",
+   "address": "0x9DDa783DE64A9d1A60c49ca761EbE528C35BA428",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "COMP"
+  },
+  "DAI": {
+   "class": "crypto",
+   "name": "DAI",
+   "address": "0x591e79239a7d679378eC8c847e5038150364C78F",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "DAI"
+  },
+  "DEGEN": {
+   "class": "crypto",
+   "name": "Degen (Base)",
+   "address": "0xE62BcE5D7CB9d16AB8b4D622538bc0A50A5799c2",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "DEGEN"
+  },
+  "DOGE": {
+   "class": "crypto",
+   "name": "Dogecoin",
+   "address": "0x304adeae3041d6D0745249FD4583e8C542De67d6",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "DOGE"
+  },
+  "ETH": {
+   "class": "crypto",
+   "name": "Ethereum",
+   "address": "0xa4250cE1aA15Ff4cb5E5a8655293b65694e436Ed",
+   "decimals": 8,
+   "heartbeat": 1200,
+   "symbol": "ETH"
+  },
+  "EUR": {
+   "class": "fiat",
+   "name": "Euro",
+   "address": "0xc91D87E81faB8f93699ECf7Ee9B44D11e1D53F0F",
+   "decimals": 8,
+   "heartbeat": 3600,
+   "symbol": "EUR"
+  },
+  "EURC": {
+   "class": "crypto",
+   "name": "Circle EUR",
+   "address": "0xDAe398520e2B67cd3f27aeF9Cf14D93D927f8250",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "EURC"
+  },
+  "GBP": {
+   "class": "fiat",
+   "name": "British Pound",
+   "address": "0xCceA6576904C118037695eB71195a5425E69Fa15",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "GBP"
+  },
+  "GHO": {
+   "class": "crypto",
+   "name": "GHO",
+   "address": "0x42868EFcee13C0E71af89c04fF7d96f5bec479b0",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "GHO"
+  },
+  "HOME": {
+   "class": "crypto",
+   "name": "HOME",
+   "address": "0x121934C415937863d64ef93436169444633EE0d8",
+   "decimals": 18,
+   "heartbeat": 86400,
+   "symbol": "HOME"
+  },
+  "HYPE": {
+   "class": "crypto",
+   "name": "Hyperliquid",
+   "address": "0xEdB56c5DE751eD3182DDa337f7d9ab33cf091DcA",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "HYPE"
+  },
+  "IDR": {
+   "class": "fiat",
+   "name": "Indonesian Rupiah",
+   "address": "0x05A6cF213EcC5501A11a08EBefA4A8a60313ef97",
+   "decimals": 8,
+   "heartbeat": 3600,
+   "symbol": "IDR"
+  },
+  "JITOSOL": {
+   "class": "crypto",
+   "name": "Jito Staked SOL",
+   "address": "0x0ca181015d21A5ed19baFC17F2138883C2b16D54",
+   "decimals": 18,
+   "heartbeat": 86400,
+   "symbol": "JITOSOL"
+  },
+  "LBTC": {
+   "class": "crypto",
+   "name": "Lombard Staked BTC",
+   "address": "0x9e07546c9Fe8868855CD04B26051a26D1599E270",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "LBTC"
+  },
+  "LINK": {
+   "class": "crypto",
+   "name": "Chainlink",
+   "address": "0x17CAb8FE31E32f08326e5E27412894e49B0f9D65",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "LINK"
+  },
+  "LTC": {
+   "class": "crypto",
+   "name": "Litecoin",
+   "address": "0xa03A14F790eb8F5Ff73227278a3bb6eDE57Dc8c9",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "LTC"
+  },
+  "MEW": {
+   "class": "crypto",
+   "name": "cat in a dogs world",
+   "address": "0x9FB8b5A4b3FE655564f0c76616ae79DE90Cc7382",
+   "decimals": 18,
+   "heartbeat": 86400,
+   "symbol": "MEW"
+  },
+  "MLN": {
+   "class": "crypto",
+   "name": "Enzyme",
+   "address": "0x122b5334A8b55861dBc6729c294451471FbF318D",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "MLN"
+  },
+  "MOG": {
+   "class": "crypto",
+   "name": "Mog Coin",
+   "address": "0x4aeb6D15769EaD32D0c5Be2940F40c7CFf53801d",
+   "decimals": 18,
+   "heartbeat": 86400,
+   "symbol": "MOG"
+  },
+  "MORPHO": {
+   "class": "crypto",
+   "name": "Morpho",
+   "address": "0xe95e258bb6615d47515Fc849f8542dA651f12bF6",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "MORPHO"
+  },
+  "MXN": {
+   "class": "fiat",
+   "name": "Mexican Peso",
+   "address": "0x9e8Ee77c76d4fa41306056D1C3196AF5da1600bd",
+   "decimals": 8,
+   "heartbeat": 3600,
+   "symbol": "MXN"
+  },
+  "NGN": {
+   "class": "fiat",
+   "name": "Nigerian Naira",
+   "address": "0xdfbb5Cbc88E382de007bfe6CE99C388176ED80aD",
+   "decimals": 8,
+   "heartbeat": 3600,
+   "symbol": "NGN"
+  },
+  "NZD": {
+   "class": "fiat",
+   "name": "New Zealand Dollar",
+   "address": "0x06bdFe07E71C476157FC025d3cCD4BBe08e83EF9",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "NZD"
+  },
+  "OP": {
+   "class": "crypto",
+   "name": "Optimism",
+   "address": "0x3E3A6bD129A63564FE7abde85FA67c3950569060",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "OP"
+  },
+  "PAXG": {
+   "class": "crypto",
+   "name": "Pax Gold",
+   "address": "0xd49c546D32D5472a7F7704EC183128512a1B2fcb",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "PAXG"
+  },
+  "PEPE": {
+   "class": "crypto",
+   "name": "PEPE",
+   "address": "0xB48ac6409C0c3718b956089b0fFE295A10ACDdad",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "PEPE"
+  },
+  "PHP": {
+   "class": "fiat",
+   "name": "Philippine Peso",
+   "address": "0x0396000dc82bfAEe746A9Ac6dC69dAd3223Ca9c6",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "PHP"
+  },
+  "POL": {
+   "class": "crypto",
+   "name": "POL",
+   "address": "0x5E988c11a4f92155C30D9fb69Ed75597f712B113",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "POL"
+  },
+  "RLUSD": {
+   "class": "crypto",
+   "name": "Ripple USD",
+   "address": "0x900E653c6b25eCf1eF43525fcCC5263E654085cc",
+   "decimals": 18,
+   "heartbeat": 86400,
+   "symbol": "RLUSD"
+  },
+  "RSR": {
+   "class": "crypto",
+   "name": "Reserve Rights",
+   "address": "0xAa98aE504658766Dfe11F31c5D95a0bdcABDe0b1",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "RSR"
+  },
+  "SGD": {
+   "class": "fiat",
+   "name": "Singapore Dollar",
+   "address": "0x81575495532fB311Efc5C993B612564274F0949b",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "SGD"
+  },
+  "SHIB": {
+   "class": "crypto",
+   "name": "Shiba Inu",
+   "address": "0xC8D5D660bb585b68fa0263EeD7B4224a5FC99669",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "SHIB"
+  },
+  "SNX": {
+   "class": "crypto",
+   "name": "Synthetix Network",
+   "address": "0xe3971Ed6F1A5903321479Ef3148B5950c0612075",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "SNX"
+  },
+  "SOL": {
+   "class": "crypto",
+   "name": "Solana",
+   "address": "0xDa5Fd22F9382e57534fEdA4fF544878aa1cf401f",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "SOL"
+  },
+  "STG": {
+   "class": "crypto",
+   "name": "Stargate Finance",
+   "address": "0x63Af8341b62E683B87bB540896bF283D96B4D385",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "STG"
+  },
+  "SUI": {
+   "class": "crypto",
+   "name": "Sui",
+   "address": "0x491a921c41d6a97C57426E0c0108a231cd6E5f60",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "SUI"
+  },
+  "TBTC": {
+   "class": "crypto",
+   "name": "tBTC",
+   "address": "0x6D75BFB5A5885f841b132198C9f0bE8c872057BF",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "TBTC"
+  },
+  "TRUMP": {
+   "class": "crypto",
+   "name": "Official Trump",
+   "address": "0x7bAfa1Af54f17cC0775a1Cf813B9fF5dED2C51E5",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "TRUMP"
+  },
+  "TRY": {
+   "class": "fiat",
+   "name": "Turkish Lira",
+   "address": "0x29413773e7CD4Dfd6Ad89a50887877b88a6C592C",
+   "decimals": 8,
+   "heartbeat": 3600,
+   "symbol": "TRY"
+  },
+  "USDC": {
+   "class": "crypto",
+   "name": "Circle USD",
+   "address": "0x7e860098F58bBFC8648a4311b374B1D669a2bc6B",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "USDC"
+  },
+  "USDS": {
+   "class": "crypto",
+   "name": "USDS",
+   "address": "0x2330aaE3bca5F05169d5f4597964D44522F62930",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "USDS"
+  },
+  "USDT": {
+   "class": "crypto",
+   "name": "Tether USD",
+   "address": "0xf19d560eB8d2ADf07BD6D13ed03e1D11215721F9",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "USDT"
+  },
+  "USDE": {
+   "class": "crypto",
+   "name": "Ethena USDe",
+   "address": "0x790181e93e9F4Eedb5b864860C12e4d2CffFe73B",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "USDe"
+  },
+  "VIRTUAL": {
+   "class": "crypto",
+   "name": "Virtuals Protocol",
+   "address": "0xEaf310161c9eF7c813A14f8FEF6Fb271434019F7",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "VIRTUAL"
+  },
+  "WBTC": {
+   "class": "crypto",
+   "name": "Wrapped Bitcoin",
+   "address": "0xCCADC697c55bbB68dc5bCdf8d3CBe83CdD4E071E",
+   "decimals": 8,
+   "heartbeat": 1200,
+   "symbol": "WBTC"
+  },
+  "WELL": {
+   "class": "crypto",
+   "name": "Moonwell",
+   "address": "0xc15d9944dAefE2dB03e53bef8DDA25a56832C5fe",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "WELL"
+  },
+  "XAG": {
+   "class": "metal",
+   "name": "Silver",
+   "address": "0x7dBC779B2A6F9B9AaB83a2dED78A2F7E9e203f0c",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "XAG"
+  },
+  "XAU": {
+   "class": "metal",
+   "name": "Gold",
+   "address": "0x5213eBB69743b85644dbB6E25cdF994aFBb8cF31",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "XAU"
+  },
+  "XDC": {
+   "class": "crypto",
+   "name": "XDC Network",
+   "address": "0x237A94A589DD38DF7e50CeFDa0b8916a54d01ecC",
+   "decimals": 8,
+   "heartbeat": 14400,
+   "symbol": "XDC"
+  },
+  "XRP": {
+   "class": "crypto",
+   "name": "XRP",
+   "address": "0xF35059FB4471333F81E4F39fA40260FF53Dc340b",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "XRP"
+  },
+  "YFI": {
+   "class": "crypto",
+   "name": "Yearn Finance",
+   "address": "0xD40e758b5eC80820B68DFC302fc5Ce1239083548",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "YFI"
+  },
+  "ZAR": {
+   "class": "fiat",
+   "name": "South African Rand",
+   "address": "0x2ecc8A8B370fC6a217166b2782a35339bEBEe98B",
+   "decimals": 8,
+   "heartbeat": 3600,
+   "symbol": "ZAR"
+  },
+  "ZEC": {
+   "class": "crypto",
+   "name": "ZCash",
+   "address": "0x69e5BC4988a9AF30Ec827C5609c0D41028446ec0",
+   "decimals": 18,
+   "heartbeat": 86400,
+   "symbol": "ZEC"
+  },
+  "ZRO": {
+   "class": "crypto",
+   "name": "LayerZero",
+   "address": "0xdc31a4CCfCA039BeC6222e20BE7770E12581bfEB",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "ZRO"
+  },
+  "SUSDE": {
+   "class": "crypto",
+   "name": "Ethena Staked USDe",
+   "address": "0x79cf4a31B29D69191f0b6E97916eB93FEB81E533",
+   "decimals": 8,
+   "heartbeat": 86400,
+   "symbol": "sUSDe"
+  }
+ }
+}

@@ -22,6 +22,7 @@ import { addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes } from "./search.mjs";
 import { IMAGE_ROUTE, addImageRoutes } from "./images.mjs";
 import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
+import { addPriceRoutes } from "./prices.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
@@ -183,7 +184,7 @@ const EXAMPLE = {
 };
 
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
-                                    exaKey = config.exaKey ?? null, exaFetch = fetchImpl,
+                                    exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [] }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }) }) {
   const app = express();
@@ -312,6 +313,24 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           } },
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "Voice models and their prices",
             responses: { 200: { description: "Model list" } }, security: [] } } } : {}),
+        ...(priceBook ? {
+          "/v1/prices": { get: { operationId: "listPrices", summary: "Free prices: what can be asked for", security: [],
+            responses: { 200: { description: "Crypto, metal and currency symbols, with sources" } } } },
+          "/v1/prices/crypto/{symbol}": { get: { operationId: "cryptoPrice", security: [],
+            summary: "Free: a cryptocurrency's USD price, from Chainlink on Base",
+            parameters: [{ name: "symbol", in: "path", required: true, schema: { type: "string", examples: ["BTC", "ETH", "SOL"] } }],
+            responses: { 200: { description: "The price, its time and source" }, 404: { description: "Not offered" },
+                         429: { description: "Over 60 a minute" } } } },
+          "/v1/prices/metal/{symbol}": { get: { operationId: "metalPrice", security: [],
+            summary: "Free: gold (XAU) or silver (XAG) in USD, from Chainlink on Base",
+            parameters: [{ name: "symbol", in: "path", required: true, schema: { type: "string", enum: ["XAU", "XAG"] } }],
+            responses: { 200: { description: "The price, its time and source" }, 404: { description: "Not offered" } } } },
+          "/v1/prices/fx/{base}/{quote}": { get: { operationId: "fxRate", security: [],
+            summary: "Free: an exchange rate between 30 currencies (Chainlink on Base, or the ECB's daily rates)",
+            parameters: [{ name: "base", in: "path", required: true, schema: { type: "string", examples: ["EUR"] } },
+                         { name: "quote", in: "path", required: true, schema: { type: "string", examples: ["USD"] } }],
+            responses: { 200: { description: "The rate, its date and source" }, 404: { description: "Not offered" } } } },
+        } : {}),
         "/v1/models": { get: {
           operationId: "listModels", summary: "Models that can be asked for now, with their prices",
           responses: { 200: { description: "Model list" } }, security: [],
@@ -346,6 +365,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (catalogue) addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
   if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
+  if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
   addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.
