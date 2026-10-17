@@ -106,6 +106,28 @@ class SolanaBitrefillTests(unittest.TestCase):
         self.assertEqual(sb._poll_wait(19.9), 1.5)
         self.assertEqual(sb._poll_wait(20.0), 5)
 
+    def test_a_rate_limited_status_check_waits_longer_and_still_delivers(self):
+        from sign402_gateway.bitrefill_mcp import McpRateLimited
+        self.emails[ACCOUNT] = "me@example.com"
+        answers = iter([McpRateLimited(), McpRateLimited(), McpRateLimited(retry_after=12), "complete"])
+        ready = self.mcp.invoice_status
+        def status(**kw):
+            answer = next(answers, "complete")
+            if isinstance(answer, Exception):
+                raise answer
+            return ready(**kw)
+        self.mcp.invoice_status = status
+        clock, waits = [1000.0], []
+        def sleep(seconds):
+            waits.append(seconds)
+            clock[0] += seconds
+        result = sb.buy(self.server, ACCOUNT, "alza-czech-republic", "200", sleep=sleep, now=lambda: clock[0])
+        self.assertTrue(result["delivered"])  # paid, so a 429 never turns into an error
+        self.assertEqual(waits, [5, 10, 20])  # 5 s, doubled, and Bitrefill's 12 s is below the doubled 20 s
+        self.assertEqual(sb._poll_wait(0, 1, retry_after=8), 8)
+        self.assertEqual(sb._poll_wait(0, 9), 20)
+        self.assertEqual(sb._poll_wait(0, 1, retry_after=600), 20)
+
     def test_a_tracked_purchase_marks_payment_sent_then_paid(self):
         from sign402_gateway import purchase_progress as pp
         self.emails[ACCOUNT] = "me@example.com"

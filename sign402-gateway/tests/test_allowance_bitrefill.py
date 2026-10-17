@@ -322,6 +322,36 @@ class BitrefillX402Tests(unittest.TestCase):
         self.assertFalse(result["delivered"])
         self.assertIn("still delivering", result["telegramText"])
 
+    def test_a_rate_limited_delivery_check_backs_off_then_finds_the_code(self):
+        from sign402_gateway.bitrefill_mcp import McpRateLimited
+        ready, polls = self.mcp.invoice_status, []
+        def status(**kw):
+            if not self.mcp.paid:  # the read before paying
+                return ready(**kw)
+            polls.append(self.clock[0])
+            if len(polls) <= 2:
+                raise McpRateLimited()
+            return ready(**kw)
+        self.mcp.invoice_status = status
+        waits = []
+        self.bitrefill.sleep = lambda s: (waits.append(s), self.clock.__setitem__(0, self.clock[0] + s))
+        result = self.buy()
+        self.assertTrue(result["delivered"])
+        self.assertEqual(waits, [5, 10])
+
+    def test_a_delivery_check_rate_limited_to_the_end_is_slow_delivery_not_a_failure(self):
+        from sign402_gateway.bitrefill_mcp import McpRateLimited
+        ready = self.mcp.invoice_status
+        def status(**kw):
+            if not self.mcp.paid:
+                return ready(**kw)
+            raise McpRateLimited()
+        self.mcp.invoice_status = status
+        result = self.buy()
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["delivered"])
+        self.assertIn("still delivering", result["telegramText"])
+
     def test_a_base_orders_code_is_shown_like_any_guest_orders(self):
         from unittest.mock import patch
         from sign402_gateway import server as gw

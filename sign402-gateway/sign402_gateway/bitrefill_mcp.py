@@ -93,6 +93,38 @@ def decode_mcp_tool_result(
     return decoded
 
 
+class McpRateLimited(ValueError):
+    """Bitrefill's MCP answered HTTP 429: ask again later, not sooner."""
+
+    def __init__(self, retry_after: float | None = None):
+        self.retry_after = retry_after
+        super().__init__("Bitrefill MCP is rate limiting requests")
+
+
+def _rate_limit_response(exc: BaseException | None) -> httpx.Response | None:
+    """The 429 response somewhere in an exception, its causes or its group, else None."""
+    seen: set[int] = set()
+    pending = [exc]
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, httpx.HTTPStatusError) and current.response.status_code == 429:
+            return current.response
+        pending.extend(getattr(current, "exceptions", ()) or ())
+        pending.extend((current.__cause__, current.__context__))
+    return None
+
+
+def _retry_after(response: httpx.Response) -> float | None:
+    try:
+        seconds = float(response.headers.get("retry-after", ""))
+    except ValueError:
+        return None  # an HTTP date or nothing: the caller's own pace applies
+    return seconds if seconds >= 0 else None
+
+
 class McpToolCaller:
     def __init__(
         self,
@@ -134,6 +166,10 @@ class McpToolCaller:
         try:
             return asyncio.run(self._call(tool_name, arguments))
         except Exception as exc:
+            limited = _rate_limit_response(exc)
+            if limited is not None:
+                logger.warning("Bitrefill MCP rate limited [tool=%s]", tool_name)
+                raise McpRateLimited(_retry_after(limited)) from exc
             log_swallowed_failure(
                 logger,
                 "Bitrefill MCP request failed",

@@ -463,14 +463,20 @@ class BitrefillX402:
 
     def _wait_delivery(self, client: Any, invoice_id: str, access: str) -> dict[str, Any] | None:
         """The delivered order, read with the invoice's access token, or None if it is not ready in time."""
-        from .solana_bitrefill import _poll_wait  # the same pace: often at first, when most codes arrive
+        from .solana_bitrefill import _delivery_poll, _poll_wait  # the same pace: often at first, when most codes arrive
         paid_at = self.now()
         deadline = paid_at + DELIVERY_WAIT_SECONDS
+        limited, retry_after = 0, None
         while True:
             try:
-                current = client.invoice_status(invoice_id=invoice_id, invoice_access_token=access)
+                current, limited, retry_after = _delivery_poll(client, invoice_id, access, limited)
             except Exception:
-                current = {}
+                current, limited, retry_after = {}, 0, None
+            if current is None:  # rate limited: the code is still coming, ask later
+                if self.now() >= deadline:
+                    return None
+                self.sleep(_poll_wait(self.now() - paid_at, limited, retry_after))
+                continue
             state, orders = client._invoice_status(current), client._orders(current)
             if state in FAILED:
                 return None
