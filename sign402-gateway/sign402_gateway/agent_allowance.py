@@ -596,6 +596,11 @@ class AllowanceStore:
                 (tx_hash.lower(), log_index, user_id, pay_to, amount, resource, now),
             )
 
+    def settlement_for(self, user_id: str, resource: str) -> sqlite3.Row | None:
+        with self._db() as db:
+            return db.execute("SELECT * FROM settlements WHERE user_id = ? AND resource = ?",
+                              (user_id, resource)).fetchone()
+
     def save_bitrefill_quote(self, row: Mapping[str, Any]) -> None:
         with self._db() as db:
             db.execute(
@@ -1547,6 +1552,44 @@ class AllowanceService:
             **funding,
             "resourceResult": result,
         }
+
+    def pay_transfer(self, user_id: str, receiver: str, amount: int, resource: str) -> dict[str, Any]:
+        """Send `amount` USDC from the agent to `receiver`, funded by the limiter, once per `resource`.
+
+        For a seller that is paid by a plain transfer to an address of its own (a
+        Bitrefill invoice's deposit address). The limiter still only ever pays the
+        agent, so the watcher's first rule holds; the transfer out of the agent is
+        counted as this purchase's settlement as soon as it is mined, so the
+        watcher's third rule finds it explained.
+        """
+        active = self.lane_for(user_id)
+        if active is None:
+            raise AllowanceUnavailable("The Trezor allowance is not set up for this account.")
+        amount = int(amount)
+        if amount <= 0:
+            raise AllowanceError("Nothing to pay.")
+        receiver = to_checksum_address(str(receiver))
+        agent, agent_key = self.agent_key(user_id)
+        if receiver in {to_checksum_address(agent), to_checksum_address(active["owner_address"]),
+                        to_checksum_address(active["limiter_address"])}:
+            raise AllowanceError("That is not a seller's address. Nothing was paid.")
+        with self._spend_lock:
+            if self.store.settlement_for(user_id, resource) is not None:
+                raise AllowanceError("This order is already paid. Nothing was paid again.")
+            funding = self._fund(active, agent, agent_key, amount,
+                                 f"transfer:{resource}:{amount}:{self.now()}:{os.urandom(4).hex()}")
+            start = int(self.evm.call("eth_blockNumber", []), 16)
+            data = encode_call("transfer(address,uint256)", receiver, amount)
+            self.ensure_gas(agent, self.evm.quote(agent, to=USDC, data=data)["maxCostWei"])
+            tx = self.evm.send(agent_key, to=USDC, data=data)
+            self.evm.wait_receipt(tx)
+            found = self.find_settlement(agent, receiver, amount, start, self.store.counted_settlements(user_id))
+            if found is None or found[0] != tx.lower():
+                raise AllowanceError(
+                    f"Payment {tx} was mined but its transfer does not show yet. Do not pay again; check it first."
+                )
+            self.store.count_settlement(found[0], found[1], user_id, receiver, amount, resource, int(self.now()))
+        return {"ok": True, "settlementTx": tx, "payer": agent, "limiter": active["limiter_address"], **funding}
 
     # -- the guardian: pause without the device --
 
