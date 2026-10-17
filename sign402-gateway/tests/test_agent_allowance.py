@@ -810,6 +810,16 @@ class SpendingEvm(DeviceLaneEvm):
             self.usdc[payee] = self.usdc.get(payee, 0) + size
             self.allowances[to] = self.allowances.get(to, 0) - size
         self.block += 1
+        if to == aa.USDC and data.startswith(aa.selector("transfer(address,uint256)")):
+            sender = Account.from_key(key).address
+            receiver = to_checksum_address("0x" + data[10 + 24:10 + 64])
+            amount = int(data[10 + 64:10 + 128], 16)
+            self.usdc[sender] -= amount
+            self.usdc[receiver] = self.usdc.get(receiver, 0) + amount
+            self.logs.append({
+                "topics": [aa.TRANSFER_TOPIC, "0x" + aa._word(sender), "0x" + aa._word(receiver)],
+                "data": hex(amount), "blockNumber": hex(self.block), "transactionHash": tx, "logIndex": "0x3",
+            })
         return tx
 
     def settle(self, sender, pay_to, amount):
@@ -986,3 +996,29 @@ class SpendingLaneTests(unittest.TestCase):
         self.assertIsNone(second["settlementTx"])
         self.assertFalse(second["ok"])
         self.assertIsNotNone(first["settlementTx"])
+
+    def test_a_deposit_address_is_paid_by_the_agent_and_counted_as_this_orders_settlement(self):
+        deposit = to_checksum_address("0x" + "70" * 20)
+        paid = self.service.pay_transfer(USER, deposit, 120_000, "bitrefill:invoice:inv-1")
+        self.assertTrue(paid["ok"])
+        self.assertEqual(self.evm.spends, [(self.agent, 120_000)], "the limiter only ever pays the agent")
+        self.assertEqual(self.evm.usdc[deposit], 120_000)
+        self.assertEqual(self.evm.usdc[self.agent], 0)
+        self.assertIn((paid["settlementTx"].lower(), "0x3"), self.service.store.counted_settlements(USER))
+        self.assertEqual(self.service.store.settlement_for(USER, "bitrefill:invoice:inv-1")["amount"], 120_000)
+
+    def test_one_order_is_never_paid_twice(self):
+        deposit = to_checksum_address("0x" + "70" * 20)
+        self.service.pay_transfer(USER, deposit, 5_000, "bitrefill:invoice:inv-1")
+        with self.assertRaises(aa.AllowanceError) as raised:
+            self.service.pay_transfer(USER, deposit, 5_000, "bitrefill:invoice:inv-1")
+        self.assertIn("already paid", str(raised.exception))
+        self.assertEqual(self.evm.usdc[deposit], 5_000)
+        self.assertTrue(self.service.pay_transfer(USER, deposit, 5_000, "bitrefill:invoice:inv-2")["ok"])
+
+    def test_a_transfer_to_the_lanes_own_addresses_is_refused(self):
+        for receiver in (self.agent, self.owner.address, self.limiter):
+            with self.subTest(receiver):
+                with self.assertRaises(aa.AllowanceError):
+                    self.service.pay_transfer(USER, receiver, 5_000, "bitrefill:invoice:inv-1")
+        self.assertEqual(self.evm.spends, [])

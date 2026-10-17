@@ -1,13 +1,14 @@
-"""Bitrefill on the Trezor allowance lane: ordered through MCP, paid over x402 on Base.
+"""Bitrefill on the Trezor allowance lane: ordered through MCP, paid in USDC on Base.
 
 The order is a guest invoice from the project's Bitrefill MCP client, whose URL
 carries the owner's affiliate code (`?ref=`), so the purchase earns its commission;
 an order created on Bitrefill's x402 REST API does not (Bitrefill, 17 October 2026).
-The invoice is paid where Bitrefill sends guest invoices, `POST /x402/invoice/pay`,
-by the user's agent key and funded by their limiter, as the Solana lane pays its own.
-The pay route's recipient must be Bitrefill's published x402 address and its amount
-no more than the price the user confirmed; the payment itself is
-AllowanceService.pay_x402, which reads the settlement from the chain.
+Bitrefill's x402 pay route does not know MCP invoices, so the invoice is paid the
+way it asks: a USDC transfer on Base to its own deposit address, from the user's
+agent key and funded by their limiter. The address, token and amount must agree
+everywhere the invoice states them, the amount must be no more than the price the
+user confirmed, and the invoice is read again before paying; the payment itself is
+AllowanceService.pay_transfer, which counts the transfer as this order's settlement.
 
 Bitrefill asks a guest invoice for the buyer's email (codes also land there); the
 caller passes the one the user gave. The invoice's access token reads delivery and,
@@ -43,14 +44,13 @@ from .agent_allowance import USDC, USER_AGENT, AllowanceError, AllowanceService
 logger = logging.getLogger(__name__)
 
 API = "https://api.bitrefill.com/x402"
-# Published in the Bitrefill agent skill (references/touchpoints/x402.md). A pay
-# route that asks for any other recipient is refused, not trusted.
+# Bitrefill's published x402 address (references/touchpoints/x402.md). Orders are
+# no longer paid to it; the spending policy still names Bitrefill by it.
 PAY_TO = "0x480CD46E6faDe651a0437DeaddA53D5c8e7D846A"
 CHAIN = "eip155:8453"
 TOKEN_SECONDS = 90 * 60           # Bitrefill's token lasts about two hours
 DELIVERY_WAIT_SECONDS = 90
 KINDS = {"gift-cards": "gift-cards", "topups": "topups", "esims": "esims"}
-PAY_URL = f"{API}/invoice/pay"  # where Bitrefill's MCP sends a guest invoice to be paid over x402
 DONE = {"complete", "completed", "delivered", "all_delivered"}
 FAILED = {"blocked", "denied", "payment_error"}
 
@@ -199,6 +199,31 @@ def redemption_fields(codes: Any) -> list[dict[str, str]]:
         elif item not in (None, ""):
             fields.append({"label": "Code", "value": str(item), "kind": "link" if str(item).startswith("http") else "code"})
     return fields
+
+
+PAYMENT_URI = re.compile(r"^ethereum:(0x[0-9a-fA-F]{40})@(\d+)/transfer\?(.*)$")
+
+
+def _payment_uri(raw: Any) -> tuple[str, int, str, int] | None:
+    """(token, chain id, recipient, amount) from an EIP-681 transfer link, None if there is none.
+
+    A link that is there but unreadable is refused rather than ignored: it is one of the
+    places the invoice says what to pay.
+    """
+    if raw in (None, ""):
+        return None
+    match = PAYMENT_URI.match(str(raw).strip())
+    if not match:
+        raise AllowanceError("Bitrefill's payment link is not a USDC transfer. Nothing was paid.")
+    params = urllib.parse.parse_qs(match.group(3))
+    try:
+        amount = Decimal(params["uint256"][0])  # Bitrefill writes 70000 as 7e4
+        recipient = to_checksum_address(params["address"][0])
+    except (KeyError, IndexError, InvalidOperation, ValueError):
+        raise AllowanceError("Bitrefill's payment link is not a USDC transfer. Nothing was paid.") from None
+    if amount != amount.to_integral_value():
+        raise AllowanceError("Bitrefill's payment link is not a USDC transfer. Nothing was paid.")
+    return match.group(1).lower(), int(match.group(2)), recipient.lower(), int(amount)
 
 
 def _find(obj: Any, name: str) -> Any:
@@ -359,44 +384,12 @@ class BitrefillX402:
         invoice_id, access = client._invoice_id(invoice), client._invoice_access_token(invoice)
         if not invoice_id:
             raise AllowanceError("Bitrefill did not create the order. Nothing was paid.")
-        if str(invoice.get("x402_payment_url") or PAY_URL) != PAY_URL:
-            raise AllowanceError("Bitrefill offered an unexpected payment route. Nothing was paid.")
-
-        pay_body = {"invoice_id": invoice_id}
-        status, challenge, headers = self.http("POST", PAY_URL, body=pay_body)
-        header = headers.get("payment-required") or headers.get("Payment-Required")
-        if header:
-            challenge = json.loads(base64.b64decode(header))
-        legs = [a for a in (challenge or {}).get("accepts", [])
-                if a.get("scheme") == "exact" and a.get("network") == CHAIN and str(a.get("asset", "")).lower() == USDC.lower()]
-        if status != 402 or not legs:
-            raise AllowanceError("Bitrefill did not ask for USDC on Base for this order. Nothing was paid.")
-        amount = int(legs[0].get("amount") or legs[0]["maxAmountRequired"])
-        pay_to = to_checksum_address(legs[0]["payTo"])
-        if pay_to != PAY_TO:
-            raise AllowanceError(f"Bitrefill's pay route asked for {pay_to}, not its published address. Nothing was paid.")
-        if amount > ceiling_atomic:
-            logger.warning("bitrefill: invoice %s for %s %s asks %d, confirmed %d (micro-USDC); not paid",
-                           invoice_id, quoted["slug"], quoted["package"], amount, ceiling_atomic)
-            raise AllowanceError(
-                f"Bitrefill asks {Decimal(amount) / 1_000_000:f} USDC for this order, above the "
-                f"{Decimal(ceiling_atomic) / 1_000_000:f} USDC you confirmed. Nothing was paid."
-            )
+        pay_to, amount = self._deposit(client, invoice, ceiling_atomic, quoted)
+        self._check_unchanged(client, invoice_id, access, pay_to, amount)
 
         from . import purchase_progress
         purchase_progress.mark("paying")
-        paid = self.allowance.pay_x402(
-            user_id, PAY_URL, {"amountAtomic": str(amount), "receiver": pay_to, "asset": USDC},
-            self.x402_client, method="POST", request_body=pay_body,
-        )
-        if not paid["ok"]:
-            if paid["settlementTx"] and not paid["delivered"]:
-                raise AllowanceError(
-                    f"Bitrefill took the payment ({paid['settlementTx']}) but did not confirm order {invoice_id}. "
-                    "Keep both to claim it; Bitrefill support after 3 hours."
-                )
-            raise AllowanceError(f"Order {invoice_id} was not paid (HTTP {paid['status']}). Nothing was charged.")
-
+        paid = self.allowance.pay_transfer(user_id, pay_to, amount, f"bitrefill:invoice:{invoice_id}")
         purchase_progress.mark("paid")
         order = self._wait_delivery(client, invoice_id, access)
         delivered = order is not None
@@ -416,6 +409,57 @@ class BitrefillX402:
             "delivered": delivered, "telegramText": text, **({"howToUse": how_to_use} if how_to_use else {}),
             **({"fulfillmentToken": access} if access else {}),
         }
+
+    def _deposit(self, client: Any, invoice: dict[str, Any], ceiling_atomic: int,
+                 quoted: dict[str, Any]) -> tuple[str, int]:
+        """The invoice's deposit address and its exact amount in micro-USDC, or a refusal.
+
+        Bitrefill's x402 pay route does not know invoices made over MCP: it answers
+        any of them with its generic 1,000 USDC ceiling (checked live on
+        17 October 2026). The invoice itself names a USDC address on Base to pay;
+        the address, the token and the amount must agree everywhere the invoice
+        says them, and the amount must be no more than the price the user confirmed.
+        """
+        confirmed = Decimal(ceiling_atomic) / 1_000_000
+        try:
+            required = client._validated_payment_requirements(invoice, quote={"priceUsd": str(confirmed)})
+            payment = client._invoice_payment(invoice)
+            address = to_checksum_address(required["address"])
+            exact = Decimal(required["amount"]) * 1_000_000
+        except (ValueError, KeyError, InvalidOperation) as exc:
+            logger.warning("bitrefill: invoice %s for %s %s refused before paying: %s",
+                           client._invoice_id(invoice), quoted["slug"], quoted["package"], exc)
+            if "exceeds" in str(exc):
+                raise AllowanceError(f"Bitrefill asks more for this order than the {confirmed:f} USDC you confirmed. "
+                                     "Nothing was paid.") from None
+            raise AllowanceError("Bitrefill did not ask for USDC on Base for this order. Nothing was paid.") from None
+        if exact != exact.to_integral_value():
+            raise AllowanceError("Bitrefill asked for an amount USDC cannot carry. Nothing was paid.")
+        amount = int(exact)
+        base = payment.get("altBasePrice", payment.get("alt_base_price"))
+        uri = _payment_uri(payment.get("paymentUri") or payment.get("payment_uri"))
+        if (base is not None and str(base) != str(amount)) or (
+                uri is not None and uri != (USDC.lower(), 8453, address.lower(), amount)):
+            raise AllowanceError("Bitrefill's order disagrees with itself about what to pay. Nothing was paid.")
+        if amount > ceiling_atomic:  # the check above already holds; this one says it in the unit we pay in
+            raise AllowanceError(f"Bitrefill asks more for this order than the {confirmed:f} USDC you confirmed. "
+                                 "Nothing was paid.")
+        return address, amount
+
+    def _check_unchanged(self, client: Any, invoice_id: str, access: str, pay_to: str, amount: int) -> None:
+        """Read the invoice again from Bitrefill; pay only an open invoice that still asks the same."""
+        try:
+            current = client.invoice_status(invoice_id=invoice_id, invoice_access_token=access)
+        except Exception:
+            raise AllowanceError("Bitrefill did not confirm the order before payment. Nothing was paid.") from None
+        state = str(client._invoice_status(current) or "").lower()
+        if state in FAILED or state in DONE or state in {"expired", "payment_detected", "payment_confirmed", "paid"}:
+            raise AllowanceError(f"Bitrefill's order {invoice_id} is {state}, not waiting for payment. Nothing was paid.")
+        payment = current.get("payment_info") or current.get("paymentInfo") if isinstance(current, dict) else None
+        if isinstance(payment, dict) and payment.get("address"):
+            again = payment.get("altBasePrice", payment.get("alt_base_price"))
+            if to_checksum_address(str(payment["address"])) != pay_to or (again is not None and str(again) != str(amount)):
+                raise AllowanceError("Bitrefill's order changed before payment. Nothing was paid.")
 
     def _wait_delivery(self, client: Any, invoice_id: str, access: str) -> dict[str, Any] | None:
         """The delivered order, read with the invoice's access token, or None if it is not ready in time."""
