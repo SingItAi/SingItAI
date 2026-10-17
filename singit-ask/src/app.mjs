@@ -24,6 +24,7 @@ import { IMAGE_ROUTE, addImageRoutes } from "./images.mjs";
 import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
+import { FORMAT_ROUTES, addFormatRoutes } from "./formats.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
@@ -282,6 +283,19 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                        503: { description: "Paused or Exa unavailable; nothing charged" } },
           security: [{ x402: [] }],
         } }])) : {}),
+        ...(catalogue ? Object.fromEntries(Object.keys(FORMAT_ROUTES).map((route) => [route, { post: {
+          operationId: route === "/v1/messages" ? "createMessage" : "createResponse",
+          summary: route === "/v1/messages" ? "Anthropic's Messages API, any listed model" : "OpenAI's Responses API, any listed model",
+          description: "The request in that API's own format, without streaming. Pays actual token cost + 30% + a settlement "
+            + "fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's price and the request's "
+            + "size; nothing is charged without an answer. Models: GET /v1/models.",
+          "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model"] } } } },
+          responses: { 200: { description: "The answer in that API's format, with billing" },
+                       400: { description: "Not offered; nothing charged" }, 402: { description: "Payment Required" },
+                       404: { description: "No such model" }, 502: { description: "No billable answer; nothing charged" } },
+          security: [{ x402: [] }],
+        } }])) : {}),
         ...(catalogue ? { [IMAGE_ROUTE]: { post: {
           operationId: "createImage", summary: "Images from any of 36 image models",
           description: "OpenAI images request (model, prompt, n, size). Paid per request over x402: the model's list price "
@@ -364,7 +378,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   });
   app.get("/.well-known/x402", open, (req, res) => {
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
-        ...(catalogue ? [`${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, `${origin(req)}${VIDEO_ROUTE}`] : []),
+        ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
+                         `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, `${origin(req)}${VIDEO_ROUTE}`] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
@@ -386,6 +401,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (catalogue) addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
   if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
+  if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log });
   // Video from Surplus's text-to-video models, as jobs.
   if (catalogue) addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
