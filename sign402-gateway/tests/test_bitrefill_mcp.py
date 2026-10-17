@@ -10,6 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
+
 from sign402_gateway.bitrefill_mcp import (
     SEARCH_INTENT,
     McpBitrefillClient,
@@ -211,6 +213,30 @@ class BitrefillMcpTransportTests(unittest.IsolatedAsyncioTestCase):
                 await caller._call("buy-products", {})
 
         session.call_tool.assert_not_awaited()
+
+    def test_a_429_is_raised_as_rate_limited_with_its_retry_after(self):
+        from sign402_gateway.bitrefill_mcp import McpRateLimited
+        request = httpx.Request("POST", "https://api.bitrefill.com/mcp")
+
+        def limited(headers):
+            error = httpx.HTTPStatusError("429", request=request,
+                                          response=httpx.Response(429, headers=headers, request=request))
+            return ExceptionGroup("unhandled errors in a TaskGroup", [ExceptionGroup("inner", [error])])
+
+        caller = McpToolCaller("https://api.bitrefill.com/mcp")
+        for headers, expected in (({"retry-after": "7"}, 7.0), ({}, None), ({"retry-after": "Sat, 17 Oct"}, None)):
+            with self.subTest(headers=headers):
+                with patch.object(McpToolCaller, "_call", side_effect=limited(headers)):
+                    with self.assertRaises(McpRateLimited) as raised:
+                        caller("get-invoice-by-id", {"invoice_id": "inv"})
+                self.assertEqual(raised.exception.retry_after, expected)
+                self.assertIsInstance(raised.exception, ValueError)  # callers that catch ValueError still do
+
+        other = httpx.HTTPStatusError("500", request=request, response=httpx.Response(500, request=request))
+        with patch.object(McpToolCaller, "_call", side_effect=ExceptionGroup("g", [other])):
+            with self.assertRaises(ValueError) as raised:
+                caller("get-invoice-by-id", {"invoice_id": "inv"})
+        self.assertNotIsInstance(raised.exception, McpRateLimited)
 
     def test_tool_caller_repr_redacts_server_url(self):
         caller = McpToolCaller("https://api.bitrefill.com/mcp/key_123")

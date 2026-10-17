@@ -26,6 +26,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .agent_allowance import AllowanceError, AllowanceUnavailable
+from .bitrefill_mcp import McpRateLimited
 from . import purchase_progress
 from .allowance_bitrefill import NeedsEmail, usage_instructions  # noqa: F401 - NeedsEmail is raised here too
 
@@ -39,9 +40,26 @@ DELIVERY_WAIT_SECONDS = 90
 DELIVERY_POLL_SECONDS = (1.5, 20, 5)  # every 1.5 s for the first 20 s, then every 5 s
 
 
-def _poll_wait(waited: float) -> float:
+DELIVERY_RATE_LIMITED_SECONDS = (5, 20)  # after an HTTP 429: wait 5 s, doubling to at most 20 s
+
+
+def _poll_wait(waited: float, limited: int = 0, retry_after: float | None = None) -> float:
+    """How long to wait before asking again. `limited` counts 429s in a row; Bitrefill's
+    Retry-After is honoured up to the longest wait, so a delivery is never given up on for it."""
     fast, during, slow = DELIVERY_POLL_SECONDS
-    return fast if waited < during else slow
+    if not limited:
+        return fast if waited < during else slow
+    first, longest = DELIVERY_RATE_LIMITED_SECONDS
+    backoff = min(first * 2 ** (limited - 1), longest)
+    return min(max(backoff, retry_after or 0), longest)
+
+
+def _delivery_poll(client: Any, invoice_id: str, token: str, limited: int) -> tuple[dict[str, Any] | None, int, float | None]:
+    """One look at the invoice: (the invoice or None if Bitrefill asked us to slow down, 429s in a row, Retry-After)."""
+    try:
+        return client.invoice_status(invoice_id=invoice_id, invoice_access_token=token), 0, None
+    except McpRateLimited as exc:
+        return None, limited + 1, exc.retry_after
 DONE = {"complete", "completed", "delivered", "all_delivered"}
 
 
@@ -164,8 +182,12 @@ def buy(server: Any, account: str, slug: Any, package: Any, *, shown_price: Any 
     delivered, order = False, {}
     paid_at = now()
     deadline = paid_at + DELIVERY_WAIT_SECONDS
+    limited, retry_after = 0, None
     while now() < deadline:
-        current = client.invoice_status(invoice_id=invoice_id, invoice_access_token=token)
+        current, limited, retry_after = _delivery_poll(client, invoice_id, token, limited)
+        if current is None:  # rate limited: the code is still coming, ask later
+            sleep(_poll_wait(now() - paid_at, limited, retry_after))
+            continue
         if client._invoice_status(current) in {"blocked", "denied", "payment_error"}:
             break
         orders = client._orders(current)
