@@ -26,7 +26,8 @@ def purchase_summary(event):
     receipt = event.get("receipt") if isinstance(event.get("receipt"), dict) else {}
     provider = event.get("bitrefill") if isinstance(event.get("bitrefill"), dict) else {}
     allowance_order = event.get("mode") == "bitrefill_x402_allowance"  # its code is fetched once from Bitrefill
-    bitrefill = ("bitrefill" in event and bool(event.get("quoteId"))) or allowance_order
+    stored_code = event.get("mode") in {"bitrefill_mcp_base", "bitrefill_mcp_solana"}
+    bitrefill = ("bitrefill" in event and bool(event.get("quoteId"))) or allowance_order or stored_code
     name = str(receipt.get("name") or event.get("productName") or provider.get("productName")
                or event.get("toolName") or event.get("toolId") or ("Bitrefill order" if bitrefill else "Purchase"))[:120]
     network = str(receipt.get("network") or event.get("network") or "Base")
