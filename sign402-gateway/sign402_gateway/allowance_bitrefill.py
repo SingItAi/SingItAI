@@ -302,8 +302,8 @@ class BitrefillX402:
             raise AllowanceError(f"Bitrefill has no product {slug!r}.") from None
         offered = []
         for p in product.get("packages") or []:
-            try:
-                price = str(Decimal(str(p["priceUsd"])))
+            try:  # the unrounded price: the one the invoice will ask
+                price = str(Decimal(str(p.get("exactPriceUsd") or p["priceUsd"])))
             except (InvalidOperation, KeyError):
                 continue  # no price, nothing to consent to
             offered.append({"value": str(p.get("value")), "currency": product.get("currency") or "", "priceUsd": price})
@@ -322,8 +322,8 @@ class BitrefillX402:
             raise AllowanceError(f"Bitrefill cannot sell that here: {exc}.") from None  # e.g. above its live maximum
         if quote.get("requiredRecipientFields"):
             raise AllowanceError("This product needs a recipient; only products delivered as a code can be bought here.")
-        try:
-            price = Decimal(str(quote["priceUsd"]))
+        try:  # the unrounded price: the one the invoice will ask
+            price = Decimal(str(quote.get("exactPriceUsd") or quote["priceUsd"]))
         except (InvalidOperation, KeyError):
             raise AllowanceError("Bitrefill did not quote a price for it.") from None
         return {
@@ -376,7 +376,12 @@ class BitrefillX402:
         if pay_to != PAY_TO:
             raise AllowanceError(f"Bitrefill's pay route asked for {pay_to}, not its published address. Nothing was paid.")
         if amount > ceiling_atomic:
-            raise AllowanceError("The order costs more than the price you confirmed. Nothing was paid.")
+            logger.warning("bitrefill: invoice %s for %s %s asks %d, confirmed %d (micro-USDC); not paid",
+                           invoice_id, quoted["slug"], quoted["package"], amount, ceiling_atomic)
+            raise AllowanceError(
+                f"Bitrefill asks {Decimal(amount) / 1_000_000:f} USDC for this order, above the "
+                f"{Decimal(ceiling_atomic) / 1_000_000:f} USDC you confirmed. Nothing was paid."
+            )
 
         from . import purchase_progress
         purchase_progress.mark("paying")

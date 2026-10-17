@@ -744,6 +744,7 @@ class McpBitrefillClient:
             "country": product["country"],
             "currency": product["currency"],
             "priceUsd": selected["priceUsd"],
+            "exactPriceUsd": selected.get("exactPriceUsd") or selected["priceUsd"],
             "recipientType": product["recipientType"],
             "requiredRecipientFields": deepcopy(product["requiredRecipientFields"]),
         }
@@ -1627,12 +1628,12 @@ class McpBitrefillClient:
                 or package.get("amount")
                 or value
             )
-            price_usd = _money(price)
             try:
-                priced = Decimal(str(price_usd))
+                price_usd = _money(price)
+                priced = Decimal(str(price))
             except (InvalidOperation, TypeError, ValueError):
                 continue
-            if priced <= 0:
+            if not priced.is_finite() or Decimal(price_usd) <= 0:
                 # Bitrefill lists some denominations at $0. They cannot be
                 # quoted, so offering them only produces a dead end.
                 continue
@@ -1644,6 +1645,9 @@ class McpBitrefillClient:
                     "packageId": package_id,
                     "value": value,
                     "priceUsd": price_usd,
+                    # Unrounded: an invoice is made at this price, and on a card worth
+                    # a few cents the rounding to cents is several percent of it.
+                    "exactPriceUsd": format(priced.normalize(), "f"),
                     # Generic price/payment_price may be satoshis or local currency.
                     # Only explicitly USD-labelled fields are safe to show as dollars.
                     "displayPriceUsd": _money(display_usd) if display_usd else "",

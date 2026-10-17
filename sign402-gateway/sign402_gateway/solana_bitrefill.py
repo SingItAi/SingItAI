@@ -94,7 +94,8 @@ def packages(server: Any, slug: Any) -> dict[str, Any]:
     """What can be bought of one product and today's price, from Bitrefill's catalog."""
     product = _client(server).get_product_details(product_id=str(slug or ""), country="")
     return {"slug": product["productId"], "name": product["name"],
-            "packages": [{"value": p["value"], "currency": product.get("currency") or "", "priceUsd": str(p["priceUsd"])}
+            "packages": [{"value": p["value"], "currency": product.get("currency") or "",
+                          "priceUsd": str(p.get("exactPriceUsd") or p["priceUsd"])}
                          for p in product.get("packages") or []][:40],
             "recipientRequired": bool(product.get("requiredRecipientFields"))}
 
@@ -131,12 +132,13 @@ def buy(server: Any, account: str, slug: Any, package: Any, *, shown_price: Any 
     quote = client.quote_product(product_id=str(slug or ""), package_id=str(package or ""), country="", recipient={})
     if quote.get("requiredRecipientFields"):
         raise AllowanceError("This product is delivered to a phone or account; only products delivered as a code can be bought here.")
-    price = _atomic(quote["priceUsd"])
+    exact = str(quote.get("exactPriceUsd") or quote["priceUsd"])  # unrounded: the price the invoice asks
+    price = _atomic(exact)
     shown = _shown_atomic(shown_price)
     if shown is not None and price > shown:  # bought only at the price the user pressed Buy on, or below
-        raise PriceChanged(str(shown_price).strip(), str(quote["priceUsd"]))
+        raise PriceChanged(str(shown_price).strip(), exact)
     if price > int(limits["per_purchase_cap"]) or price > remaining:
-        raise AllowanceError(f"{quote['priceUsd']} USDC does not fit your limits today. Nothing was bought.")
+        raise AllowanceError(f"{exact} USDC does not fit your limits today. Nothing was bought.")
 
     invoice = client._normalize_invoice(client._call_tool("buy-products", {
         "cart_items": [{"product_id": quote["productId"], "package_value": quote["packageValue"]}],

@@ -553,6 +553,14 @@ class BitrefillMcpCatalogTests(unittest.TestCase):
             ["get-product-details"],
         )
 
+    def test_a_price_below_a_cent_is_kept_exact_beside_its_rounded_display(self):
+        caller = FakeMcpCaller([{"product_id": "dia-argentina", "name": "Dia", "country": "AR", "currency": "ARS",
+                                 "recipient_type": "none",
+                                 "packages": [{"package_value": "100", "price_usd": "0.0712"}]}])
+        client = McpBitrefillClient(api_key="key_123", call_tool=caller)
+        package = client.get_product_details(product_id="dia-argentina", country="AR")["packages"][0]
+        self.assertEqual((package["priceUsd"], package["exactPriceUsd"]), ("0.07", "0.0712"))
+
     def test_denominations_priced_at_zero_are_not_offered(self):
         # Bitrefill lists some of these (Carrefour Argentina 5 ARS is $0). They
         # cannot be quoted at all, so showing them is a dead end for the buyer.
@@ -1096,6 +1104,7 @@ class BitrefillMcpCatalogTests(unittest.TestCase):
                 "packageId": "steam-usa<&>50",
                 "value": "50",
                 "priceUsd": "54.06",
+                "exactPriceUsd": "54.06",
                 "displayPriceUsd": "54.06",
             },
         )
@@ -1254,6 +1263,7 @@ class BitrefillMcpCatalogTests(unittest.TestCase):
                 "packageId": "steam-usa<&>50",
                 "value": "50",
                 "priceUsd": "50.25",
+                "exactPriceUsd": "50.25",
                 "displayPriceUsd": "",
             },
         )
