@@ -81,6 +81,16 @@ class PurchaseHistoryTests(unittest.TestCase):
         self.assertEqual((summary["name"], summary["isBitrefill"], summary["canReveal"]), ("Hediyen Kart", True, True))
         self.assertFalse(purchase_summary({"ok": True, "mode": "paid_tool", "txId": "0x" + "c" * 64})["canReveal"])
 
+    def test_a_base_mcp_order_can_show_its_code_from_the_purchases_list(self):
+        event = {"ok": True, "mode": "bitrefill_mcp_base", "invoiceId": "inv-9", "productName": "Steam",
+                 "txId": "0x" + "d" * 64, "encryptedFulfillmentToken": "ciphertext"}
+        summary = purchase_summary(event)
+        self.assertEqual((summary["name"], summary["isBitrefill"], summary["canReveal"]), ("Steam", True, True))
+        self.assertNotIn("ciphertext", json.dumps(summary))
+        self.assertNotIn("fulfillmentToken", json.dumps(summary))
+        without_code = {key: value for key, value in event.items() if key != "encryptedFulfillmentToken"}
+        self.assertFalse(purchase_summary(without_code)["canReveal"])
+
     def test_duplicates_replace_instead_of_creating_another_receipt(self):
         for number in (0, 1, 0):
             self.store.write("alice", order(number))

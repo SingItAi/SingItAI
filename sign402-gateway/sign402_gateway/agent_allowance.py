@@ -425,6 +425,15 @@ class AllowanceStore:
                     created_at INTEGER NOT NULL,
                     PRIMARY KEY (tx_hash, log_index)
                 );
+                CREATE TABLE IF NOT EXISTS transfer_claims (
+                    user_id TEXT NOT NULL,
+                    resource TEXT NOT NULL,
+                    receiver TEXT NOT NULL,
+                    amount INTEGER NOT NULL,
+                    tx_hash TEXT,
+                    created_at INTEGER NOT NULL,
+                    PRIMARY KEY (user_id, resource)
+                );
                 CREATE TABLE IF NOT EXISTS bitrefill_quotes (
                     quote_id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -600,6 +609,30 @@ class AllowanceStore:
         with self._db() as db:
             return db.execute("SELECT * FROM settlements WHERE user_id = ? AND resource = ?",
                               (user_id, resource)).fetchone()
+
+    def transfer_claim(self, user_id: str, resource: str) -> sqlite3.Row | None:
+        with self._db() as db:
+            return db.execute("SELECT * FROM transfer_claims WHERE user_id = ? AND resource = ?",
+                              (user_id, resource)).fetchone()
+
+    def claim_transfer(self, user_id: str, resource: str, receiver: str, amount: int, now: int) -> None:
+        """One row per order, written before the USDC transfer is broadcast."""
+        with self._db() as db:
+            try:
+                db.execute(
+                    "INSERT INTO transfer_claims (user_id, resource, receiver, amount, tx_hash, created_at) "
+                    "VALUES (?, ?, ?, ?, NULL, ?)",
+                    (user_id, resource, receiver, amount, now),
+                )
+            except sqlite3.IntegrityError:
+                raise AllowanceError("This order was already attempted. Nothing more was sent.") from None
+
+    def note_transfer_tx(self, user_id: str, resource: str, tx_hash: str) -> None:
+        with self._db() as db:
+            db.execute(
+                "UPDATE transfer_claims SET tx_hash = ? WHERE user_id = ? AND resource = ? AND tx_hash IS NULL",
+                (tx_hash, user_id, resource),
+            )
 
     def save_bitrefill_quote(self, row: Mapping[str, Any]) -> None:
         with self._db() as db:
@@ -1553,6 +1586,21 @@ class AllowanceService:
             "resourceResult": result,
         }
 
+    def _record_claimed_transfer(self, user_id: str, agent: str, claim: sqlite3.Row) -> None:
+        """Close the books for a transfer that already left, when its log is visible now."""
+        tx = claim["tx_hash"]
+        if not tx:
+            return
+        found = self.find_settlement(
+            agent, claim["receiver"], int(claim["amount"]), 0,
+            self.store.counted_settlements(user_id), wait=0,
+        )
+        if found is not None and found[0] == str(tx).lower():
+            self.store.count_settlement(
+                found[0], found[1], user_id, claim["receiver"], int(claim["amount"]),
+                claim["resource"], int(self.now()),
+            )
+
     def pay_transfer(self, user_id: str, receiver: str, amount: int, resource: str) -> dict[str, Any]:
         """Send `amount` USDC from the agent to `receiver`, funded by the limiter, once per `resource`.
 
@@ -1561,6 +1609,9 @@ class AllowanceService:
         agent, so the watcher's first rule holds; the transfer out of the agent is
         counted as this purchase's settlement as soon as it is mined, so the
         watcher's third rule finds it explained.
+
+        The claim is written before funding or broadcast. A retry of the same
+        order, including one whose receipt was not counted yet, does not send again.
         """
         active = self.lane_for(user_id)
         if active is None:
@@ -1576,12 +1627,19 @@ class AllowanceService:
         with self._spend_lock:
             if self.store.settlement_for(user_id, resource) is not None:
                 raise AllowanceError("This order is already paid. Nothing was paid again.")
+            claim = self.store.transfer_claim(user_id, resource)
+            if claim is not None:
+                self._record_claimed_transfer(user_id, agent, claim)
+                shown = f" ({claim['tx_hash']})" if claim["tx_hash"] else ""
+                raise AllowanceError(f"This order was already attempted{shown}. Nothing more was sent.")
+            self.store.claim_transfer(user_id, resource, receiver, amount, int(self.now()))
             funding = self._fund(active, agent, agent_key, amount,
                                  f"transfer:{resource}:{amount}:{self.now()}:{os.urandom(4).hex()}")
             start = int(self.evm.call("eth_blockNumber", []), 16)
             data = encode_call("transfer(address,uint256)", receiver, amount)
             self.ensure_gas(agent, self.evm.quote(agent, to=USDC, data=data)["maxCostWei"])
             tx = self.evm.send(agent_key, to=USDC, data=data)
+            self.store.note_transfer_tx(user_id, resource, tx)
             self.evm.wait_receipt(tx)
             found = self.find_settlement(agent, receiver, amount, start, self.store.counted_settlements(user_id))
             if found is None or found[0] != tx.lower():

@@ -1016,6 +1016,34 @@ class SpendingLaneTests(unittest.TestCase):
         self.assertEqual(self.evm.usdc[deposit], 5_000)
         self.assertTrue(self.service.pay_transfer(USER, deposit, 5_000, "bitrefill:invoice:inv-2")["ok"])
 
+    def test_a_claimed_transfer_is_not_funded_or_sent_again(self):
+        deposit = to_checksum_address("0x" + "70" * 20)
+        self.service.store.claim_transfer(USER, "bitrefill:invoice:inv-1", deposit, 5_000, 0)
+        with self.assertRaises(aa.AllowanceError) as raised:
+            self.service.pay_transfer(USER, deposit, 5_000, "bitrefill:invoice:inv-1")
+        self.assertIn("Nothing more was sent", str(raised.exception))
+        self.assertEqual(self.evm.spends, [])
+        self.assertEqual(self.evm.usdc.get(deposit, 0), 0)
+
+    def test_a_transfer_whose_receipt_was_not_counted_is_not_sent_again(self):
+        deposit = to_checksum_address("0x" + "70" * 20)
+        real = self.service.find_settlement
+
+        def miss_once(*args, **kwargs):
+            self.service.find_settlement = real
+            return None
+
+        self.service.find_settlement = miss_once
+        with self.assertRaises(aa.AllowanceError) as first:
+            self.service.pay_transfer(USER, deposit, 5_000, "bitrefill:invoice:inv-1")
+        self.assertIn("Do not pay again", str(first.exception))
+        with self.assertRaises(aa.AllowanceError) as second:
+            self.service.pay_transfer(USER, deposit, 5_000, "bitrefill:invoice:inv-1")
+        self.assertIn("Nothing more was sent", str(second.exception))
+        self.assertEqual(self.evm.usdc[deposit], 5_000)
+        self.assertEqual(len(self.evm.spends), 1)
+        self.assertIsNotNone(self.service.store.settlement_for(USER, "bitrefill:invoice:inv-1"))
+
     def test_a_transfer_to_the_lanes_own_addresses_is_refused(self):
         for receiver in (self.agent, self.owner.address, self.limiter):
             with self.subTest(receiver):
