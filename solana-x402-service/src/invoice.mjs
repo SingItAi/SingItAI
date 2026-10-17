@@ -5,9 +5,10 @@
 // The wallet is the agent, which holds exactly what the invoice needs (pulled from the owner's
 // allowance). Bitrefill's fee payer sponsors the transaction. One attempt per invoice, recorded
 // before the only submission; an uncertain result is never retried here.
-import { ClientError, NETWORK, USDC } from './config.mjs';
-import { isTransactionId } from './chain.mjs';
-import { assertDelegated } from './allowance.mjs';
+import { isAddress, partiallySignTransaction } from '@solana/kit';
+import { ClientError, NETWORK, USDC, TOKEN_PROGRAM } from './config.mjs';
+import { isTransactionId, messageHash } from './chain.mjs';
+import { TokenAllowance, assertDelegated, parseTokenAccount, transferInstruction, usdcAccount } from './allowance.mjs';
 
 export const BITREFILL_PAY_URL = 'https://api.bitrefill.com/x402/invoice/pay';
 
@@ -81,5 +82,70 @@ export class InvoicePayments {
     }
     this.store.updateInvoice(invoiceId, 'accepted', transaction);
     return { invoiceId, state: 'accepted', transaction, amount: requirement.amount };
+  }
+}
+
+// Paying a Bitrefill MCP invoice by a plain USDC transfer to its own deposit address on Solana.
+// Bitrefill's x402 pay route stopped knowing MCP invoices (it asks its generic 1,000 USDC ceiling
+// for any of them, seen 17 October 2026); the invoice's payment_info names a deposit address
+// instead. The USDC leaves the owner's account with the agent signing as its approved delegate,
+// and the agent pays the network fee from the SOL its owner sent it: nobody else sponsors it.
+// The deposit address's USDC account must already exist (Bitrefill opens it); none is created
+// here. One attempt per invoice, recorded before the only submission.
+export class InvoiceTransfers {
+  constructor({ wallet, chain, store, allowance = null }) {
+    Object.assign(this, { wallet, chain, store, lane: allowance || new TokenAllowance({ chain }) });
+  }
+
+  async recipientAccount(payTo) {
+    const account = await usdcAccount(payTo);
+    let info;
+    try { info = await this.chain.rpc.getAccountInfo(account, { encoding: 'base64', commitment: 'confirmed' }).send({ abortSignal: AbortSignal.timeout(20000) }); }
+    catch { throw new ClientError('RPC_UNAVAILABLE', 'Could not reach Solana to check where to pay. Nothing was paid.'); }
+    if (!info.value || info.value.owner !== TOKEN_PROGRAM) throw new ClientError('RECIPIENT_ACCOUNT_MISSING', 'Bitrefill’s deposit address has no USDC account. Nothing was paid.');
+    const data = Buffer.from(info.value.data[0], 'base64');
+    let parsed;
+    try { parsed = parseTokenAccount(data, payTo); }
+    catch { throw new ClientError('RECIPIENT_ACCOUNT_MISSING', 'Bitrefill’s deposit address has no USDC account. Nothing was paid.'); }
+    if (data[108] !== 1 || parsed.frozen) throw new ClientError('RECIPIENT_ACCOUNT_MISSING', 'Bitrefill’s deposit account cannot receive USDC. Nothing was paid.');
+    return account;
+  }
+
+  async pay({ invoiceId, payTo, amount, owner }) {
+    if (typeof invoiceId !== 'string' || !/^[0-9a-f-]{8,64}$/i.test(invoiceId)) throw new ClientError('INVALID_INVOICE', 'Invalid invoice.');
+    if (!/^[1-9][0-9]*$/.test(String(amount))) throw new ClientError('INVALID_AMOUNT', 'Invalid amount.');
+    for (const [value, what] of [[payTo, 'deposit'], [owner, 'owner']]) {
+      if (typeof value !== 'string' || !isAddress(value)) throw new ClientError('INVALID_RECIPIENT', `Invalid ${what} address.`);
+    }
+    if (payTo === owner || payTo === this.wallet.address) throw new ClientError('INVALID_RECIPIENT', 'That is not a seller’s address. Nothing was paid.');
+    if (this.store.invoiceAttempt(invoiceId)) throw new ClientError('ALREADY_ATTEMPTED', 'This invoice was already paid or attempted. Nothing more was sent.');
+
+    const destination = await this.recipientAccount(payTo);
+    await assertDelegated(this.chain, owner, this.wallet.address, amount);
+    const tx = await this.lane.compile(this.wallet.address, [
+      transferInstruction({ source: await usdcAccount(owner), destination, authority: this.wallet.address, amount: String(amount) }),
+    ]);
+    let balance, fee;
+    try {
+      const options = { abortSignal: AbortSignal.timeout(20000) };
+      [balance, fee] = await Promise.all([
+        this.chain.rpc.getBalance(this.wallet.address, { commitment: 'confirmed' }).send(options).then(r => r.value),
+        this.chain.rpc.getFeeForMessage(Buffer.from(tx.messageBytes).toString('base64'), { commitment: 'confirmed' }).send(options).then(r => r.value),
+      ]);
+    } catch { throw new ClientError('RPC_UNAVAILABLE', 'Could not price the network fee. Nothing was paid.'); }
+    if (fee === null || fee === undefined) throw new ClientError('RPC_UNAVAILABLE', 'Could not price the network fee. Nothing was paid.');
+    if (BigInt(balance) < BigInt(fee)) {
+      const error = new ClientError('AGENT_SOL_REQUIRED', 'Your agent needs a little SOL for the network fee. Nothing was paid.');
+      error.reason = `needs ${fee} lamports, holds ${balance}`;
+      throw error;
+    }
+
+    let signed;
+    try { signed = await partiallySignTransaction([this.wallet.signer.keyPair], tx); }
+    catch { throw new ClientError('BUILD_FAILED', 'Could not sign the Solana payment. Nothing was submitted.'); }
+    this.store.claimInvoice(invoiceId, this.wallet.address, messageHash(tx.messageBytes), String(amount));
+    const sent = await this.lane.send(signed);
+    this.store.updateInvoice(invoiceId, sent.state === 'confirmed' ? 'accepted' : 'uncertain', sent.transaction);
+    return { invoiceId, state: sent.state, transaction: sent.transaction, amount: String(amount) };
   }
 }

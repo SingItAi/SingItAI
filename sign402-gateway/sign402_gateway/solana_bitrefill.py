@@ -1,15 +1,18 @@
 """Bitrefill for a web account signed in with a Solana wallet.
 
-The path Bitrefill documents, and the one this project verified with a live purchase on
-September 18, 2026 (docs/bitrefill-solana-checks.md): an MCP guest invoice paid in USDC
-on Solana through Bitrefill's x402 route.
+An MCP guest invoice, created over the client whose URL carries the affiliate code, paid in
+USDC on Solana straight to the invoice's own deposit address.
 
   1. `buy-products` with `payment_method: usdc_solana` and the buyer's email (Bitrefill
      requires it on guest invoices; it is where codes also land) returns the invoice, its
-     access token and `x402_payment_url`;
-  2. the agent pays the x402 route straight from the owner's account as their approved
-     delegate, within their limits (solana_allowance.py, solana-x402-service/src/invoice.mjs);
-     Bitrefill's fee payer pays the network fee;
+     access token and `payment_info`: the deposit address and the amount;
+  2. the invoice is read again, and the agent transfers that amount straight from the
+     owner's account as their approved delegate, within their limits (solana_allowance.py,
+     solana-x402-service/src/invoice.mjs, InvoiceTransfers). The agent pays the network fee
+     from SOL its owner sent it; without it, nothing is bought.
+     Until October 2026 this was paid over Bitrefill's x402 route (verified live on
+     September 18, docs/bitrefill-solana-checks.md), whose fee payer paid the fee; that
+     route no longer knows MCP invoices;
   3. `get-invoice-by-id` with the access token reports delivery; the code is shown once,
      on request, from the purchase record's encrypted access token.
 
@@ -21,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import time
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -32,7 +36,7 @@ from .allowance_bitrefill import NeedsEmail, usage_instructions  # noqa: F401 - 
 
 logger = logging.getLogger(__name__)
 
-PAY_URL = "https://api.bitrefill.com/x402/invoice/pay"
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # USDC on Solana mainnet
 PRICE_SLACK = Decimal("1.02")        # the invoice may round up a little from the quote, never more
 DELIVERY_WAIT_SECONDS = 90
 # How often to ask whether the code is ready: often at first, when most codes arrive (a few seconds after the
@@ -70,6 +74,56 @@ class PriceChanged(AllowanceError):
         self.price_usd = price_usd
         super().__init__(f"The price went up from {shown} to {price_usd} USDC since it was shown. "
                          "Nothing was bought; confirm the new price to buy it.")
+
+
+SOLANA_ADDRESS = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+NOT_WAITING = {"expired", "payment_detected", "payment_confirmed", "paid", "blocked", "denied", "payment_error"} | DONE
+
+
+def _deposit(invoice: dict[str, Any], price: int) -> tuple[str, int]:
+    """The invoice's deposit address and exact amount in atomic USDC, or a refusal.
+
+    Bitrefill's x402 pay route does not know MCP invoices (it asks its generic 1,000 USDC
+    ceiling for any of them, seen on 17 October 2026), so the invoice is paid where it says:
+    a USDC transfer on Solana to its own deposit address. Token, amount and address must be
+    stated and agree, and the amount stay within the price the user was shown.
+    """
+    info = invoice.get("payment_info") or invoice.get("paymentInfo")
+    if not isinstance(info, dict) or str(info.get("contractAddress") or info.get("contract_address") or "") != USDC_MINT:
+        raise AllowanceError("Bitrefill did not ask for USDC on Solana for this order. Nothing was paid.")
+    address = str(info.get("address") or "").strip()
+    if not SOLANA_ADDRESS.match(address):
+        raise AllowanceError("Bitrefill did not say where to pay this order. Nothing was paid.")
+    try:
+        amount = _atomic(info.get("altcoinPrice", info.get("amount")))
+        base = info.get("altBasePrice")
+        if base is not None and int(str(base)) != amount:
+            raise ValueError("the two amounts disagree")
+    except (AllowanceError, ValueError):
+        raise AllowanceError("Bitrefill's order disagrees with itself about what to pay. Nothing was paid.") from None
+    if amount <= 0:
+        raise AllowanceError("Bitrefill's order disagrees with itself about what to pay. Nothing was paid.")
+    if amount > math.ceil(price * PRICE_SLACK):
+        raise AllowanceError("Bitrefill's invoice is above the price you were shown. Nothing was paid.")
+    return address, amount
+
+
+def _check_unchanged(client: Any, invoice_id: str, token: str, pay_to: str, amount: int) -> None:
+    """Read the invoice again from Bitrefill; pay only an open invoice that still asks the same."""
+    try:
+        current, _, _ = _delivery_poll(client, invoice_id, token, 0)
+    except Exception:
+        current = None
+    if current is None:
+        raise AllowanceError("Bitrefill did not confirm the order before payment. Nothing was paid.")
+    state = str(client._invoice_status(current) or "").lower()
+    if state in NOT_WAITING:
+        raise AllowanceError(f"Bitrefill's order {invoice_id} is {state}, not waiting for payment. Nothing was paid.")
+    info = current.get("payment_info") or current.get("paymentInfo")
+    if isinstance(info, dict) and info.get("address"):
+        again = info.get("altBasePrice")
+        if str(info["address"]).strip() != pay_to or (again is not None and str(again) != str(amount)):
+            raise AllowanceError("Bitrefill's order changed before payment. Nothing was paid.")
 
 
 def _client(server: Any) -> Any:
@@ -164,18 +218,14 @@ def buy(server: Any, account: str, slug: Any, package: Any, *, shown_price: Any 
     invoice_id, token = client._invoice_id(invoice), client._invoice_access_token(invoice)
     if not invoice_id:
         raise AllowanceError("Bitrefill did not create the order. Nothing was paid.")
-    if str(invoice.get("x402_payment_url") or PAY_URL) != PAY_URL:
-        raise AllowanceError("Bitrefill offered an unexpected payment route. Nothing was paid.")
-    info = invoice.get("payment_info") or invoice.get("paymentInfo") or {}
-    amount = _atomic(info.get("amount")) if isinstance(info, dict) and info.get("amount") else price
-    if amount > math.ceil(price * PRICE_SLACK):
-        raise AllowanceError("Bitrefill's invoice is above the price you were shown. Nothing was paid.")
+    pay_to, amount = _deposit(invoice, price)
+    _check_unchanged(client, invoice_id, token, pay_to, amount)
 
     priced = time.monotonic()
     owner = lane.owner(account)
     purchase_progress.mark("paying")
     paid = lane.spend(account, amount, f"Bitrefill {quote['name']} {quote['packageValue']}", lambda: lane._call(
-        account, "bitrefill-invoice-pay", url=PAY_URL, invoiceId=invoice_id, maxAmount=str(amount), owner=owner))
+        account, "bitrefill-invoice-transfer", invoiceId=invoice_id, payTo=pay_to, amount=str(amount), owner=owner))
 
     purchase_progress.mark("paid")
     paying_done = time.monotonic()
