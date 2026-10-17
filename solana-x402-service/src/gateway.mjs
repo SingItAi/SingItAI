@@ -19,7 +19,8 @@ export async function dispatch(input, { wallet, venice, chain, store, exa, feePa
     return new InvoicePayments({ wallet, chain, store }).pay({ url: input.url, invoiceId: input.invoiceId, maxAmount: input.maxAmount, owner: input.owner || null });
   }
   if (input.operation === 'bitrefill-invoice-transfer') {
-    return new InvoiceTransfers({ wallet, chain, store, allowance }).pay({ invoiceId: input.invoiceId, payTo: input.payTo, amount: input.amount, owner: input.owner });
+    return new InvoiceTransfers({ wallet, chain, store, feePayer, allowance }).pay({ invoiceId: input.invoiceId, payTo: input.payTo,
+      amount: input.amount, owner: input.owner, feeAmount: input.feeAmount });
   }
   if (input.operation === 'bitrefill-invoice-attempt') return store.invoiceAttempt(input.invoiceId);
   if (input.operation === 'data-pay') {

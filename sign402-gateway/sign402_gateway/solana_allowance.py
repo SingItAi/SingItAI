@@ -53,7 +53,7 @@ NOTHING_SENT_CODES = frozenset({
     "INSUFFICIENT_USDC", "ALLOWANCE_TOO_LOW", "PRICE_CHANGED", "MERCHANT_CHANGED", "UNSUPPORTED_MERCHANT",
     "UNSUPPORTED_PAYMENT", "EXA_UNSUPPORTED_PAYMENT", "UNEXPECTED_FEE_PAYER", "INVALID_AMOUNT", "INVALID_INVOICE",
     "INVALID_CALL", "BUILD_FAILED", "PAYMENT_REFUSED",
-    "AGENT_SOL_REQUIRED", "RECIPIENT_ACCOUNT_MISSING", "INVALID_RECIPIENT",
+    "RECIPIENT_ACCOUNT_MISSING", "INVALID_RECIPIENT", "FEE_PAYER_REQUIRED", "FEE_PAYER_LOW", "FEE_PAYER_UNAVAILABLE",
 })
 NOTHING_SENT_STATES = frozenset({"failed", "not_submitted"})
 
@@ -564,7 +564,7 @@ def build_solana_allowance_from_env(master_key: str, bridge: Any = None,
                                   MAX_DAILY_ENV, MAX_DAYS_ENV, MAX_GRANT_ENV, MAX_PER_PURCHASE_ENV, _usdc_atomic)
 
     fernet = Fernet(master_key.encode("ascii"))
-    blob = str(values.get(FEE_PAYER_ENV, "")).strip()  # optional: only for owners without any SOL
+    blob = str(values.get(FEE_PAYER_ENV, "")).strip()  # pays gift-card transfers' SOL fee, paid back in USDC
     if bridge is None:
         from .solana_chat import SolanaBridge
         bridge = SolanaBridge(None, Path(str(values.get("SIGN402_SOLANA_CHAT_STATE_DIR", "") or

@@ -1572,9 +1572,11 @@ class WebAgent:
             raise LookupError(bought.get("text") or bought.get("message") or "Bitrefill refused that. Nothing was paid.")
         title = f"{bought.get('name') or name} {bought.get('package')} {bought.get('packageCurrency') or ''}".strip()
         delivered = bought.get("delivered", True)
-        return say(lang, f"Bought {title} for {bought.get('priceUsd')} USDC on Solana. "
+        fee = bought.get("networkFeeUsd")
+        fee_en, fee_ru = (f" + {fee} USDC network fee", f" + {fee} USDC комиссия сети") if fee else ("", "")
+        return say(lang, f"Bought {title} for {bought.get('priceUsd')} USDC{fee_en} on Solana. "
                          + ("Press Show code below — it is shown once." if delivered else "Bitrefill is still delivering it."),
-                   f"Купил {title} за {bought.get('priceUsd')} USDC на Solana. "
+                   f"Купил {title} за {bought.get('priceUsd')} USDC{fee_ru} на Solana. "
                    + ("Нажмите «Show code» ниже — код показывается один раз." if delivered else "Bitrefill ещё доставляет.")), [
             {"type": "receipt", "name": title, "price": bought.get("priceUsd"), "invoiceId": bought.get("invoiceId"),
              "giftcard": True, "purchaseId": bought.get("purchaseId"), **({"howToUse": bought["howToUse"]} if bought.get("howToUse") else {})}]

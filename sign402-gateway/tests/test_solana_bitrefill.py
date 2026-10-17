@@ -35,7 +35,7 @@ class Bridge(FakeBridge):
             if self.refusal:
                 from sign402_gateway.solana_chat import SolanaChatError
                 raise SolanaChatError(*self.refusal)
-            self.charge(int(payload["amount"]))
+            self.charge(int(payload["amount"]) + int(payload["feeAmount"]))
             if self.on_transfer:
                 self.on_transfer()
             return {"invoiceId": payload["invoiceId"], "state": "confirmed", "transaction": "4" * 88, "amount": payload["amount"]}
@@ -180,8 +180,10 @@ class SolanaBitrefillTests(unittest.TestCase):
         self.assertEqual((order[1]["payment_method"], order[1]["email"]), ("usdc_solana", "me@example.com"))
         transfer = [c for c in self.bridge.calls if c[0] == "bitrefill-invoice-transfer"]
         self.assertEqual(len(transfer), 1)
-        self.assertEqual(transfer[0][4], {"invoiceId": INVOICE, "payTo": DEPOSIT, "amount": "9440000", "owner": OWNER})
-        self.assertFalse(transfer[0][2], "no fee payer of ours: the agent pays the fee from its owner's SOL")
+        self.assertEqual(transfer[0][4], {"invoiceId": INVOICE, "payTo": DEPOSIT, "amount": "9440000", "feeAmount": "1000",
+                                          "owner": OWNER})
+        self.assertTrue(transfer[0][2], "our fee payer pays the SOL; the buyer pays it back in USDC")
+        self.assertEqual(bought["networkFeeUsd"], "0.001")
         self.assertIn(("get-invoice-by-id", {"invoice_id": INVOICE, "token": "tok-secret"}), self.mcp.calls[:2],
                       "read again before paying")
         self.assertEqual((bought["priceUsd"], bought["delivered"]), ("9.44", True))
@@ -190,7 +192,7 @@ class SolanaBitrefillTests(unittest.TestCase):
         recorded = self.events.write.call_args.args[1]
         self.assertEqual((recorded["mode"], recorded["fulfillmentToken"]), ("bitrefill_mcp_solana", "tok-secret"))
         self.assertNotIn("ALZA-9999-8888", json.dumps(bought) + json.dumps(recorded))
-        self.assertEqual(self.lane.status(ACCOUNT)["remainingTodayAtomic"], 20_000_000 - 9_440_000)
+        self.assertEqual(self.lane.status(ACCOUNT)["remainingTodayAtomic"], 20_000_000 - 9_440_000 - 1_000)
 
     def test_an_invoice_above_the_quote_or_the_limits_is_not_paid(self):
         self.emails[ACCOUNT] = "me@example.com"
@@ -198,7 +200,7 @@ class SolanaBitrefillTests(unittest.TestCase):
         with self.assertRaisesRegex(AllowanceError, "above the price you were shown"):
             self.buy()
         self.lane.setup(ACCOUNT, "20", "5", "30")
-        with self.assertRaisesRegex(AllowanceError, "does not fit your limits"):
+        with self.assertRaisesRegex(AllowanceError, "fit your limits"):
             self.buy()
         self.assertEqual([c for c in self.bridge.calls if c[0] == "bitrefill-invoice-transfer"], [])
 
@@ -223,16 +225,27 @@ class SolanaBitrefillTests(unittest.TestCase):
                 self.assertEqual([c for c in self.bridge.calls if c[0] == "bitrefill-invoice-transfer"], [])
                 self.assertEqual(self.lane.status(ACCOUNT)["remainingTodayAtomic"], 20_000_000)
 
-    def test_an_agent_without_sol_buys_nothing_and_the_owner_is_told_to_add_some(self):
-        from sign402_gateway.solana_chat import SolanaChatError
+    def test_a_fee_payer_short_of_sol_buys_nothing_and_gives_the_room_back(self):
         self.emails[ACCOUNT] = "me@example.com"
-        self.bridge.refusal = ("AGENT_SOL_REQUIRED", "Your agent needs a little SOL for the network fee. Add SOL in "
-                               "Allowance → Network fees for gift cards, then buy again. Nothing was paid.")
-        with self.assertRaisesRegex(AllowanceError, "needs a little SOL") as raised:
+        self.bridge.refusal = ("FEE_PAYER_LOW", "Gift cards from a Solana wallet are paused for a moment on SingIt. Nothing was paid.")
+        with self.assertRaisesRegex(AllowanceError, "Nothing was paid") as raised:
             self.buy()
-        self.assertEqual(getattr(raised.exception, "code", None), "AGENT_SOL_REQUIRED")
+        self.assertEqual(getattr(raised.exception, "code", None), "FEE_PAYER_LOW")
         self.assertEqual(self.lane.status(ACCOUNT)["remainingTodayAtomic"], 20_000_000, "the room is given back")
-        self.assertIsInstance(SolanaChatError("AGENT_SOL_REQUIRED", "x"), Exception)
+
+    def test_without_a_fee_payer_nothing_is_ordered(self):
+        self.emails[ACCOUNT] = "me@example.com"
+        self.lane.fee_payer_key = None
+        with self.assertRaisesRegex(Exception, "not set up on this server"):
+            self.buy()
+        self.assertEqual(self.mcp.calls, [], "no invoice left behind at Bitrefill")
+
+    def test_the_network_fee_counts_against_the_limits(self):
+        self.emails[ACCOUNT] = "me@example.com"
+        self.lane.setup(ACCOUNT, "20", "9.440999", "30")  # the price fits, the price and its fee do not
+        with self.assertRaisesRegex(AllowanceError, "network fee do not fit your limits"):
+            self.buy()
+        self.assertEqual(self.mcp.calls, [])
 
     def test_a_price_above_the_one_shown_is_not_bought(self):
         """Shown 5.00, quoted 9.44 when Buy was pressed: no order, no payment, the new price said."""
@@ -283,7 +296,7 @@ class SolanaBitrefillTests(unittest.TestCase):
         self.assertEqual(card["type"], "products")
         self.assertEqual(card["items"][0]["packages"], [{"value": "200", "currency": "CZK", "priceUsd": "9.44"}])
         self.assertEqual(self.mcp.calls, [])
-        self.assertIn("Bought Alza CZ 200 CZK for 9.44 USDC on Solana", press("9.44")["messages"][0]["text"])
+        self.assertIn("Bought Alza CZ 200 CZK for 9.44 USDC + 0.001 USDC network fee on Solana", press("9.44")["messages"][0]["text"])
 
     def test_the_code_is_shown_once_from_the_encrypted_token(self):
         event = {"mode": "bitrefill_mcp_solana", "invoiceId": INVOICE, "productName": "Alza CZ", "fulfillmentToken": "tok-secret",
@@ -318,7 +331,7 @@ class SolanaBitrefillTests(unittest.TestCase):
                                                          "package": "200", "name": "Alza CZ"})["messages"][0]
         self.assertIn("What email should I use?", asked["text"])
         done = agent.message(ACCOUNT, first["chatId"], "sure, me@example.com")["messages"][1]
-        self.assertTrue(done["text"].startswith("Saved your email. Bought Alza CZ 200 CZK for 9.44 USDC on Solana."))
+        self.assertTrue(done["text"].startswith("Saved your email. Bought Alza CZ 200 CZK for 9.44 USDC + 0.001 USDC network fee on Solana."))
         self.assertEqual(self.emails[ACCOUNT], "me@example.com")
         self.assertEqual(done["cards"][0]["type"], "receipt")
 
