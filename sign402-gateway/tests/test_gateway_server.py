@@ -8727,7 +8727,7 @@ class AllowanceBuyToolTests(unittest.TestCase):
         self.assertTrue(body["ok"])
         self.assertEqual(body["mode"], "paid_tool_official_x402_base_allowance")
         self.assertEqual(body["txId"], "0x" + "ab" * 32)
-        self.assertIn("Paid from your Trezor allowance (float)", body["telegramText"])
+        self.assertIn("Paid from your allowance (float)", body["telegramText"])
         args = server.allowance.pay_x402.call_args
         self.assertEqual(args.args[0], "1045618308")
         self.assertEqual(args.args[3], server.user_x402_buyer.base_payment_client)

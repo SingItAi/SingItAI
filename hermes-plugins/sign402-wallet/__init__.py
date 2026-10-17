@@ -100,14 +100,14 @@ _TELEGRAM_PUBLIC_COMMAND_STARTED_MESSAGES = {
     "llm-buy": "Preparing LLM credits…",
     "llm-terms": "Updating LLM terms…",
     "llm-credits": "Checking LLM credits…",
-    "allowance": "Reading your Trezor allowance…",
+    "allowance": "Reading your allowance…",
     "allowance-setup": "Setting up your limiter on Base…",
     "allowance-grant": "Sending the grant to your Trezor…",
     "allowance-revoke": "Sending the revoke to your Trezor…",
     "allowance-pause": "Pausing your limiter…",
     "allowance-bitrefill": "Searching Bitrefill…",
     "allowance-quote": "Asking Bitrefill for the price…",
-    "allowance-buy": "Buying from your Trezor allowance…",
+    "allowance-buy": "Buying from your allowance…",
     "link": "Linking your web account…",
 }
 # Commands of the Trezor allowance lane, and the usage each prints when its

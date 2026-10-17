@@ -158,12 +158,12 @@ class AllowanceWatcher:
             tx = entry["transactionHash"]
             if payee != to_checksum_address(agent):
                 self._alarm(user, (
-                    f"A spend of {_usdc(amount)} from your Trezor went to {payee}, not to your agent "
+                    f"A spend of {_usdc(amount)} from your wallet went to {payee}, not to your agent "
                     f"(tx {tx}). The gateway never does that: your limiter has been paused. "
-                    "Revoke the allowance from your Trezor with /allowance_revoke."
+                    "Revoke the allowance from your wallet with /allowance_revoke."
                 ))
                 continue
-            self._inform(user, f"{_usdc(amount)} moved from your Trezor to your agent through the limiter (tx {tx}).")
+            self._inform(user, f"{_usdc(amount)} moved from your wallet to your agent through the limiter (tx {tx}).")
             spends = [t for t in self._recent_spends.get(limiter, []) if t > self.now() - 3600] + [self.now()]
             self._recent_spends[limiter] = spends
             if len(spends) > self.max_spends_per_hour:
@@ -206,7 +206,7 @@ class AllowanceWatcher:
         try:
             self.service.pause(user)
         except Exception as exc:
-            text += f" (The pause itself failed: {exc}. Revoke from your Trezor now.)"
+            text += f" (The pause itself failed: {exc}. Revoke the allowance from your wallet now.)"
             logger.error("allowance watcher: pause for %s failed: %s", user, exc)
         self.store.add_alert(user, "ALARM", text, int(self.now()))
         logger.warning("allowance watcher: ALARM for %s", user)

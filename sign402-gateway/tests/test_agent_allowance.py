@@ -321,7 +321,7 @@ class AllowanceServiceTests(unittest.TestCase):
 
         self.assertTrue(result["created"])
         self.assertEqual(result["limiter"], self.evm.limiter)
-        self.assertEqual(result["state"], "waiting for a grant from your Trezor")
+        self.assertEqual(result["state"], "waiting for a grant from your wallet")
         self.assertEqual(result["source"], "exact_match")
         self.assertIn(f"https://base.blockscout.com/address/{self.evm.limiter}?tab=contract", result["telegramText"])
 
@@ -404,7 +404,7 @@ class AllowanceServiceTests(unittest.TestCase):
         status = self.service.status(USER)
         self.assertTrue(status["configured"])
         self.assertEqual(status["state"], "granted")
-        self.assertIn("Allowance from your Trezor: 300 USDC", status["telegramText"])
+        self.assertIn("Approved from your wallet: 300 USDC", status["telegramText"])
         self.assertIn("Caps: 100 USDC a day, 10 USDC a purchase", status["telegramText"])
 
 

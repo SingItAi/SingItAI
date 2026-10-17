@@ -5611,8 +5611,8 @@ class AllowanceCommandTests(unittest.TestCase):
 
     def test_a_refusal_is_shown_in_the_gateways_words(self):
         plugin = load_plugin()
-        client = self.Client(error=plugin.GatewayClientError("Nothing is granted from your Trezor yet."))
-        self.assertEqual(self.send("/allowance_grant 300", client, plugin), "Nothing is granted from your Trezor yet.")
+        client = self.Client(error=plugin.GatewayClientError("Nothing is granted from your wallet yet."))
+        self.assertEqual(self.send("/allowance_grant 300", client, plugin), "Nothing is granted from your wallet yet.")
 
 
 class SolanaCommandTests(unittest.TestCase):
