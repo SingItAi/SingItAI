@@ -15,14 +15,30 @@ from sign402_gateway.solana_allowance import SolanaAllowanceService, SolanaAllow
 from tests.test_solana_allowance import ACCOUNT, OWNER, FakeBridge
 
 INVOICE = "c2b27180-610e-4132-af77-ad42fc0ac444"
+DEPOSIT = "ADSQfqgTM9BCx2YBrCLgseuwZCy1239KcyTaFg41LFZw"
+
+
+def payment_info(amount, address=DEPOSIT, mint=sb.USDC_MINT, base=None):
+    """`payment_info` as Bitrefill's MCP sent it for a usdc_solana guest invoice (17 October 2026)."""
+    atomic = round(float(amount) * 1_000_000)
+    return {"address": address, "satoshiPrice": 86, "contractAddress": mint, "altcoinPrice": amount,
+            "altBasePrice": atomic if base is None else base}
 
 
 class Bridge(FakeBridge):
+    on_transfer = None
+    refusal = None  # (code, text): the bridge refuses the transfer before sending anything
+
     def run(self, user_id, payer, key, operation, fee_payer_key=None, **payload):
-        if operation == "bitrefill-invoice-pay":
-            self.calls.append((operation, payer, True, None, payload))
-            self.charge(int(payload["maxAmount"]))
-            return {"invoiceId": payload["invoiceId"], "state": "accepted", "transaction": "4" * 88}
+        if operation == "bitrefill-invoice-transfer":
+            self.calls.append((operation, payer, fee_payer_key is not None, None, payload))
+            if self.refusal:
+                from sign402_gateway.solana_chat import SolanaChatError
+                raise SolanaChatError(*self.refusal)
+            self.charge(int(payload["amount"]))
+            if self.on_transfer:
+                self.on_transfer()
+            return {"invoiceId": payload["invoiceId"], "state": "confirmed", "transaction": "4" * 88, "amount": payload["amount"]}
         return super().run(user_id, payer, key, operation, fee_payer_key, **payload)
 
 
@@ -31,6 +47,7 @@ class FakeMcp:
 
     def __init__(self, amount="9.44", status="complete"):
         self.calls, self.amount, self.status = [], amount, status
+        self.payment, self.status_payment, self.state_before_payment, self.paid = None, None, "unpaid", False
 
     def get_product_details(self, *, product_id, country):
         return {"productId": product_id, "name": "Alza CZ", "currency": "CZK", "requiredRecipientFields": [],
@@ -42,8 +59,8 @@ class FakeMcp:
 
     def _call_tool(self, name, arguments):
         self.calls.append((name, arguments))
-        return {"response": {"invoice_id": INVOICE, "invoice_access_token": "tok-secret", "payment_info": {"amount": self.amount},
-                             "x402_payment_url": "https://api.bitrefill.com/x402/invoice/pay"}}
+        return {"response": {"invoice_id": INVOICE, "invoice_access_token": "tok-secret", "expiration_minutes": 60,
+                             "payment_info": self.payment if self.payment is not None else payment_info(self.amount)}}
 
     def _normalize_invoice(self, payload):
         return payload["response"]
@@ -55,6 +72,9 @@ class FakeMcp:
 
     def invoice_status(self, *, invoice_id, invoice_access_token):
         self.calls.append(("get-invoice-by-id", {"invoice_id": invoice_id, "token": invoice_access_token}))
+        if not self.paid:  # read again before paying
+            return {"invoice_id": invoice_id, "invoice_status": self.state_before_payment,
+                    "payment_info": self.status_payment or self.payment or payment_info(self.amount)}
         return {"invoice_id": invoice_id, "invoice_status": self.status, "orders": [{"status": "delivered", "redemption_info": {
             "code": "ALZA-9999-8888", "instructions": "Enter the code ALZA-9999-8888 at checkout on alza.cz."}}]}
 
@@ -72,6 +92,7 @@ class SolanaBitrefillTests(unittest.TestCase):
         op = self.lane.prepare_wallet(ACCOUNT, "GRANT", amount="20")
         self.lane.submit_wallet(ACCOUNT, op["operation"], "SIGNED")
         self.mcp = FakeMcp()
+        self.bridge.on_transfer = lambda: setattr(self.mcp, "paid", True)
         self.emails = {}
         self.events = Mock()
         self.server = SimpleNamespace(
@@ -90,6 +111,8 @@ class SolanaBitrefillTests(unittest.TestCase):
         answers = iter(["pending", "pending", "pending", "complete"])
         ready = self.mcp.invoice_status
         def status(**kw):
+            if not self.mcp.paid:  # the read before paying
+                return ready(**kw)
             if next(answers, "complete") == "pending":  # paid, the code not ready yet
                 return {"invoice_id": kw["invoice_id"], "invoice_status": "pending", "orders": [{"status": "processing"}]}
             return ready(**kw)
@@ -112,6 +135,8 @@ class SolanaBitrefillTests(unittest.TestCase):
         answers = iter([McpRateLimited(), McpRateLimited(), McpRateLimited(retry_after=12), "complete"])
         ready = self.mcp.invoice_status
         def status(**kw):
+            if not self.mcp.paid:  # the read before paying
+                return ready(**kw)
             answer = next(answers, "complete")
             if isinstance(answer, Exception):
                 raise answer
@@ -153,8 +178,12 @@ class SolanaBitrefillTests(unittest.TestCase):
         order = self.mcp.calls[0]
         self.assertEqual(order[0], "buy-products")
         self.assertEqual((order[1]["payment_method"], order[1]["email"]), ("usdc_solana", "me@example.com"))
-        pay = [c for c in self.bridge.calls if c[0] == "bitrefill-invoice-pay"][0][4]
-        self.assertEqual(pay, {"url": sb.PAY_URL, "invoiceId": INVOICE, "maxAmount": "9440000", "owner": OWNER})
+        transfer = [c for c in self.bridge.calls if c[0] == "bitrefill-invoice-transfer"]
+        self.assertEqual(len(transfer), 1)
+        self.assertEqual(transfer[0][4], {"invoiceId": INVOICE, "payTo": DEPOSIT, "amount": "9440000", "owner": OWNER})
+        self.assertFalse(transfer[0][2], "no fee payer of ours: the agent pays the fee from its owner's SOL")
+        self.assertIn(("get-invoice-by-id", {"invoice_id": INVOICE, "token": "tok-secret"}), self.mcp.calls[:2],
+                      "read again before paying")
         self.assertEqual((bought["priceUsd"], bought["delivered"]), ("9.44", True))
         self.assertEqual(len(bought["purchaseId"]), 24)  # the chat's receipt opens its code by this
         self.assertEqual(bought["howToUse"], "Enter the code … at checkout on alza.cz.")
@@ -171,7 +200,39 @@ class SolanaBitrefillTests(unittest.TestCase):
         self.lane.setup(ACCOUNT, "20", "5", "30")
         with self.assertRaisesRegex(AllowanceError, "does not fit your limits"):
             self.buy()
-        self.assertEqual([c for c in self.bridge.calls if c[0] == "bitrefill-invoice-pay"], [])
+        self.assertEqual([c for c in self.bridge.calls if c[0] == "bitrefill-invoice-transfer"], [])
+
+    def test_nothing_is_paid_when_the_invoice_does_not_add_up(self):
+        cases = {
+            "no payment info": lambda: setattr(self.mcp, "payment", {}),
+            "another token": lambda: setattr(self.mcp, "payment", payment_info("9.44", mint="So11111111111111111111111111111111111111112")),
+            "no deposit address": lambda: setattr(self.mcp, "payment", payment_info("9.44", address="")),
+            "an EVM address": lambda: setattr(self.mcp, "payment", payment_info("9.44", address="0x7073241f5aff0c5200DBe1DE8f4E143FCCFc31d6")),
+            "a base price that disagrees": lambda: setattr(self.mcp, "payment", payment_info("9.44", base=9_000_000)),
+            "the address changed when read again": lambda: setattr(self.mcp, "status_payment", payment_info("9.44", address="5yASLjtNssGXDv6bR9e71WXKxRymDiUzbgkGPqkQNgRn")),
+            "already paid when read again": lambda: setattr(self.mcp, "state_before_payment", "payment_detected"),
+            "expired when read again": lambda: setattr(self.mcp, "state_before_payment", "expired"),
+        }
+        for name, spoil in cases.items():
+            with self.subTest(name):
+                self.setUp()
+                self.emails[ACCOUNT] = "me@example.com"
+                spoil()
+                with self.assertRaisesRegex(AllowanceError, "Nothing was paid"):
+                    self.buy()
+                self.assertEqual([c for c in self.bridge.calls if c[0] == "bitrefill-invoice-transfer"], [])
+                self.assertEqual(self.lane.status(ACCOUNT)["remainingTodayAtomic"], 20_000_000)
+
+    def test_an_agent_without_sol_buys_nothing_and_the_owner_is_told_to_add_some(self):
+        from sign402_gateway.solana_chat import SolanaChatError
+        self.emails[ACCOUNT] = "me@example.com"
+        self.bridge.refusal = ("AGENT_SOL_REQUIRED", "Your agent needs a little SOL for the network fee. Add SOL in "
+                               "Allowance → Network fees for gift cards, then buy again. Nothing was paid.")
+        with self.assertRaisesRegex(AllowanceError, "needs a little SOL") as raised:
+            self.buy()
+        self.assertEqual(getattr(raised.exception, "code", None), "AGENT_SOL_REQUIRED")
+        self.assertEqual(self.lane.status(ACCOUNT)["remainingTodayAtomic"], 20_000_000, "the room is given back")
+        self.assertIsInstance(SolanaChatError("AGENT_SOL_REQUIRED", "x"), Exception)
 
     def test_a_price_above_the_one_shown_is_not_bought(self):
         """Shown 5.00, quoted 9.44 when Buy was pressed: no order, no payment, the new price said."""
@@ -180,7 +241,7 @@ class SolanaBitrefillTests(unittest.TestCase):
             sb.buy(self.server, ACCOUNT, "alza-czech-republic", "200", shown_price="5.00", sleep=lambda s: None)
         self.assertEqual(raised.exception.price_usd, "9.44")
         self.assertEqual(self.mcp.calls, [])
-        self.assertEqual([c for c in self.bridge.calls if c[0] == "bitrefill-invoice-pay"], [])
+        self.assertEqual([c for c in self.bridge.calls if c[0] == "bitrefill-invoice-transfer"], [])
         self.assertEqual(self.lane.status(ACCOUNT)["remainingTodayAtomic"], 20_000_000)
 
     def test_the_price_shown_or_a_lower_one_is_bought(self):
@@ -227,6 +288,7 @@ class SolanaBitrefillTests(unittest.TestCase):
     def test_the_code_is_shown_once_from_the_encrypted_token(self):
         event = {"mode": "bitrefill_mcp_solana", "invoiceId": INVOICE, "productName": "Alza CZ", "fulfillmentToken": "tok-secret",
                  "quoteId": INVOICE, "bitrefill": {}}
+        self.mcp.paid = True  # an order bought earlier
         shown = sb.reveal(self.server, event, ACCOUNT)
         self.assertIn("ALZA-9999-8888", shown["telegramText"])
         self.assertEqual(shown["fields"], [{"label": "Code", "value": "ALZA-9999-8888", "kind": "code"}])

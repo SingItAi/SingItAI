@@ -107,6 +107,16 @@ class SolanaBridge:
                     INSUFFICIENT_USDC='The USDC for this order has not arrived at your agent yet. Nothing was paid.',
                     PAYMENT_UNCERTAIN='The payment result is unclear. It was not repeated; check Purchases in a minute.',
                     NETWORK_ERROR='Bitrefill did not answer. Nothing was paid.')
+            if operation == 'bitrefill-invoice-transfer':
+                messages.update(
+                    AGENT_SOL_REQUIRED='Your agent needs a little SOL for the network fee. Add SOL in Allowance → '
+                                       'Network fees for gift cards, then buy again. Nothing was paid.',
+                    RECIPIENT_ACCOUNT_MISSING="Bitrefill's deposit address cannot take USDC yet. Nothing was paid.",
+                    INVALID_RECIPIENT='Bitrefill asked to be paid somewhere unexpected. Nothing was paid.',
+                    ALREADY_ATTEMPTED='This order was already paid or attempted. Nothing more was sent.',
+                    ALLOWANCE_TOO_LOW='The approval in your wallet does not cover this. Nothing was paid.',
+                    INSUFFICIENT_USDC='Your wallet does not hold enough USDC for this. Nothing was paid.',
+                    RPC_UNAVAILABLE='Could not reach Solana. Check Purchases before trying again.')
             if operation.startswith('allowance-'):
                 messages.update(
                     NO_USDC_ACCOUNT='This wallet has no USDC on Solana yet. Add some USDC first.',

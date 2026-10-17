@@ -334,6 +334,17 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(json.loads(kwargs['input'])['privateKey'], 'secret-private-key')
         wallets.decrypt_private_key_for_future_signing.assert_called_once_with('1', chain='solana')
 
+    @patch('sign402_gateway.solana_chat.subprocess.run')
+    def test_an_agent_without_sol_is_told_where_to_add_it(self, run):
+        bridge = SolanaBridge(Mock(), '/tmp/example', node='/usr/local/bin/node')
+        run.return_value = subprocess.CompletedProcess(
+            [], 1, '{"ok":false,"code":"AGENT_SOL_REQUIRED","reason":"needs 5000 lamports, holds 0"}', '')
+        with self.assertRaises(SolanaChatError) as caught:
+            bridge.run('1', 'payer', 'key', 'bitrefill-invoice-transfer', invoiceId='inv', payTo='to', amount='1', owner='o')
+        self.assertEqual(caught.exception.code, 'AGENT_SOL_REQUIRED')
+        self.assertIn('Network fees for gift cards', caught.exception.text)
+        self.assertIn('Nothing was paid', caught.exception.text)
+
     @patch('sign402_gateway.solana_chat.subprocess.run', side_effect=subprocess.TimeoutExpired('node', 240))
     def test_timeout_is_uncertain_not_a_retry(self, run):
         wallets = Mock()

@@ -10,13 +10,16 @@ import { VeniceClient } from './venice.mjs';
 import { SolanaChain } from './chain.mjs';
 import { Payments, quoteSummary } from './payments.mjs';
 import { TokenAllowance } from './allowance.mjs';
-import { InvoicePayments } from './invoice.mjs';
+import { InvoicePayments, InvoiceTransfers } from './invoice.mjs';
 import { ResourcePayments } from './resource.mjs';
 
 export async function dispatch(input, { wallet, venice, chain, store, exa, feePayer = null, allowance = null }) {
   if (wallet.address !== input.payer) throw new ClientError('WRONG_WALLET', 'Wallet mismatch.');
   if (input.operation === 'bitrefill-invoice-pay') {
     return new InvoicePayments({ wallet, chain, store }).pay({ url: input.url, invoiceId: input.invoiceId, maxAmount: input.maxAmount, owner: input.owner || null });
+  }
+  if (input.operation === 'bitrefill-invoice-transfer') {
+    return new InvoiceTransfers({ wallet, chain, store, allowance }).pay({ invoiceId: input.invoiceId, payTo: input.payTo, amount: input.amount, owner: input.owner });
   }
   if (input.operation === 'bitrefill-invoice-attempt') return store.invoiceAttempt(input.invoiceId);
   if (input.operation === 'data-pay') {
