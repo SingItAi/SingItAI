@@ -228,6 +228,26 @@ class BitrefillX402Tests(unittest.TestCase):
         self.assertFalse([c for c in self.http.calls if "/invoice/create" in c[1]], "never an x402 REST order")
         self.assertEqual({c[2] for c in self.http.calls}, {None}, "the guest invoice is paid without a sign-in")
 
+    def test_a_few_cents_card_is_confirmed_and_paid_at_its_unrounded_price(self):
+        # Bitrefill's MCP client rounds to cents for display; the invoice asks the exact price.
+        self.mcp.price, self.http.pay_amount = "0.0712", 71_200
+        self.mcp.get_product_details = lambda **_: {
+            "productId": "hediyen", "name": "Hediyen Kart", "currency": "TRY", "requiredRecipientFields": [],
+            "packages": [{"value": "1", "packageId": "1", "priceUsd": "0.07", "exactPriceUsd": "0.0712"}]}
+        self.mcp.quote_product = lambda **_: {"productId": "hediyen", "name": "Hediyen Kart", "packageValue": "1",
+                                              "currency": "TRY", "priceUsd": "0.07", "exactPriceUsd": "0.0712",
+                                              "requiredRecipientFields": []}
+        self.assertEqual(self.bitrefill.packages("u", "hediyen")["packages"][0]["priceUsd"], "0.0712")
+        quote = self.bitrefill.quote("u", "hediyen", "1")
+        self.assertEqual((quote["priceUsd"], quote["priceAtomic"]), ("0.0712", 71_200))
+        self.assertTrue(self.buy(quote["priceAtomic"])["ok"])
+        self.setUp()
+        self.http.pay_amount = 71_200
+        with self.assertRaises(AllowanceError) as raised:  # above what was confirmed: both prices said, nothing paid
+            self.buy(70_000)
+        self.assertIn("0.0712", str(raised.exception))
+        self.allowance.pay_x402.assert_not_called()
+
     def test_no_email_or_no_guest_checkout_orders_nothing(self):
         with self.assertRaises(ab.NeedsEmail):
             self.bitrefill.buy("u", "hediyen", "1", 20_000, email="  ")
