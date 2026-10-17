@@ -920,7 +920,7 @@ class AllowanceService:
     def owner_of(self, user_id: str) -> str:
         owner = self._owner(user_id)
         if not owner:
-            raise AllowanceUnavailable("The Trezor allowance is not enabled for this account.")
+            raise AllowanceUnavailable("The allowance is not enabled for this account.")
         return owner
 
     def agent_key(self, user_id: str) -> tuple[str, str]:
@@ -1005,7 +1005,7 @@ class AllowanceService:
                 result["previousAllowanceAtomic"] = left
                 result["telegramText"] += (
                     f"\n\nYour previous limiter {previous['limiter_address']} still holds an allowance of "
-                    f"{_usdc_text(left)} from your Trezor. Revoke it from the device; replacing a limiter does not."
+                    f"{_usdc_text(left)} from your wallet. Revoke it from your wallet; replacing a limiter does not."
                 )
         return result
 
@@ -1429,7 +1429,7 @@ class AllowanceService:
                 return  # transport: stays BROADCAST, offered again next time
             if "insufficient funds" in message:
                 raise AllowanceError(
-                    "Your Trezor address needs a little ETH on Base to pay for the approve's gas. It was not sent."
+                    "Your wallet needs a little ETH on Base to pay for the approve's gas. It was not sent."
                 ) from None
             raise
 
@@ -1458,12 +1458,12 @@ class AllowanceService:
             return None
         limiter = active["limiter_address"]
         if active["expiry"] <= self.now():
-            raise AllowanceError("Your Trezor allowance has expired. Set up a new limiter with /allowance_setup.")
+            raise AllowanceError("Your allowance has expired. Set up a new limiter with /allowance_setup.")
         if self.evm.call_word(limiter, selector("paused()")):
-            raise AllowanceError("Your Trezor allowance is paused. Set up a new limiter to spend again.")
+            raise AllowanceError("Your allowance is paused. Set up a new limiter to spend again.")
         owner = active["owner_address"]
         if not self.evm.call_word(USDC, encode_call("allowance(address,address)", owner, limiter)):
-            raise AllowanceError("Nothing is granted from your Trezor yet. Grant an allowance with /allowance_grant <amount>.")
+            raise AllowanceError("Nothing is granted from your wallet yet. Grant an allowance with /allowance_grant <amount>.")
         return active
 
     def _fund(self, active: Mapping[str, Any], agent: str, agent_key: str, amount: int, ref_text: str) -> dict[str, Any]:
@@ -1541,11 +1541,11 @@ class AllowanceService:
         """
         active = self.lane_for(user_id)
         if active is None:
-            raise AllowanceUnavailable("The Trezor allowance is not set up for this account.")
+            raise AllowanceUnavailable("The allowance is not set up for this account.")
         amount = int(requirements["amountAtomic"])
         pay_to = to_checksum_address(str(requirements["receiver"]))
         if str(requirements["asset"]).lower() != USDC.lower():
-            raise AllowanceError("Only USDC on Base can be paid from the Trezor allowance.")
+            raise AllowanceError("Only USDC on Base can be paid from the allowance.")
         agent, agent_key = self.agent_key(user_id)
         with self._spend_lock:
             funding = self._fund(active, agent, agent_key, amount,
@@ -1615,7 +1615,7 @@ class AllowanceService:
         """
         active = self.lane_for(user_id)
         if active is None:
-            raise AllowanceUnavailable("The Trezor allowance is not set up for this account.")
+            raise AllowanceUnavailable("The allowance is not set up for this account.")
         amount = int(amount)
         if amount <= 0:
             raise AllowanceError("Nothing to pay.")
@@ -1674,7 +1674,7 @@ class AllowanceService:
         described = self._describe(active)
         described["telegramText"] = (
             f"Paused. The limiter {limiter} can no longer move anything, permanently (tx {tx}).\n"
-            "To stop the allowance on chain as well, revoke it from your Trezor with /allowance_revoke.\n\n"
+            "To stop the allowance on chain as well, revoke it from your wallet with /allowance_revoke.\n\n"
             + described["telegramText"]
         )
         return described
@@ -1686,7 +1686,7 @@ class AllowanceService:
         self.advance(user_id)
         active = self.store.active_limiter(user_id)
         if active is None:
-            return {"configured": False, "telegramText": "No Trezor allowance yet. Set one up with /allowance_setup <daily> <per purchase> <days>."}
+            return {"configured": False, "telegramText": "No allowance yet. Set one up with /allowance_setup <daily> <per purchase> <days>."}
         described = self._describe(active)
         alerts = self.store.recent_alerts(user_id)
         if alerts:
@@ -1723,15 +1723,15 @@ class AllowanceService:
         owner_usdc = self.evm.usdc_balance(owner)
         expires = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(row["expiry"]))
         state = "paused" if paused else ("expired" if row["expiry"] <= self.now() else
-                                         ("granted" if allowance > 0 else "waiting for a grant from your Trezor"))
+                                         ("granted" if allowance > 0 else "waiting for a grant from your wallet"))
         text = "\n".join([
-            "Trezor allowance",
+            "Allowance",
             f"Limiter: {limiter}",
             f"Caps: {_usdc_text(row['daily_cap'])} a day, {_usdc_text(row['per_purchase_cap'])} a purchase, until {expires}",
             f"Left today: {_usdc_text(remaining)}",
-            f"Allowance from your Trezor: {_usdc_text(allowance)}",
+            f"Approved from your wallet: {_usdc_text(allowance)}",
             f"Agent float: {_usdc_text(float_usdc)}",
-            f"Your Trezor address holds: {_usdc_text(owner_usdc)}",
+            f"Your wallet holds: {_usdc_text(owner_usdc)}",
             f"State: {state}",
             f"Check the contract from your phone: https://base.blockscout.com/address/{limiter}?tab=contract",
         ])

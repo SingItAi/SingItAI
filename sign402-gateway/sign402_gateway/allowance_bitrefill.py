@@ -396,7 +396,7 @@ class BitrefillX402:
         how_to_use = usage_instructions(order.get("redemption_info") or order.get("redemptionInfo")) if order else ""
         name = f"{quoted['name']} {quoted['package']} {quoted.get('packageCurrency') or ''}".strip()
         text = (
-            f"Bought {name} for {Decimal(amount) / 1_000_000} USDC from your Trezor allowance ({paid['funding']}).\n"
+            f"Bought {name} for {Decimal(amount) / 1_000_000} USDC from your allowance ({paid['funding']}).\n"
             f"Payment: https://basescan.org/tx/{paid['settlementTx']}\n"
             + ("Your code is ready: send /last_purchase to see it." if delivered
                else "Bitrefill is still delivering it; /last_purchase will show it when it is ready.")

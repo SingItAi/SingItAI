@@ -77,7 +77,7 @@ class WatcherTests(unittest.TestCase):
         self.chain.spent(AGENT, 200_000)
         self.watcher.run_once()
         self.assertEqual(self.alerts()[0][0], "INFO")
-        self.assertIn("0.2 USDC moved from your Trezor to your agent", self.sent[0][1])
+        self.assertIn("0.2 USDC moved from your wallet to your agent", self.sent[0][1])
         self.service.pause.assert_not_called()
 
     def test_a_spend_to_anyone_else_pauses_at_once(self):
@@ -131,7 +131,7 @@ class WatcherTests(unittest.TestCase):
         self.chain.block = 150  # sixty blocks since the deployment at 90
         self.chain.spent(AGENT, 200_000)
         self.watcher.run_once()
-        self.assertIn("0.2 USDC moved from your Trezor to your agent", self.sent[0][1])
+        self.assertIn("0.2 USDC moved from your wallet to your agent", self.sent[0][1])
         read = [q for q in self.chain.queries if q[1] - q[0] + 1 <= aw.MIN_BLOCK_RANGE]
         self.assertEqual(read[0][0], 90)
         self.assertTrue(all(b[0] == a[1] + 1 for a, b in zip(read, read[1:]) if b[0] > a[0]))
@@ -151,7 +151,7 @@ class WatcherTests(unittest.TestCase):
         self.service.pause.side_effect = RuntimeError("guardian has no gas")
         self.chain.spent(STRANGER, 300_000)
         self.watcher.run_once()
-        self.assertIn("Revoke from your Trezor now", self.alerts()[0][1])
+        self.assertIn("Revoke the allowance from your wallet now", self.alerts()[0][1])
 
 
 class TelegramNotifierTests(unittest.TestCase):

@@ -1304,7 +1304,7 @@ class Sign402GatewayHandler(BaseHTTPRequestHandler):
             logger.exception("allowance: %s failed", path)
             self._send_json(
                 {"ok": False, "error": "allowance-failed",
-                 "telegramText": "The Trezor allowance request failed. Nothing was signed; try again later."},
+                 "telegramText": "The allowance request failed. Nothing was signed; try again later."},
                 status=500,
             )
 
@@ -5382,7 +5382,7 @@ def _allowance_x402_event(
         "paymentRequirements": payment_requirements,
         "resourceResult": resource_result,
         "result": "official_x402_resource_access_granted",
-        "telegramText": text + f"\nPaid from your Trezor allowance ({paid['funding']}).",
+        "telegramText": text + f"\nPaid from your allowance ({paid['funding']}).",
     }
 
 
@@ -8335,7 +8335,7 @@ def _allowance_bitrefill_reveal(server: Any, event: dict[str, Any], user_id: str
     name = str(event.get("productName") or "Your Bitrefill order")
     bitrefill, service = getattr(server, "allowance_bitrefill", None), getattr(server, "allowance", None)
     if bitrefill is None or service is None:
-        return {"ok": False, "telegramText": "The Trezor allowance lane is not available right now."}
+        return {"ok": False, "telegramText": "Paying from your allowance is not available right now."}
     if not service.store.reveal_once(user_id, invoice_id, int(time.time())):
         return {"ok": True, "telegramText": (
             f"{name} was already delivered. For security its code is shown once — check where you saved it."),

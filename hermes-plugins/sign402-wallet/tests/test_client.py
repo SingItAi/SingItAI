@@ -316,7 +316,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         for decision, text in (
             ("blocked_by_memory", "This merchant changed its payout address. Payment stopped."),
             ("rejected_by_imessage", "Purchase was not approved in iMessage."),
-            ("refused_by_allowance", "Nothing is granted from your Trezor yet."),
+            ("refused_by_allowance", "Nothing is granted from your wallet yet."),
         ):
             with self.subTest(decision=decision):
                 error = HTTPError(
@@ -1170,7 +1170,7 @@ class AllowanceClientTests(unittest.TestCase):
 
     def test_each_action_posts_to_its_route_as_the_user(self):
         opener = RecordingOpener(response=FakeResponse(json.dumps(
-            {"ok": True, "telegramText": "Trezor allowance", "limiter": "0xabc"}).encode()))
+            {"ok": True, "telegramText": "Allowance", "limiter": "0xabc"}).encode()))
         result = self.make_client(opener).execute_allowance(
             "setup", TelegramIdentity(user_id="1045618308"),
             payload={"dailyCap": "100", "perPurchaseCap": "10", "days": "30"}, user_access_token="user-token",
