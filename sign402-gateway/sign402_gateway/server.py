@@ -118,7 +118,7 @@ from .decide import decide as decide_payment, journal as read_decision_journal
 from .keyring import install_master_key
 from .agent_allowance import AllowanceError, AllowanceUnavailable, build_allowance_service_from_env
 
-from .allowance_bitrefill import PAY_TO as BITREFILL_X402_PAY_TO, BitrefillX402
+from .allowance_bitrefill import PAY_TO as BITREFILL_X402_PAY_TO, BitrefillX402, NeedsEmail
 from . import web_internal
 from .web_accounts import DEFAULT_WEB_DB, WEB_DB_ENV, WebAccountStore
 
@@ -3366,7 +3366,7 @@ def build_server(
         logger.error("solana allowance lane disabled: %s", exc)
         server.solana_allowance = None
     server.allowance_bitrefill = (
-        BitrefillX402(server.allowance, user_x402_buyer.base_payment_client)
+        BitrefillX402(server.allowance, user_x402_buyer.base_payment_client, mcp=bitrefill_client)
         if server.allowance is not None else None
     )
     # The web page's accounts (docs/allowance-web-v1.md): linked Telegram users
@@ -8271,6 +8271,10 @@ def _allowance_bitrefill_action(
 def _allowance_bitrefill_buy(server: Any, user_id: str, quote_id: str, *, web_confirmed: bool = False) -> dict[str, Any]:
     """A confirmed Bitrefill order, with the same limits, memory and approval as any purchase."""
     service, bitrefill = server.allowance, server.allowance_bitrefill
+    buyer = _bitrefill_buyer_email(server, user_id)
+    if not buyer:  # before the quote is taken: once the email is given, the same quote still buys
+        raise NeedsEmail("Bitrefill needs an email for your purchases once (it also sends your codes there). "
+                         "Add it in the SingIt app, then buy again.")
     quote = service.store.take_bitrefill_quote(user_id, quote_id, int(time.time()))
     _enforce_user_purchase_rate(user_id)
     server.user_event_store.preflight_write()
@@ -8299,20 +8303,30 @@ def _allowance_bitrefill_buy(server: Any, user_id: str, quote_id: str, *, web_co
                     server.spending_policy.memory.remember_rejection(payment, reason="declined in iMessage")
                 return {"ok": False, "decision": "rejected_by_imessage",
                         "telegramText": approval.get("telegramText", "Purchase was not approved in iMessage.")}
-        result = bitrefill.buy(_allowance_user(server, user_id), quote["slug"], quote["package"], quote["price_atomic"])
+        result = bitrefill.buy(_allowance_user(server, user_id), quote["slug"], quote["package"], quote["price_atomic"],
+                               email=buyer)
         _settle_user_wallet_spend(
             server, reservation_id, {"id": "bitrefill"}, BITREFILL_X402_MERCHANT, requirement,
             result, payment=payment, claim_id=claim_id,
         )
         settled = True
-        server.user_event_store.write(user_id, result)
+        server.user_event_store.write(user_id, result)  # the access token is encrypted there
         from .purchase_history import purchase_id as _purchase_id
-        return {**result, "purchaseId": _purchase_id(result)}  # the chat's receipt opens its code by this
+        shown = {k: v for k, v in result.items() if k != "fulfillmentToken"}  # never to the page or the chat
+        return {**shown, "purchaseId": _purchase_id(result)}  # the chat's receipt opens its code by this
     finally:
         if not settled:
             _release_user_wallet_spend(server, reservation_id)
             if claim_id and server.spending_policy is not None:
                 server.spending_policy.memory.release_claim(claim_id)
+
+
+def _bitrefill_buyer_email(server: Any, user_id: str) -> str | None:
+    """The email Bitrefill's guest invoices need: the asker's own, else their linked web account's."""
+    store = getattr(server, "buyer_email_store", None)
+    if store is None:
+        return None
+    return store.get_email(user_id) or store.get_email(_allowance_user(server, user_id))
 
 
 def _allowance_bitrefill_reveal(server: Any, event: dict[str, Any], user_id: str) -> dict[str, Any]:
@@ -8355,7 +8369,7 @@ def _last_bitrefill_purchase_response(
 ) -> dict[str, Any] | None:
     if event.get("mode") == "bitrefill_x402_allowance":
         return _allowance_bitrefill_reveal(server, event, telegram_user_id)
-    if event.get("mode") == "bitrefill_mcp_solana":
+    if event.get("mode") in ("bitrefill_mcp_solana", "bitrefill_mcp_base"):
         from .solana_bitrefill import reveal as _solana_reveal
         return _solana_reveal(server, event, telegram_user_id)
     quote_id = str(event.get("quoteId", "") or "").strip()

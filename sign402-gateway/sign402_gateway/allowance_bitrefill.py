@@ -1,18 +1,22 @@
-"""Bitrefill through its x402 API, on the Trezor allowance lane.
+"""Bitrefill on the Trezor allowance lane: ordered through MCP, paid over x402 on Base.
 
-The owner decided on 24 September 2026 that allowance-lane purchases on Bitrefill
-go through `https://api.bitrefill.com/x402`, paid by the user's agent key and
-funded by their limiter — recorded as an exception in AGENTS.md. Everything else
-in that file still applies: the user confirms the exact product and price before
-an order exists, and codes stay out of files and logs.
-
-The agent signs in with Sign-In-With-X (EIP-4361, eip191). The message is built
-exactly as the Bitrefill agent skill's `siwx_build_message.js` builds it; a test
-compares the two. The pay route's recipient must be Bitrefill's published x402
-address and its amount no more than the confirmed price; the payment itself is
+The order is a guest invoice from the project's Bitrefill MCP client, whose URL
+carries the owner's affiliate code (`?ref=`), so the purchase earns its commission;
+an order created on Bitrefill's x402 REST API does not (Bitrefill, 17 October 2026).
+The invoice is paid where Bitrefill sends guest invoices, `POST /x402/invoice/pay`,
+by the user's agent key and funded by their limiter, as the Solana lane pays its own.
+The pay route's recipient must be Bitrefill's published x402 address and its amount
+no more than the price the user confirmed; the payment itself is
 AllowanceService.pay_x402, which reads the settlement from the chain.
 
-Codes are fetched when the user asks to see them and returned to the caller only.
+Bitrefill asks a guest invoice for the buyer's email (codes also land there); the
+caller passes the one the user gave. The invoice's access token reads delivery and,
+once, the code: it is kept only in the encrypted purchase record.
+
+Orders made before this (mode `bitrefill_x402_allowance`) were created on the x402
+API under the agent's Sign-In-With-X session; their codes are still read that way.
+The SIWX message is built exactly as the Bitrefill agent skill's
+`siwx_build_message.js` builds it; a test compares the two.
 """
 
 from __future__ import annotations
@@ -46,6 +50,13 @@ CHAIN = "eip155:8453"
 TOKEN_SECONDS = 90 * 60           # Bitrefill's token lasts about two hours
 DELIVERY_WAIT_SECONDS = 90
 KINDS = {"gift-cards": "gift-cards", "topups": "topups", "esims": "esims"}
+PAY_URL = f"{API}/invoice/pay"  # where Bitrefill's MCP sends a guest invoice to be paid over x402
+DONE = {"complete", "completed", "delivered", "all_delivered"}
+FAILED = {"blocked", "denied", "payment_error"}
+
+
+class NeedsEmail(AllowanceError):
+    """Bitrefill needs the buyer's email once before a purchase."""
 
 
 def siwe_message(info: dict[str, Any], address: str, chain_id: int) -> str:
@@ -215,8 +226,10 @@ class BitrefillX402:
         http: Callable[..., tuple[int, Any, dict[str, str]]] = _http,
         now: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
+        mcp: Any = None,
     ):
         self.allowance = allowance
+        self._mcp_client = mcp
         self.x402_client = x402_client
         self.http = http
         self.now = now
@@ -224,6 +237,13 @@ class BitrefillX402:
         self._tokens: dict[str, tuple[str, float]] = {}
         self._signing_in: dict[str, threading.Lock] = {}
         self._signing_in_guard = threading.Lock()
+
+    def mcp(self) -> Any:
+        """The guest MCP client: the only one whose orders carry the affiliate code."""
+        client = self._mcp_client
+        if client is None or getattr(client, "checkout_mode", "") != "guest" or not hasattr(client, "quote_product"):
+            raise AllowanceError("Bitrefill checkout is not set up on this server. Nothing was bought.")
+        return client
 
     # -- sign-in --
 
@@ -272,67 +292,78 @@ class BitrefillX402:
                  "countries": p.get("countries")} for p in body.get("products", [])]
 
     def packages(self, user_id: str, slug: str) -> dict[str, Any]:
-        """What can be bought of one product (card values, eSIM plans) and what each costs now."""
-        status, body, _ = self.http("GET", f"{API}/products/detail?" + urllib.parse.urlencode({"slug": slug}),
-                                    token=self.token(user_id))
-        product = body.get("product", body) if isinstance(body, dict) else {}
-        if status != 200 or not product:
-            raise AllowanceError(f"Bitrefill has no product {slug!r}.")
+        """What can be bought of one product (card values, eSIM plans) and what each costs now.
+
+        From the MCP catalog, which prices the invoices this lane pays.
+        """
+        try:
+            product = self.mcp().get_product_details(product_id=str(slug or ""), country="")
+        except ValueError:
+            raise AllowanceError(f"Bitrefill has no product {slug!r}.") from None
         offered = []
         for p in product.get("packages") or []:
             try:
-                price = str(Decimal(str(p["payment_price"])))
+                price = str(Decimal(str(p["priceUsd"])))
             except (InvalidOperation, KeyError):
                 continue  # no price, nothing to consent to
-            offered.append({"value": str(p.get("package_value")), "currency": p.get("package_currency") or "",
-                            "priceUsd": price})
-        return {"slug": slug, "name": product.get("name") or slug, "packages": offered[:40],
-                "recipientRequired": bool(product.get("recipient_required"))}
+            offered.append({"value": str(p.get("value")), "currency": product.get("currency") or "", "priceUsd": price})
+        return {"slug": product["productId"], "name": product.get("name") or slug, "packages": offered[:40],
+                "recipientRequired": bool(product.get("requiredRecipientFields"))}
 
     def quote(self, user_id: str, slug: str, package: str) -> dict[str, Any]:
         """Product, package and the price Bitrefill quotes now, in USDC."""
-        status, body, _ = self.http("GET", f"{API}/products/detail?" + urllib.parse.urlencode({"slug": slug}),
-                                    token=self.token(user_id))
-        product = body.get("product", body) if isinstance(body, dict) else {}
-        match = [p for p in product.get("packages") or [] if str(p.get("package_value")) == str(package)]
-        if status != 200 or not match:
-            raise AllowanceError(f"Bitrefill has no package {package!r} for {slug}.")
-        if product.get("recipient_required"):
+        try:
+            quote = self.mcp().quote_product(product_id=str(slug or ""), package_id=str(package), country="", recipient={})
+        except ValueError as exc:
+            if "recipient" in str(exc):
+                raise AllowanceError("This product needs a recipient; only products delivered as a code can be bought here.") from None
+            if "unknown" in str(exc) or "required" in str(exc):
+                raise AllowanceError(f"Bitrefill has no package {package!r} for {slug}.") from None
+            raise AllowanceError(f"Bitrefill cannot sell that here: {exc}.") from None  # e.g. above its live maximum
+        if quote.get("requiredRecipientFields"):
             raise AllowanceError("This product needs a recipient; only products delivered as a code can be bought here.")
         try:
-            price = Decimal(str(match[0]["payment_price"]))
+            price = Decimal(str(quote["priceUsd"]))
         except (InvalidOperation, KeyError):
             raise AllowanceError("Bitrefill did not quote a price for it.") from None
         return {
-            "slug": slug, "name": product.get("name") or slug, "package": str(package),
-            "packageCurrency": match[0].get("package_currency"), "priceUsd": str(price),
+            "slug": quote["productId"], "name": quote.get("name") or slug, "package": str(quote["packageValue"]),
+            "packageCurrency": quote.get("currency"), "priceUsd": str(price),
             "priceAtomic": math.ceil(price * 1_000_000),
         }
 
     # -- purchase --
 
-    def buy(self, user_id: str, slug: str, package: str, ceiling_atomic: int) -> dict[str, Any]:
-        """Create the order and pay it from the agent, never above `ceiling_atomic`.
+    def buy(self, user_id: str, slug: str, package: str, ceiling_atomic: int, *, email: str) -> dict[str, Any]:
+        """Order through MCP and pay it from the agent, never above `ceiling_atomic`.
 
         The ceiling is the price the user confirmed. A price that rose since, a
-        pay route asking for another recipient, or more than the ceiling: nothing
-        is paid. The result carries no code.
+        payment route or recipient other than Bitrefill's published ones, or more
+        than the ceiling: nothing is paid. The result carries no code; its
+        `fulfillmentToken` (the invoice's access token) is for the encrypted record only.
         """
+        if not str(email or "").strip():
+            raise NeedsEmail("Bitrefill needs an email for your purchases once (it also sends your codes there).")
         quoted = self.quote(user_id, slug, package)
         if quoted["priceAtomic"] > ceiling_atomic:
             raise AllowanceError(
                 f"Bitrefill now asks {quoted['priceUsd']} USDC, above the price you confirmed. Nothing was bought; quote again."
             )
-        token = self.token(user_id)
-        status, invoice, _ = self.http("POST", f"{API}/invoice/create", token=token,
-                                       body={"items": [{"product_id": slug, "package_value": str(package)}]})
-        next_step = invoice.get("next_step") if isinstance(invoice, dict) else None
-        invoice_id = ((next_step or {}).get("body") or {}).get("invoice_id") or _find(invoice, "invoice_id")
-        if status not in (200, 201) or not next_step or not invoice_id:
+        client = self.mcp()
+        try:
+            invoice = client._normalize_invoice(client._call_tool("buy-products", {
+                "cart_items": [{"product_id": quoted["slug"], "package_value": quoted["package"]}],
+                "payment_method": "usdc_base", "email": str(email).strip(), "return_payment_link": False}))
+        except Exception:
+            raise AllowanceError("Bitrefill did not create the order. Nothing was paid.") from None
+        invoice_id, access = client._invoice_id(invoice), client._invoice_access_token(invoice)
+        if not invoice_id:
             raise AllowanceError("Bitrefill did not create the order. Nothing was paid.")
+        if str(invoice.get("x402_payment_url") or PAY_URL) != PAY_URL:
+            raise AllowanceError("Bitrefill offered an unexpected payment route. Nothing was paid.")
 
-        pay_url, pay_body = next_step["url"], next_step.get("body") or {}
-        status, challenge, headers = self.http("POST", pay_url, token=token, body=pay_body)
+        pay_body = {"invoice_id": invoice_id}
+        status, challenge, headers = self.http("POST", PAY_URL, body=pay_body)
         header = headers.get("payment-required") or headers.get("Payment-Required")
         if header:
             challenge = json.loads(base64.b64decode(header))
@@ -350,7 +381,7 @@ class BitrefillX402:
         from . import purchase_progress
         purchase_progress.mark("paying")
         paid = self.allowance.pay_x402(
-            user_id, pay_url, {"amountAtomic": str(amount), "receiver": pay_to, "asset": USDC},
+            user_id, PAY_URL, {"amountAtomic": str(amount), "receiver": pay_to, "asset": USDC},
             self.x402_client, method="POST", request_body=pay_body,
         )
         if not paid["ok"]:
@@ -362,8 +393,9 @@ class BitrefillX402:
             raise AllowanceError(f"Order {invoice_id} was not paid (HTTP {paid['status']}). Nothing was charged.")
 
         purchase_progress.mark("paid")
-        delivered = self._wait_delivery(token, invoice_id)
-        how_to_use = self._how_to_use(user_id, invoice_id, slug) if delivered else ""
+        order = self._wait_delivery(client, invoice_id, access)
+        delivered = order is not None
+        how_to_use = usage_instructions(order.get("redemption_info") or order.get("redemptionInfo")) if order else ""
         name = f"{quoted['name']} {quoted['package']} {quoted.get('packageCurrency') or ''}".strip()
         text = (
             f"Bought {name} for {Decimal(amount) / 1_000_000} USDC from your Trezor allowance ({paid['funding']}).\n"
@@ -372,45 +404,41 @@ class BitrefillX402:
                else "Bitrefill is still delivering it; /last_purchase will show it when it is ready.")
         )
         return {
-            "ok": True, "mode": "bitrefill_x402_allowance", "invoiceId": invoice_id, "productSlug": slug,
-            "package": str(package), "productName": quoted["name"], "priceUsd": str(Decimal(amount) / 1_000_000),
+            "ok": True, "mode": "bitrefill_mcp_base", "invoiceId": invoice_id, "productSlug": quoted["slug"],
+            "package": quoted["package"], "productName": quoted["name"], "priceUsd": str(Decimal(amount) / 1_000_000),
             "amountAtomic": amount, "txId": paid["settlementTx"], "funding": paid["funding"],
             "fundingTx": paid["fundingTx"], "payer": paid["payer"], "limiter": paid["limiter"],
             "delivered": delivered, "telegramText": text, **({"howToUse": how_to_use} if how_to_use else {}),
+            **({"fulfillmentToken": access} if access else {}),
         }
 
-    def _how_to_use(self, user_id: str, invoice_id: str, slug: str) -> str:
-        """Bitrefill's usage instructions for a delivered order; the code itself is read and dropped here."""
-        try:
-            info = self.redemption(user_id, invoice_id)
-        except Exception:
-            return ""
-        first = next((i for i in (info if isinstance(info, list) else [info]) if isinstance(i, dict)), None)
-        # Field names only, never values: what Bitrefill sends, so the instructions can be found.
-        logger.info("bitrefill: redemption fields for %s: %s", slug,
-                    sorted(first) if first is not None else type(info).__name__)
-        return usage_instructions(info)
+    def _wait_delivery(self, client: Any, invoice_id: str, access: str) -> dict[str, Any] | None:
+        """The delivered order, read with the invoice's access token, or None if it is not ready in time."""
+        from .solana_bitrefill import _poll_wait  # the same pace: often at first, when most codes arrive
+        paid_at = self.now()
+        deadline = paid_at + DELIVERY_WAIT_SECONDS
+        while True:
+            try:
+                current = client.invoice_status(invoice_id=invoice_id, invoice_access_token=access)
+            except Exception:
+                current = {}
+            state, orders = client._invoice_status(current), client._orders(current)
+            if state in FAILED:
+                return None
+            if state in DONE or (orders and str(orders[0].get("status")).lower() == "delivered"):
+                logger.info("bitrefill: code delivered %.1fs after payment", self.now() - paid_at)
+                return orders[0] if orders else {}
+            if self.now() >= deadline:
+                return None
+            self.sleep(_poll_wait(self.now() - paid_at))
 
     def _status(self, token: str, invoice_id: str) -> Any:
         status, body, _ = self.http("GET", f"{API}/invoice/status?" + urllib.parse.urlencode({"invoice_id": invoice_id}),
                                     token=token)
         return body if status == 200 else None
 
-    def _wait_delivery(self, token: str, invoice_id: str) -> bool:
-        from .solana_bitrefill import _poll_wait  # the same pace: often at first, when most codes arrive
-        paid_at = self.now()
-        deadline = paid_at + DELIVERY_WAIT_SECONDS
-        while True:
-            body = self._status(token, invoice_id)
-            if _find(body, "delivery_status") == "all_delivered":
-                logger.info("bitrefill: code delivered %.1fs after payment", self.now() - paid_at)
-                return True
-            if self.now() >= deadline:
-                return False
-            self.sleep(_poll_wait(self.now() - paid_at))
-
     def redemption(self, user_id: str, invoice_id: str) -> Any:
-        """The code for one delivered order, or None. Returned to the caller only."""
+        """The code of one order made on the x402 API before orders moved to MCP, or None. Returned to the caller only."""
         token = self.token(user_id)
         body = self._status(token, invoice_id)
         if _find(body, "delivery_status") != "all_delivered":

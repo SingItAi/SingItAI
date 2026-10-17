@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -171,13 +172,24 @@ class GatewayWebShopTests(unittest.TestCase):
         self.server.allowance_bitrefill.quote.return_value = {
             "slug": "hediyen", "name": "Hediyen Kart", "package": "1", "packageCurrency": "TRY",
             "priceUsd": "0.02", "priceAtomic": 20_000}
-        self.server.allowance_bitrefill.buy.return_value = {"ok": True, "invoiceId": "inv-9", "telegramText": "Bought."}
+        self.server.allowance_bitrefill.buy.return_value = {"ok": True, "invoiceId": "inv-9", "telegramText": "Bought.",
+                                                            "mode": "bitrefill_mcp_base", "fulfillmentToken": "tok-secret"}
+        emails = {}
+        self.server.buyer_email_store = SimpleNamespace(get_email=emails.get)
         status, quote = self.call("bitrefill-quote", {"productId": "hediyen", "package": "1"})
         self.assertEqual(status, 200)
+        # Bitrefill's guest invoice needs an email: asked for, and the same quote still buys once it is given.
+        status, body = self.call("bitrefill-buy", {"quoteId": quote["quoteId"]})
+        self.assertEqual((status, body["error"]), (409, "email_needed"))
+        self.server.allowance_bitrefill.buy.assert_not_called()
+        emails[ACCOUNT] = "buyer@example.com"
         status, bought = self.call("bitrefill-buy", {"quoteId": quote["quoteId"]})
         self.assertEqual((status, bought["invoiceId"]), (200, "inv-9"))
+        self.assertNotIn("fulfillmentToken", bought, "the access token stays in the encrypted record")
+        self.assertEqual(self.server.user_event_store.write.call_args.args[1]["fulfillmentToken"], "tok-secret")
         self.server.imessage_approval_service.request_purchase_approval.assert_not_called()
-        self.server.allowance_bitrefill.buy.assert_called_once_with(ACCOUNT, "hediyen", "1", 20_000)
+        self.server.allowance_bitrefill.buy.assert_called_once_with(ACCOUNT, "hediyen", "1", 20_000,
+                                                                     email="buyer@example.com")
 
     def test_a_web_accounts_limits_are_its_limiters(self):
         self.server.user_spend_limit_store = Mock(wraps=self.server.user_spend_limit_store)

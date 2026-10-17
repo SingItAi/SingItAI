@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import unittest
+from types import SimpleNamespace
 from contextlib import ExitStack
 from decimal import Decimal
 from pathlib import Path
@@ -8791,6 +8792,9 @@ class AllowanceBitrefillEndpointTests(unittest.TestCase):
             self.server.user_spend_limit_store.limit_settings.return_value,
             maxPerTxAtomic=1_000_000, dailyCapAtomic=5_000_000, maxPerTxUsdc="1", dailyCapUsdc="5",
         )
+        # Bitrefill's guest invoices need the buyer's email.
+        self.emails = {"1045618308": "buyer@example.com"}
+        self.server.buyer_email_store = SimpleNamespace(get_email=self.emails.get)
         self.http = AllowanceEndpointTests()
 
     def call(self, action, body=None):
@@ -8801,11 +8805,22 @@ class AllowanceBitrefillEndpointTests(unittest.TestCase):
         self.assertEqual(status, 200)
         return body["quoteId"]
 
+    def test_without_an_email_nothing_is_ordered_and_the_quote_still_holds(self):
+        quote_id = self.quote()
+        self.emails.clear()
+        status, body = self.call("bitrefill-buy", {"quoteId": quote_id})
+        self.assertEqual(status, 400)
+        self.assertIn("email", json.dumps(body))
+        self.server.allowance_bitrefill.buy.assert_not_called()
+        self.emails["1045618308"] = "buyer@example.com"
+        self.assertEqual(self.call("bitrefill-buy", {"quoteId": quote_id})[0], 200)
+
     def test_a_quote_buys_exactly_one_order_at_the_quoted_price(self):
         quote_id = self.quote()
         status, body = self.call("bitrefill-buy", {"quoteId": quote_id})
         self.assertEqual((status, body["invoiceId"]), (200, "inv-9"))
-        self.server.allowance_bitrefill.buy.assert_called_once_with("1045618308", "hediyen", "1", 20_000)
+        self.server.allowance_bitrefill.buy.assert_called_once_with("1045618308", "hediyen", "1", 20_000,
+                                                                     email="buyer@example.com")
         self.server.user_event_store.write.assert_called_once()
 
         status, body = self.call("bitrefill-buy", {"quoteId": quote_id})

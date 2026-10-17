@@ -263,16 +263,17 @@ def _handle(server: Any, action: str, payload: dict[str, Any]) -> tuple[int, dic
             return web_venice.choose_model(server, account, payload.get("model"))
         return web_venice.chat(server, gw, account, payload.get("messages"), context=payload.get("context"))
 
-    if account.startswith(SOLANA_PREFIX) and action in ("bitrefill-packages", "bitrefill-solana-buy", "buyer-email",
-                                                        "buyer-email-set"):
+    if action in ("buyer-email", "buyer-email-set"):  # Bitrefill's guest invoices need it, on either chain
+        from . import solana_bitrefill  # noqa: PLC0415
+        if action == "buyer-email":
+            return 200, {"ok": True, "hasEmail": bool(solana_bitrefill.email(server, account))}
+        solana_bitrefill.set_email(server, account, payload.get("email"))
+        return 200, {"ok": True, "hasEmail": True}
+
+    if account.startswith(SOLANA_PREFIX) and action in ("bitrefill-packages", "bitrefill-solana-buy"):
         from . import solana_bitrefill  # noqa: PLC0415
         if action == "bitrefill-packages":
             return 200, {"ok": True, **solana_bitrefill.packages(server, payload.get("productId"))}
-        if action == "buyer-email":
-            return 200, {"ok": True, "hasEmail": bool(solana_bitrefill.email(server, account))}
-        if action == "buyer-email-set":
-            solana_bitrefill.set_email(server, account, payload.get("email"))
-            return 200, {"ok": True, "hasEmail": True}
         try:
             return 200, solana_bitrefill.buy(server, account, payload.get("productId"), payload.get("package"),
                                              shown_price=payload.get("priceUsd"))
@@ -291,7 +292,10 @@ def _handle(server: Any, action: str, payload: dict[str, Any]) -> tuple[int, dic
     if action in ("bitrefill-search", "bitrefill-packages", "bitrefill-quote", "bitrefill-buy"):
         if action == "bitrefill-buy":
             _limits_from_limiter(server, gw, account)
-        result = gw._allowance_bitrefill_action(server, account, action, payload, web_confirmed=True)
+        try:
+            result = gw._allowance_bitrefill_action(server, account, action, payload, web_confirmed=True)
+        except gw.NeedsEmail as exc:
+            return 409, {"ok": False, "error": "email_needed", "text": str(exc)}
         if result.get("ok", True) is False:
             return 400, result
         return 200, {"ok": True, **result}

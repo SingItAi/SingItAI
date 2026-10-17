@@ -168,6 +168,27 @@ class AgentTests(unittest.TestCase):
         self.assertTrue(reply["messages"][0]["cards"][0]["giftcard"])
         self.assertEqual(reply["messages"][0]["cards"][0]["howToUse"], "Show the barcode to the cashier.")
 
+    def test_a_base_purchase_asks_the_email_once_then_finishes(self):
+        emails = []
+        shop = self.shop.__call__
+        def needs_email(action, account, body):
+            if action == "bitrefill-buy" and not emails:
+                self.shop.calls.append((action, account, dict(body)))
+                return 409, {"ok": False, "error": "email_needed", "text": "Bitrefill needs an email."}
+            if action == "buyer-email-set":
+                emails.append(body["email"])
+                return 200, {"ok": True}
+            return shop(action, account, body)
+        self.agent.shop = needs_email
+        chat = self.agent.message(ACCOUNT, None, "hi")["chatId"]
+        asked = self.agent.action(ACCOUNT, chat, {"type": "buy_giftcard", "slug": "steam-germany", "package": "10",
+                                                  "name": "Steam DE"})["messages"][0]
+        self.assertIn("What email should I use?", asked["text"])
+        done = self.agent.message(ACCOUNT, chat, "me@example.com")["messages"][1]
+        self.assertEqual(emails, ["me@example.com"])
+        self.assertTrue(done["text"].startswith("Saved your email. Bought Steam DE 10 EUR for 10.9 USDC."))
+        self.assertEqual(done["cards"][0]["type"], "receipt")
+
     def test_an_esim_is_searched_among_esims_by_the_place(self):
         self.model_replies = [json.dumps({"query": "eSIM", "country": "DE", "place": "Germany", "amount": "", "buy": False})]
         message = self.send("i wanna buy eSim for Germany", "esim")
