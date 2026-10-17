@@ -109,8 +109,9 @@ class SolanaBridge:
                     NETWORK_ERROR='Bitrefill did not answer. Nothing was paid.')
             if operation == 'bitrefill-invoice-transfer':
                 messages.update(
-                    AGENT_SOL_REQUIRED='Your agent needs a little SOL for the network fee. Add SOL in Allowance → '
-                                       'Network fees for gift cards, then buy again. Nothing was paid.',
+                    FEE_PAYER_LOW='Gift cards from a Solana wallet are paused for a moment on SingIt. Nothing was paid.',
+                    FEE_PAYER_REQUIRED='Gift cards from a Solana wallet are not set up on this server yet. Nothing was paid.',
+                    FEE_PAYER_UNAVAILABLE='Gift cards from a Solana wallet are paused for a moment on SingIt. Nothing was paid.',
                     RECIPIENT_ACCOUNT_MISSING="Bitrefill's deposit address cannot take USDC yet. Nothing was paid.",
                     INVALID_RECIPIENT='Bitrefill asked to be paid somewhere unexpected. Nothing was paid.',
                     ALREADY_ATTEMPTED='This order was already paid or attempted. Nothing more was sent.',
@@ -148,9 +149,10 @@ class SolanaBridge:
                         else 'Venice could not complete this request. No automatic retry was made.')
             text = messages.get(code, fallback)
             reason = str(response.get('reason') or '')[:160] if isinstance(response, dict) else ''
-            if reason:  # the seller's refusal code: plain text, no payload
+            if reason:  # plain text, no payload
                 logger.warning('solana %s refused: %s %s', operation, code, reason)
-                text = f'{text} ({reason})'
+                if operation == 'data-pay':  # a seller's refusal code says why; our own details are for the log only
+                    text = f'{text} ({reason})'
             raise SolanaChatError(str(code), text)
         return response['result']
 

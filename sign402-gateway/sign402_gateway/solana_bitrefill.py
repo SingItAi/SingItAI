@@ -8,8 +8,9 @@ USDC on Solana straight to the invoice's own deposit address.
      access token and `payment_info`: the deposit address and the amount;
   2. the invoice is read again, and the agent transfers that amount straight from the
      owner's account as their approved delegate, within their limits (solana_allowance.py,
-     solana-x402-service/src/invoice.mjs, InvoiceTransfers). The agent pays the network fee
-     from SOL its owner sent it; without it, nothing is bought.
+     solana-x402-service/src/invoice.mjs, InvoiceTransfers). Our fee payer pays the network fee
+     in SOL and, in the same transaction, the buyer pays it back in USDC (NETWORK_FEE_ATOMIC)
+     from the same wallet: nobody pays for anyone else.
      Until October 2026 this was paid over Bitrefill's x402 route (verified live on
      September 18, docs/bitrefill-solana-checks.md), whose fee payer paid the fee; that
      route no longer knows MCP invoices;
@@ -37,6 +38,9 @@ from .allowance_bitrefill import NeedsEmail, usage_instructions  # noqa: F401 - 
 logger = logging.getLogger(__name__)
 
 USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"  # USDC on Solana mainnet
+# Our fee payer pays each transfer's network fee in SOL (about 0.000005 SOL, well under 0.001 USDC); the
+# buyer pays it back in USDC, in the same transaction, from the wallet that pays for the card.
+NETWORK_FEE_ATOMIC = 1_000  # 0.001 USDC
 PRICE_SLACK = Decimal("1.02")        # the invoice may round up a little from the quote, never more
 DELIVERY_WAIT_SECONDS = 90
 # How often to ask whether the code is ready: often at first, when most codes arrive (a few seconds after the
@@ -140,6 +144,10 @@ def _lane(server: Any) -> Any:
     return lane
 
 
+def _usdc(atomic: int) -> str:
+    return f"{Decimal(atomic) / 1_000_000:f}".rstrip("0").rstrip(".")
+
+
 def _atomic(usdc: Any) -> int:
     try:
         return math.ceil(Decimal(str(usdc)) * 1_000_000)
@@ -188,6 +196,8 @@ def _shown_atomic(usdc: Any) -> int | None:
 def buy(server: Any, account: str, slug: Any, package: Any, *, shown_price: Any = None, sleep: Any = time.sleep,
         now: Any = time.time) -> dict[str, Any]:
     client, lane = _client(server), _lane(server)
+    if not getattr(lane, "fee_payer_key", None):  # before anything is ordered: the transfer could not be sent
+        raise AllowanceUnavailable("Gift cards from a Solana wallet are not set up on this server yet. Nothing was bought.")
     started = time.monotonic()
     # The limits from the ledger. The wallet itself (approval, balance) is read once, fresh, by spend() below:
     # status() read it too, a Node process of its own, before anything was even priced.
@@ -209,8 +219,9 @@ def buy(server: Any, account: str, slug: Any, package: Any, *, shown_price: Any 
     shown = _shown_atomic(shown_price)
     if shown is not None and price > shown:  # bought only at the price the user pressed Buy on, or below
         raise PriceChanged(str(shown_price).strip(), exact)
-    if price > int(limits["per_purchase_cap"]) or price > remaining:
-        raise AllowanceError(f"{exact} USDC does not fit your limits today. Nothing was bought.")
+    if price + NETWORK_FEE_ATOMIC > int(limits["per_purchase_cap"]) or price + NETWORK_FEE_ATOMIC > remaining:
+        raise AllowanceError(f"{exact} USDC and its {_usdc(NETWORK_FEE_ATOMIC)} USDC network fee do not fit your limits today. "
+                             "Nothing was bought.")
 
     invoice = client._normalize_invoice(client._call_tool("buy-products", {
         "cart_items": [{"product_id": quote["productId"], "package_value": quote["packageValue"]}],
@@ -224,8 +235,9 @@ def buy(server: Any, account: str, slug: Any, package: Any, *, shown_price: Any 
     priced = time.monotonic()
     owner = lane.owner(account)
     purchase_progress.mark("paying")
-    paid = lane.spend(account, amount, f"Bitrefill {quote['name']} {quote['packageValue']}", lambda: lane._call(
-        account, "bitrefill-invoice-transfer", invoiceId=invoice_id, payTo=pay_to, amount=str(amount), owner=owner))
+    paid = lane.spend(account, amount + NETWORK_FEE_ATOMIC, f"Bitrefill {quote['name']} {quote['packageValue']}", lambda: lane._call(
+        account, "bitrefill-invoice-transfer", fee_payer=True, invoiceId=invoice_id, payTo=pay_to, amount=str(amount),
+        feeAmount=str(NETWORK_FEE_ATOMIC), owner=owner))
 
     purchase_progress.mark("paid")
     paying_done = time.monotonic()
@@ -256,8 +268,10 @@ def buy(server: Any, account: str, slug: Any, package: Any, *, shown_price: Any 
         "bitrefill": {"status": "delivered" if delivered else "paid", "productName": name},
         "productName": name, "productSlug": quote["productId"], "package": quote["packageValue"],
         "network": "solana", "txId": paid.get("transaction"), "amountAtomic": str(amount),
+        "networkFeeAtomic": str(NETWORK_FEE_ATOMIC),
         "fulfillmentToken": token,  # encrypted by the purchase store; reveals the code once
-        "receipt": {"name": name, "denomination": denomination, "paid": f"{Decimal(amount) / 1_000_000:f} USDC",
+        "receipt": {"name": name, "denomination": denomination,
+                    "paid": f"{_usdc(amount)} USDC + {_usdc(NETWORK_FEE_ATOMIC)} USDC network fee",
                     "network": "Solana", "txId": paid.get("transaction"), "status": "Completed" if delivered else "Paid"},
     }
     if token:
@@ -267,7 +281,7 @@ def buy(server: Any, account: str, slug: Any, package: Any, *, shown_price: Any 
     from .purchase_history import purchase_id
     return {"ok": True, "invoiceId": invoice_id, "purchaseId": purchase_id(event), "delivered": delivered, "name": name,
             "package": quote["packageValue"],
-            "packageCurrency": quote.get("currency") or "", "priceUsd": f"{Decimal(amount) / 1_000_000:f}".rstrip("0").rstrip("."),
+            "packageCurrency": quote.get("currency") or "", "priceUsd": _usdc(amount), "networkFeeUsd": _usdc(NETWORK_FEE_ATOMIC),
             "txId": paid.get("transaction"), **({"howToUse": how_to_use} if how_to_use else {})}
 
 
