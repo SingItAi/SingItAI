@@ -27,7 +27,7 @@ from typing import Any
 
 from .agent_allowance import AllowanceError, AllowanceUnavailable
 from . import purchase_progress
-from .allowance_bitrefill import usage_instructions
+from .allowance_bitrefill import NeedsEmail, usage_instructions  # noqa: F401 - NeedsEmail is raised here too
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +43,6 @@ def _poll_wait(waited: float) -> float:
     fast, during, slow = DELIVERY_POLL_SECONDS
     return fast if waited < during else slow
 DONE = {"complete", "completed", "delivered", "all_delivered"}
-
-
-class NeedsEmail(AllowanceError):
-    """Bitrefill needs the buyer's email once before a Solana purchase."""
 
 
 class PriceChanged(AllowanceError):
@@ -202,7 +198,10 @@ def buy(server: Any, account: str, slug: Any, package: Any, *, shown_price: Any 
 
 
 def reveal(server: Any, event: dict[str, Any], account: str) -> dict[str, Any]:
-    """The code of a Solana Bitrefill order, once: its access token is dropped after it is shown."""
+    """The code of an MCP guest order (Solana, or Base since orders moved to MCP), once.
+
+    Its access token is dropped after it is shown.
+    """
     name = str(event.get("productName") or "Your Bitrefill order")
     token = str(event.get("fulfillmentToken") or "").strip()
     if not token:
