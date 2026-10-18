@@ -45,10 +45,10 @@ class UserWalletTests(unittest.TestCase):
     def test_issue_and_resolve_per_user_access_token(self):
         _service, store = self.make_service()
 
-        token = store.issue_access_token("1045618308")
+        token = store.issue_access_token("100000001")
 
         self.assertTrue(token)
-        self.assertEqual(store.resolve_telegram_user_id(token), "1045618308")
+        self.assertEqual(store.resolve_telegram_user_id(token), "100000001")
         # Only the hash is stored, never the plaintext token.
         self.assertNotIn(token, store.path.read_bytes().decode("utf-8", "replace"))
         # Bogus / empty tokens resolve to nothing.
@@ -58,32 +58,32 @@ class UserWalletTests(unittest.TestCase):
     def test_reissuing_access_token_keeps_recent_tokens_valid(self):
         _service, store = self.make_service()
 
-        first = store.issue_access_token("1045618308")
-        second = store.issue_access_token("1045618308")
+        first = store.issue_access_token("100000001")
+        second = store.issue_access_token("100000001")
 
         self.assertNotEqual(first, second)
-        self.assertEqual(store.resolve_telegram_user_id(first), "1045618308")
-        self.assertEqual(store.resolve_telegram_user_id(second), "1045618308")
+        self.assertEqual(store.resolve_telegram_user_id(first), "100000001")
+        self.assertEqual(store.resolve_telegram_user_id(second), "100000001")
 
     def test_access_token_store_keeps_a_bounded_recent_set(self):
         _service, store = self.make_service()
 
         tokens = [
-            store.issue_access_token("1045618308")
+            store.issue_access_token("100000001")
             for _index in range(MAX_ACTIVE_ACCESS_TOKENS_PER_USER + 2)
         ]
 
         self.assertIsNone(store.resolve_telegram_user_id(tokens[0]))
         self.assertIsNone(store.resolve_telegram_user_id(tokens[1]))
         for token in tokens[2:]:
-            self.assertEqual(store.resolve_telegram_user_id(token), "1045618308")
+            self.assertEqual(store.resolve_telegram_user_id(token), "100000001")
 
     def test_create_wallet_encrypts_private_key_and_returns_safe_metadata(self):
         service, store = self.make_service()
 
         result = service.create_wallet(
-            telegram_user_id="1045618308",
-            telegram_username="AlpskyKnedlik",
+            telegram_user_id="100000001",
+            telegram_username="test_operator",
         )
 
         self.assertTrue(result["ok"])
@@ -100,19 +100,19 @@ class UserWalletTests(unittest.TestCase):
         self.assertIn("iMessage", result["telegramText"])
         self.assertNotIn("small amount", result["telegramText"])
 
-        row = store.get_wallet_by_telegram_user_id("1045618308")
+        row = store.get_wallet_by_telegram_user_id("100000001")
         self.assertIsNotNone(row)
         assert row is not None
-        self.assertEqual(row["telegram_user_id"], "1045618308")
-        self.assertEqual(row["telegram_username"], "AlpskyKnedlik")
+        self.assertEqual(row["telegram_user_id"], "100000001")
+        self.assertEqual(row["telegram_username"], "test_operator")
         self.assertEqual(row["wallet_address"], result["wallet"]["address"])
         self.assertNotRegex(row["encrypted_private_key"], r"^0x[a-fA-F0-9]{64}$")
 
     def test_create_wallet_is_idempotent_for_same_telegram_user(self):
         service, _store = self.make_service()
 
-        first = service.create_wallet("1045618308")
-        second = service.create_wallet("1045618308")
+        first = service.create_wallet("100000001")
+        second = service.create_wallet("100000001")
 
         self.assertTrue(first["created"])
         self.assertFalse(second["created"])
@@ -123,7 +123,7 @@ class UserWalletTests(unittest.TestCase):
 
         with ThreadPoolExecutor(max_workers=16) as executor:
             results = list(
-                executor.map(lambda _index: service.create_wallet("1045618308"), range(16))
+                executor.map(lambda _index: service.create_wallet("100000001"), range(16))
             )
 
         addresses = {result["wallet"]["address"] for result in results}
@@ -222,7 +222,7 @@ class UserWalletTests(unittest.TestCase):
     def test_wallet_status_without_wallet_returns_clear_message(self):
         service, _store = self.make_service()
 
-        result = service.wallet_status("1045618308")
+        result = service.wallet_status("100000001")
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["wallet"], None)
@@ -230,9 +230,9 @@ class UserWalletTests(unittest.TestCase):
 
     def test_wallet_status_existing_wallet_returns_safe_metadata(self):
         service, _store = self.make_service()
-        created = service.create_wallet("1045618308")
+        created = service.create_wallet("100000001")
 
-        result = service.wallet_status("1045618308")
+        result = service.wallet_status("100000001")
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["wallet"]["address"], created["wallet"]["address"])
@@ -246,7 +246,7 @@ class UserWalletTests(unittest.TestCase):
         service = ManagedBaseWalletService(store=store, master_key="")
 
         with self.assertRaisesRegex(WalletEncryptionError, "SIGN402_WALLET_MASTER_KEY"):
-            service.create_wallet("1045618308")
+            service.create_wallet("100000001")
 
     def test_build_wallet_service_from_env_accepts_master_key(self):
         tmp = tempfile.TemporaryDirectory()
@@ -256,7 +256,7 @@ class UserWalletTests(unittest.TestCase):
             store_path=Path(tmp.name) / "wallets.db",
         )
 
-        result = service.create_wallet("1045618308")
+        result = service.create_wallet("100000001")
 
         self.assertTrue(result["ok"])
         self.assertRegex(result["wallet"]["address"], r"^0x[a-fA-F0-9]{40}$")
@@ -293,13 +293,13 @@ class UserWalletTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(WalletEncryptionError, "valid Fernet key"):
-            service.create_wallet("1045618308")
+            service.create_wallet("100000001")
 
     def test_balance_degrades_when_provider_is_not_configured(self):
         service, _store = self.make_service()
-        created = service.create_wallet("1045618308")
+        created = service.create_wallet("100000001")
 
-        result = service.wallet_balance("1045618308")
+        result = service.wallet_balance("100000001")
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["wallet"]["address"], created["wallet"]["address"])
@@ -312,9 +312,9 @@ class UserWalletTests(unittest.TestCase):
 
         service, _store = self.make_service()
         service.balance_provider = failing_balance_provider
-        created = service.create_wallet("1045618308")
+        created = service.create_wallet("100000001")
 
-        result = service.wallet_balance("1045618308")
+        result = service.wallet_balance("100000001")
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["wallet"]["address"], created["wallet"]["address"])
@@ -342,9 +342,9 @@ class UserWalletTests(unittest.TestCase):
             }
 
         service, _store = self.make_service(balance_provider=balance_provider)
-        service.create_wallet("1045618308")
+        service.create_wallet("100000001")
 
-        result = service.wallet_balance("1045618308")
+        result = service.wallet_balance("100000001")
 
         self.assertFalse(result["balanceUnavailable"])
         self.assertEqual(
@@ -365,9 +365,9 @@ class UserWalletTests(unittest.TestCase):
                 "ETH": "0.5",
             }
         )
-        service.create_wallet("1045618308")
+        service.create_wallet("100000001")
 
-        result = service.wallet_balance("1045618308")
+        result = service.wallet_balance("100000001")
 
         self.assertFalse(result["balanceUnavailable"])
         self.assertEqual(result["balances"], {"USDC": "2", "ETH": "0.5"})
@@ -398,9 +398,9 @@ class UserWalletTests(unittest.TestCase):
             }
 
         service, _store = self.make_service(balance_provider=balance_provider)
-        service.create_wallet("1045618308")
+        service.create_wallet("100000001")
 
-        result = service.withdrawable_tokens("1045618308")
+        result = service.withdrawable_tokens("100000001")
 
         self.assertTrue(result["ok"])
         self.assertFalse(result["balanceUnavailable"])

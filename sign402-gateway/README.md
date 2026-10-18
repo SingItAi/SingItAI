@@ -190,7 +190,7 @@ For the maintained Graph/Ledger demonstration, use
 Set up the CDP helper once:
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/cdp-x402-service"
+cd cdp-x402-service  # from the repo root
 npm install
 cp .env.example .env
 npm run account
@@ -254,7 +254,7 @@ curl -sS -X POST http://127.0.0.1:8099/agent/buy-x402 \
 Install the only extra dependency into the payment executor venv:
 
 ```bash
-"/Users/mp/Documents/Berlin Hack/payment-executor/.venv/bin/python" -m pip install pyserial
+../payment-executor/.venv/bin/python -m pip install pyserial
 ```
 
 Check the Firefly port:
@@ -266,8 +266,8 @@ ls /dev/cu.usb*
 Start the gateway:
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/sign402-gateway"
-FIREFLY_PORT=/dev/cu.usbmodem11301 ../payment-executor/.venv/bin/python -m sign402_gateway
+cd sign402-gateway  # from the repo root
+FIREFLY_PORT=/dev/cu.usbmodemXXXX ../payment-executor/.venv/bin/python -m sign402_gateway
 ```
 
 Default URL:
@@ -290,7 +290,7 @@ wallet swaps it to USDC before the gateway pays the MCP-issued Base invoice.
 Create the local live env file:
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/sign402-gateway"
+cd sign402-gateway  # from the repo root
 cp .env.wallet-bitrefill.example .env.wallet-bitrefill
 ```
 
@@ -298,7 +298,7 @@ Fill:
 
 ```text
 BITREFILL_API_KEY=...
-FIREFLY_PORT=/dev/cu.usbmodem11301
+FIREFLY_PORT=/dev/cu.usbmodemXXXX
 ```
 
 Live catalog, quote, purchase, and invoice-status requests use Bitrefill MCP at
@@ -331,7 +331,7 @@ product-detail prices, or redemption values.
 Start the gateway in wallet-native mode:
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/sign402-gateway"
+cd sign402-gateway  # from the repo root
 ./scripts/run-wallet-bitrefill.sh
 ```
 
@@ -507,7 +507,7 @@ The default event store retains its historical location for compatibility.
 Removing the dashboard HTML does not move or delete existing runtime data:
 
 ```text
-/Users/mp/Documents/Berlin Hack/demo-dashboard/latest-run.json
+<repo>/demo-dashboard/latest-run.json
 ```
 
 ## Safety

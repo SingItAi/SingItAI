@@ -14,7 +14,8 @@ private keys never go into a chat, an issue or this repository.
 records the results in `~/.sign402-trezor-poc/t4-log.md`:
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/.worktrees/trezor-local-sidecar/agent-allowance" && ./script/t4-mainnet.sh
+cd agent-allowance  # inside your trezor-local-sidecar worktree, from the repo root
+./script/t4-mainnet.sh
 ```
 
 It stops for exactly the owner's actions: choosing and typing the two key
@@ -61,7 +62,7 @@ Error selectors, for reading `cast call` output (`execution reverted, data: "0x�
 **Terminal A — the agent side**, in the contract directory:
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/.worktrees/trezor-local-sidecar/agent-allowance"
+cd agent-allowance  # inside your trezor-local-sidecar worktree, from the repo root
 export RPC=https://mainnet.base.org
 export USDC=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
 export OWNER=<owner wallet>
@@ -70,7 +71,7 @@ export OWNER=<owner wallet>
 **Terminal B — the Trezor side**, with Trezor Suite open, MCP on, device unlocked:
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/.worktrees/trezor-local-sidecar/trezor-sidecar"
+cd trezor-sidecar  # inside your trezor-local-sidecar worktree, from the repo root
 set -a && source "$HOME/.config/sign402-trezor-poc/sidecar.env" && set +a
 ```
 

@@ -41,8 +41,8 @@ class FakeEvent:
 
 def telegram_event(
     command: str,
-    user_id: str | None = "1045618308",
-    username: str | None = "AlpskyKnedlik",
+    user_id: str | None = "100000001",
+    username: str | None = "test_operator",
 ) -> FakeEvent:
     return FakeEvent(
         command,
@@ -60,8 +60,8 @@ class TelegramIdentityTests(unittest.TestCase):
         self.assertEqual(
             consume_gateway_identity(),
             TelegramIdentity(
-                user_id="1045618308",
-                username="AlpskyKnedlik",
+                user_id="100000001",
+                username="test_operator",
                 chat_id="chat-1",
             ),
         )
@@ -79,8 +79,8 @@ class TelegramIdentityTests(unittest.TestCase):
                 self.assertEqual(
                     consume_gateway_identity(),
                     TelegramIdentity(
-                        user_id="1045618308",
-                        username="AlpskyKnedlik",
+                        user_id="100000001",
+                        username="test_operator",
                         chat_id="chat-1",
                     ),
                 )
@@ -98,8 +98,8 @@ class TelegramIdentityTests(unittest.TestCase):
                 self.assertEqual(
                     consume_gateway_identity(),
                     TelegramIdentity(
-                        user_id="1045618308",
-                        username="AlpskyKnedlik",
+                        user_id="100000001",
+                        username="test_operator",
                         chat_id="chat-1",
                     ),
                 )
@@ -112,7 +112,7 @@ class TelegramIdentityTests(unittest.TestCase):
     def test_ignores_non_telegram_source(self):
         event = FakeEvent(
             "/wallet",
-            FakeSource(FakePlatform("discord"), "1045618308", "AlpskyKnedlik"),
+            FakeSource(FakePlatform("discord"), "100000001", "test_operator"),
         )
 
         capture_gateway_identity(event=event)

@@ -11,8 +11,8 @@ For strict mode, Hermes can also send a payment commitment hash to `POST /approv
 Use the ESP-IDF Python environment because it already has `pyserial`:
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/sign402-bridge"
-FIREFLY_PORT=/dev/cu.usbmodem11201 /Users/mp/.espressif/python_env/idf5.3_py3.14_env/bin/python -m sign402_bridge
+cd sign402-bridge  # from the repo root
+FIREFLY_PORT=/dev/cu.usbmodemXXXX <your ESP-IDF python> -m sign402_bridge
 ```
 
 Default URL:

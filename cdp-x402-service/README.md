@@ -7,7 +7,7 @@ The Python Sign402 Gateway still owns policy checks, Firefly approval, and budge
 ## Setup
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/cdp-x402-service"
+cd cdp-x402-service  # from the repo root
 npm install
 cp .env.example .env
 ```
