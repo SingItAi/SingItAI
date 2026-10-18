@@ -21,7 +21,7 @@ from sign402_gateway.venice_chat import (
 
 WALLET_TOKEN = "test-wallet-token"
 USER_TOKEN = "test-user-token"
-USER_ID = "1045618308"
+USER_ID = "100000001"
 
 
 class FakeSocket:

@@ -84,7 +84,7 @@ class GatewayWebShopTests(unittest.TestCase):
                 self.assertEqual(self.call("tools", token=token, client=client)[0], 403)
         with patch.dict(os.environ, {"SIGN402_WEB_INTERNAL_TOKEN": "short"}):
             self.assertEqual(self.call("tools", token="short")[0], 403)
-        status, body = self.call("tools", account="1045618308")
+        status, body = self.call("tools", account="100000001")
         self.assertEqual((status, body["error"]), (403, "not_enabled"))
 
     def test_the_catalog_names_each_tool_and_its_seller(self):
@@ -228,7 +228,7 @@ class LinkTelegramTests(unittest.TestCase):
         self.accounts = WebAccountStore(Path(self.tmp.name) / "web.db")
         self.accounts.ensure_account(OWNER, 1)
         self.server = DummyServer()
-        self.server.user_wallet_service.resolve_telegram_user_id = Mock(return_value="1045618308")
+        self.server.user_wallet_service.resolve_telegram_user_id = Mock(return_value="100000001")
         self.server.web_accounts = self.accounts
         self.server.allowance = Mock()
         self.server.allowance.store = AllowanceStore(Path(self.tmp.name) / "allowance.db")
@@ -243,8 +243,8 @@ class LinkTelegramTests(unittest.TestCase):
         status, body = self.allowance("link", {"code": code})
         self.assertEqual(status, 200)
         self.assertIn(f"allowance of {OWNER}", body["telegramText"])
-        self.assertEqual(self.accounts.account_for_telegram("1045618308"), ACCOUNT)
-        self.assertEqual(self.accounts.telegram_for(ACCOUNT), "1045618308")
+        self.assertEqual(self.accounts.account_for_telegram("100000001"), ACCOUNT)
+        self.assertEqual(self.accounts.telegram_for(ACCOUNT), "100000001")
 
         self.allowance("status")
         self.server.allowance.status.assert_called_with(ACCOUNT)
@@ -258,7 +258,7 @@ class LinkTelegramTests(unittest.TestCase):
         self.assertEqual(self.allowance("link", {"code": "000009"})[0], 429)
 
     def test_a_linked_chat_buys_from_the_web_accounts_lane(self):
-        self.accounts.link_telegram(self.accounts.new_link_code(ACCOUNT, 10**10 - 1000), "1045618308", 10**10 - 999)
+        self.accounts.link_telegram(self.accounts.new_link_code(ACCOUNT, 10**10 - 1000), "100000001", 10**10 - 999)
         self.server.event_store = Mock()
         self.server.user_event_store = Mock()
         self.server.allowance.lane_for.return_value = {"limiter_address": "0xLIMITER"}
@@ -266,12 +266,12 @@ class LinkTelegramTests(unittest.TestCase):
         self.server.imessage_approval_service.request_purchase_approval.return_value = {"ok": True, "status": "approved"}
         with (patch("sign402_gateway.server.fetch_x402_payment_required", return_value={}),
               patch("sign402_gateway.server.normalize_x402_payment_required", return_value=dict(REQUIREMENTS))):
-            status, _ = raw_request(self.server, "/agent/buy-tool", {"tool": "news", "telegramUserId": "1045618308"},
+            status, _ = raw_request(self.server, "/agent/buy-tool", {"tool": "news", "telegramUserId": "100000001"},
                                     {"Authorization": "Bearer test-wallet-token", "X-Sign402-User-Token": "user-token-1"})
         self.assertEqual(status, 200)
         self.server.allowance.lane_for.assert_called_with(ACCOUNT)
         self.assertEqual(self.server.allowance.pay_x402.call_args.args[0], ACCOUNT)
-        self.assertEqual(self.server.user_event_store.write.call_args.args[0], "1045618308")  # the chat's history
+        self.assertEqual(self.server.user_event_store.write.call_args.args[0], "100000001")  # the chat's history
 
     def test_a_new_code_kills_the_old_one_and_codes_expire(self):
         first = self.accounts.new_link_code(ACCOUNT, 100)
@@ -332,7 +332,7 @@ class WebShopRoutesTests(unittest.TestCase):
         self.assertRegex(body["code"], r"^\d{6}$")
         self.assertIn(f"/link {body['code']}", body["text"])
         self.assertFalse(self.call("GET", "/session")[1]["telegramLinked"])
-        self.base.store.link_telegram(body["code"], "1045618308", int(__import__("time").time()))
+        self.base.store.link_telegram(body["code"], "100000001", int(__import__("time").time()))
         self.assertTrue(self.call("GET", "/session")[1]["telegramLinked"])
         self.call("POST", "/link/telegram/remove")
         self.assertFalse(self.call("GET", "/session")[1]["telegramLinked"])

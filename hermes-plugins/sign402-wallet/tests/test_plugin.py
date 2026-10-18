@@ -496,7 +496,7 @@ class TelegramAsyncReplyTests(unittest.IsolatedAsyncioTestCase):
         ):
             started = asyncio.get_running_loop().time()
             result = context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent("Balance", "1045618308", chat_id="telegram-chat"),
+                event=FakeEvent("Balance", "100000001", chat_id="telegram-chat"),
                 gateway=gateway,
             )
             elapsed = asyncio.get_running_loop().time() - started
@@ -657,7 +657,7 @@ class WelcomeScreenTests(unittest.TestCase):
         self.plugin = load_plugin()
         self.text = self.plugin._start_text(
             WALLET_ADDRESS,
-            support_id="1045618308",
+            support_id="100000001",
         )
 
     def test_it_opens_with_what_the_product_does(self):
@@ -682,7 +682,7 @@ class WelcomeScreenTests(unittest.TestCase):
             self.assertIn(term, self.text)
 
     def test_it_says_what_the_support_id_is_for(self):
-        self.assertIn("1045618308", self.text)
+        self.assertIn("100000001", self.text)
         self.assertIn("support", self.text.casefold())
 
     def test_it_points_to_network_specific_funding(self):
@@ -712,12 +712,12 @@ class HtmlToPlainTests(unittest.TestCase):
     def test_the_welcome_screen_survives_the_conversion(self):
         plugin = load_plugin()
         plain = plugin._html_to_plain(
-            plugin._start_text(WALLET_ADDRESS, support_id="1045618308")
+            plugin._start_text(WALLET_ADDRESS, support_id="100000001")
         )
 
         self.assertNotIn("<", plain)
         self.assertNotIn(WALLET_ADDRESS, plain)
-        self.assertIn("Support ID: 1045618308", plain)
+        self.assertIn("Support ID: 100000001", plain)
         self.assertIn("SingIt", plain)
 
 
@@ -764,7 +764,7 @@ class CommandResultFormattingTests(unittest.TestCase):
         text, _markup = plugin._telegram_public_command_result(
             "start",
             "",
-            plugin.TelegramIdentity(user_id="1045618308"),
+            plugin.TelegramIdentity(user_id="100000001"),
         )
 
         self.assertIsInstance(text, plugin._HtmlText)
@@ -776,7 +776,7 @@ class CommandResultFormattingTests(unittest.TestCase):
         text, _markup = plugin._telegram_public_command_result(
             "balance",
             "",
-            plugin.TelegramIdentity(user_id="1045618308"),
+            plugin.TelegramIdentity(user_id="100000001"),
         )
 
         self.assertNotIsInstance(text, plugin._HtmlText)
@@ -817,7 +817,7 @@ class WalletAddressExtractionTests(unittest.TestCase):
 class PaidToolIntentTests(unittest.TestCase):
     def _intent(self, text):
         plugin = load_plugin()
-        event = FakeEvent(text, "1045618308")
+        event = FakeEvent(text, "100000001")
         return plugin._telegram_paid_tool_intent(event, event.source)
 
     def test_affirmative_requests_trigger_purchase(self):
@@ -967,8 +967,8 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/wallet telegramUserId=999",
-                user_id="1045618308",
-                username="AlpskyKnedlik",
+                user_id="100000001",
+                username="test_operator",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -985,7 +985,7 @@ class PluginRegistrationTests(unittest.TestCase):
         )
         self.assertEqual(client.calls, [])
         self.assertEqual(client.create_wallet_calls, [])
-        self.assertNotIn("1045618308", plugin._USER_ACCESS_TOKENS)
+        self.assertNotIn("100000001", plugin._USER_ACCESS_TOKENS)
 
     def test_public_command_handler_without_pre_dispatch_rejects(self):
         plugin = load_plugin()
@@ -1010,7 +1010,7 @@ class PluginRegistrationTests(unittest.TestCase):
         context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/balance",
-                user_id="1045618308",
+                user_id="100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -1022,7 +1022,7 @@ class PluginRegistrationTests(unittest.TestCase):
     def test_expired_user_access_token_is_refreshed_before_request(self):
         plugin = load_plugin()
         client = FakeClient()
-        identity = plugin.TelegramIdentity(user_id="1045618308")
+        identity = plugin.TelegramIdentity(user_id="100000001")
 
         with patch.object(plugin.time, "time", return_value=1_000.0):
             first = plugin._user_access_token(client, identity)
@@ -1040,7 +1040,7 @@ class PluginRegistrationTests(unittest.TestCase):
 
         self.assertEqual(first, "user-access-token")
         self.assertEqual(refreshed, "fresh-user-access-token")
-        self.assertEqual(client.create_wallet_calls, ["1045618308", "1045618308"])
+        self.assertEqual(client.create_wallet_calls, ["100000001", "100000001"])
 
     def test_user_access_token_cache_is_bounded(self):
         plugin = load_plugin()
@@ -1069,8 +1069,8 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/last_purchase",
-                user_id="1045618308",
-                username="AlpskyKnedlik",
+                user_id="100000001",
+                username="test_operator",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -1099,7 +1099,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/balance",
-                user_id="1045618308",
+                user_id="100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -1140,7 +1140,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/connect_imessage telegramUserId=999",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -1160,7 +1160,7 @@ class PluginRegistrationTests(unittest.TestCase):
             [
                 (
                     "connect-imessage",
-                    {"telegramUserId": "1045618308"},
+                    {"telegramUserId": "100000001"},
                 )
             ],
         )
@@ -1184,7 +1184,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/connect_whatsapp telegramUserId=999",
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1201,11 +1201,11 @@ class PluginRegistrationTests(unittest.TestCase):
             [
                 (
                     "select-existing",
-                    {"telegramUserId": "1045618308", "channel": "whatsapp"},
+                    {"telegramUserId": "100000001", "channel": "whatsapp"},
                 ),
                 (
                     "connect-imessage",
-                    {"telegramUserId": "1045618308", "channel": "whatsapp"},
+                    {"telegramUserId": "100000001", "channel": "whatsapp"},
                 )
             ],
         )
@@ -1225,7 +1225,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/connect_imessage",
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1256,7 +1256,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "Connect iMessage",
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1295,7 +1295,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "Connect iMessage",
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1312,12 +1312,12 @@ class PluginRegistrationTests(unittest.TestCase):
             [
                 (
                     "select-existing",
-                    {"telegramUserId": "1045618308", "channel": "imessage"},
+                    {"telegramUserId": "100000001", "channel": "imessage"},
                 )
             ],
         )
         self.assertEqual(client.imessage_calls, [])
-        self.assertNotIn("1045618308", plugin._IMESSAGE_CONNECT_SESSIONS)
+        self.assertNotIn("100000001", plugin._IMESSAGE_CONNECT_SESSIONS)
 
     def test_connect_whatsapp_selects_existing_link_without_pairing(self):
         plugin = load_plugin()
@@ -1337,7 +1337,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "Connect WhatsApp",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -1354,7 +1354,7 @@ class PluginRegistrationTests(unittest.TestCase):
             [
                 (
                     "select-existing",
-                    {"telegramUserId": "1045618308", "channel": "whatsapp"},
+                    {"telegramUserId": "100000001", "channel": "whatsapp"},
                 )
             ],
         )
@@ -1380,7 +1380,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/connect_imessage telegramUserId=999",
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1394,7 +1394,7 @@ class PluginRegistrationTests(unittest.TestCase):
             [
                 (
                     "select-existing",
-                    {"telegramUserId": "1045618308", "channel": "imessage"},
+                    {"telegramUserId": "100000001", "channel": "imessage"},
                 )
             ],
         )
@@ -1431,8 +1431,8 @@ class PluginRegistrationTests(unittest.TestCase):
             context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "Connect iMessage",
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1441,8 +1441,8 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "+12025550123",
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1470,7 +1470,7 @@ class PluginRegistrationTests(unittest.TestCase):
         )
         self.assertEqual(
             client.imessage_calls,
-            [("connect-imessage", {"telegramUserId": "1045618308"})],
+            [("connect-imessage", {"telegramUserId": "100000001"})],
         )
         text = gateway.adapters["telegram"].sent[-1][1]
         self.assertIn("+16282647754", text)
@@ -1497,7 +1497,7 @@ class PluginRegistrationTests(unittest.TestCase):
             return FakePhotonResponse()
 
         plugin._photon_api_opener = fake_photon_opener
-        identity = plugin.TelegramIdentity(user_id="1045618308")
+        identity = plugin.TelegramIdentity(user_id="100000001")
         with patch.dict(
             plugin.os.environ,
             {
@@ -1534,7 +1534,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/start telegramUserId=999",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -1551,7 +1551,7 @@ class PluginRegistrationTests(unittest.TestCase):
         self.assertNotIn("<", text)
         self.assertIn("SingIt", text)
         self.assertNotIn("0xabc", text)
-        self.assertIn("Support ID: 1045618308", text)
+        self.assertIn("Support ID: 100000001", text)
         # Task 5 replaced the onboarding checklist with the two actions a new
         # user can take without setting anything up first.
         self.assertIn("Shop", text)
@@ -1571,7 +1571,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/start",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -1594,7 +1594,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/help",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -1618,22 +1618,22 @@ class PluginRegistrationTests(unittest.TestCase):
         plugin = load_plugin()
         self.assertEqual(
             plugin._telegram_public_command(
-                FakeEvent("Wallet", "1045618308"),
-                FakeEvent("Wallet", "1045618308").source,
+                FakeEvent("Wallet", "100000001"),
+                FakeEvent("Wallet", "100000001").source,
             ),
             "wallet",
         )
         self.assertEqual(
             plugin._telegram_public_command(
-                FakeEvent("Buy LLM Credits", "1045618308"),
-                FakeEvent("Buy LLM Credits", "1045618308").source,
+                FakeEvent("Buy LLM Credits", "100000001"),
+                FakeEvent("Buy LLM Credits", "100000001").source,
             ),
             "llm-buy",
         )
         self.assertEqual(
             plugin._telegram_public_command(
-                FakeEvent("Connect iMessage", "1045618308"),
-                FakeEvent("Connect iMessage", "1045618308").source,
+                FakeEvent("Connect iMessage", "100000001"),
+                FakeEvent("Connect iMessage", "100000001").source,
             ),
             "connect-imessage",
         )
@@ -1649,12 +1649,12 @@ class PluginRegistrationTests(unittest.TestCase):
         callbacks.clear()
         gateway = FakeGateway(adapter_key="telegram")
 
-        def dispatch(text, user_id="1045618308", chat_id="telegram-chat"):
+        def dispatch(text, user_id="100000001", chat_id="telegram-chat"):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
                     user_id,
-                    username="AlpskyKnedlik",
+                    username="test_operator",
                     platform="telegram",
                     chat_id=chat_id,
                 ),
@@ -1707,7 +1707,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/help",
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1746,7 +1746,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "hello, what can you do?",
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1777,7 +1777,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/wallet",
-                    "8538252718",
+                    "100000002",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1806,7 +1806,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/wallet",
-                    "8538252718",
+                    "100000002",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1836,7 +1836,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/model",
-                    "8538252718",
+                    "100000002",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1863,7 +1863,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "YES",
-                    "+420736255120",
+                    "+420000000000",
                     platform="photon",
                     chat_id="photon-chat",
                 ),
@@ -1881,12 +1881,12 @@ class PluginRegistrationTests(unittest.TestCase):
 
         with patch.dict(
             plugin.os.environ,
-            {"SIGN402_TELEGRAM_ALLOWED_USERS": "1045618308"},
+            {"SIGN402_TELEGRAM_ALLOWED_USERS": "100000001"},
         ):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "hello, what can you do?",
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1912,7 +1912,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "hello, what can you do?",
-                    "8538252718",
+                    "100000002",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1934,7 +1934,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/wallet",
-                    "8538252718",
+                    "100000002",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1955,13 +1955,13 @@ class PluginRegistrationTests(unittest.TestCase):
 
         with patch.dict(
             plugin.os.environ,
-            {"TELEGRAM_ALLOWED_USERS": "8538252718"},
+            {"TELEGRAM_ALLOWED_USERS": "100000002"},
             clear=True,
         ):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/wallet",
-                    "8538252718",
+                    "100000002",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -1983,8 +1983,8 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/bitrefill test-gift-card-link 1 US SINGIT",
-                "1045618308",
-                username="AlpskyKnedlik",
+                "100000001",
+                username="test_operator",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -2002,13 +2002,13 @@ class PluginRegistrationTests(unittest.TestCase):
                 ("telegram-chat", "Bitrefill delivered."),
             ],
         )
-        self.assertEqual(client.create_wallet_calls, ["1045618308"])
+        self.assertEqual(client.create_wallet_calls, ["100000001"])
         self.assertEqual(
             client.bitrefill_calls,
             [
                 (
-                    "1045618308",
-                    "AlpskyKnedlik",
+                    "100000001",
+                    "test_operator",
                     "test-gift-card-link",
                     "1",
                     "US",
@@ -2042,8 +2042,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2079,8 +2079,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2123,8 +2123,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2139,7 +2139,7 @@ class PluginRegistrationTests(unittest.TestCase):
 
         self.assertEqual(gateway.adapters["telegram"].sent, sent_before)
         self.assertEqual(
-            plugin._BITREFILL_SESSIONS["1045618308"]["stage"],
+            plugin._BITREFILL_SESSIONS["100000001"]["stage"],
             "select-category",
         )
 
@@ -2158,8 +2158,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2217,8 +2217,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2288,8 +2288,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2304,7 +2304,7 @@ class PluginRegistrationTests(unittest.TestCase):
 
         self.assertEqual(client.bitrefill_calls, [])
         self.assertIn("Choose a token to pay with", gateway.adapters["telegram"].sent[-1][1])
-        self.assertEqual(client.withdraw_tokens_calls, [("1045618308", "user-access-token")])
+        self.assertEqual(client.withdraw_tokens_calls, [("100000001", "user-access-token")])
 
         dispatch("2")
         self.assertEqual(client.bitrefill_calls, [])
@@ -2327,8 +2327,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2346,7 +2346,7 @@ class PluginRegistrationTests(unittest.TestCase):
         self.assertEqual(client.bitrefill_calls, [])
         self.assertIn("email", gateway.adapters["telegram"].sent[-1][1].casefold())
         self.assertEqual(
-            plugin._BITREFILL_SESSIONS["1045618308"]["stage"],
+            plugin._BITREFILL_SESSIONS["100000001"]["stage"],
             "awaiting-buyer-email",
         )
 
@@ -2364,8 +2364,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2413,8 +2413,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2447,7 +2447,7 @@ class PluginRegistrationTests(unittest.TestCase):
         self.assertIn("Choose a token to pay with", gateway.adapters["telegram"].sent[-1][1])
         self.assertEqual(dispatch("1"), plugin._SKIP_RESULT)
         self.assertEqual(client.bitrefill_calls, [])
-        context.hooks["pre_gateway_dispatch"](event=FakeEvent("Request approval", "1045618308", username="AlpskyKnedlik", chat_id="telegram-chat"), gateway=gateway)
+        context.hooks["pre_gateway_dispatch"](event=FakeEvent("Request approval", "100000001", username="test_operator", chat_id="telegram-chat"), gateway=gateway)
         self.assertEqual(
             gateway.adapters["telegram"].sent[-2:],
             [
@@ -2459,8 +2459,8 @@ class PluginRegistrationTests(unittest.TestCase):
             client.bitrefill_calls,
             [
                 (
-                    "1045618308",
-                    "AlpskyKnedlik",
+                    "100000001",
+                    "test_operator",
                     "amazon-cz",
                     "amazon-cz-10",
                     "CZ",
@@ -2554,7 +2554,7 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2569,7 +2569,7 @@ class PluginRegistrationTests(unittest.TestCase):
         self.assertIn("No exact Bitrefill products found", response)
         self.assertNotIn("Bitrefill eSIM Europe", response)
         self.assertEqual(
-            plugin._BITREFILL_SESSIONS["1045618308"],
+            plugin._BITREFILL_SESSIONS["100000001"],
             {"stage": "awaiting-search", "country": "CZ"},
         )
 
@@ -2617,7 +2617,7 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2670,7 +2670,7 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2702,8 +2702,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2737,8 +2737,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2746,7 +2746,7 @@ class PluginRegistrationTests(unittest.TestCase):
             )
 
         self.assertEqual(dispatch("Withdraw"), plugin._SKIP_RESULT)
-        self.assertEqual(client.withdraw_tokens_calls, [("1045618308", "user-access-token")])
+        self.assertEqual(client.withdraw_tokens_calls, [("100000001", "user-access-token")])
         self.assertIn("Choose an asset to withdraw", gateway.adapters["telegram"].sent[-1][1])
         self.assertIn("1. SINGIT: 250", gateway.adapters["telegram"].sent[-1][1])
 
@@ -2771,7 +2771,7 @@ class PluginRegistrationTests(unittest.TestCase):
             client.withdraw_calls,
             [
                 (
-                    "1045618308",
+                    "100000001",
                     "0xc2c1e0b7C401e6217193732272444D928646eba3",
                     "100",
                     "0x84C0f9cd76b351e4dc90B0dD70Fa85b8aCC2b9dd",
@@ -2795,8 +2795,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2915,8 +2915,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -2962,8 +2962,8 @@ class PluginRegistrationTests(unittest.TestCase):
         self.assertEqual(
             client.bitrefill_calls[-1],
             (
-                "1045618308",
-                "AlpskyKnedlik",
+                "100000001",
+                "test_operator",
                 "wolt-cz",
                 "wolt-cz<&>500",
                 "CZ",
@@ -3005,8 +3005,8 @@ class PluginRegistrationTests(unittest.TestCase):
             return context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     text,
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -3030,8 +3030,8 @@ class PluginRegistrationTests(unittest.TestCase):
         self.assertEqual(
             client.bitrefill_calls[-1],
             (
-                "1045618308",
-                "AlpskyKnedlik",
+                "100000001",
+                "test_operator",
                 "mobile-topup",
                 "mobile-5",
                 "CZ",
@@ -3097,7 +3097,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/connect_imessage",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3110,7 +3110,7 @@ class PluginRegistrationTests(unittest.TestCase):
         )
         self.assertEqual(
             client.imessage_calls,
-            [("connect-imessage", {"telegramUserId": "1045618308"})],
+            [("connect-imessage", {"telegramUserId": "100000001"})],
         )
         self.assertEqual(
             gateway.adapters["telegram"].sent[-1],
@@ -3129,8 +3129,8 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/limits telegramUserId=999",
-                "1045618308",
-                username="AlpskyKnedlik",
+                "100000001",
+                username="test_operator",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3143,7 +3143,7 @@ class PluginRegistrationTests(unittest.TestCase):
         )
         self.assertEqual(
             client.limits_calls,
-            [("1045618308", "AlpskyKnedlik", None, None, "user-access-token")],
+            [("100000001", "test_operator", None, None, "user-access-token")],
         )
         self.assertEqual(
             gateway.adapters["telegram"].sent[-1],
@@ -3162,8 +3162,8 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/set_limits 0.005 0.05 telegramUserId=999",
-                "1045618308",
-                username="AlpskyKnedlik",
+                "100000001",
+                username="test_operator",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3178,8 +3178,8 @@ class PluginRegistrationTests(unittest.TestCase):
             client.limits_calls,
             [
                 (
-                    "1045618308",
-                    "AlpskyKnedlik",
+                    "100000001",
+                    "test_operator",
                     "0.005",
                     "0.05",
                     "user-access-token",
@@ -3203,7 +3203,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/limits 200 1000",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3216,7 +3216,7 @@ class PluginRegistrationTests(unittest.TestCase):
         )
         self.assertEqual(
             client.limits_calls,
-            [("1045618308", None, "200", "1000", "user-access-token")],
+            [("100000001", None, "200", "1000", "user-access-token")],
         )
 
     def test_set_limits_requires_two_numbers(self):
@@ -3230,7 +3230,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/set_limits 0.005",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3341,8 +3341,8 @@ class PluginRegistrationTests(unittest.TestCase):
         buy_result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/llm_buy 10 user@example.com",
-                "1045618308",
-                username="AlpskyKnedlik",
+                "100000001",
+                username="test_operator",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3351,8 +3351,8 @@ class PluginRegistrationTests(unittest.TestCase):
         terms_result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/llm_terms accept",
-                "1045618308",
-                username="AlpskyKnedlik",
+                "100000001",
+                username="test_operator",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3366,8 +3366,8 @@ class PluginRegistrationTests(unittest.TestCase):
             [
                 {
                     "operation": "start",
-                    "user_id": "1045618308",
-                    "username": "AlpskyKnedlik",
+                    "user_id": "100000001",
+                    "username": "test_operator",
                     "payload": {
                         "amountUsd": "10",
                         "email": "user@example.com",
@@ -3376,8 +3376,8 @@ class PluginRegistrationTests(unittest.TestCase):
                 },
                 {
                     "operation": "accept-terms",
-                    "user_id": "1045618308",
-                    "username": "AlpskyKnedlik",
+                    "user_id": "100000001",
+                    "username": "test_operator",
                     "payload": {},
                     "user_access_token": "user-access-token",
                 },
@@ -3408,8 +3408,8 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "/llm_code 123456",
-                    "1045618308",
-                    username="AlpskyKnedlik",
+                    "100000001",
+                    username="test_operator",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -3431,8 +3431,8 @@ class PluginRegistrationTests(unittest.TestCase):
             [
                 {
                     "operation": "verify",
-                    "user_id": "1045618308",
-                    "username": "AlpskyKnedlik",
+                    "user_id": "100000001",
+                    "username": "test_operator",
                     "payload": {"code": "123456"},
                     "user_access_token": "user-access-token",
                 }
@@ -3458,7 +3458,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "/llm_credits",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3487,7 +3487,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "Can u buy a cryptonews with Firefly?",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3498,7 +3498,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result,
             {"action": "skip", "reason": "sign402-imessage-handled"},
         )
-        self.assertEqual(client.paid_tool_calls, [("news", "1045618308", None)])
+        self.assertEqual(client.paid_tool_calls, [("news", "100000001", None)])
         self.assertEqual(
             gateway.adapters["telegram"].sent,
             [
@@ -3520,7 +3520,7 @@ class PluginRegistrationTests(unittest.TestCase):
         result = context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(
                 "buy crypto news",
-                "1045618308",
+                "100000001",
                 platform="telegram",
                 chat_id="telegram-chat",
             ),
@@ -3540,7 +3540,7 @@ class PluginRegistrationTests(unittest.TestCase):
 
         callbacks[-1]()
 
-        self.assertEqual(client.paid_tool_calls, [("news", "1045618308", None)])
+        self.assertEqual(client.paid_tool_calls, [("news", "100000001", None)])
         # The purchase authenticates as the user via their per-user token.
         self.assertEqual(client.paid_tool_tokens, ["user-access-token"])
         self.assertEqual(
@@ -3568,7 +3568,7 @@ class PluginRegistrationTests(unittest.TestCase):
             result = context.hooks["pre_gateway_dispatch"](
                 event=FakeEvent(
                     "buy crypto news",
-                    "1045618308",
+                    "100000001",
                     platform="telegram",
                     chat_id="telegram-chat",
                 ),
@@ -4143,7 +4143,7 @@ class BuyerEmailDispatchTests(unittest.TestCase):
 
     def _resolve(self, text):
         plugin = load_plugin()
-        event = FakeEvent(text, "1045618308", platform="telegram", chat_id="c")
+        event = FakeEvent(text, "100000001", platform="telegram", chat_id="c")
         return plugin._telegram_public_command(event, event.source)
 
     def test_slash_email_resolves(self):
@@ -4162,7 +4162,7 @@ class BuyerEmailDispatchTests(unittest.TestCase):
         plugin = load_plugin()
         event = FakeEvent(
             "/email buyer@example.com",
-            "1045618308",
+            "100000001",
             platform="telegram",
             chat_id="c",
         )
@@ -4210,7 +4210,7 @@ class ChatModeTests(unittest.TestCase):
         gateway = FakeGateway(adapter_key="telegram")
         return plugin, context, client, gateway
 
-    def dispatch(self, plugin, context, gateway, text, user_id="1045618308", env=None):
+    def dispatch(self, plugin, context, gateway, text, user_id="100000001", env=None):
         environment = {
             "SIGN402_TELEGRAM_SIGN402_ONLY": "1",
             "SIGN402_TELEGRAM_ALLOWED_USERS": "*",
@@ -4227,7 +4227,7 @@ class ChatModeTests(unittest.TestCase):
 
     def test_navigation_stays_available_during_chat(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
         self.dispatch(plugin, context, gateway, "balance")
         self.assertNotIn("message", [c["operation"] for c in client.chat_calls])
         self.assertEqual([call[0] for call in client.calls], ["balance"])
@@ -4236,7 +4236,7 @@ class ChatModeTests(unittest.TestCase):
         # The hard constraint: with SIGN402_AI_CHAT_ENABLED unset the bot must
         # behave exactly as it does today, whatever stale state exists.
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(
             plugin,
@@ -4253,7 +4253,7 @@ class ChatModeTests(unittest.TestCase):
 
     def test_flag_off_falls_back_to_the_menu_for_unknown_text(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(
             plugin,
@@ -4270,7 +4270,7 @@ class ChatModeTests(unittest.TestCase):
 
     def test_flag_off_leaves_the_command_parser_in_charge(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(
             plugin,
@@ -4292,7 +4292,7 @@ class ChatModeTests(unittest.TestCase):
 
     def test_exit_button_leaves_chat_mode_and_restores_main_menu(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         # The fake adapter drops reply markup, so read the keyboard off the
         # real Telegram send path instead.
@@ -4312,7 +4312,7 @@ class ChatModeTests(unittest.TestCase):
             env={"TELEGRAM_BOT_TOKEN": "telegram-token"},
         )
 
-        self.assertFalse(plugin._in_chat_mode("1045618308"))
+        self.assertFalse(plugin._in_chat_mode("100000001"))
         payload = parse_qs(requests[-1].data.decode("utf-8"))
         keyboard = json.loads(payload["reply_markup"][0])["keyboard"]
         with patch.dict(plugin.os.environ, {"SIGN402_AI_CHAT_ENABLED": "1"}):
@@ -4333,7 +4333,7 @@ class ChatModeTests(unittest.TestCase):
 
     def test_cancel_is_local_and_does_not_revoke_policy(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(plugin, context, gateway, plugin._TELEGRAM_CHAT_EXIT_BUTTON)
 
@@ -4341,7 +4341,7 @@ class ChatModeTests(unittest.TestCase):
 
     def test_chat_mode_is_per_user(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(plugin, context, gateway, "balance", user_id="999")
 
@@ -4372,7 +4372,7 @@ class ChatModeTests(unittest.TestCase):
 
     def test_sign402_only_mode_does_not_swallow_text_in_chat_mode(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(plugin, context, gateway, "hello, what can you do?")
 
@@ -4384,7 +4384,7 @@ class ChatModeTests(unittest.TestCase):
 
     def test_answer_carries_cost_and_remaining_budget(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(plugin, context, gateway, "hi")
 
@@ -4405,7 +4405,7 @@ class ChatModeTests(unittest.TestCase):
                 "prefunded": False,
             }
         )
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(plugin, context, gateway, "one")
         self.dispatch(plugin, context, gateway, "two")
@@ -4419,7 +4419,7 @@ class ChatModeTests(unittest.TestCase):
 
     def test_no_warning_below_the_threshold(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(plugin, context, gateway, "hi")
 
@@ -4436,13 +4436,13 @@ class ChatModeTests(unittest.TestCase):
                 "telegramText": "Today's budget is spent. It resets at 00:00 UTC.",
             }
         )
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(plugin, context, gateway, "hi")
 
         text = gateway.adapters["telegram"].sent[-1][1]
         self.assertIn("00:00 UTC", text)
-        self.assertTrue(plugin._in_chat_mode("1045618308"))
+        self.assertTrue(plugin._in_chat_mode("100000001"))
 
     def test_merchant_changed_drops_the_user_out_of_chat_mode(self):
         plugin, context, client, gateway = self.make(
@@ -4452,17 +4452,17 @@ class ChatModeTests(unittest.TestCase):
                 "telegramText": "Venice AI changed its payout details.",
             }
         )
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(plugin, context, gateway, "hi")
 
-        self.assertFalse(plugin._in_chat_mode("1045618308"))
+        self.assertFalse(plugin._in_chat_mode("100000001"))
 
     # -- the words the user must never see -------------------------------
 
     def test_the_plumbing_vocabulary_never_reaches_the_user(self):
         plugin, context, client, gateway = self.make()
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         self.dispatch(plugin, context, gateway, "hi")
 
@@ -4476,7 +4476,7 @@ class DeferredApprovalChannelGateTests(unittest.TestCase):
 
     def test_start_shows_two_actions_and_nothing_else(self):
         plugin = load_plugin()
-        text = plugin._start_text("0xabc", support_id="1045618308")
+        text = plugin._start_text("0xabc", support_id="100000001")
 
         # No onboarding checklist, and no approval-channel demand up front.
         self.assertNotIn("Connect WhatsApp", text)
@@ -4517,7 +4517,7 @@ class DeferredApprovalChannelGateTests(unittest.TestCase):
         plugin._client_factory = lambda: client
         plugin.register(context)
         gateway = FakeGateway(adapter_key="telegram")
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
 
         with patch.dict(
             plugin.os.environ,
@@ -4528,7 +4528,7 @@ class DeferredApprovalChannelGateTests(unittest.TestCase):
             },
         ):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent("hi", "1045618308", platform="telegram"),
+                event=FakeEvent("hi", "100000001", platform="telegram"),
                 gateway=gateway,
             )
 
@@ -4553,7 +4553,7 @@ class DeferredApprovalChannelGateTests(unittest.TestCase):
             },
         ):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent("Buy Bitrefill", "1045618308", platform="telegram"),
+                event=FakeEvent("Buy Bitrefill", "100000001", platform="telegram"),
                 gateway=gateway,
             )
 
@@ -4668,7 +4668,7 @@ class ChatMenuButtonTests(unittest.TestCase):
             },
         ):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent("Chat", "1045618308", platform="telegram"),
+                event=FakeEvent("Chat", "100000001", platform="telegram"),
                 gateway=gateway,
             )
 
@@ -4694,11 +4694,11 @@ class ChatMenuButtonTests(unittest.TestCase):
             },
         ):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent("Chat", "1045618308", platform="telegram"),
+                event=FakeEvent("Chat", "100000001", platform="telegram"),
                 gateway=gateway,
             )
 
-        self.assertFalse(plugin._in_chat_mode("1045618308"))
+        self.assertFalse(plugin._in_chat_mode("100000001"))
         self.assertEqual(client.chat_calls, [])
 
 
@@ -4854,7 +4854,7 @@ class WalletSubmenuTests(unittest.TestCase):
             },
         ):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent(text, "1045618308", platform="telegram"),
+                event=FakeEvent(text, "100000001", platform="telegram"),
                 gateway=gateway,
             )
         return requests
@@ -4934,7 +4934,7 @@ class ChatBudgetViewTests(unittest.TestCase):
         }
         with patch.dict(plugin.os.environ, env):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent("💰 Balance", "1045618308", platform="telegram"),
+                event=FakeEvent("💰 Balance", "100000001", platform="telegram"),
                 gateway=gateway,
             )
         return plugin, client, gateway.adapters["telegram"].sent[-1][1]
@@ -4987,7 +4987,7 @@ class ChatBudgetViewTests(unittest.TestCase):
             "SIGN402_AI_CHAT_ENABLED": "1",
         }):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent("💰 Balance", "1045618308", platform="telegram"),
+                event=FakeEvent("💰 Balance", "100000001", platform="telegram"),
                 gateway=gateway,
             )
 
@@ -5030,7 +5030,7 @@ class PolicyApprovalFlowTests(unittest.TestCase):
         plugin.register(context)
         return plugin, context, client, FakeGateway(adapter_key="telegram")
 
-    def press(self, plugin, context, gateway, text, user_id="1045618308"):
+    def press(self, plugin, context, gateway, text, user_id="100000001"):
         with patch.dict(plugin.os.environ, {
             "SIGN402_TELEGRAM_ALLOWED_USERS": "*",
             "SIGN402_TELEGRAM_SIGN402_ONLY": "1",
@@ -5082,7 +5082,7 @@ class PolicyApprovalFlowTests(unittest.TestCase):
         self.press(plugin, context, gateway, "$5 / day")
         self.press(plugin, context, gateway, "Request budget approval")
 
-        self.assertTrue(plugin._in_chat_mode("1045618308"))
+        self.assertTrue(plugin._in_chat_mode("100000001"))
 
     def test_a_declined_budget_does_not_open_the_chat(self):
         plugin, context, client, gateway = self.make(
@@ -5095,7 +5095,7 @@ class PolicyApprovalFlowTests(unittest.TestCase):
         self.press(plugin, context, gateway, "$5 / day")
         text = self.press(plugin, context, gateway, "Request budget approval")
 
-        self.assertFalse(plugin._in_chat_mode("1045618308"))
+        self.assertFalse(plugin._in_chat_mode("100000001"))
         self.assertIn("Not confirmed", text)
 
     def test_with_a_budget_a_question_is_answered_without_setup(self):
@@ -5143,7 +5143,7 @@ class PolicyApprovalRunsOffTheHookTests(unittest.TestCase):
             "SIGN402_AI_CHAT_ENABLED": "1",
         }):
             return context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent(text, "1045618308", platform="telegram"),
+                event=FakeEvent(text, "100000001", platform="telegram"),
                 gateway=gateway,
             )
 
@@ -5170,7 +5170,7 @@ class PolicyApprovalRunsOffTheHookTests(unittest.TestCase):
             callback()
 
         self.assertIn("approve-policy", client.chat_calls)
-        self.assertTrue(plugin._in_chat_mode("1045618308"))
+        self.assertTrue(plugin._in_chat_mode("100000001"))
 
     def test_the_user_is_told_the_approval_is_on_its_way(self):
         plugin, context, client, gateway = self.make()
@@ -5305,7 +5305,7 @@ class ChatModelPickerTests(unittest.TestCase):
         client.execute_chat = execute_chat
         plugin._client_factory = lambda: client
         plugin.register(context)
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
         return plugin, context, client, FakeGateway(adapter_key="telegram")
 
     def press(self, plugin, context, gateway, text):
@@ -5315,7 +5315,7 @@ class ChatModelPickerTests(unittest.TestCase):
             "SIGN402_AI_CHAT_ENABLED": "1",
         }):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent(text, "1045618308", platform="telegram"),
+                event=FakeEvent(text, "100000001", platform="telegram"),
                 gateway=gateway,
             )
         return gateway.adapters["telegram"].sent[-1][1]
@@ -5369,7 +5369,7 @@ class ChatModelPickerTests(unittest.TestCase):
         switch = [c for c in client.chat_calls if c["payload"].get("model")]
         self.assertEqual(switch[-1]["payload"]["model"], "mid")
         self.assertIn("GLM 5.2", text)
-        self.assertTrue(plugin._in_chat_mode("1045618308"))
+        self.assertTrue(plugin._in_chat_mode("100000001"))
 
     def test_a_model_name_typed_outside_the_picker_is_just_a_message(self):
         plugin, context, client, gateway = self.make()
@@ -5462,7 +5462,7 @@ class ChatModelSearchTests(unittest.TestCase):
         client.execute_chat = execute_chat
         plugin._client_factory = lambda: client
         plugin.register(context)
-        plugin._enter_chat_mode("1045618308")
+        plugin._enter_chat_mode("100000001")
         return plugin, context, client, FakeGateway(adapter_key="telegram")
 
     def press(self, plugin, context, gateway, text):
@@ -5472,7 +5472,7 @@ class ChatModelSearchTests(unittest.TestCase):
             "SIGN402_AI_CHAT_ENABLED": "1",
         }):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent(text, "1045618308", platform="telegram"),
+                event=FakeEvent(text, "100000001", platform="telegram"),
                 gateway=gateway,
             )
         return gateway.adapters["telegram"].sent[-1][1]
@@ -5503,7 +5503,7 @@ class ChatModelSearchTests(unittest.TestCase):
         text = self.press(plugin, context, gateway, "/model llama")
 
         self.assertIn("llama", text.lower())
-        self.assertTrue(plugin._in_chat_mode("1045618308"))
+        self.assertTrue(plugin._in_chat_mode("100000001"))
 
     def test_slash_model_without_a_name_opens_the_picker(self):
         plugin, context, client, gateway = self.make()
@@ -5565,9 +5565,9 @@ class AllowanceCommandTests(unittest.TestCase):
         plugin._client_factory = lambda: client
         plugin.register(context)
         gateway = FakeGateway(adapter_key="telegram")
-        with patch.dict(os.environ, {"SIGN402_TELEGRAM_ALLOWED_USERS": "1045618308"}):
+        with patch.dict(os.environ, {"SIGN402_TELEGRAM_ALLOWED_USERS": "100000001"}):
             context.hooks["pre_gateway_dispatch"](
-                event=FakeEvent(text, "1045618308", username="owner", platform="telegram", chat_id="chat"),
+                event=FakeEvent(text, "100000001", username="owner", platform="telegram", chat_id="chat"),
                 gateway=gateway,
             )
         return gateway.adapters["telegram"].sent[-1][1]
@@ -5590,7 +5590,7 @@ class AllowanceCommandTests(unittest.TestCase):
             with self.subTest(text=text):
                 client = self.Client()
                 reply = self.send(text, client)
-                self.assertEqual(client.allowance_calls, [(action, "1045618308", payload, "user-access-token")])
+                self.assertEqual(client.allowance_calls, [(action, "100000001", payload, "user-access-token")])
                 self.assertIn(f"{action} done", reply)
 
     def test_arguments_that_do_not_parse_print_usage_and_ask_nothing(self):
@@ -5664,6 +5664,6 @@ class SolanaCommandTests(unittest.TestCase):
         self.plugin.register(context)
         gateway = FakeGateway(adapter_key="telegram")
         context.hooks["pre_gateway_dispatch"](
-            event=FakeEvent("/wallet solana", user_id="1045618308", platform="telegram", chat_id="chat"), gateway=gateway)
-        self.assertEqual(self.calls, [("create", "1045618308", "solana"), ("balance", "1045618308", "solana", "test-solana-token")])
+            event=FakeEvent("/wallet solana", user_id="100000001", platform="telegram", chat_id="chat"), gateway=gateway)
+        self.assertEqual(self.calls, [("create", "100000001", "solana"), ("balance", "100000001", "solana", "test-solana-token")])
         self.assertEqual(gateway.adapters["telegram"].sent[-1], ("chat", "Solana wallet\n\nsolana balance"))

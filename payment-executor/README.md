@@ -54,7 +54,7 @@ For a real transaction, replace `DEMO_MERCHANT_ALGO_ADDRESS` with a funded TestN
 ## Send Payment
 
 ```bash
-cd "/Users/mp/Documents/Berlin Hack/payment-executor"
+cd payment-executor  # from the repo root
 python3 -m sign402_executor \
   --payment-request payment-request.json \
   --policy-hash f96440ece56ff3c056facaeb3923277dfd3cfc06d58775049c63aee32bc3656f

@@ -15,7 +15,7 @@ spender is the burn address. Run twice, at the default and at a realistic grant:
 
 ```
 $ .venv/bin/python -m trezor_sidecar.approve_preview
-  signer     0xB80b…4558  (your paired account)          (truncated here)
+  signer     0x1111…1111  (your paired account)          (truncated here)
   token      USDC on Base (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913)
   action     approve (permission, not a transfer)
   spender    0x000000000000000000000000000000000000dEaD
@@ -38,7 +38,7 @@ transaction, and confirmed it on the device both times.
 Nothing reached the chain. USDC `allowance(signer, 0x…dEaD)` read afterwards:
 
 ```
-eth_call USDC.allowance(0xB80b…4558, 0x…dEaD) at block 51706193
+eth_call USDC.allowance(0x1111…1111, 0x…dEaD) at block 51706193
 → 0x0000000000000000000000000000000000000000000000000000000000000000
 ```
 
@@ -483,7 +483,7 @@ Deployed with `scripts/deploy-trezor-allowance.sh` (f381590, then fixes up to
 
 | Step | Result | On chain |
 | --- | --- | --- |
-| `/allowance_setup 1 0.3 7` | limiter `0x4F35812DE41a76b24EEE61C630fCc5c85DcFa46B` | runtime code = artifact (immutables masked), Sourcify `exact_match`; owner `0xB80b…4558`, agent `0x7870…1b1D`, caps 1 / 0.3 USDC, expiry 2026-10-01 15:41 UTC |
+| `/allowance_setup 1 0.3 7` | limiter `0x4F35812DE41a76b24EEE61C630fCc5c85DcFa46B` | runtime code = artifact (immutables masked), Sourcify `exact_match`; owner `0x1111…1111`, agent `0x7870…1b1D`, caps 1 / 0.3 USDC, expiry 2026-10-01 15:41 UTC |
 | `/allowance_grant 1`, confirmed on the Trezor | granted | [`0xda1bbd0d…a4ad`](https://basescan.org/tx/0xda1bbd0dff501f36ccb893b94c20ffda29dc127642165fcbd49390727921a4ad), block 51737723: `approve(limiter, 1000000)` from the Trezor address |
 | `buy crypto news` (Otto AI, 0.001) | delivered, "paid from your Trezor allowance (refill 0.2 USDC)" | refill [`0xffaaf82e…3756`](https://basescan.org/tx/0xffaaf82e0aee3d0f5d2fa37ce2136bc8df5e50d16e2caf9e88d05228a4553756), block 51737981: `Spent` 0.2 to the agent; settlement [`0x946ceb1a…676f`](https://basescan.org/tx/0x946ceb1ab7077fd6787114d2ce3e5aa5c1f2045fe758edb89cb5e0d409be676f), block 51737984: agent → `0x0e84…b808`, 1000 |
 | Watcher | reported the refill after the 2feb739 fix | — |

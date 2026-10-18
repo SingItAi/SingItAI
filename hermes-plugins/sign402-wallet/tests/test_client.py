@@ -59,8 +59,8 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         result = client.execute(
             "create-wallet",
             TelegramIdentity(
-                user_id="1045618308",
-                username="AlpskyKnedlik",
+                user_id="100000001",
+                username="test_operator",
                 chat_id="ignored-chat",
             ),
         )
@@ -81,8 +81,8 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         self.assertEqual(
             json.loads(request.data),
             {
-                "telegramUserId": "1045618308",
-                "telegramUsername": "AlpskyKnedlik",
+                "telegramUserId": "100000001",
+                "telegramUsername": "test_operator",
             },
         )
         self.assertEqual(response.requested_size, 65537)
@@ -127,7 +127,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
                 )
                 self.make_client(opener).execute(
                     operation,
-                    TelegramIdentity(user_id="1045618308"),
+                    TelegramIdentity(user_id="100000001"),
                 )
                 self.assertEqual(
                     opener.requests[0][0].full_url,
@@ -275,7 +275,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
 
         result = client.execute_paid_tool(
             "news",
-            TelegramIdentity(user_id="1045618308", username="AlpskyKnedlik"),
+            TelegramIdentity(user_id="100000001", username="test_operator"),
             request_id="request-1",
         )
 
@@ -292,8 +292,8 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
             posted,
             {
                 "tool": "news",
-                "telegramUserId": "1045618308",
-                "telegramUsername": "AlpskyKnedlik",
+                "telegramUserId": "100000001",
+                "telegramUsername": "test_operator",
                 "requestId": "request-1",
             },
         )
@@ -301,7 +301,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
     def test_paid_tool_requests_have_distinct_ids_but_retries_can_keep_their_id(self):
         opener = RecordingOpener(response=FakeResponse(b'{"telegramText":"ok"}'))
         client = self.make_client(opener)
-        identity = TelegramIdentity(user_id="1045618308")
+        identity = TelegramIdentity(user_id="100000001")
         client.execute_paid_tool("news", identity)
         client.execute_paid_tool("news", identity)
         first_id = json.loads(opener.requests[0][0].data)["requestId"]
@@ -325,7 +325,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
                 )
                 with self.assertRaises(GatewayClientError) as caught:
                     self.make_client(RecordingOpener(error=error)).execute_paid_tool(
-                        "news", TelegramIdentity(user_id="1045618308")
+                        "news", TelegramIdentity(user_id="100000001")
                     )
                 self.assertEqual(caught.exception.user_message, text)
 
@@ -344,7 +344,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
                 with self.assertLogs("client", level="WARNING") as logs:
                     with self.assertRaises(GatewayClientError) as caught:
                         self.make_client(RecordingOpener(error=error)).execute_paid_tool(
-                            "news", TelegramIdentity(user_id="1045618308")
+                            "news", TelegramIdentity(user_id="100000001")
                         )
                 self.assertEqual(caught.exception.user_message, "Wallet request failed. Please try again or contact the operator.")
                 self.assertNotIn("signer-secret", "\n".join(logs.output))
@@ -354,12 +354,12 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
 
         self.make_client(opener).execute(
             "wallet",
-            TelegramIdentity(user_id="1045618308"),
+            TelegramIdentity(user_id="100000001"),
         )
 
         self.assertEqual(
             json.loads(opener.requests[0][0].data),
-            {"telegramUserId": "1045618308"},
+            {"telegramUserId": "100000001"},
         )
 
     def test_execute_last_purchase_posts_last_purchase_endpoint(self):
@@ -367,13 +367,13 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
 
         result = self.make_client(opener).execute(
             "last-purchase",
-            TelegramIdentity(user_id="1045618308"),
+            TelegramIdentity(user_id="100000001"),
         )
 
         request, _timeout = opener.requests[0]
         self.assertEqual(result, "latest")
         self.assertEqual(request.full_url, "http://127.0.0.1:8099/agent/last-purchase")
-        self.assertEqual(json.loads(request.data), {"telegramUserId": "1045618308"})
+        self.assertEqual(json.loads(request.data), {"telegramUserId": "100000001"})
 
     def test_withdraw_tokens_posts_user_token_endpoint(self):
         opener = RecordingOpener(
@@ -381,7 +381,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         )
 
         result = self.make_client(opener).withdraw_tokens(
-            TelegramIdentity(user_id="1045618308"),
+            TelegramIdentity(user_id="100000001"),
             user_access_token="user-token",
         )
 
@@ -392,7 +392,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
             "http://127.0.0.1:8099/agent/withdraw/tokens",
         )
         self.assertEqual(request.get_header("X-sign402-user-token"), "user-token")
-        self.assertEqual(json.loads(request.data), {"telegramUserId": "1045618308"})
+        self.assertEqual(json.loads(request.data), {"telegramUserId": "100000001"})
 
     def test_execute_withdrawal_posts_user_token_endpoint(self):
         opener = RecordingOpener(
@@ -400,7 +400,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         )
 
         result = self.make_client(opener, purchase_timeout=180.0).execute_withdrawal(
-            TelegramIdentity(user_id="1045618308"),
+            TelegramIdentity(user_id="100000001"),
             token_address="0x" + "1" * 40,
             amount="10",
             to_address="0x" + "2" * 40,
@@ -415,7 +415,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         self.assertEqual(
             json.loads(request.data),
             {
-                "telegramUserId": "1045618308",
+                "telegramUserId": "100000001",
                 "tokenAddress": "0x" + "1" * 40,
                 "amount": "10",
                 "toAddress": "0x" + "2" * 40,
@@ -436,7 +436,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         client = self.make_client(open_next)
 
         result = client.execute_bitrefill_purchase(
-            TelegramIdentity(user_id="1045618308", username="AlpskyKnedlik"),
+            TelegramIdentity(user_id="100000001", username="test_operator"),
             product_id="test-gift-card-link",
             package_id="1",
             country="US",
@@ -471,8 +471,8 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
                     "decimals": 6,
                     "native": False,
                 },
-                "telegramUserId": "1045618308",
-                "telegramUsername": "AlpskyKnedlik",
+                "telegramUserId": "100000001",
+                "telegramUsername": "test_operator",
             },
         )
         self.assertEqual(
@@ -489,8 +489,8 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
             {
                 "quoteId": "quote_1",
                 "recipient": {},
-                "telegramUserId": "1045618308",
-                "telegramUsername": "AlpskyKnedlik",
+                "telegramUserId": "100000001",
+                "telegramUsername": "test_operator",
             },
         )
         self.assertEqual(
@@ -510,7 +510,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
 
         with self.assertRaises(GatewayClientError) as raised:
             self.make_client(opener).execute_bitrefill_purchase(
-                TelegramIdentity(user_id="1045618308"),
+                TelegramIdentity(user_id="100000001"),
                 product_id="test-gift-card-link",
                 package_id="0.1",
                 country="US",
@@ -541,7 +541,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
 
         with self.assertRaises(GatewayClientError) as raised:
             self.make_client(opener).execute_bitrefill_purchase(
-                TelegramIdentity(user_id="1045618308"),
+                TelegramIdentity(user_id="100000001"),
                 product_id="doordash-us",
                 package_id="15",
                 country="US",
@@ -577,7 +577,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
 
         with self.assertRaises(GatewayClientError) as raised:
             self.make_client(opener).execute_bitrefill_purchase(
-                TelegramIdentity(user_id="1045618308"),
+                TelegramIdentity(user_id="100000001"),
                 product_id="alza-czech-republic",
                 package_id="100",
                 country="CZ",
@@ -612,7 +612,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
 
         with self.assertRaises(GatewayClientError) as raised:
             self.make_client(opener).execute_bitrefill_purchase(
-                TelegramIdentity(user_id="1045618308"),
+                TelegramIdentity(user_id="100000001"),
                 product_id="carrefour-argentina",
                 package_id="50",
                 country="AR",
@@ -644,7 +644,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
 
         with self.assertRaises(GatewayClientError) as raised:
             self.make_client(opener).execute_bitrefill_purchase(
-                TelegramIdentity(user_id="1045618308"),
+                TelegramIdentity(user_id="100000001"),
                 product_id="carrefour-argentina",
                 package_id="50",
                 country="AR",
@@ -684,7 +684,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
 
         with self.assertRaises(GatewayClientError) as raised:
             self.make_client(opener).execute_bitrefill_purchase(
-                TelegramIdentity(user_id="1045618308"),
+                TelegramIdentity(user_id="100000001"),
                 product_id="test-gift-card-link",
                 package_id="1",
                 country="US",
@@ -811,7 +811,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         )
 
         result = self.make_client(opener).execute_spending_limits(
-            TelegramIdentity(user_id="1045618308"),
+            TelegramIdentity(user_id="100000001"),
             user_access_token="user-token-1",
         )
 
@@ -819,7 +819,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         self.assertEqual(result, message)
         self.assertEqual(request.full_url, "http://127.0.0.1:8099/agent/spending-limits")
         self.assertEqual(timeout, 5.0)
-        self.assertEqual(json.loads(request.data), {"telegramUserId": "1045618308"})
+        self.assertEqual(json.loads(request.data), {"telegramUserId": "100000001"})
         self.assertEqual(request.get_header("X-sign402-user-token"), "user-token-1")
 
     def test_execute_spending_limits_posts_requested_limits(self):
@@ -828,7 +828,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         )
 
         result = self.make_client(opener).execute_spending_limits(
-            TelegramIdentity(user_id="1045618308", username="AlpskyKnedlik"),
+            TelegramIdentity(user_id="100000001", username="test_operator"),
             max_per_tx_usdc="200",
             daily_cap_usdc="1000",
             user_access_token="user-token-1",
@@ -839,8 +839,8 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         self.assertEqual(
             json.loads(request.data),
             {
-                "telegramUserId": "1045618308",
-                "telegramUsername": "AlpskyKnedlik",
+                "telegramUserId": "100000001",
+                "telegramUsername": "test_operator",
                 "maxPerTxUsdc": "200",
                 "dailyCapUsdc": "1000",
             },
@@ -1008,7 +1008,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
             with self.assertRaises(GatewayClientError) as caught:
                 self.make_client(opener).execute(
                     "wallet",
-                    TelegramIdentity(user_id="1045618308"),
+                    TelegramIdentity(user_id="100000001"),
                 )
 
         message = caught.exception.user_message
@@ -1025,7 +1025,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
                     with self.assertRaises(GatewayClientError) as caught:
                         self.make_client(opener).execute(
                             "wallet",
-                            TelegramIdentity(user_id="1045618308"),
+                            TelegramIdentity(user_id="100000001"),
                         )
                 self.assertIn(
                     "temporarily unavailable",
@@ -1048,7 +1048,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
                 with self.assertRaises(GatewayClientError) as caught:
                     self.make_client(opener).execute(
                         "wallet",
-                        TelegramIdentity(user_id="1045618308"),
+                        TelegramIdentity(user_id="100000001"),
                     )
                 self.assertIn("invalid response", caught.exception.user_message)
 
@@ -1059,7 +1059,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
             with self.assertRaises(GatewayClientError) as caught:
                 self.make_client(opener).execute(
                     "wallet",
-                    TelegramIdentity(user_id="1045618308"),
+                    TelegramIdentity(user_id="100000001"),
                 )
 
         self.assertIn("invalid response", caught.exception.user_message)
@@ -1070,7 +1070,7 @@ class GatewayClientTests(GatewayClientFixture, unittest.TestCase):
         with self.assertRaises(GatewayClientError) as caught:
             self.make_client(opener).execute(
                 "delete-wallet",
-                TelegramIdentity(user_id="1045618308"),
+                TelegramIdentity(user_id="100000001"),
             )
 
         self.assertIn("not supported", caught.exception.user_message)
@@ -1098,7 +1098,7 @@ class ChatClientTests(GatewayClientFixture, unittest.TestCase):
 
         result = self.make_client(opener).execute_chat(
             "start",
-            TelegramIdentity(user_id="1045618308"),
+            TelegramIdentity(user_id="100000001"),
             user_access_token="user-token-1",
         )
 
@@ -1118,7 +1118,7 @@ class ChatClientTests(GatewayClientFixture, unittest.TestCase):
 
         self.make_client(opener).execute_chat(
             "message",
-            TelegramIdentity(user_id="1045618308"),
+            TelegramIdentity(user_id="100000001"),
             payload={"text": "hello there"},
             user_access_token="user-token-1",
         )
@@ -1127,7 +1127,7 @@ class ChatClientTests(GatewayClientFixture, unittest.TestCase):
         self.assertEqual(request.full_url, "http://127.0.0.1:8099/agent/chat/message")
         self.assertEqual(
             json.loads(request.data),
-            {"telegramUserId": "1045618308", "text": "hello there"},
+            {"telegramUserId": "100000001", "text": "hello there"},
         )
 
     def test_chat_end_posts_to_the_end_route(self):
@@ -1135,7 +1135,7 @@ class ChatClientTests(GatewayClientFixture, unittest.TestCase):
 
         self.make_client(opener).execute_chat(
             "end",
-            TelegramIdentity(user_id="1045618308"),
+            TelegramIdentity(user_id="100000001"),
             user_access_token="user-token-1",
         )
 
@@ -1147,7 +1147,7 @@ class ChatClientTests(GatewayClientFixture, unittest.TestCase):
         with self.assertRaises(GatewayClientError):
             self.make_client(opener).execute_chat(
                 "message",
-                TelegramIdentity(user_id="1045618308"),
+                TelegramIdentity(user_id="100000001"),
                 payload={"text": "hi"},
                 user_access_token="",
             )
@@ -1158,7 +1158,7 @@ class ChatClientTests(GatewayClientFixture, unittest.TestCase):
         with self.assertRaises(GatewayClientError):
             self.make_client(opener).execute_chat(
                 "nonsense",
-                TelegramIdentity(user_id="1045618308"),
+                TelegramIdentity(user_id="100000001"),
                 user_access_token="user-token-1",
             )
         self.assertEqual(opener.requests, [])
@@ -1172,7 +1172,7 @@ class AllowanceClientTests(unittest.TestCase):
         opener = RecordingOpener(response=FakeResponse(json.dumps(
             {"ok": True, "telegramText": "Allowance", "limiter": "0xabc"}).encode()))
         result = self.make_client(opener).execute_allowance(
-            "setup", TelegramIdentity(user_id="1045618308"),
+            "setup", TelegramIdentity(user_id="100000001"),
             payload={"dailyCap": "100", "perPurchaseCap": "10", "days": "30"}, user_access_token="user-token",
         )
         request, timeout = opener.requests[-1]
@@ -1180,7 +1180,7 @@ class AllowanceClientTests(unittest.TestCase):
         self.assertGreaterEqual(timeout, 180.0)
         self.assertEqual(request.headers["X-sign402-user-token"], "user-token")
         self.assertEqual(json.loads(request.data), {
-            "telegramUserId": "1045618308", "dailyCap": "100", "perPurchaseCap": "10", "days": "30"})
+            "telegramUserId": "100000001", "dailyCap": "100", "perPurchaseCap": "10", "days": "30"})
         self.assertEqual(result["limiter"], "0xabc")
 
     def test_unknown_actions_and_missing_user_tokens_never_reach_the_gateway(self):

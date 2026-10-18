@@ -47,7 +47,7 @@ def main():
     for name, stage, messages, expected in CASES:
         case = AssistantTests()
         case.setUp()
-        uid = '1045618308'
+        uid = '100000001'
         decisions = []
         original_classify = case.router.classify
         def classify(*args, **kwargs):

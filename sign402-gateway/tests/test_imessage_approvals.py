@@ -102,8 +102,8 @@ class ImessageApprovalTests(unittest.TestCase):
     def make_linked_service(self):
         notifier = RecordingNotifier()
         service, wallet_service, store = self.make_service(notifier=notifier)
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
         service.link_photon_sender(pairing["code"], "+1 (555) 123-4567")
         return service, wallet_service, store, notifier
 
@@ -176,13 +176,13 @@ class ImessageApprovalTests(unittest.TestCase):
 
     def test_pairing_code_links_encrypted_phone_to_existing_wallet(self):
         service, wallet_service, store = self.make_service()
-        wallet_service.create_wallet("1045618308", "AlpskyKnedlik")
+        wallet_service.create_wallet("100000001", "test_operator")
 
-        pairing = service.create_pairing("1045618308")
+        pairing = service.create_pairing("100000001")
         result = service.link_photon_sender(pairing["code"], "+1 (555) 123-4567")
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["telegramUserId"], "1045618308")
+        self.assertEqual(result["telegramUserId"], "100000001")
         self.assertIn("linked", result["imessageText"].lower())
         raw_database = Path(store.path).read_bytes()
         self.assertNotIn(b"+15551234567", raw_database)
@@ -191,15 +191,15 @@ class ImessageApprovalTests(unittest.TestCase):
     def test_pairing_requires_existing_wallet(self):
         service, _wallet_service, _store = self.make_service()
 
-        result = service.create_pairing("1045618308")
+        result = service.create_pairing("100000001")
 
         self.assertFalse(result["ok"])
         self.assertIn("No Base agent wallet", result["telegramText"])
 
     def test_link_attempts_lock_out_after_too_many_bad_codes(self):
         service, wallet_service, _store = self.make_service()
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
 
         for _ in range(10):
             failed = service.link_photon_sender("AAAAAAA2", "+15551234567")
@@ -215,8 +215,8 @@ class ImessageApprovalTests(unittest.TestCase):
 
     def test_pairing_code_is_single_use(self):
         service, wallet_service, _store = self.make_service()
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
 
         first = service.link_photon_sender(pairing["code"], "+15551234567")
         second = service.link_photon_sender(pairing["code"], "+15551234567")
@@ -227,9 +227,9 @@ class ImessageApprovalTests(unittest.TestCase):
 
     def test_one_photon_sender_cannot_link_two_telegram_users(self):
         service, wallet_service, _store = self.make_service()
-        wallet_service.create_wallet("1045618308")
+        wallet_service.create_wallet("100000001")
         wallet_service.create_wallet("2045618308")
-        first = service.create_pairing("1045618308")
+        first = service.create_pairing("100000001")
         second = service.create_pairing("2045618308")
 
         service.link_photon_sender(first["code"], "+15551234567")
@@ -241,12 +241,12 @@ class ImessageApprovalTests(unittest.TestCase):
 
     def test_unlink_by_telegram_user_allows_phone_to_be_relinked(self):
         service, wallet_service, _store = self.make_service()
-        wallet_service.create_wallet("1045618308")
+        wallet_service.create_wallet("100000001")
         wallet_service.create_wallet("2045618308")
-        first = service.create_pairing("1045618308")
+        first = service.create_pairing("100000001")
         service.link_photon_sender(first["code"], "+15551234567")
 
-        removed = service.unlink_photon_sender(telegram_user_id="1045618308")
+        removed = service.unlink_photon_sender(telegram_user_id="100000001")
         second = service.create_pairing("2045618308")
         relinked = service.link_photon_sender(second["code"], "+15551234567")
 
@@ -258,7 +258,7 @@ class ImessageApprovalTests(unittest.TestCase):
     def test_test_approval_sends_canonical_message_and_accepts_yes_once(self):
         service, _wallet_service, _store, notifier = self.make_linked_service()
 
-        created = service.create_test_approval("1045618308")
+        created = service.create_test_approval("100000001")
         pending = service.pending_for_photon_sender("+15551234567")
         decided = service.record_decision("+15551234567", "YES")
         replay = service.record_decision("+15551234567", "YES")
@@ -274,9 +274,9 @@ class ImessageApprovalTests(unittest.TestCase):
     def test_whatsapp_pairing_selects_whatsapp_as_active_channel(self):
         notifier = RecordingNotifier()
         service, wallet_service, _store = self.make_service(notifier=notifier)
-        wallet_service.create_wallet("1045618308")
+        wallet_service.create_wallet("100000001")
 
-        pairing = service.create_pairing("1045618308", channel="whatsapp")
+        pairing = service.create_pairing("100000001", channel="whatsapp")
         linked = service.link_sender(
             pairing["code"],
             "420777111222",
@@ -286,18 +286,18 @@ class ImessageApprovalTests(unittest.TestCase):
         self.assertTrue(pairing["ok"])
         self.assertTrue(linked["ok"])
         self.assertEqual(linked["channel"], "whatsapp")
-        self.assertEqual(service.active_channel("1045618308"), "whatsapp")
+        self.assertEqual(service.active_channel("100000001"), "whatsapp")
 
     def test_select_existing_channel_switches_preference_without_removing_links(self):
         service, _wallet_service, store, _notifier = self.make_linked_service()
-        whatsapp_pairing = service.create_pairing("1045618308", channel="whatsapp")
+        whatsapp_pairing = service.create_pairing("100000001", channel="whatsapp")
         service.link_sender(
             whatsapp_pairing["code"],
             "420777111222",
             channel="whatsapp",
         )
 
-        selected = service.select_existing_channel("1045618308", "imessage")
+        selected = service.select_existing_channel("100000001", "imessage")
 
         self.assertEqual(
             selected,
@@ -309,7 +309,7 @@ class ImessageApprovalTests(unittest.TestCase):
                 "telegramText": "iMessage selected for Sign402 approvals.",
             },
         )
-        self.assertEqual(service.active_channel("1045618308"), "imessage")
+        self.assertEqual(service.active_channel("100000001"), "imessage")
         with store._database() as db:
             channels = db.execute(
                 """
@@ -318,25 +318,25 @@ class ImessageApprovalTests(unittest.TestCase):
                 WHERE telegram_user_id = ?
                 ORDER BY channel
                 """,
-                ("1045618308",),
+                ("100000001",),
             ).fetchall()
         self.assertEqual([str(row["channel"]) for row in channels], ["imessage", "whatsapp"])
 
     def test_select_existing_channel_is_idempotent(self):
         service, _wallet_service, _store, _notifier = self.make_linked_service()
 
-        first = service.select_existing_channel("1045618308", "imessage")
-        second = service.select_existing_channel("1045618308", "imessage")
+        first = service.select_existing_channel("100000001", "imessage")
+        second = service.select_existing_channel("100000001", "imessage")
 
         self.assertTrue(first["selected"])
         self.assertEqual(second, first)
-        self.assertEqual(service.active_channel("1045618308"), "imessage")
+        self.assertEqual(service.active_channel("100000001"), "imessage")
 
     def test_select_existing_channel_requires_pairing_when_unlinked(self):
         service, wallet_service, _store = self.make_service()
-        wallet_service.create_wallet("1045618308")
+        wallet_service.create_wallet("100000001")
 
-        result = service.select_existing_channel("1045618308", "whatsapp")
+        result = service.select_existing_channel("100000001", "whatsapp")
 
         self.assertEqual(
             result,
@@ -347,28 +347,28 @@ class ImessageApprovalTests(unittest.TestCase):
                 "channel": "whatsapp",
             },
         )
-        self.assertIsNone(service.active_channel("1045618308"))
+        self.assertIsNone(service.active_channel("100000001"))
 
     def test_select_existing_channel_rejects_unsupported_channel(self):
         service, wallet_service, _store = self.make_service()
-        wallet_service.create_wallet("1045618308")
+        wallet_service.create_wallet("100000001")
 
         with self.assertRaisesRegex(
             ValueError,
             "approval channel must be imessage or whatsapp",
         ):
-            service.select_existing_channel("1045618308", "telegram")
+            service.select_existing_channel("100000001", "telegram")
 
     def test_linking_whatsapp_switches_delivery_away_from_imessage(self):
         service, wallet_service, _store, notifier = self.make_linked_service()
-        whatsapp_pairing = service.create_pairing("1045618308", channel="whatsapp")
+        whatsapp_pairing = service.create_pairing("100000001", channel="whatsapp")
         service.link_sender(
             whatsapp_pairing["code"],
             "420777111222",
             channel="whatsapp",
         )
 
-        created = service.create_test_approval("1045618308")
+        created = service.create_test_approval("100000001")
 
         self.assertTrue(created["ok"])
         self.assertEqual(
@@ -379,10 +379,10 @@ class ImessageApprovalTests(unittest.TestCase):
     def test_whatsapp_decision_requires_matching_channel_and_approval_id(self):
         notifier = RecordingNotifier()
         service, wallet_service, _store = self.make_service(notifier=notifier)
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308", channel="whatsapp")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001", channel="whatsapp")
         service.link_sender(pairing["code"], "420777111222", channel="whatsapp")
-        created = service.create_test_approval("1045618308")
+        created = service.create_test_approval("100000001")
 
         wrong_channel = service.record_decision(
             "420777111222",
@@ -414,16 +414,16 @@ class ImessageApprovalTests(unittest.TestCase):
         notifier = AutoDecisionNotifier(lambda sender: service_ref[0].record_decision(sender, "YES"))
         service, base_wallets, _ = self.make_service(notifier=notifier)
         service_ref.append(service)
-        base_wallets.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        base_wallets.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
         service.link_photon_sender(pairing["code"], "+15551234567")
         wallets = ManagedWalletService(store=base_wallets.store, master_key=base_wallets.master_key)
         service.wallet_service = wallets
-        args = dict(telegram_user_id="1045618308", wallet_chain="solana",
+        args = dict(telegram_user_id="100000001", wallet_chain="solana",
                     action_type="sign402_venice_solana_topup", commitment_hash="a"*64,
                     context_lines=["Venice x402 / Solana", "5 USDC"])
         self.assertFalse(service.request_hash_approval(**args)["ok"])
-        wallets.create_wallet("1045618308", chain="solana")
+        wallets.create_wallet("100000001", chain="solana")
         approved = service.request_hash_approval(**args)
         self.assertTrue(approved["approved"])
         self.assertEqual(approved["approvedHash"], "a"*64)
@@ -436,12 +436,12 @@ class ImessageApprovalTests(unittest.TestCase):
         )
         service, wallet_service, _store = self.make_service(notifier=notifier)
         service_ref.append(service)
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
         service.link_photon_sender(pairing["code"], "+1 (555) 123-4567")
 
         created = service.request_hash_approval(
-            telegram_user_id="1045618308",
+            telegram_user_id="100000001",
             action_type="sign402_bitrefill",
             commitment_hash="a" * 64,
             context_lines=[
@@ -476,12 +476,12 @@ class ImessageApprovalTests(unittest.TestCase):
         )
         service, wallet_service, _store = self.make_service(notifier=notifier)
         service_ref.append(service)
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
         service.link_photon_sender(pairing["code"], "+1 (555) 123-4567")
 
         service.request_hash_approval(
-            telegram_user_id="1045618308",
+            telegram_user_id="100000001",
             action_type="sign402_bitrefill",
             commitment_hash="a" * 64,
             context_lines=[
@@ -511,12 +511,12 @@ class ImessageApprovalTests(unittest.TestCase):
         )
         service, wallet_service, _store = self.make_service(notifier=notifier)
         service_ref.append(service)
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
         service.link_photon_sender(pairing["code"], "+1 (555) 123-4567")
 
         service.request_hash_approval(
-            telegram_user_id="1045618308",
+            telegram_user_id="100000001",
             action_type="sign402_bitrefill",
             commitment_hash="b" * 64,
             context_lines=[
@@ -537,7 +537,7 @@ class ImessageApprovalTests(unittest.TestCase):
 
     def test_decision_with_matching_approval_id_is_approved(self):
         service, _wallet_service, _store, _notifier = self.make_linked_service()
-        service.create_test_approval("1045618308")
+        service.create_test_approval("100000001")
         pending = service.pending_for_photon_sender("+15551234567")
 
         decided = service.record_decision(
@@ -549,7 +549,7 @@ class ImessageApprovalTests(unittest.TestCase):
 
     def test_imessage_decision_without_approval_id_is_accepted_by_default(self):
         service, _wallet_service, _store, _notifier = self.make_linked_service()
-        service.create_test_approval("1045618308")
+        service.create_test_approval("100000001")
 
         decided = service.record_decision("+15551234567", "YES")
 
@@ -563,7 +563,7 @@ class ImessageApprovalTests(unittest.TestCase):
         being able to approve anything at all.
         """
         service, _wallet_service, _store, _notifier = self.make_linked_service()
-        service.create_test_approval("1045618308")
+        service.create_test_approval("100000001")
 
         with patch.dict(
             os.environ, {"SIGN402_REQUIRE_IMESSAGE_APPROVAL_ID": "true"}
@@ -588,8 +588,8 @@ class ImessageApprovalTests(unittest.TestCase):
         service, wallet_service, _store = self.make_service()
         service.purchase_approval_timeout = 1.0
         service.purchase_approval_poll_interval = 0.01
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
         service.link_photon_sender(pairing["code"], "+1 (555) 123-4567")
         requirements = {
             "scheme": "exact",
@@ -600,14 +600,14 @@ class ImessageApprovalTests(unittest.TestCase):
         }
 
         timed_out = service.request_purchase_approval(
-            telegram_user_id="1045618308",
+            telegram_user_id="100000001",
             tool_name="Crypto News",
             resource_url="https://x402.example/news",
             payment_requirements=requirements,
         )
         # Nobody answered, so the slot must be free for a fresh attempt.
         retried = service.request_purchase_approval(
-            telegram_user_id="1045618308",
+            telegram_user_id="100000001",
             tool_name="Crypto News",
             resource_url="https://x402.example/news",
             payment_requirements=requirements,
@@ -619,7 +619,7 @@ class ImessageApprovalTests(unittest.TestCase):
 
     def test_decision_with_mismatched_approval_id_is_rejected(self):
         service, _wallet_service, _store, _notifier = self.make_linked_service()
-        service.create_test_approval("1045618308")
+        service.create_test_approval("100000001")
 
         decided = service.record_decision(
             "+15551234567", "YES", approval_id="not-the-shown-approval"
@@ -640,8 +640,8 @@ class ImessageApprovalTests(unittest.TestCase):
     def test_duplicate_pending_approval_is_rejected(self):
         service, _wallet_service, _store, _notifier = self.make_linked_service()
 
-        first = service.create_test_approval("1045618308")
-        second = service.create_test_approval("1045618308")
+        first = service.create_test_approval("100000001")
+        second = service.create_test_approval("100000001")
 
         self.assertTrue(first["ok"])
         self.assertFalse(second["ok"])
@@ -649,11 +649,11 @@ class ImessageApprovalTests(unittest.TestCase):
 
     def test_delivery_failure_closes_approval(self):
         service, wallet_service, _store = self.make_service(notifier=RecordingNotifier(False))
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
         service.link_photon_sender(pairing["code"], "+15551234567")
 
-        result = service.create_test_approval("1045618308")
+        result = service.create_test_approval("100000001")
         decision = service.record_decision("+15551234567", "YES")
 
         self.assertFalse(result["ok"])
@@ -924,11 +924,11 @@ class ImessageApprovalTests(unittest.TestCase):
         current_time = [1_800_000_000]
         service, wallet_service, _store = self.make_service()
         service.now = lambda: current_time[0]
-        wallet_service.create_wallet("1045618308")
-        pairing = service.create_pairing("1045618308")
+        wallet_service.create_wallet("100000001")
+        pairing = service.create_pairing("100000001")
         service.link_photon_sender(pairing["code"], "+15551234567")
 
-        service.create_test_approval("1045618308")
+        service.create_test_approval("100000001")
         current_time[0] += 121
         decision = service.record_decision("+15551234567", "YES")
 
