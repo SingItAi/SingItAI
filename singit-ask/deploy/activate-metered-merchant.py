@@ -12,9 +12,11 @@ import time
 import sys
 from urllib.request import urlopen
 
-ROOT=Path.home()/"apps/sign402"
-CONFIG=Path.home()/".config/singit-ask/service.env"
-STAGE=Path.home()/".config/singit-ask/agent-staging/singit-ask/src"
+from layout import required
+
+ROOT=required("SIGN402_APP_ROOT")
+CONFIG=required("SIGN402_ASK_CONFIG_DIR")/"service.env"
+STAGE=required("SIGN402_ASK_STAGE")/"singit-ask/src"
 
 def main():
     os.umask(0o077)
@@ -22,7 +24,7 @@ def main():
     solana='--solana' in sys.argv or 'SINGIT_ASK_METERED_SOLANA=1' in raw.splitlines()
     wanted={"CDP_API_KEY_ID","CDP_API_KEY_SECRET"}
     entries={}
-    for path in [CONFIG,Path('/etc/sign402-gateway.env'),Path.home()/'.hermes/.env',ROOT/'cdp-x402-service/.env']:
+    for path in [CONFIG,required("SIGN402_SYSTEM_ENV"),required("SIGN402_HERMES_ENV"),ROOT/'cdp-x402-service/.env']:
         try: lines=path.read_text().splitlines()
         except OSError: continue
         for line in lines:
@@ -31,7 +33,7 @@ def main():
                 entries.setdefault(key,line.strip().removeprefix('export '))
         if wanted.issubset(entries):break
     if not wanted.issubset(entries):raise RuntimeError('Existing CDP credentials not accessible; configuration unchanged')
-    backup=Path.home()/'sign402-backups'/(time.strftime('%Y%m%dT%H%M%SZ',time.gmtime())+'-before-metered-merchant')
+    backup=required("SIGN402_BACKUP_ROOT")/(time.strftime('%Y%m%dT%H%M%SZ',time.gmtime())+'-before-metered-merchant')
     backup.mkdir(parents=True,mode=0o700)
     shutil.copy2(CONFIG,backup/'service.env')
     shutil.copytree(ROOT/'singit-ask/src',backup/'src')

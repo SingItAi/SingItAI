@@ -7,10 +7,11 @@
 # decide.singitai.app (docs/decide-public-endpoint.md). One hostname is added
 # in the Cloudflare dashboard; this script says exactly which.
 #
-# Run as hermes, with a terminal for sudo, after deploy-trezor-allowance.sh:
+# Run as <DEPLOY_USER>, with a terminal for sudo, after deploy-trezor-allowance.sh.
+# The SSH target is a placeholder; the real value is in private ops notes.
 #
-#   scp scripts/enable-web-page.sh hermes@164.68.104.44:
-#   ssh -t hermes@164.68.104.44 'bash ~/enable-web-page.sh 0xYourAddress[,0xAnother]'
+#   scp scripts/enable-web-page.sh <DEPLOY_USER>@<PROD_HOST>:
+#   ssh -t <DEPLOY_USER>@<PROD_HOST> 'bash ~/enable-web-page.sh 0xYourAddress[,0xAnother]'
 #
 # The argument is the beta allowlist: the only wallets that may sign in ("*"
 # opens it to everyone). Safe to run again.
@@ -20,8 +21,8 @@ umask 077
 ALLOWED="${1:?usage: enable-web-page.sh <allowed addresses, comma-separated, or *>}"
 HOST="app.singitai.app"
 ORIGIN="https://$HOST"
-ENV_FILE=/etc/sign402-gateway.env
-APP="$HOME/apps/sign402"
+ENV_FILE="${SIGN402_SYSTEM_ENV:?Set SIGN402_SYSTEM_ENV (<GATEWAY_ENV>) from private ops notes}"
+APP="${SIGN402_APP_ROOT:?Set SIGN402_APP_ROOT (<APP_CHECKOUT>) from private ops notes}"
 GW="$APP/sign402-gateway"
 WEB_UNIT=/etc/systemd/system/sign402-web-api.service
 

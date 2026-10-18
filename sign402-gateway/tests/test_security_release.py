@@ -71,6 +71,9 @@ class ReleaseInstallerTests(unittest.TestCase):
         self.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.module)
         self.module.APP, self.module.HOME = self.app, self.home
+        self.module.BACKUP_ROOT = self.home / "private-backups"
+        self.module.STATE_DIR = self.home / ".sign402"
+        self.module.DEPLOY_USER = "deploy"
         self.config = root / "gateway.env"
         self.config.write_text("private-config-fixture")
         self.module.CONFIG = self.config
@@ -119,7 +122,7 @@ class ReleaseInstallerTests(unittest.TestCase):
     def test_install_stops_services_backs_up_then_applies_and_checks_health(self):
         self.execute()
         self.assertEqual((self.app / self.name).read_text(), "new-code")
-        backup = next((self.home / "sign402-backups").iterdir())
+        backup = next(self.module.BACKUP_ROOT.iterdir())
         self.assertEqual(backup.stat().st_mode & 0o777, 0o700)
         with tarfile.open(backup / "previous-code.tar.gz") as archive:
             self.assertEqual(archive.extractfile(self.name).read(), b"old-code")
@@ -151,4 +154,4 @@ class ReleaseInstallerTests(unittest.TestCase):
             self.execute()
         self.assertNotIn(["systemctl", "start", *self.module.UNITS], self.commands)
         self.assertEqual(self.wallet.read_bytes(), b"private-state-fixture")
-        self.assertTrue(next((self.home / "sign402-backups").glob("*/state-and-config.tar.gz")).is_file())
+        self.assertTrue(next(self.module.BACKUP_ROOT.glob("*/state-and-config.tar.gz")).is_file())

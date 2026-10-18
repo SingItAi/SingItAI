@@ -14,11 +14,13 @@ from datetime import datetime, timezone
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-ROOT = Path('/home/hermes/apps/sign402')
-PRIVATE = Path.home() / '.config/singit-ask'
+from layout import required
+
+ROOT = required('SIGN402_APP_ROOT')
+PRIVATE = required('SIGN402_ASK_CONFIG_DIR')
 STAGE = PRIVATE / 'direct-staging'
 MANIFEST = json.loads((Path(__file__).parent / 'direct-solana-update.json').read_text())
-GATEWAY_ENV = Path('/etc/sign402-gateway.env')
+GATEWAY_ENV = required('SIGN402_SYSTEM_ENV')
 MERCHANT_ENV = PRIVATE / 'service.env'
 
 
@@ -121,7 +123,7 @@ def main():
     run('sudo', '-v')
     os.umask(0o077)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    backup = Path.home() / 'sign402-backups' / (stamp + '-before-direct-solana')
+    backup = required('SIGN402_BACKUP_ROOT') / (stamp + '-before-direct-solana')
     backup.mkdir(parents=True, mode=0o700)
     gateway = subprocess.check_output(['sudo', 'cat', str(GATEWAY_ENV)])
     merchant = MERCHANT_ENV.read_bytes()
@@ -139,7 +141,8 @@ def main():
     new_gateway.write_bytes(replace_env(gateway, {'SINGIT_ASK_QUOTE_TOKEN': token}))
     new_merchant.write_bytes(replace_env(merchant, {'SINGIT_ASK_QUOTE_TOKEN': token,
         'SINGIT_ASK_DIRECT_SOLANA': '1', 'SINGIT_ASK_QUOTE_DB': str(PRIVATE / 'quotes.sqlite3')}))
-    paths = set((Path.home() / '.sign402').glob('*.db')) | set((Path.home() / '.sign402').glob('*.sqlite3'))
+    state = required('SIGN402_STATE_DIR')
+    paths = set(state.glob('*.db')) | set(state.glob('*.sqlite3'))
     paths.update(Path(values[k]).expanduser() for k in ('SIGN402_USER_WALLET_STORE_PATH',
         'SIGN402_ALLOWANCE_DB', 'SIGN402_SOLANA_ALLOWANCE_DB', 'SIGN402_WEB_DB') if values.get(k))
     checked()
@@ -155,7 +158,7 @@ def main():
         run('sudo', 'systemctl', 'stop', 'sign402-web-api', 'sign402-gateway')
         run('systemctl', '--user', 'stop', 'singit-ask')
         # Snapshot quiesced state, including unresolved journals; never clear or recreate a wallet.
-        journal = Path.home() / '.sign402/ask-metered'
+        journal = state / 'ask-metered'
         if journal.exists():
             shutil.copytree(journal, backup / 'ask-metered')
         for index, db in enumerate(sorted(paths)):

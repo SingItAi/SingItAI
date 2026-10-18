@@ -78,9 +78,9 @@ The Sign402 Gateway systemd environment also needs:
 
 ```env
 SIGN402_PHOTON_API_TOKEN=<independent random bearer token>
-SIGN402_IMESSAGE_APPROVAL_STORE_PATH=/home/hermes/.sign402/imessage-approvals.db
-SIGN402_HERMES_CLI=/home/hermes/.local/bin/hermes
-SIGN402_HERMES_HOME=/home/hermes/.hermes
+SIGN402_IMESSAGE_APPROVAL_STORE_PATH=<STATE_DIR>/imessage-approvals.db
+SIGN402_HERMES_CLI=<HERMES_CLI>
+SIGN402_HERMES_HOME=<AGENT_HOME>
 SIGN402_WHATSAPP_ACCESS_TOKEN=<same Meta System User token>
 SIGN402_WHATSAPP_PHONE_NUMBER_ID=<Meta Phone Number ID>
 SIGN402_WHATSAPP_TEMPLATE_NAME=singit_payment_request
@@ -89,11 +89,11 @@ SIGN402_WHATSAPP_GRAPH_API_VERSION=v25.0
 ```
 
 Do not put wallet, Photon, or Meta API tokens in `SOUL.md`, a skill, a prompt,
-Telegram, iMessage, WhatsApp, or repository files. Keep `~/.hermes/.env` readable only
-by the `hermes` user:
+Telegram, iMessage, WhatsApp, or repository files. Keep `<AGENT_HOME>/.env` readable only
+by `<DEPLOY_USER>`:
 
 ```bash
-chmod 600 ~/.hermes/.env
+chmod 600 <AGENT_HOME>/.env
 ```
 
 The plugin rejects non-loopback gateway URLs so a configuration mistake
@@ -220,10 +220,10 @@ live Bitrefill MCP request.
 
 ## Install
 
-From the server checkout as the `hermes` user:
+From the server checkout as `<DEPLOY_USER>`:
 
 ```bash
-cd ~/apps/sign402
+cd <APP_CHECKOUT>
 ./scripts/install-hermes-wallet-plugin.sh
 hermes plugins list
 hermes gateway restart
@@ -233,8 +233,11 @@ hermes gateway status
 The installer creates:
 
 ```text
-~/.hermes/plugins/sign402-wallet -> ~/apps/sign402/hermes-plugins/sign402-wallet
+<AGENT_HOME>/plugins/sign402-wallet -> <APP_CHECKOUT>/hermes-plugins/sign402-wallet
 ```
+
+`<APP_CHECKOUT>`, `<AGENT_HOME>`, and `<DEPLOY_USER>` are placeholders. Real
+values live in private ops notes.
 
 It refuses to overwrite an unrelated existing plugin path and never reads
 or writes secrets.

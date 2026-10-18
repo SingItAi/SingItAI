@@ -3,11 +3,18 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
-BACKUP_ROOT=${SIGN402_BACKUP_ROOT:-"$HOME/sign402-backups"}
+# Paths are not stored in this repository. Set them from private ops notes:
+# SIGN402_BACKUP_ROOT=<BACKUP_ROOT> SIGN402_STATE_DIR=<STATE_DIR>
+# SIGN402_HERMES_ENV=<AGENT_HOME>/.env SIGN402_SYSTEM_ENV=<GATEWAY_ENV>
+: "${SIGN402_BACKUP_ROOT:?Set SIGN402_BACKUP_ROOT from private ops notes}"
+: "${SIGN402_STATE_DIR:?Set SIGN402_STATE_DIR from private ops notes}"
+: "${SIGN402_HERMES_ENV:?Set SIGN402_HERMES_ENV from private ops notes}"
+: "${SIGN402_SYSTEM_ENV:?Set SIGN402_SYSTEM_ENV from private ops notes}"
+BACKUP_ROOT=$SIGN402_BACKUP_ROOT
 DEST="$BACKUP_ROOT/$TIMESTAMP"
-STATE_DIR=${SIGN402_STATE_DIR:-"$HOME/.sign402"}
-HERMES_ENV=${SIGN402_HERMES_ENV:-"$HOME/.hermes/.env"}
-SYSTEM_ENV=${SIGN402_SYSTEM_ENV:-"/etc/sign402-gateway.env"}
+STATE_DIR=$SIGN402_STATE_DIR
+HERMES_ENV=$SIGN402_HERMES_ENV
+SYSTEM_ENV=$SIGN402_SYSTEM_ENV
 
 umask 077
 mkdir -p "$DEST/state" "$DEST/repo-state" "$DEST/secrets"

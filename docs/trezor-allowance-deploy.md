@@ -17,20 +17,25 @@ steps 0–6 below in order, stops at the first thing that is not as expected, an
 never prints a secret. It needs the owner's terminal once, for sudo:
 
 ```bash
-scp scripts/deploy-trezor-allowance.sh hermes@164.68.104.44:
-ssh -t hermes@164.68.104.44 'bash ~/deploy-trezor-allowance.sh <commit>'
+scp scripts/deploy-trezor-allowance.sh <DEPLOY_USER>@<PROD_HOST>:
+ssh -t <DEPLOY_USER>@<PROD_HOST> 'bash ~/deploy-trezor-allowance.sh <commit>'
 ```
 
+Host and paths are placeholders; real values live in private ops notes (see
+[production-beta-checklist.md](production-beta-checklist.md)). The script also
+needs `SIGN402_APP_ROOT`, `SIGN402_BACKUP_ROOT`, `SIGN402_SYSTEM_ENV`, and
+`SIGN402_ALLOWANCE_OWNER` from those notes.
+
 It ends with the gas funder's address to fund. The broker it installs is the one
-already running since August (`~/apps/sign402-trezor`, same state and token),
+already running since August (`<TREZOR_CHECKOUT>`, same state and token),
 moved to the new code under a user unit `sign402-trezor-broker`; the old
 remote agent keeps running untouched.
 
 ## 0. Before anything changes
 
-On the VPS (`hermes@164.68.104.44`, checkout `~/apps/sign402`):
+On the VPS (`<DEPLOY_USER>@<PROD_HOST>`, checkout `<APP_CHECKOUT>`):
 
-1. Record the running commit: `git -C ~/apps/sign402 rev-parse HEAD`. On
+1. Record the running commit: `git -C <APP_CHECKOUT> rev-parse HEAD`. On
    September 24, 2026 it was `5be0d7a` on `release/exa-auto-search-20260922`,
    the singit-solana work, with a clean tree; that branch is merged into this one.
    Anything newer on the server must be merged here first, never overwritten.
@@ -40,7 +45,7 @@ On the VPS (`hermes@164.68.104.44`, checkout `~/apps/sign402`):
 
 Rollback at any point: check out the recorded commit, reinstall its dependencies,
 restart both units. Allowance state lives in its own database
-(`~/.sign402/allowance.db`) and is not read by the old code.
+(`<STATE_DIR>/allowance.db`) and is not read by the old code.
 
 ## 1. Code
 
@@ -50,7 +55,7 @@ interpreter, including the pinned `spending-memory@443743e` — `git pull` alone
 not update it. Then:
 
 ```bash
-cd ~/apps/sign402/agent-allowance && python3 script/export_artifact.py --check
+cd <APP_CHECKOUT>/agent-allowance && python3 script/export_artifact.py --check
 ```
 
 must say the artifacts match the source (it needs `forge`; skip on the VPS if
@@ -61,7 +66,7 @@ absent, it passed on the branch).
 On the VPS, with the gateway's master key available:
 
 ```bash
-cd ~/apps/sign402/sign402-gateway && .venv/bin/python -m sign402_gateway.agent_allowance new-operator-key
+cd <APP_CHECKOUT>/sign402-gateway && .venv/bin/python -m sign402_gateway.agent_allowance new-operator-key
 ```
 
 twice — once for the gas funder, once for the guardian. Each prints an address and
@@ -83,7 +88,7 @@ Add to the gateway's environment (values are the owner's; none goes into git):
 
 ```text
 SIGN402_ALLOWANCE_ENABLED=1
-SIGN402_ALLOWANCE_OWNERS=<owner's Telegram ID>:0xB80b5Ca13583fB7E0236db4bD8834B9035654558
+SIGN402_ALLOWANCE_OWNERS=<owner's Telegram ID>:<owner wallet>
 SIGN402_ALLOWANCE_GAS_FUNDER_KEY=<encrypted blob from step 2>
 SIGN402_ALLOWANCE_GUARDIAN_KEY=<encrypted blob from step 2>
 SIGN402_ALLOWANCE_BROKER_URL=http://127.0.0.1:8122

@@ -194,7 +194,7 @@ fork, and a deliberately wrong expected selector is reported as a failure.
 attempt above, run by the owner on the Mac with the Trezor. Every transaction
 was then read back from Base independently of the script.
 
-Addresses: owner (Trezor) `0xB80b5Ca13583fB7E0236db4bD8834B9035654558`, agent
+Addresses: owner (Trezor) `<owner wallet>`, agent
 `0x2d45184b8d2F32bC3F1e7aa71972a2350462a668`, guardian
 `0xacE450136feeE5358F703B30951C9BaEAfCA9EdB`, limiter
 [`0xB9bD6FD8a3F8831DDDCb56BA8562e1080Db465f3`](https://base.blockscout.com/address/0xB9bD6FD8a3F8831DDDCb56BA8562e1080Db465f3?tab=contract)

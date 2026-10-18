@@ -32,7 +32,9 @@ the existing CI job; the live provider harness is opt-in.
 See [deployment details and limits](natural-language-assistant.md#existing-bot-deployment--september-21-2026).
 The following September 20 account records the underlying Solana-chat release.
 
-The gateway checkout is `~/apps/sign402` on the VPS `hermes@164.68.104.44`.
+The gateway checkout is `<APP_CHECKOUT>` on the VPS `<DEPLOY_USER>@<PROD_HOST>`.
+Those values, and the backup directory, live in private ops notes. Placeholders
+match [production-beta-checklist.md](production-beta-checklist.md).
 
 Updated on 20 September 2026 at the owner's explicit request: the existing bot
 runs this repository's `venice-solana` release at
@@ -42,7 +44,7 @@ HTTP 200, and Telegram confirms the existing bot identity and native Menu.
 
 Before switching, 1,289 gateway, 343 Telegram and 39 Solana tests passed on the
 VPS. The dedicated Solana runtime is Node 24.21.0 at
-`~/.local/share/singit-node24/bin/node`; Hermes retains its existing Node 22.
+`<NODE24_BIN>` (path in private ops notes); Hermes retains its existing Node 22.
 All 95 Base wallets, the Solana wallet and purchase history were preserved.
 Authenticated AI network selection and a live Venice balance signed by the
 owner's managed Solana wallet passed. No real Venice payment was submitted.
@@ -57,7 +59,7 @@ The old edits remain in a named Git stash and a private deployment backup.
 
 The existing bot credentials, gateway environment, encrypted Base wallet rows,
 approval state and purchase history were retained. A private backup under
-`~/sign402-backups/` includes the repository, local edits, runtime databases and
+`<BACKUP_ROOT>/` includes the repository, local edits, runtime databases and
 JSON files (including `user-purchases.json`), bot configuration and the gateway's
 effective environment. Keep these backups private. This was a replacement of
 the existing deployment, not a second instance sharing its wallet state.
@@ -77,8 +79,8 @@ purchase-history endpoint rejected an unauthenticated request with HTTP 401.
 The site is not served from the VPS — nginx and caddy are installed but
 inactive, and nothing listens on 80 or 443.
 
-Hermes reads `~/.hermes/.env` and loads plugins listed in
-`~/.hermes/config.yaml`. A plugin present in `~/.hermes/plugins/` but missing
+Hermes reads `<AGENT_HOME>/.env` and loads plugins listed in
+`<AGENT_HOME>/config.yaml`. A plugin present in `<AGENT_HOME>/plugins/` but missing
 from that list is silently ignored — no log line, no error.
 
 ## Deploying
@@ -104,11 +106,11 @@ service. In particular, `git pull` alone does not update the pinned
 use `ssh -t` for that operator step. Verify after restarting:
 
 ```bash
-ssh hermes@164.68.104.44 'systemctl is-active sign402-gateway && curl --fail --max-time 5 -s -o /dev/null -w "health: HTTP %{http_code}\n" http://127.0.0.1:8099/health'
+ssh <DEPLOY_USER>@<PROD_HOST> 'systemctl is-active sign402-gateway && curl --fail --max-time 5 -s -o /dev/null -w "health: HTTP %{http_code}\n" http://127.0.0.1:8099/health'
 ```
 
 The September 18 replacement used SIGTERM on the gateway process owned by
-`hermes`, after checking for active spend reservations and pending approvals and
+`<DEPLOY_USER>`, after checking for active spend reservations and pending approvals and
 stopping the Telegram bot. The unit's verified `Restart=always` policy restarted
 it with the existing root-managed environment. No sudo policy or service unit
 was changed. The original root-owned environment file was not modified; its
@@ -117,7 +119,7 @@ effective running environment was saved privately for recovery.
 **Telegram plugin:** changes under `hermes-plugins/` need the bot restarted:
 
 ```bash
-ssh hermes@164.68.104.44 'systemctl --user restart hermes-gateway'
+ssh <DEPLOY_USER>@<PROD_HOST> 'systemctl --user restart hermes-gateway'
 ```
 
 Restarting the bot interrupts any purchase mid-flow. Prefer a quiet moment.
@@ -158,13 +160,13 @@ fixture checking that secrets do not reach logs. It is not a failure.
 ## Where state lives
 
 The retired dashboard HTML and demo resource server are no longer shipped.
-Existing files in `~/apps/sign402/demo-dashboard/` remain gateway runtime state:
+Existing files in `<APP_CHECKOUT>/demo-dashboard/` remain gateway runtime state:
 `bitrefill-orders.sqlite3`, `latest-run.json`, `agent-state.json` and
 `user-purchases.json`. Their default paths have not changed, and a normal Git
 update preserves these ignored files. Do not run `git clean -fdx` on a deployment.
 Backup and recovery scripts continue to use the historical locations.
 
-On the VPS, under `~/.sign402/`:
+On the VPS, under `<STATE_DIR>/`:
 
 | File | Contents |
 | --- | --- |

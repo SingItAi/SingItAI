@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Phase 6: put the Trezor allowance lane on the VPS. docs/trezor-allowance-deploy.md.
 #
-# Run as hermes on the VPS, with a terminal (sudo asks for the password once):
+# Run as <DEPLOY_USER> on the VPS, with a terminal (sudo asks for the password once).
+# The SSH target and the paths below come from private ops notes:
 #
-#   scp scripts/deploy-trezor-allowance.sh hermes@164.68.104.44:
-#   ssh -t hermes@164.68.104.44 'bash ~/deploy-trezor-allowance.sh <commit>'
+#   scp scripts/deploy-trezor-allowance.sh <DEPLOY_USER>@<PROD_HOST>:
+#   ssh -t <DEPLOY_USER>@<PROD_HOST> 'bash ~/deploy-trezor-allowance.sh <commit>'
 #
 # It never prints a secret. Operator keys are created with the gateway's own
 # environment and written straight into it; the broker token is taken from the
@@ -14,11 +15,12 @@ set -euo pipefail
 umask 077
 
 COMMIT="${1:?usage: deploy-trezor-allowance.sh <commit>}"
-OWNER="1045618308:0xB80b5Ca13583fB7E0236db4bD8834B9035654558"
-APP="$HOME/apps/sign402"
+OWNER="${SIGN402_ALLOWANCE_OWNER:?Set SIGN402_ALLOWANCE_OWNER (<telegram-id>:<wallet>) from private ops notes}"
+APP="${SIGN402_APP_ROOT:?Set SIGN402_APP_ROOT (<APP_CHECKOUT>) from private ops notes}"
+: "${SIGN402_BACKUP_ROOT:?Set SIGN402_BACKUP_ROOT (<BACKUP_ROOT>) from private ops notes}"
 GW="$APP/sign402-gateway"
 CONF="$HOME/.config/sign402"
-ENV_FILE=/etc/sign402-gateway.env
+ENV_FILE="${SIGN402_SYSTEM_ENV:?Set SIGN402_SYSTEM_ENV (<GATEWAY_ENV>) from private ops notes}"
 BROKER_UNIT="$HOME/.config/systemd/user/sign402-trezor-broker.service"
 WATCHER_UNIT=/etc/systemd/system/sign402-allowance-watcher.service
 WEB_UNIT=/etc/systemd/system/sign402-web-api.service
@@ -34,7 +36,7 @@ cd "$APP"
 PREV=$(git rev-parse HEAD)
 PREV_BRANCH=$(git branch --show-current)
 ./scripts/backup-sign402-state.sh | tail -1
-BACKUP=$(ls -1dt "$HOME"/sign402-backups/*/ | head -1)
+BACKUP=$(ls -1dt "$SIGN402_BACKUP_ROOT"/*/ | head -1)
 printf '%s %s\n' "$PREV" "$PREV_BRANCH" > "$BACKUP/pre-allowance-head"
 echo "running: $PREV ($PREV_BRANCH); backup: $BACKUP"
 

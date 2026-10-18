@@ -33,7 +33,8 @@ state at each stage, including earlier deployment blockers that were resolved.
   public HTTPS resource URL, both expected USDC assets, recipient addresses,
   and the expected amounts. No model generation or payment occurred.
 - Runtime settings are held separately at
-  `/home/hermes/.config/singit-ask/service.env`, mode 0600, in a 0700 directory.
+  `<ASK_CONFIG_DIR>/service.env`, mode 0600, in a 0700 directory.
+  The real path is in private ops notes.
   Credentials are not part of the uploaded source or this record.
 
 ## Uniform price update — 2026-10-02

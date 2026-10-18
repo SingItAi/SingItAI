@@ -130,15 +130,17 @@ The service listens on 127.0.0.1 only. Configure a Cloudflare tunnel hostname to
 
 ## On the VPS
 
-Use the dedicated user service in `deploy/singit-ask.service`. It runs as `hermes`,
-independently of the gateway, from `/home/hermes/apps/sign402/singit-ask`.
-The private configuration is `/home/hermes/.config/singit-ask/service.env`
+Use the dedicated user service in `deploy/singit-ask.service`. It runs as
+`<DEPLOY_USER>`, independently of the gateway, from `<APP_CHECKOUT>/singit-ask`.
+The private configuration is `<ASK_CONFIG_DIR>/service.env`
 (directory mode `0700`, file mode `0600`). It contains only this service's settings.
+Host, account, and paths are placeholders; real values live in private ops notes.
+Substitute them in the unit file before installing it.
 
 ```bash
-export PATH=/home/hermes/.hermes/node/bin:$PATH
+export PATH=<AGENT_HOME>/node/bin:$PATH
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
-cd /home/hermes/apps/sign402/singit-ask
+cd <APP_CHECKOUT>/singit-ask
 npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 npm test
 install -m 0644 deploy/singit-ask.service ~/.config/systemd/user/singit-ask.service
@@ -148,7 +150,7 @@ curl --fail http://127.0.0.1:8140/health
 ```
 
 The user manager requires lingering for startup after reboot. Verify it with
-`loginctl show-user hermes -p Linger`; this VPS already has `Linger=yes`.
+`loginctl show-user <DEPLOY_USER> -p Linger`; this VPS already has `Linger=yes`.
 
 Node is the v22 build bundled with Hermes. In the existing Cloudflare tunnel, add:
 

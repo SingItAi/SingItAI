@@ -44,8 +44,11 @@ Check what the box is actually on before reasoning about the risk. As of
 `x402Bnkr`, which is what an earlier draft of this document assumed:
 
 ```bash
-ssh hermes@164.68.104.44 'cd ~/apps/sign402 && git rev-parse --abbrev-ref HEAD && git log -1 --format="%h %s"'
+ssh <DEPLOY_USER>@<PROD_HOST> 'cd <APP_CHECKOUT> && git rev-parse --abbrev-ref HEAD && git log -1 --format="%h %s"'
 ```
+
+`<PROD_HOST>`, `<DEPLOY_USER>`, and `<APP_CHECKOUT>` are placeholders. Real
+values live in private ops notes.
 
 That matters, because four of the five commits that change how live customer
 payments are decided are **already in production**:
@@ -81,7 +84,7 @@ follow [the operations guide](operations.md#deploying).
 
 ## 2. Configure the decide endpoint
 
-In `/etc/sign402-gateway.env`, mode `0600`:
+In `<GATEWAY_ENV>`, mode `0600`:
 
 ```bash
 # What an agent may spend per UTC day without asking. No default exists on
@@ -89,7 +92,8 @@ In `/etc/sign402-gateway.env`, mode `0600`:
 SIGN402_DECIDE_AUTONOMY_CAP=5
 
 # Its own database. Not the custodial one — see the warning below.
-SIGN402_DECIDE_MEMORY_DB=/home/hermes/.sibyl-memory/decide.db
+# Path is in private ops notes; do not put it under the wallet state directory.
+SIGN402_DECIDE_MEMORY_DB=<DECIDE_DB>
 ```
 
 > **This must not be the same file as `SPENDING_MEMORY_DB`.** The endpoint is
@@ -107,7 +111,7 @@ guessed one.
 Restart, then confirm it answers locally before anything is exposed:
 
 ```bash
-ssh hermes@164.68.104.44 'curl -s -X POST http://127.0.0.1:8099/v1/decide -H "content-type: application/json" -d "{\"merchant\":\"gateway.thegraph.com\",\"payTo\":\"0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB\",\"amountUsd\":\"0.01\",\"owner\":\"smoke-test\"}"'
+ssh <DEPLOY_USER>@<PROD_HOST> 'curl -s -X POST http://127.0.0.1:8099/v1/decide -H "content-type: application/json" -d "{\"merchant\":\"gateway.thegraph.com\",\"payTo\":\"0x79DC34E41B2b591078d3dE222C43EcaaBD52FcCB\",\"amountUsd\":\"0.01\",\"owner\":\"smoke-test\"}"'
 ```
 
 Expect `200` with `"action": "ESCALATE"` and `"rule": "unknown_merchant"`.
@@ -117,7 +121,7 @@ Expect `200` with `"action": "ESCALATE"` and `"rule": "unknown_merchant"`.
 Check before creating anything:
 
 ```bash
-ssh hermes@164.68.104.44 'systemctl cat cloudflared | grep ExecStart'
+ssh <DEPLOY_USER>@<PROD_HOST> 'systemctl cat cloudflared | grep ExecStart'
 ExecStart=/usr/bin/cloudflared --no-autoupdate tunnel run --token-file /etc/cloudflared/tunnel.token
 ```
 

@@ -6,6 +6,7 @@ and the bridge token is transferred on SSH stdin rather than in shell arguments.
 """
 import argparse
 import json
+import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -90,8 +91,11 @@ def main():
     token = (ROOT / ".graph-live/telegram-demo/bridge-token").read_text().strip()
     payload = {"owner": args.owner, "token": token,
                "plugin": (ROOT / "hermes-plugins/sign402-wallet/graph_demo.py").read_text()}
+    target = os.environ.get("SIGN402_SSH_TARGET", "").strip()
+    if not target:
+        sys.exit("Set SIGN402_SSH_TARGET to <DEPLOY_USER>@<PROD_HOST> (private ops notes).")
     result = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
-        "hermes@164.68.104.44", "python3 -c " + shlex.quote(REMOTE)],
+        target, "python3 -c " + shlex.quote(REMOTE)],
         input=json.dumps(payload), text=True, capture_output=True, timeout=60)
     if result.returncode:
         # Never echo a remote traceback or a command containing configuration.

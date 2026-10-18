@@ -126,7 +126,7 @@ Set them in the gateway service environment:
 ```env
 SIGN402_WALLET_MASTER_KEY=...
 SIGN402_WALLET_API_TOKEN=...
-SIGN402_USER_WALLET_STORE_PATH=/home/hermes/.sign402/user-wallets.db
+SIGN402_USER_WALLET_STORE_PATH=<STATE_DIR>/user-wallets.db
 ```
 
 The wallet API token is required even on localhost. Hermes or any trusted local
@@ -150,7 +150,7 @@ Example:
 curl -sS -X POST http://127.0.0.1:8099/agent/create-wallet \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SIGN402_WALLET_API_TOKEN" \
-  -d '{"telegramUserId":"1045618308","telegramUsername":"AlpskyKnedlik"}'
+  -d '{"telegramUserId":"<telegram-id>","telegramUsername":"<telegram-username>"}'
 ```
 
 The response never includes private key material. The encrypted wallet database

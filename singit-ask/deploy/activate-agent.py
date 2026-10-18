@@ -14,8 +14,10 @@ from datetime import datetime, timezone
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-ROOT = Path('/home/hermes/apps/sign402')
-STAGE = Path('/home/hermes/.config/singit-ask/agent-staging')
+from layout import required
+
+ROOT = required('SIGN402_APP_ROOT')
+STAGE = required('SIGN402_ASK_STAGE')
 MANIFEST = json.loads((Path(__file__).parent / 'agent-update.json').read_text())
 
 
@@ -55,7 +57,7 @@ def checked():
 
 
 def receiver_ready():
-    result = subprocess.run([str(Path.home() / '.hermes/node/bin/node'), str(ROOT / 'singit-ask/src/solana-buyer-cli.mjs')],
+    result = subprocess.run([str(required('SIGN402_NODE_BIN')), str(ROOT / 'singit-ask/src/solana-buyer-cli.mjs')],
         input=json.dumps({'checkOnly': True, 'body': {'messages': [{'role': 'user', 'content': 'Unpaid readiness check'}]}}),
         text=True, capture_output=True, timeout=60)
     try:
@@ -120,9 +122,9 @@ def main():
     run('sudo', '-v')  # Ask for the operator password before changing anything.
     os.umask(0o077)
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    backup = Path.home() / 'sign402-backups' / (stamp + '-before-metered-ask-agent')
+    backup = required('SIGN402_BACKUP_ROOT') / (stamp + '-before-metered-ask-agent')
     backup.mkdir(parents=True, mode=0o700)
-    config = subprocess.check_output(['sudo', 'cat', '/etc/sign402-gateway.env'])
+    config = subprocess.check_output(['sudo', 'cat', str(required('SIGN402_SYSTEM_ENV'))])
     (backup / 'gateway.env').write_bytes(config)
     readiness = {}
     for line in config.decode().splitlines():
@@ -143,8 +145,9 @@ def main():
             if key in ('SIGN402_USER_WALLET_STORE_PATH', 'SIGN402_ALLOWANCE_DB',
                        'SIGN402_SOLANA_ALLOWANCE_DB', 'SIGN402_WEB_DB'):
                 values[key] = shlex.split(value)[0] if shlex.split(value) else ''
-    paths = set((Path.home() / '.sign402').glob('*.db'))
-    paths.update((Path.home() / '.sign402').glob('*.sqlite3'))
+    state = required('SIGN402_STATE_DIR')
+    paths = set(state.glob('*.db'))
+    paths.update(state.glob('*.sqlite3'))
     paths.update(Path(v).expanduser() for v in values.values() if v)
     identities = {p: keys(p) for p in paths if p.is_file()}
     for index, path in enumerate(identities):
