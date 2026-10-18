@@ -11,7 +11,7 @@ import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { baseOffer, ceilings, solanaOffer } from "./metered.mjs";
+import { baseOffer, ceilings, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
@@ -98,6 +98,8 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       .register(BASE, new UptoEvmScheme())
       .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }));
     app.post(route, async (req, res, next) => {
+      // x402scan's empty, unpaid probe gets the standing offer, not a "Send a JSON body"/"Name a model" error.
+      if (isDiscoveryProbe(req)) { req.askCeilings = ceilings(null, {}); return next(); }
       try {
         const input = readFormatRequest(route, req.body);
         const info = await catalogue.resolve(input.model);
