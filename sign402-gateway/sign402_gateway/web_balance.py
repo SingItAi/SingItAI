@@ -39,8 +39,8 @@ CREDIT_URL = "https://ask.singitai.app/v1/credit"
 MIN_TOPUP = 1_000_000          # $1 of credit, singit-ask's least
 MAX_TOPUP = 50_000_000         # $50, its most
 TOPUP_STEP = 10_000            # whole cents
-DEFAULT_TOPUP = 5_000_000      # one portion: $5
-DEFAULT_THRESHOLD = 1_000_000  # top up below $1 left
+DEFAULT_TOPUP = 1_000_000      # one portion: $1, so little of the owner's money waits here
+DEFAULT_THRESHOLD = 300_000    # top up below $0.30 left
 HOLD_SECONDS = 15 * 60         # a hold nobody has touched this long is let go
 TOPUP_ID = re.compile(r"top_[0-9a-f]{16,32}")
 
@@ -220,26 +220,35 @@ class Balances:
                    (row["amount_atomic"], row["account_id"]))
         return str(row["account_id"])
 
-    def charge(self, account: str, hold_id: str, amount: int, now: int, *, key_id: str | None = None,
-               model: str | None = None, ref: str | None = None, cost: int | None = None,
-               input_tokens: int | None = None, output_tokens: int | None = None) -> int:
-        """Charges up to the live hold, lets that hold go, and returns the balance after.
+    def charge(self, account: str, hold_id: str, amount: int, now: int, **details: Any) -> int:
+        """Charges up to the live hold, lets that hold go, and returns the balance after."""
+        return self.bill(account, hold_id, amount, now, **details)[1]
 
-        The model may already have answered for more. That extra is not collected here: a missing hold bills
-        nothing, and a live one bills at most what it reserved, so the balance cannot be driven negative by a
-        charge.
+    def bill(self, account: str, hold_id: str, amount: int, now: int, *, beyond_hold: int = 0,
+             key_id: str | None = None, model: str | None = None, ref: str | None = None, cost: int | None = None,
+             input_tokens: int | None = None, output_tokens: int | None = None) -> tuple[int, int]:
+        """Charges `amount`, lets the hold go, and returns what was billed and the balance after.
+
+        A charge takes its hold, and up to `beyond_hold` more from what no other hold has reserved, so an answer
+        longer than its hold is still paid while there is money free for it. Whatever is left over is not collected:
+        a missing hold bills nothing, and the balance cannot be driven negative or into another request's hold.
         """
         with self._db() as db:
             row = db.execute("SELECT account_id, amount_atomic FROM balance_holds WHERE hold_id = ?",
                              (hold_id,)).fetchone()
             if row is None or str(row["account_id"]) != account:
                 current = db.execute("SELECT balance_atomic FROM balances WHERE account_id = ?", (account,)).fetchone()
-                return int(current[0]) if current is not None else 0
+                return 0, int(current[0]) if current is not None else 0
             reserved = int(row["amount_atomic"])
             asked = amount if type(amount) is int and amount > 0 else 0
             billed = min(asked, reserved)
-            if asked > reserved:
-                logger.warning("balance: charge of %s for %s capped at its hold of %s", asked, account, reserved)
+            if asked > reserved and beyond_hold > 0:
+                balance, held = db.execute("SELECT balance_atomic, held_atomic FROM balances WHERE account_id = ?",
+                                           (account,)).fetchone()
+                free = int(balance) - int(held)  # this hold is still counted in `held`, so `free` is the rest
+                billed += max(0, min(asked - reserved, beyond_hold, free))
+            if asked > billed:
+                logger.warning("balance: charge of %s for %s capped at %s", asked, account, billed)
             self._drop_hold(db, hold_id)
             self._ensure(db, account, now)
             if billed:
@@ -249,7 +258,7 @@ class Balances:
             db.execute("INSERT INTO balance_ledger(account_id, at, kind, amount_atomic, balance_after, ref, key_id, model,"
                        " cost_atomic, input_tokens, output_tokens) VALUES (?, ?, 'charge', ?, ?, ?, ?, ?, ?, ?, ?)",
                        (account, now, -billed, after, ref, key_id, model, cost, input_tokens, output_tokens))
-        return after
+        return billed, after
 
     # -- topping up --
 

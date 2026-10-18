@@ -110,6 +110,10 @@ class BalanceStoreTests(unittest.TestCase):
         self.assertEqual(self.balances.charge(ACCOUNT, "h1", 1_500_000, NOW), 999_000)
         self.assertEqual(len(self.balances.ledger(ACCOUNT)), 2)  # the missed hold adds no second charge
 
+    def test_a_new_account_tops_up_a_dollar_at_a_time_below_thirty_cents_when_turned_on(self):
+        state = self.balances.state(ACCOUNT)
+        self.assertEqual((state["topupAtomic"], state["thresholdAtomic"], state["autoTopup"]), (1_000_000, 300_000, False))
+
     def test_a_forgotten_hold_is_let_go(self):
         self.credit(1_000_000)
         self.balances.hold(ACCOUNT, "h1", 1_000_000, NOW)
@@ -485,6 +489,18 @@ class ProxyTests(ProxyFixture):
                 self.assertTrue(text.endswith(b"data: [DONE]\n\n"))
                 self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -650)
 
+    def test_a_streamed_chat_loses_the_sellers_own_price_and_unit(self):
+        usage = {"choices": [], "usage": {"prompt_tokens": 3, "completion_tokens": 1, "buyer_cost_micro": 500},
+                 "cost": {"usd": 0, "diem": 7.6e-06}}
+        self.surplus.replies.append(Response(200, sse({"choices": [{"index": 0, "delta": {"content": "Hi"}}]}, usage,
+                                                      b"[DONE]"), {"Content-Type": "text/event-stream"}))
+        _, relay = self.send("/chat/completions", {"stream": True, "stream_options": {"include_usage": True},
+                                                   "messages": [{"role": "user", "content": "Hi"}]})
+        text = self.body_of(relay)
+        self.assertIn(b'"prompt_tokens": 3', text)
+        self.assertNotIn(b"diem", text)
+        self.assertNotIn(b'"cost"', text)
+
     def test_responses_api_is_relayed_and_charged(self):
         self.surplus.replies.append(Response(200, {"object": "response", "output": [],
                                                    "usage": {"input_tokens": 4, "output_tokens": 2,
@@ -512,9 +528,9 @@ class ProxyTests(ProxyFixture):
         self.assertEqual(self.balances.state(self.account)["heldAtomic"], 0)
 
     def test_a_request_that_may_cost_more_than_the_key_allows_is_refused_before_any_top_up(self):
-        with self.assertRaises(ApiError) as caught:
-            self.send("/chat/completions", {"model": "claude-opus-5.5", "max_tokens": 100_000,
-                                            "messages": [{"role": "user", "content": "Hi"}]})
+        with self.assertRaises(ApiError) as caught:  # the question alone, held at the list price, passes $1
+            self.send("/chat/completions", {"model": "claude-opus-5.5", "max_tokens": 10,
+                                            "messages": [{"role": "user", "content": "x" * 500_000}]})
         self.assertEqual(caught.exception.code, "over_request_limit")
         self.assertEqual((self.topups, self.surplus.sent), ([], []))
 
@@ -535,7 +551,52 @@ class ProxyTests(ProxyFixture):
         self.assertEqual((line["amount_atomic"], line["cost_atomic"]), (-hold, 500_000))
         _, keys, _ = self.call("GET", "/api-keys")
         self.assertEqual(keys["keys"][0]["spentTodayUsd"], hold / 1e6)
-        self.assertTrue(any("charged the hold" in line for line in logs.output))
+        self.assertTrue(any("cost 500000" in line for line in logs.output))
+
+    def claude_code_request(self, cost):
+        """A Claude Code turn: it asks for up to 128k tokens of answer and gets far fewer."""
+        body = {"model": "claude-opus-5-5", "max_tokens": 128_000, "messages": [{"role": "user", "content": "Hi"}]}
+        sent = {**body, "model": "claude-opus-5.5"}
+        self.surplus.replies.append(Response(200, {"usage": {"buyer_cost_micro": cost}}, {"x-request-id": "req_cc"}))
+        held = []
+        real_hold = self.balances.hold
+        with patch.object(self.balances, "hold", side_effect=lambda *a: held.append(a[2]) or real_hold(*a)):
+            _, relay = self.send("/messages", body)
+        return json.loads(self.body_of(relay)), held[-1], web_api_proxy.estimate("claude-opus-5.5", sent)
+
+    def test_a_claude_code_turn_holds_a_capped_answer_and_is_charged_what_it_cost(self):
+        out, hold, most = self.claude_code_request(20_000)
+        self.assertEqual(hold, web_api_proxy.estimate("claude-opus-5.5", {"max_tokens": 128_000, "messages": [
+            {"role": "user", "content": "Hi"}]}, web_api_proxy.HOLD_OUTPUT_TOKENS))
+        self.assertLess(hold * 7, most)  # 16k of 128k tokens of answer
+        self.assertLess(hold, 1_000_000)  # fits under the key's $1 a request, where the whole 128k would not
+        self.assertEqual(out["billing"]["chargedAtomic"], charge_for(20_000))
+
+    def test_an_answer_longer_than_its_hold_is_paid_from_the_free_balance_up_to_the_key_limit(self):
+        out, hold, _ = self.claude_code_request(600_000)  # 780,000 charged: past the hold, under the $1 limit
+        self.assertLess(hold, charge_for(600_000))
+        self.assertEqual(out["billing"]["chargedAtomic"], charge_for(600_000))
+        self.assertEqual(self.balances.state(self.account)["balanceAtomic"], 5_000_000 - charge_for(600_000))
+        _, keys, _ = self.call("GET", "/api-keys")
+        self.assertEqual(keys["keys"][0]["spentTodayUsd"], charge_for(600_000) / 1e6)
+        with self.assertLogs("sign402_gateway.web_api_proxy", "WARNING"):
+            out, _, _ = self.claude_code_request(2_000_000)  # 2.6M: the key allows $1 a request
+        self.assertEqual(out["billing"]["chargedAtomic"], 1_000_000)
+
+    def test_an_answer_longer_than_its_hold_never_takes_another_requests_hold(self):
+        self.balances.set_terms(self.account, 5_000_000, 1_000_000, False, NOW)  # no refill after it
+        self.balances.claim_topup("top_" + "e" * 24, self.account, 5_000_000, NOW)
+        self.balances.credit_topup("top_" + "e" * 24, 5_001_000, 5_000_000, "0xtx", "base", NOW)
+        hold = web_api_proxy.estimate("claude-opus-5.5", {"max_tokens": 128_000, "messages": [
+            {"role": "user", "content": "Hi"}]}, web_api_proxy.HOLD_OUTPUT_TOKENS)
+        self.assertTrue(self.balances.hold(self.account, "h_other", 5_000_000 - hold - 100_000, NOW))
+        with self.assertLogs("sign402_gateway.web_api_proxy", "WARNING"):
+            out, held, _ = self.claude_code_request(600_000)
+        self.assertEqual(held, hold)
+        self.assertEqual(out["billing"]["chargedAtomic"], hold + 100_000)  # its hold and what was still free
+        state = self.balances.state(self.account)
+        self.assertEqual((state["balanceAtomic"], state["heldAtomic"]),
+                         (5_000_000 - hold - 100_000, 5_000_000 - hold - 100_000))
 
     def test_a_token_limit_that_is_not_an_integer_is_refused_before_anything_is_paid(self):
         for limit in ("100000", 1000.5, True, 0, -1):
@@ -641,6 +702,8 @@ class ProxyTests(ProxyFixture):
         self.assertEqual(surplus_model("singit-ask"), "deepseek-v4.1-flash")
         self.assertEqual(surplus_model("claude-sonnet-5-5"), "claude-sonnet-5.5")
         self.assertEqual(surplus_model("claude-haiku-5-5-20260301"), "claude-haiku-5.5")
+        self.assertEqual(surplus_model("claude-fable-5-1"), "claude-fable-5.1")
+        self.assertEqual(surplus_model("claude-fable-5-1-20260801"), "claude-fable-5.1")
         self.assertEqual(surplus_model("gpt-5.5"), "gpt-5.5")
         self.assertEqual(charge_for(1), 2)
         self.assertEqual(charge_for(1000), 1300)

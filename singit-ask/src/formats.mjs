@@ -17,9 +17,9 @@ import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage } from "./pricing.mjs";
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
 const TERMS_BY_NETWORK = { [BASE]: TERMS, [SOLANA]: SOLANA_TERMS };
-// Anthropic's SDK and Claude Code name models as Anthropic does (claude-sonnet-5-5, maybe dated); Surplus as claude-sonnet-5.5.
-const ANTHROPIC_ID = /^(claude-(?:opus|sonnet|haiku))-(\d+)-(\d+)(?:-\d{8})?$/;
-const UPSTREAM_FIELDS = ["provider"];
+// Anthropic's SDK and Claude Code name models as Anthropic does (claude-sonnet-5-5, claude-fable-5-1, maybe dated); Surplus as claude-sonnet-5.5.
+const ANTHROPIC_ID = /^(claude-(?:opus|sonnet|haiku|fable))-(\d+)-(\d+)(?:-\d{8})?$/;
+const UPSTREAM_FIELDS = ["provider", "cost"]; // the seller, and its own price with the seller's unit
 const UPSTREAM_USAGE_FIELDS = ["cost", "is_byok", "cost_details", "buyer_cost_micro"];
 
 export class FormatError extends Error {
