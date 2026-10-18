@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pay-per-Answer LLM API over x402 | SingIt</title>
+<meta name="description" content="150+ models, Claude, GPT, Gemini and DeepSeek among them, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
+<link rel="canonical" href="https://singitai.app/x402-llm-api/">
+<meta property="og:title" content="Pay-per-Answer LLM API over x402 | SingIt">
+<meta property="og:description" content="150+ models, Claude, GPT, Gemini and DeepSeek among them, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
+<meta property="og:url" content="https://singitai.app/x402-llm-api/">
+<meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@SingItAgent">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css?v=bb7061fc">
+<link rel="stylesheet" href="/dev.css?v=1">
+<link rel="stylesheet" href="/pages.css?v=1">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://singitai.app/#organization",
+      "name": "SingIt",
+      "url": "https://singitai.app/"
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://singitai.app/#website",
+      "url": "https://singitai.app/",
+      "name": "SingIt",
+      "publisher": { "@id": "https://singitai.app/#organization" }
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://singitai.app/x402-llm-api/#webpage",
+      "url": "https://singitai.app/x402-llm-api/",
+      "name": "Pay-per-Answer LLM API over x402 | SingIt",
+      "description": "150+ models, Claude, GPT, Gemini and DeepSeek among them, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.",
+      "isPartOf": { "@id": "https://singitai.app/#website" },
+      "about": { "@id": "https://singitai.app/x402-llm-api/#api" },
+      "breadcrumb": { "@id": "https://singitai.app/x402-llm-api/#breadcrumb" },
+      "inLanguage": "en"
+    },
+    {
+      "@type": "WebAPI",
+      "@id": "https://singitai.app/x402-llm-api/#api",
+      "name": "Pay-per-Answer LLM API over x402",
+      "documentation": "https://singitai.app/developers/",
+      "provider": { "@id": "https://singitai.app/#organization" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://singitai.app/x402-llm-api/#breadcrumb",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SingIt", "item": "https://singitai.app/" },
+        { "@type": "ListItem", "position": 2, "name": "x402 LLM API", "item": "https://singitai.app/x402-llm-api/" }
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://singitai.app/x402-llm-api/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Do I need an account or API key?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Not for x402. An agent with a little USDC on Base or Solana pays per answer. A key is optional, for SDKs and Claude Code." }
+        },
+        {
+          "@type": "Question",
+          "name": "What does \"upto\" mean?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Your agent signs a ceiling. The facilitator settles only what the answer actually used, reported as billing.totalAtomic in USDC micro-units. A failed answer is never settled." }
+        },
+        {
+          "@type": "Question",
+          "name": "Which models?",
+          "acceptedAnswer": { "@type": "Answer", "text": "150+ from the live list at GET https://ask.singitai.app/v1/models, Claude, GPT, Gemini, Grok, DeepSeek and Qwen among them. Pass any model id in the model field." }
+        },
+        {
+          "@type": "Question",
+          "name": "How much does it cost?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The answer's actual cost + 30%, plus $0.001 per answer on Base or $0.002 on Solana over x402. Live prices against list prices are on /models/." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I try it before paying?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. free/deepseek-v4.1-flash answers with no wallet and no key, 20 answers a day." }
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="singit-mark" viewBox="0 0 240 240" fill="none">
+    <path d="M192 108 V152 Q192 176 168 176 H112 Q88 176 88 152 V88 Q88 64 112 64 H168 Q192 64 192 78"
+          stroke="currentColor" stroke-width="12.5" stroke-linecap="round"/>
+    <path d="M116 118 L139 143 L188 86 H206" stroke="currentColor" stroke-width="11.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="216" cy="86" r="8" stroke="currentColor" stroke-width="8.5"/>
+    <g stroke="currentColor" stroke-width="9" stroke-linecap="round">
+      <line x1="58" y1="94"  x2="88" y2="94"/>
+      <line x1="58" y1="121" x2="88" y2="121"/>
+      <line x1="58" y1="148" x2="88" y2="148"/>
+    </g>
+    <g fill="currentColor">
+      <circle cx="49" cy="94"  r="9"/>
+      <circle cx="49" cy="121" r="9"/>
+      <circle cx="49" cy="148" r="9"/>
+    </g>
+  </symbol>
+  <symbol id="ic-copy" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="nav-wrap">
+  <div class="nav-bar">
+    <a class="brand" href="/" aria-label="SingIt home">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/developers/">Developers</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/developers/#quickstart">Quickstart</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="https://app.singitai.app/app/">
+      Open SingIt
+      <span class="btn-arrow" aria-hidden="true">&#8599;</span>
+    </a>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero dev-hero">
+    <div class="shell">
+      <div class="hero-copy" data-hero-reveal>
+        <p class="eyebrow">Pay per answer over x402</p>
+        <h1>A pay-per-answer LLM API <em>over x402</em></h1>
+        <p class="hero-sub">150+ models, Claude, GPT, Gemini and DeepSeek among them. Your agent pays per answer in USDC from its own wallet: no account and no key. You pay only what the answer used.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#quickstart">
+            Try it free
+            <span class="btn-arrow" aria-hidden="true">&#8595;</span>
+          </a>
+          <a class="btn btn-outline" href="/models/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=hero">Models &amp; prices</a>
+          <a class="btn btn-outline" href="https://app.singitai.app/app/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=hero">Open SingIt</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="lp-section" id="problem">
+    <div class="shell">
+      <h2 class="section-title" data-reveal>The problem.</h2>
+      <ul class="works-grid is-2" data-batch>
+        <li><p>An agent needs an account, a card and a stored API key before it can ask one question. A stored key is a blank check with your billing attached.</p></li>
+        <li><p>Prepaid credits get stranded at one provider, and per-request pricing is a guess until the bill arrives.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="lp-section" id="how">
+    <div class="shell">
+      <h2 class="section-title" data-reveal>How it works.</h2>
+      <ul class="works-grid" data-batch>
+        <li><b>One endpoint, OpenAI format:</b><p><span class="mono">POST https://ask.singitai.app/v1/chat/completions</span>. Anthropic's Messages (<span class="mono">/v1/messages</span>) and OpenAI's Responses (<span class="mono">/v1/responses</span>) formats work too.</p></li>
+        <li><b>402, then pay:</b><p>a request without payment returns <span class="mono">402 Payment Required</span> with a ceiling. Your agent signs an <b>upto</b> payment for that ceiling, and Coinbase's facilitator settles only what the answer used.</p></li>
+        <li><b>Price:</b><p>the answer's actual cost + 30%, plus a settlement fee of $0.001 per answer on Base or $0.002 on Solana. A failed answer is never settled.</p></li>
+        <li><b>No ETH needed on Base:</b><p>the facilitator pays the gas. The agent just needs a little USDC.</p></li>
+        <li><b>Discoverable:</b><p>listed on Coinbase's x402 Bazaar and on x402scan.</p></li>
+      </ul>
+      <div data-reveal>
+        <div class="term" data-term role="img" aria-label="An agent asks a model to review a pull request, signs an upto payment for the 402 ceiling, and is charged only what the answer used.">
+          <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="term-line cmd">ask claude-opus-5.5 "Review this pull request"</div>
+          <div class="term-line out">&larr; 402 Payment Required &middot; ceiling 0.054 USDC</div>
+          <div class="term-line out">&rarr; signed upto 0.054 USDC on Base</div>
+          <div class="term-line ok">&#10003; 200 &middot; answered &middot; charged 0.0071 USDC, what it used</div>
+        </div>
+        <p class="term-caption">An example run. Ceilings and charges depend on the model and the answer.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="lp-section" id="quickstart">
+    <div class="shell">
+      <h2 class="section-title" data-reveal>Quickstart.</h2>
+      <div data-reveal>
+        <div class="tabs" role="tablist" aria-label="Quickstart examples" data-tabs>
+          <span class="tab-pill" aria-hidden="true"></span>
+          <button type="button" class="tab" role="tab" id="tab-curl" aria-controls="panel-curl" aria-selected="true">curl &middot; free</button>
+          <button type="button" class="tab" role="tab" id="tab-x402" aria-controls="panel-x402" aria-selected="false" tabindex="-1">x402 &middot; no key</button>
+          <button type="button" class="tab" role="tab" id="tab-find" aria-controls="panel-find" aria-selected="false" tabindex="-1">Discovery</button>
+        </div>
+        <div class="tab-panels">
+          <section class="tab-panel" role="tabpanel" id="panel-curl" aria-labelledby="tab-curl" tabindex="0">
+            <h3>Free, no wallet, no key</h3>
+            <div class="code">
+<pre><code id="code-curl">curl https://ask.singitai.app/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model": "free/deepseek-v4.1-flash",
+       "messages": [{"role": "user", "content": "Hello!"}]}'</code></pre>
+              <button type="button" class="copy-btn" data-copy="code-curl" aria-label="Copy the curl example">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <p class="tab-note">The free model gives 20 answers a day. Drop the <span class="mono">free/</span> prefix or pick another model and the same request returns a 402 asking for payment.</p>
+          </section>
+
+          <section class="tab-panel" role="tabpanel" id="panel-x402" aria-labelledby="tab-x402" tabindex="0" hidden>
+            <h3>x402, paid from the agent's own wallet</h3>
+            <div class="code">
+<pre><code id="code-x402">import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
+import { UptoEvmScheme } from "@x402/evm/upto/client";
+import { createPublicClient, http } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { base } from "viem/chains";
+
+<span class="c">// A wallet holding a little USDC on Base. No ETH: the facilitator pays the gas.</span>
+const account = privateKeyToAccount(process.env.AGENT_KEY);
+const chain = createPublicClient({ chain: base, transport: http() });
+const client = x402Client.fromConfig({ schemes: [{ network: "eip155:8453",
+  client: new UptoEvmScheme({ address: account.address, signTypedData: account.signTypedData,
+                              readContract: chain.readContract.bind(chain) }) }] });
+const pay = wrapFetchWithPayment(fetch, client);
+const res = await pay("https://ask.singitai.app/v1/chat/completions", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ model: "claude-opus-5.5",
+                         messages: [{ role: "user", content: "Hello!" }] }),
+});
+const answer = await res.json();
+console.log(answer.choices[0].message.content, answer.billing.totalAtomic);</code></pre>
+              <button type="button" class="copy-btn" data-copy="code-x402" aria-label="Copy the x402 example">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="tab-panel" role="tabpanel" id="panel-find" aria-labelledby="tab-find" tabindex="0" hidden>
+            <h3>Discovery</h3>
+            <div class="code">
+<pre><code id="code-find">GET https://ask.singitai.app/v1/models        <span class="c"># models, our prices, list prices and fees</span>
+GET https://ask.singitai.app/openapi.json     <span class="c"># OpenAPI 3.1 with x402 payment info</span>
+GET https://ask.singitai.app/.well-known/x402 <span class="c"># x402 resource list</span></code></pre>
+              <button type="button" class="copy-btn" data-copy="code-find" aria-label="Copy the discovery URLs">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="lp-section" id="beyond">
+    <div class="shell">
+      <h2 class="section-title" data-reveal>Beyond chat.</h2>
+      <p class="lp-text" data-reveal>The same x402 lane serves images (<span class="mono">/v1/images/generations</span>), text to speech (<span class="mono">/v1/audio/speech</span>), and Exa web search, contents and answers (<span class="mono">/v1/exa/search</span>, <span class="mono">/contents</span>, <span class="mono">/answer</span>). Video generation is listed as coming soon on <a href="/developers/">/developers/</a>.</p>
+    </div>
+  </section>
+
+  <section class="lp-section" id="key-or-budget">
+    <div class="shell">
+      <h2 class="section-title" data-reveal>Prefer a key? Or a budget?</h2>
+      <ul class="works-grid is-2" data-batch>
+        <li><b>API key:</b><p>get one in the SingIt app (Settings &rarr; API keys). Your wallet signs the key's limits. Top up $1 to $50 at a time in USDC; each request costs what it used + 30%, with no fee per call. Works with the OpenAI SDK, the Anthropic SDK and Claude Code at <span class="mono">https://app.singitai.app/v1</span>. <a href="/developers/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=keys">Developer docs</a></p></li>
+        <li><b>Budget from your own wallet:</b><p>pay answers from SingIt's daily and per-purchase limits (<a href="/ai-agent-spending-limit/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=body">how the limits work</a>).</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="lp-section" id="faq">
+    <div class="shell">
+      <h2 class="section-title" data-reveal>FAQ.</h2>
+      <dl class="faq" data-batch>
+        <div class="faq-item">
+          <dt><h3>Do I need an account or API key?</h3></dt>
+          <dd class="faq-answer">Not for x402. An agent with a little USDC on Base or Solana pays per answer. A key is optional, for SDKs and Claude Code.</dd>
+        </div>
+        <div class="faq-item">
+          <dt><h3>What does "upto" mean?</h3></dt>
+          <dd class="faq-answer">Your agent signs a ceiling. The facilitator settles only what the answer actually used, reported as <span class="mono">billing.totalAtomic</span> in USDC micro-units. A failed answer is never settled.</dd>
+        </div>
+        <div class="faq-item">
+          <dt><h3>Which models?</h3></dt>
+          <dd class="faq-answer">150+ from the live list at <span class="mono">GET https://ask.singitai.app/v1/models</span>, Claude, GPT, Gemini, Grok, DeepSeek and Qwen among them. Pass any model id in the <span class="mono">model</span> field.</dd>
+        </div>
+        <div class="faq-item">
+          <dt><h3>How much does it cost?</h3></dt>
+          <dd class="faq-answer">The answer's actual cost + 30%, plus $0.001 per answer on Base or $0.002 on Solana over x402. Live prices against list prices are on <a href="/models/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=faq">/models/</a>.</dd>
+        </div>
+        <div class="faq-item">
+          <dt><h3>Can I try it before paying?</h3></dt>
+          <dd class="faq-answer">Yes. <span class="mono">free/deepseek-v4.1-flash</span> answers with no wallet and no key, 20 answers a day.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="shell">
+      <h2 data-reveal>Your first answer <em>in one request.</em></h2>
+      <div class="hero-cta" data-reveal>
+        <a class="btn btn-outline btn-lg" href="#quickstart">Try the free model</a>
+        <a class="btn btn-primary btn-lg" href="https://app.singitai.app/app/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=footer-key">
+          Get an API key
+          <span class="btn-arrow" aria-hidden="true">&#8599;</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="shell footer-inner">
+    <a class="brand brand-footer" href="/">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/">For everyone</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/x402-gift-cards-esims/">Gift cards &amp; eSIMs</a>
+      <a href="/ai-agent-spending-limit/">Spending limit</a>
+      <a href="https://app.singitai.app/app/">Open SingIt</a>
+      <a href="https://x.com/SingItAgent" target="_blank" rel="noopener">X</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://bubon-ik.github.io/SingItAI/" target="_blank" rel="noopener">Privacy policy</a>
+      <a href="mailto:Exkalibur1919@proton.me">Contact</a>
+    </nav>
+    <p class="footer-fine">&copy; 2026 SingIt</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="/app.js?v=bb7061fc"></script>
+<script type="module" src="/dev.mjs?v=1"></script>
+
+</body>
+</html>
