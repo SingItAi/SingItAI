@@ -79,6 +79,45 @@ for(const cost of [100,undefined,2000]) test(`merchant settles actual usage only
   assert.equal(paid.status,cost===100?200:502);assert.deepEqual(settled,cost===100?['1130']:[]);
 });
 
+// vet402-style buyers sign only `exact`: it is offered alongside `upto` on the gateway's own Base route, at the
+// same ceiling, charged flat. The gateway's own buyer (metered-buyer.mjs) keeps picking the `upto` offer by
+// filtering for it explicitly (selectOffer), so this is additive and does not change its behaviour above.
+test('vet402-style exact buyer pays the full ceiling on the gateway route; upto is unaffected',async t=>{
+  const settled=[];
+  // createApp also wires /v1/credit, which offers exact on both networks; its startup validation needs every
+  // (scheme, network) pair any wired route offers to be in getSupported(), so both are listed here too.
+  const facilitator={getSupported:async()=>({kinds:[{x402Version:2,scheme:'exact',network:BASE},{x402Version:2,scheme:'exact',network:'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',extra:{feePayer:'4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu'}},{x402Version:2,scheme:'upto',network:BASE,extra:{facilitatorAddress:CDP_SIGNER}},SOLANA_UPTO],extensions:['eip2612GasSponsoring'],signers:{}}),
+    verify:async()=>({isValid:true,payer:account.address}),settle:async(_p,r)=>{settled.push(r.amount);return{success:true,network:BASE,transaction:tx,payer:account.address};}};
+  const app=createApp({payToBase:PAY_TO,payToSolana:'4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu',model:'test'},
+    {facilitatorClient:facilitator,upstream:async()=>({content:'Hello',finishReason:'stop',usage:{buyer_cost_micro:100}}),log:()=>{}});
+  const listener=await new Promise(resolve=>{const l=app.listen(0,'127.0.0.1',()=>resolve(l));});t.after(()=>listener.close());
+  const url=`http://127.0.0.1:${listener.address().port}${METERED_ROUTE}`;
+  const send=headers=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify({messages:[{role:'user',content:'Hi'}]})});
+  const first=await send({});assert.equal(first.status,402);
+  const q=decode(first.headers.get('payment-required'));
+  assert.deepEqual(q.accepts.map(a=>a.scheme),['upto','exact']);
+  const exact=q.accepts[1];
+  assert.equal(exact.amount,q.accepts[0].amount);assert.equal(exact.extra.billing.mode,'exact_ceiling');
+  const paid=await send({'PAYMENT-SIGNATURE':encode({x402Version:2,resource:q.resource,accepted:exact,payload:{signature:'0xsigned'},extensions:q.extensions})});
+  assert.equal(paid.status,200);assert.deepEqual(settled,['3000']);
+  const body=await paid.json();assert.equal(body.billing.totalAtomic,'3000');assert.equal(body.billing.mode,'exact_ceiling');
+});
+
+test('a failed upstream request paid with exact on the gateway route is not settled',async t=>{
+  const settled=[];
+  const facilitator={getSupported:async()=>({kinds:[{x402Version:2,scheme:'exact',network:BASE},{x402Version:2,scheme:'exact',network:'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',extra:{feePayer:'4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu'}},{x402Version:2,scheme:'upto',network:BASE,extra:{facilitatorAddress:CDP_SIGNER}},SOLANA_UPTO],extensions:['eip2612GasSponsoring'],signers:{}}),
+    verify:async()=>({isValid:true,payer:account.address}),settle:async(_p,r)=>{settled.push(r.amount);return{success:true,network:BASE,transaction:tx,payer:account.address};}};
+  const app=createApp({payToBase:PAY_TO,payToSolana:'4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu',model:'test'},
+    {facilitatorClient:facilitator,upstream:async()=>{throw new Error('model answered HTTP 503');},log:()=>{}});
+  const listener=await new Promise(resolve=>{const l=app.listen(0,'127.0.0.1',()=>resolve(l));});t.after(()=>listener.close());
+  const url=`http://127.0.0.1:${listener.address().port}${METERED_ROUTE}`;
+  const send=headers=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify({messages:[{role:'user',content:'Hi'}]})});
+  const q=decode((await send({})).headers.get('payment-required'));
+  const exact=q.accepts.find(a=>a.scheme==='exact');
+  const paid=await send({'PAYMENT-SIGNATURE':encode({x402Version:2,resource:q.resource,accepted:exact,payload:{signature:'0xsigned'},extensions:q.extensions})});
+  assert.equal(paid.status,502);assert.deepEqual(settled,[]);
+});
+
 test('failed paid HTTP request reports a safe stage and status without retrying',async()=>{
   const progress=[];let calls=0;
   await assert.rejects(payMetered({signer:{...account,readContract:async()=>5000n},body:{},chain:{},

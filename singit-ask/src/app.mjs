@@ -12,7 +12,7 @@
 import express from "express";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { addUsageRoute, baseOffer, solanaOffer } from "./metered.mjs";
+import { addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue } from "./catalogue.mjs";
 import { LIMITS, THINKING_HEADROOM } from "./limits.mjs";
@@ -210,7 +210,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const DESCRIPTION = "Ask a language model without an API key: any model listed at GET /v1/models (Claude, GPT, Gemini, "
     + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
     + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
-    + "price; nothing is charged without an answer.";
+    + "price; nothing is charged without an answer. Exact payers are instead charged that ceiling flat, with no metering.";
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
@@ -372,8 +372,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } },
       },
       components: { securitySchemes: { x402: { type: "apiKey", in: "header", name: "PAYMENT-SIGNATURE",
-        description: "x402 v2 payment. Call without it, read the PAYMENT-REQUIRED header of the 402 response, sign an "
-          + "`upto` USDC authorization on Base or Solana for the ceiling it names, and retry with the signature here." } } },
+        description: "x402 v2 payment. Call without it, read the PAYMENT-REQUIRED header of the 402 response, sign the "
+          + "`upto` or `exact` USDC authorization it offers on Base or Solana for the amount or ceiling it names, and "
+          + "retry with the signature here." } } },
     });
   });
   app.get("/.well-known/x402", open, (req, res) => {
@@ -409,8 +410,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
   addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
-  // Public: any x402 agent pays on Solana or Base for actual usage. Listed for discovery.
-  addUsageRoute(app, ROUTE, quotes => [solanaOffer(config, quotes), baseOffer(config, quotes)], {
+  // Public: any x402 agent pays on Solana or Base for actual usage with `upto`, or the same ceiling flat with
+  // `exact` for buyers that sign only that scheme. Listed for discovery.
+  addUsageRoute(app, ROUTE, quotes => [solanaOffer(config, quotes), baseOffer(config, quotes),
+    exactSolanaOffer(config, quotes), exactBaseOffer(config, quotes)], {
     description: `SingIt Ask: ${DESCRIPTION}`,
     serviceName: "SingIt Ask",
     tags: ["llm", "chat", "openai-compatible", "inference", "claude", "gpt", "gemini", "deepseek", "pay-per-use",
@@ -425,9 +428,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       }),
     },
   }, { ...route, offerEmptyProbe: true });
-  // The web agent's Base payments, pinned to this address by the gateway's buyer.
-  addUsageRoute(app, METERED_ROUTE, quotes => [baseOffer(config, quotes)], {
-    description: "SingIt Ask: actual model cost + 30% markup + 0.001 USDC settlement fee. Authorize at most 0.003 USDC.",
+  // The web agent's Base payments, pinned to this address by the gateway's buyer (always `upto`: ask_metered.py
+  // builds its own `upto` requirements and signs nothing else). `exact` is offered alongside it for buyers such
+  // as vet402 that only sign `exact`; they pay the same ceiling flat instead of metered actual usage.
+  addUsageRoute(app, METERED_ROUTE, quotes => [baseOffer(config, quotes), exactBaseOffer(config, quotes)], {
+    description: "SingIt Ask: actual model cost + 30% markup + 0.001 USDC settlement fee. Authorize at most 0.003 USDC. "
+      + "Exact payers are instead charged that ceiling flat, with no metering.",
     extensions: declareEip2612GasSponsoringExtension(),
   }, route);
   // The web agent's Solana payments: measured privately, then paid directly from the owner's delegated USDC.

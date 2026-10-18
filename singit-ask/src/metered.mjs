@@ -1,8 +1,16 @@
 // Pay for actual usage: the payer authorizes a ceiling with x402 `upto`, and CDP settles only what the
 // answer cost, after it came back. A request that ends in 400 or above is never charged.
+//
+// Buyers that only sign `exact` (no `upto` support) get the same per-question ceiling as a flat, fixed-amount
+// offer instead: there is no partial settlement or refund for `exact` (the signature authorizes one amount,
+// and a facilitator cannot settle an exact payment for less than what was signed), so it is priced at the full
+// ceiling and that is disclosed in the offer's own `extra.billing.mode`. `upto` is unaffected and keeps paying
+// only the answer's actual cost.
 import { paymentMiddleware, x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic } from "./pricing.mjs";
 import { THINKING_HEADROOM } from "./limits.mjs";
 
@@ -29,6 +37,25 @@ export const solanaOffer = (config, quotes) => ({
   },
 });
 
+// `exact` at the same per-question ceiling `upto` offers, charged flat (see the file header for why). Reuses the
+// same `quotes` lookup as the `upto` offers above, so both schemes are always quoted the same ceiling for a
+// question, and `mode: "exact_ceiling"` in the offer's billing tells buyers this one is not metered.
+export const exactBaseOffer = (config, quotes) => ({
+  scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
+  price: ctx => {
+    const amount = quotes.get(ctx.adapter.getBody())?.[BASE] ?? TERMS.maxChargeAtomic;
+    return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2",
+      billing: { ...TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
+  },
+});
+export const exactSolanaOffer = (config, quotes) => ({
+  scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 300,
+  price: ctx => {
+    const amount = quotes.get(ctx.adapter.getBody())?.[SOLANA] ?? SOLANA_TERMS.maxChargeAtomic;
+    return { asset: SOLANA_ASSET, amount, extra: { billing: { ...SOLANA_TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
+  },
+});
+
 // The ceiling each network's offer carries for this question.
 export function ceilings(info, input) {
   const size = { chars: input.chars, maxTokens: input.maxTokens, headroom: THINKING_HEADROOM };
@@ -36,13 +63,14 @@ export function ceilings(info, input) {
     [net, info ? ceilingAtomic(info, size, terms) : terms.maxChargeAtomic]));
 }
 
-// The terms of the network the payer chose, with the ceiling this question was offered. The middleware has
-// already matched the payment to an offer, so the network is one of ours; the ceiling is ours, never the payer's.
+// The terms of the network the payer chose, with the ceiling this question was offered, and which scheme they
+// signed. The middleware has already matched the payment to an offer, so the network is one of ours; the ceiling
+// is ours, never the payer's.
 function paidTerms(req) {
   const header = req.get("payment-signature") ?? req.get("x-payment");
-  const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;
+  const { network, scheme } = JSON.parse(Buffer.from(header, "base64").toString()).accepted ?? {};
   const terms = TERMS_BY_NETWORK[network];
-  return terms && { ...terms, maxChargeAtomic: req.askCeilings[network] };
+  return terms && { terms: { ...terms, maxChargeAtomic: req.askCeilings[network] }, scheme };
 }
 
 // A request with no body at all: what a directory's crawler sends to see whether a route takes payment.
@@ -53,7 +81,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
   const offers = makeOffers(quotes);
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new UptoEvmScheme())
-    .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }));
+    .register(BASE, new ExactEvmScheme())
+    .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
+    .register(SOLANA, new ExactSvmScheme());
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
   app.post(route, async (req, res, next) => {
     // x402scan registers a route only if an empty, unpaid request gets the 402 challenge (docs/DISCOVERY.md in
@@ -77,11 +107,14 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
   app.post(route, async (req, res) => {
     const started = Date.now();
     try {
-      const terms = paidTerms(req);
-      if (!terms) throw new Error("payment on an unknown network");
+      const paid = paidTerms(req);
+      if (!paid) throw new Error("payment on an unknown network");
       const answer = await upstream(config, req.askInput.messages, req.askInput.maxTokens, fetchImpl, req.askInput.model);
-      const billing = billUsage(answer.usage, terms);
-      setSettlementOverrides(res, { amount: billing.totalAtomic });
+      const usage = billUsage(answer.usage, paid.terms);
+      // `exact` already settled the full ceiling it was offered: there is no lower amount to settle to, and no
+      // way to refund the unused part, so the override below is only ever for `upto`.
+      const billing = paid.scheme === "exact" ? { ...usage, mode: "exact_ceiling", totalAtomic: paid.terms.maxChargeAtomic } : usage;
+      if (paid.scheme !== "exact") setSettlementOverrides(res, { amount: billing.totalAtomic });
       log(`singit-ask: answered in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: "singit-ask", choices: [{ index: 0, message: { role: "assistant", content: answer.content },
