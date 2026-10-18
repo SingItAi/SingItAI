@@ -32,7 +32,7 @@ class SolanaChatUITests(unittest.TestCase):
     def test_network_switch_is_free_and_settings_identify_solana(self):
         self.assertIn('USDC on Solana', self.press('/chat_network solana'))
         self.assertEqual(self.operations(), ['network'])
-        self.assertEqual(self.plugin._CHAT_NETWORKS['1045618308'], 'solana')
+        self.assertEqual(self.plugin._CHAT_NETWORKS['100000001'], 'solana')
 
     def test_ordinary_message_is_pinned_to_chosen_network(self):
         self.select()
@@ -95,4 +95,4 @@ class SolanaChatUITests(unittest.TestCase):
         self.select()
         self.status.update(walletRequired=True)
         self.assertIn('personal Solana wallet', self.press('hello'))
-        self.assertNotIn('1045618308', self.plugin._CHAT_SETUP)
+        self.assertNotIn('100000001', self.plugin._CHAT_SETUP)

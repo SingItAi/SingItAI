@@ -17,7 +17,7 @@ class ConversationRegressionTests(unittest.TestCase):
         self.api = self.case.plugin
         self.assistant = self.api._natural_assistant
         self.Intent = self.case.router.Intent
-        self.uid = "1045618308"
+        self.uid = "100000001"
 
     def pending(self, stage="alternative", **kwargs):
         defaults = dict(action="food", country="US", category="food")

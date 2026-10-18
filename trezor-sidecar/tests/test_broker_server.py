@@ -10,7 +10,7 @@ from trezor_sidecar.broker_server import BrokerHttpServer, BrokerSettings
 from trezor_sidecar.broker_store import BrokerStore
 
 
-ADDRESS = "0xB80b5Ca13583fB7E0236db4bD8834B9035654558"
+ADDRESS = "0x1111111111111111111111111111111111111111"
 INTERNAL = "internal-" + "x" * 32
 NOW = 1_700_000_000
 

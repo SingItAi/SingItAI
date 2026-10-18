@@ -31,7 +31,7 @@ class AssistantTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
-    def dispatch(self, text, user="1045618308"):
+    def dispatch(self, text, user="100000001"):
         return self.context.hooks["pre_gateway_dispatch"](
             event=FakeEvent(text, user), gateway=self.gateway)
 
@@ -71,24 +71,24 @@ class AssistantTests(unittest.TestCase):
         with self.decision("gift_card", country="CZ", category="food"):
             self.dispatch("ok, witch gift card for food u have in CZ?")
         self.assertEqual(self.client.bitrefill_list_calls[-1][:2], ("CZ", "food"))
-        self.assertEqual(self.plugin._BITREFILL_SESSIONS["1045618308"]["stage"], "select-product")
+        self.assertEqual(self.plugin._BITREFILL_SESSIONS["100000001"]["stage"], "select-product")
         with self.decision("balance", network="base"):
             self.dispatch("how much USDC on base on my wallet?")
             self.dispatch("how much USDC on base on my wallet?")
         self.assertEqual([call[0] for call in self.client.calls], ["balance", "balance"])
-        self.assertNotIn("1045618308", self.plugin._BITREFILL_SESSIONS)
+        self.assertNotIn("100000001", self.plugin._BITREFILL_SESSIONS)
         self.assertNotIn("Choose a category from the buttons", self.messages())
         self.assertFalse(self.client.bitrefill_calls)
 
     def test_balance_can_interrupt_category_menu(self):
-        self.plugin._BITREFILL_SESSIONS["1045618308"] = {"stage": "select-category", "source": "catalog"}
+        self.plugin._BITREFILL_SESSIONS["100000001"] = {"stage": "select-category", "source": "catalog"}
         with self.decision("balance", network="solana"):
             self.dispatch("How much USDC do I have on Solana?")
         self.assertEqual(self.client.calls[0][2], "solana")
-        self.assertNotIn("1045618308", self.plugin._BITREFILL_SESSIONS)
+        self.assertNotIn("100000001", self.plugin._BITREFILL_SESSIONS)
 
     def test_numeric_product_selection_stays_in_wizard(self):
-        self.plugin._BITREFILL_SESSIONS["1045618308"] = {
+        self.plugin._BITREFILL_SESSIONS["100000001"] = {
             "stage": "select-product", "country": "CZ", "products": [{"productId": "wolt-cz", "name": "Wolt", "country": "CZ"}]}
         with patch.object(self.router, "classify") as classify:
             self.dispatch("1")
@@ -97,18 +97,18 @@ class AssistantTests(unittest.TestCase):
 
     def test_checkout_forms_never_send_their_values_to_classifier(self):
         for stage in ("awaiting-recipient", "awaiting-buyer-email", "select-payment-token", "review-purchase", "purchasing"):
-            self.plugin._BITREFILL_SESSIONS["1045618308"] = {"stage": stage}
-            event = FakeEvent("private user supplied checkout value", "1045618308")
+            self.plugin._BITREFILL_SESSIONS["100000001"] = {"stage": stage}
+            event = FakeEvent("private user supplied checkout value", "100000001")
             with patch.object(self.router, "classify") as classify:
                 result = self.plugin._natural_assistant.handle(event=event, source=event.source, gateway=self.gateway, api=self.plugin)
             self.assertIsNone(result)
             classify.assert_not_called()
 
     def test_failed_classification_preserves_catalog_for_retry(self):
-        self.plugin._BITREFILL_SESSIONS["1045618308"] = {"stage": "select-category", "country": "CZ"}
+        self.plugin._BITREFILL_SESSIONS["100000001"] = {"stage": "select-category", "country": "CZ"}
         with patch.object(self.router, "classify", side_effect=self.router.RouterUnavailable()):
             self.dispatch("how much USDC on base on my wallet?")
-        self.assertEqual(self.plugin._BITREFILL_SESSIONS["1045618308"]["stage"], "select-category")
+        self.assertEqual(self.plugin._BITREFILL_SESSIONS["100000001"]["stage"], "select-category")
 
     def test_food_requires_opt_in_before_gift_card_catalog(self):
         with self.decision("food", country="CZ", language="ru"):
@@ -160,7 +160,7 @@ class AssistantTests(unittest.TestCase):
                 before = len(self.client.calls)
                 with self.decision(action, **kwargs):
                     self.dispatch("what my ballance USDC in base?")
-                self.assertNotIn("1045618308", self.plugin._natural_assistant.pending)
+                self.assertNotIn("100000001", self.plugin._natural_assistant.pending)
                 if action in {"balance", "order_status"}:
                     self.assertEqual(len(self.client.calls), before + 1)
                 if action == "balance":
@@ -194,7 +194,7 @@ class AssistantTests(unittest.TestCase):
             self.dispatch("food in US with Solana")
         with self.decision("esim"):
             self.dispatch("actually I need mobile internet")
-        pending = self.plugin._natural_assistant.pending["1045618308"]
+        pending = self.plugin._natural_assistant.pending["100000001"]
         self.assertEqual(pending[1].action, "esim")
         self.assertIsNone(pending[1].country)
         self.assertEqual(pending[1].network, "unspecified")
@@ -209,12 +209,12 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(self.client.bitrefill_list_calls[-1][:2], ("US", "food"))
 
     def test_expired_followup_does_not_inherit_old_country(self):
-        self.plugin._natural_assistant.pending["1045618308"] = (
+        self.plugin._natural_assistant.pending["100000001"] = (
             0, self.router.Intent("food", country="US", category="food"), "alternative")
         with self.decision("gift_card"):
             self.dispatch("show me a giftcards")
         self.assertFalse(self.client.bitrefill_list_calls)
-        self.assertIsNone(self.plugin._natural_assistant.pending["1045618308"][1].country)
+        self.assertIsNone(self.plugin._natural_assistant.pending["100000001"][1].country)
 
     def test_no_cancels_delayed_alternative_followup(self):
         with self.decision("food", country="US"):
@@ -273,7 +273,7 @@ class AssistantTests(unittest.TestCase):
         classify.assert_not_called()
 
     def test_wizard_response_does_not_call_model(self):
-        self.plugin._BITREFILL_SESSIONS["1045618308"] = {"stage": "select-category", "country": "CZ"}
+        self.plugin._BITREFILL_SESSIONS["100000001"] = {"stage": "select-category", "country": "CZ"}
         with patch.object(self.router, "classify") as classify:
             self.dispatch("Food")
         classify.assert_not_called()
@@ -285,7 +285,7 @@ class AssistantTests(unittest.TestCase):
         with self.decision("clarify"):
             self.dispatch("yes", user="222")
         self.assertFalse(self.client.bitrefill_list_calls)
-        self.assertIn("1045618308", self.plugin._natural_assistant.pending)
+        self.assertIn("100000001", self.plugin._natural_assistant.pending)
 
     def test_back_cancels_delayed_classification(self):
         jobs = []
@@ -317,10 +317,10 @@ class AssistantTests(unittest.TestCase):
         with self.decision("food", country="CZ"):
             jobs[1]()
         self.assertFalse(self.client.bitrefill_search_calls)
-        self.assertEqual(self.plugin._natural_assistant.pending["1045618308"][1].action, "food")
+        self.assertEqual(self.plugin._natural_assistant.pending["100000001"][1].action, "food")
 
     def test_expired_alternative_does_not_accept_yes(self):
-        self.plugin._natural_assistant.pending["1045618308"] = (
+        self.plugin._natural_assistant.pending["100000001"] = (
             0, self.router.Intent("food", country="CZ"), "alternative")
         with self.decision("clarify"):
             self.dispatch("yes")
@@ -333,14 +333,14 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(classify.call_count, 12)
 
     def test_legacy_chat_marker_does_not_hide_shopping_requests(self):
-        self.plugin._enter_chat_mode("1045618308")
+        self.plugin._enter_chat_mode("100000001")
         with self.decision("esim", country="DE") as classify:
             self.dispatch("internet in Germany")
         classify.assert_called_once()
         self.assertEqual(self.client.bitrefill_search_calls[0][1], "DE")
 
     def test_pending_chat_setup_is_not_reclassified(self):
-        self.plugin._CHAT_SETUP["1045618308"] = {
+        self.plugin._CHAT_SETUP["100000001"] = {
             "expires": time.monotonic() + 900, "chat_id": "chat-1", "phase": "model",
         }
         with patch.object(self.plugin, "_handle_telegram_chat_message", return_value=self.plugin._SKIP_RESULT) as chat:
@@ -356,7 +356,7 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(chat.call_args.kwargs["event"].text, "Explain how Solana works")
 
     def test_group_text_is_not_sent_to_typesafe(self):
-        event = FakeEvent("internet Germany", "1045618308")
+        event = FakeEvent("internet Germany", "100000001")
         event.source.chat_type = "group"
         with patch.object(self.router, "classify") as classify:
             self.context.hooks["pre_gateway_dispatch"](event=event, gateway=self.gateway)

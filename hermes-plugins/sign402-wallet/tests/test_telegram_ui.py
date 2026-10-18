@@ -71,13 +71,13 @@ class PurchaseUiTests(unittest.TestCase):
         self.addCleanup(policy.stop)
 
     def press(self, text):
-        return self.plugin.handle_pre_gateway_dispatch(event=FakeEvent(text, "1045618308"), gateway=self.gateway)
+        return self.plugin.handle_pre_gateway_dispatch(event=FakeEvent(text, "100000001"), gateway=self.gateway)
 
     def test_named_text_fallback_selects_the_original_product_and_package(self):
         for text in ["🛍 Shop", "Search Products", "amazon", "1. Amazon Czech Republic · CZ", "1. 10", "1"]:
             self.press(text)
         self.assertEqual(self.client.bitrefill_calls, [])
-        self.assertEqual(self.plugin._BITREFILL_SESSIONS["1045618308"]["stage"], "review-purchase")
+        self.assertEqual(self.plugin._BITREFILL_SESSIONS["100000001"]["stage"], "review-purchase")
         self.press("Request approval")
         self.assertEqual(self.client.bitrefill_calls[0][2:4], ("amazon-cz", "amazon-cz-10"))
         self.press("Request approval")
@@ -96,7 +96,7 @@ class PurchaseUiTests(unittest.TestCase):
     def test_history_opens_receipt_without_revealing(self):
         receipt = {"id": "a" * 24, "name": "Alza <CZ>", "denomination": "200 CZK", "paid": "9.44 USDC", "network": "Base", "status": "Completed", "isBitrefill": True, "canReveal": True}
         self.client.purchases = Mock(return_value={"purchase": receipt})
-        text, markup = self.plugin._purchase_screen(self.client, self.plugin.TelegramIdentity("1045618308"), "purchase", "a" * 24)
+        text, markup = self.plugin._purchase_screen(self.client, self.plugin.TelegramIdentity("100000001"), "purchase", "a" * 24)
         self.assertIn("Alza &lt;CZ&gt;", text)
         self.assertIn("9.44 USDC", text)
         self.assertIn("Show code", str(markup))
@@ -104,15 +104,15 @@ class PurchaseUiTests(unittest.TestCase):
         self.assertNotIn("wallet", self.client.purchases.call_args.kwargs)
 
     def test_switching_from_withdraw_to_shop_discards_the_old_wizard(self):
-        self.plugin._WITHDRAW_SESSIONS["1045618308"] = {"step": "awaiting-address"}
+        self.plugin._WITHDRAW_SESSIONS["100000001"] = {"step": "awaiting-address"}
         self.press("🛍 Shop")
-        self.assertNotIn("1045618308", self.plugin._WITHDRAW_SESSIONS)
+        self.assertNotIn("100000001", self.plugin._WITHDRAW_SESSIONS)
         self.press("Search Products")
         self.press("amazon")
         self.assertEqual(len(self.client.bitrefill_search_calls), 1)
 
     def test_history_is_not_shown_in_a_group(self):
-        event = FakeEvent("/purchases", "1045618308")
+        event = FakeEvent("/purchases", "100000001")
         event.source.chat_type = "group"
         self.plugin.handle_pre_gateway_dispatch(event=event, gateway=self.gateway)
         self.assertEqual(self.client.create_wallet_calls, [])

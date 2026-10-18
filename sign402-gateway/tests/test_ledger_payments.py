@@ -26,7 +26,7 @@ from sign402_gateway.ledger_approval import APPROVERS_ENV, ENABLED_ENV, OWNER_EN
 from sign402_gateway.ledger_payments import LedgerConfig, LedgerOperationStore
 from tests.test_gateway_server import DummyServer, FakeSocket
 
-OWNER = "1045618308"
+OWNER = "100000001"
 KEY = Account.from_key("0x" + "11" * 32)
 OTHER_KEY = Account.from_key("0x" + "22" * 32)
 REQ = {

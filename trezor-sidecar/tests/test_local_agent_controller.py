@@ -14,7 +14,7 @@ class FakeSidecar:
         return {
             "ok": True,
             "pairing": {
-                "address": "0xB80b5Ca13583fB7E0236db4bD8834B9035654558"
+                "address": "0x1111111111111111111111111111111111111111"
             },
         }
 
@@ -154,7 +154,7 @@ class LocalAgentSettingsTests(TestCase):
                     "SIGN402_TREZOR_POC_MAX_USD": "1.00",
                 }
             )
-        self.assertIn("0xB80b5Ca", controller.pair("12345"))
+        self.assertIn("0x1111111", controller.pair("12345"))
         with self.assertRaisesRegex(SafeError, "purchases are disabled"):
             controller.prepare("12345", "test-gift", "1", "US")
 
@@ -273,7 +273,7 @@ class LocalAgentControllerTests(TestCase):
     def test_pair_is_device_gated_and_cancel_removes_only_owners_pending_quote(self):
         controller, runner, _details = self.make_controller()
         paired = controller.pair("12345")
-        self.assertIn("0xB80b5Ca", paired)
+        self.assertIn("0x1111111", paired)
         self.assertEqual(runner.sidecar.pair_calls, 1)
 
         controller.prepare("12345", "test-gift", "1", "US")

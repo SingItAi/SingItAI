@@ -193,10 +193,10 @@ class SendingTests(unittest.TestCase):
     def test_a_lane_user_is_found_by_account_or_linked_telegram(self):
         self.assertEqual(self.store.account_for_user(ACCOUNT), ACCOUNT)
         self.assertIsNone(self.store.account_for_user("wallet:0x3333333333333333333333333333333333333333"))
-        self.assertIsNone(self.store.account_for_user("1045618308"))
+        self.assertIsNone(self.store.account_for_user("100000001"))
         code = self.store.new_link_code(ACCOUNT, NOW)
-        self.store.link_telegram(code, "1045618308", NOW)
-        self.assertEqual(self.store.account_for_user("1045618308"), ACCOUNT)
+        self.store.link_telegram(code, "100000001", NOW)
+        self.assertEqual(self.store.account_for_user("100000001"), ACCOUNT)
 
     def test_from_env(self):
         self.assertIsNone(wp.from_env(self.store, {}))

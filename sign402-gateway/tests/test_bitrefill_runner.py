@@ -895,7 +895,7 @@ class BitrefillRunnerTests(unittest.TestCase):
         )
 
         token = resolver.resolve(
-            "1045618308",
+            "100000001",
             {
                 "address": "0x833589fcD6edb6E08f4c7C32D4f71b54bdA02913",
                 "symbol": "FAKE",
@@ -914,7 +914,7 @@ class BitrefillRunnerTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "not available in this wallet"):
             resolver.resolve(
-                "1045618308",
+                "100000001",
                 {"address": "0x2222222222222222222222222222222222222222"},
             )
 
@@ -951,7 +951,7 @@ class BitrefillRunnerTests(unittest.TestCase):
                     "productId": "test-gift-card-link",
                     "packageId": "1",
                     "country": "US",
-                    "telegramUserId": "1045618308",
+                    "telegramUserId": "100000001",
                     "paymentToken": {
                         "address": "0x1111111111111111111111111111111111111111"
                     },
@@ -1020,7 +1020,7 @@ class BitrefillRunnerTests(unittest.TestCase):
                     "productId": "test-gift-card-link",
                     "packageId": "1",
                     "country": "US",
-                    "telegramUserId": "1045618308",
+                    "telegramUserId": "100000001",
                     "paymentToken": {
                         "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
                     },
@@ -1070,7 +1070,7 @@ class BitrefillRunnerTests(unittest.TestCase):
                         "productId": "test-gift-card-link",
                         "packageId": "1",
                         "country": "US",
-                        "telegramUserId": "1045618308",
+                        "telegramUserId": "100000001",
                         "paymentToken": {
                             "address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
                         },
@@ -1095,7 +1095,7 @@ class BitrefillRunnerTests(unittest.TestCase):
                         "productId": "test-gift-card-link",
                         "packageId": "1",
                         "country": "US",
-                        "telegramUserId": "1045618308",
+                        "telegramUserId": "100000001",
                     }
                 )
 
@@ -1679,7 +1679,7 @@ class BitrefillRunnerTests(unittest.TestCase):
                 {
                     "quoteId": "quote_wallet_1",
                     "recipient": {"email": "buyer@example.com"},
-                    "telegramUserId": "1045618308",
+                    "telegramUserId": "100000001",
                 }
             )
 
@@ -1695,7 +1695,7 @@ class BitrefillRunnerTests(unittest.TestCase):
             self.assertNotIn("bankr", result)
             self.assertEqual(len(funding.calls), 1)
             self.assertEqual(len(user_funding.calls), 1)
-            self.assertEqual(user_funding.calls[0]["telegram_user_id"], "1045618308")
+            self.assertEqual(user_funding.calls[0]["telegram_user_id"], "100000001")
             self.assertEqual(user_funding.calls[0]["quote"]["quoteId"], "quote_wallet_1")
             record = store.get_quote("quote_wallet_1")
             self.assertEqual(record["state"], "DELIVERED")
@@ -1703,7 +1703,7 @@ class BitrefillRunnerTests(unittest.TestCase):
             self.assertEqual(record["metadata"]["walletCheckout"]["approval"]["approved"], True)
             self.assertEqual(record["metadata"]["walletCheckout"]["userFunding"]["transfer"]["txId"], "0xUSERTRANSFER")
             self.assertNotIn("wallet_fulfill_secret_1", str(record["metadata"]))
-            self.assertEqual(approval.call_args.kwargs["telegram_user_id"], "1045618308")
+            self.assertEqual(approval.call_args.kwargs["telegram_user_id"], "100000001")
             context_lines = approval.call_args.kwargs["context_lines"]
             self.assertIn("Action: BUY BITREFILL", context_lines)
             self.assertIn("Product: Test Gift Card Link", context_lines)
@@ -2145,7 +2145,7 @@ class BitrefillRunnerTests(unittest.TestCase):
                     {
                         "quoteId": "quote_wallet_1",
                         "recipient": {"email": "buyer@example.com"},
-                        "telegramUserId": "1045618308",
+                        "telegramUserId": "100000001",
                     }
                 )
 
@@ -2351,7 +2351,7 @@ class BitrefillRunnerTests(unittest.TestCase):
 
             with self.assertRaises(ValueError) as captured:
                 runner.buy(
-                    {"quoteId": "quote_1", "telegramUserId": "1045618308"}
+                    {"quoteId": "quote_1", "telegramUserId": "100000001"}
                 )
 
             wallet_checkout = store.get_quote("quote_1")["metadata"][
