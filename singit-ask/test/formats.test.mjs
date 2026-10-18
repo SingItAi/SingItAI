@@ -149,6 +149,25 @@ test("what is not sold is refused before any payment is asked", async (t) => {
   assert.deepEqual(surplus.calls, []);
 });
 
+test("x402scan's empty, unpaid probe gets the standing offer; a payment header does not excuse an invalid body", async (t) => {
+  const { url, surplus } = await serve(t);
+  for (const route of ["/v1/messages", "/v1/responses"]) {
+    let required;
+    for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }]) {
+      const probe = await fetch(`${url}${route}`, init);
+      assert.equal(probe.status, 402, route);
+      required = decode(probe.headers.get("payment-required"));
+      // Same offer order as a real question: Solana upto, Base upto, Solana exact, Base exact.
+      assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto", "exact", "exact"], route);
+      assert.ok(required.extensions?.bazaar?.info, `${route} needs the input schema for x402scan to index it`);
+      assert.ok(required.extensions?.bazaar?.schema, route);
+    }
+    const paidEmpty = await fetch(`${url}${route}`, { method: "POST", headers: pay(required, BASE) });
+    assert.equal(paidEmpty.status, 400, `${route}: a payment header with no body is still refused, not waved through as a probe`);
+  }
+  assert.deepEqual(surplus.calls, []);
+});
+
 test("names, sizes and scrubbing", () => {
   assert.equal(surplusModel("claude-opus-5-5"), "claude-opus-5.5");
   assert.equal(surplusModel("claude-haiku-4-5-20251001"), "claude-haiku-4.5");

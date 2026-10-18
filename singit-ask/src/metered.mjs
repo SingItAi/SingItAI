@@ -74,8 +74,14 @@ function paidTerms(req) {
 }
 
 // A request with no body at all: what a directory's crawler sends to see whether a route takes payment.
-const isEmptyBody = body => body === undefined || body === null
+export const isEmptyBody = body => body === undefined || body === null
   || (typeof body === "object" && !Array.isArray(body) && Object.keys(body).length === 0);
+
+// x402scan registers a route only if an empty, unpaid request gets the 402 challenge (docs/DISCOVERY.md in
+// Merit-Systems/x402scan), rather than the validation error a real, malformed request would get for having no
+// model or no question. A request that carries a payment attempt is never treated as a probe, empty body or not:
+// it must still be validated and rejected without charging, same as any other malformed paid request.
+export const isDiscoveryProbe = req => isEmptyBody(req.body) && !(req.get("payment-signature") ?? req.get("x-payment"));
 
 export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, offerEmptyProbe = false }) {
   const offers = makeOffers(quotes);
@@ -86,9 +92,8 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     .register(SOLANA, new ExactSvmScheme());
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
   app.post(route, async (req, res, next) => {
-    // x402scan registers a route only if an empty, unpaid request gets the 402 challenge (docs/DISCOVERY.md in
-    // Merit-Systems/x402scan). It gets the standing offer; paying it with no question is still refused below.
-    if (offerEmptyProbe && isEmptyBody(req.body) && !(req.get("payment-signature") ?? req.get("x-payment"))) {
+    // It gets the standing offer; paying it with no question is still refused below.
+    if (offerEmptyProbe && isDiscoveryProbe(req)) {
       req.askCeilings = ceilings(null, {});
       return next();
     }

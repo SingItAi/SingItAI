@@ -13,6 +13,9 @@ const PAGES = [
   "https://singitai.app/",
   "https://singitai.app/developers/",
   "https://singitai.app/models/",
+  "https://singitai.app/x402-gift-cards-esims/",
+  "https://singitai.app/ai-agent-spending-limit/",
+  "https://singitai.app/x402-llm-api/",
 ];
 
 function headerTypes(headers) {

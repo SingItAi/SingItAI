@@ -10,6 +10,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
+import { isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS } from "./pricing.mjs";
 
 export const SPEECH_ROUTE = "/v1/audio/speech";
@@ -89,6 +90,8 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(SPEECH_ROUTE, async (req, res, next) => {
+    // x402scan's empty, unpaid probe gets the standing offer, not a model-lookup 404.
+    if (isDiscoveryProbe(req)) return next();
     try {
       const model = await catalogue.resolveSpeech(req.body?.model);
       const request = readSpeechRequest(req.body, model);

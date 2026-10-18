@@ -211,6 +211,7 @@ test("an empty unpaid request gets the standing offer, so directories can regist
     const response = await fetch(`${url}${ROUTE}`, init);
     assert.equal(response.status, 402);
     const required = decode(response.headers.get("payment-required"));
+    assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto", "exact", "exact"]);
     assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]),
       [[SOLANA, "3000"], [BASE, "3000"], [SOLANA, "3000"], [BASE, "3000"]]);
     assert.ok(required.extensions?.bazaar?.info, "x402scan needs the input schema to index the route");

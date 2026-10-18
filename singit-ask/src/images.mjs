@@ -11,6 +11,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
+import { isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS } from "./pricing.mjs";
 
 export const IMAGE_ROUTE = "/v1/images/generations";
@@ -105,6 +106,9 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(IMAGE_ROUTE, async (req, res, next) => {
+    // x402scan's empty, unpaid probe gets the standing offer (the model-list ceiling), not a model-lookup 404;
+    // paying it with no question is still refused once a signature arrives, in the handler below.
+    if (isDiscoveryProbe(req)) return next();
     try {
       const model = await catalogue.resolveImage(req.body?.model);
       const request = readImageRequest(req.body, model);

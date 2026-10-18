@@ -142,6 +142,8 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(VIDEO_ROUTE, async (req, res, next) => {
+    // The video seller still refuses jobs, so an unpaid discovery probe keeps the model-lookup 404.
+    // A 402 here would let x402scan index a route that cannot complete a clip.
     try {
       const model = await catalogue.resolveVideo(req.body?.model);
       const request = readVideoRequest(req.body, model);

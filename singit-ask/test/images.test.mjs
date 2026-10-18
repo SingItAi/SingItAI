@@ -130,6 +130,24 @@ test("what is not sold is refused before any payment is asked", async (t) => {
   assert.deepEqual(surplus.calls, []);
 });
 
+test("x402scan's empty, unpaid probe gets the standing offer; a payment header does not excuse an invalid body", async (t) => {
+  const { url, surplus } = await serve(t);
+  for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }]) {
+    const probe = await fetch(`${url}${IMAGE_ROUTE}`, init);
+    assert.equal(probe.status, 402);
+    const required = decode(probe.headers.get("payment-required"));
+    assert.deepEqual(required.accepts.map((a) => [a.scheme, a.network]), [["exact", SOLANA], ["exact", BASE]]);
+    assert.ok(required.extensions?.bazaar?.info, "x402scan needs the input schema to index the route");
+    assert.ok(required.extensions?.bazaar?.schema);
+  }
+  const required = decode((await post(`${url}${IMAGE_ROUTE}`, IMAGE)).headers.get("payment-required"));
+  const paidEmpty = await fetch(`${url}${IMAGE_ROUTE}`, { method: "POST", headers: pay(required, BASE) });
+  // Not a probe (it carries a payment attempt): refused with no body's model lookup failing first (404), same as
+  // any other unknown-model request; never waved through, never charged.
+  assert.equal(paidEmpty.status, 404, "a payment header with no body is still refused, not waved through as a probe");
+  assert.deepEqual(surplus.calls, []);
+});
+
 test("prices: per image, per megapixel and per token", () => {
   const [seedream, flux, banana] = [...IMAGES.values()];
   assert.equal(imageListAtomic(seedream, { prompt: "x", n: 3 }), 30000);
