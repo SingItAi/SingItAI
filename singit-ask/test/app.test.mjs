@@ -76,7 +76,14 @@ function decode(header) {
 
 // A Base payment the fake facilitator accepts, echoing the merchant's extensions as a real buyer does.
 function baseSignature(required) {
-  const accepted = required.accepts.find((a) => a.network === BASE);
+  const accepted = required.accepts.find((a) => a.network === BASE && a.scheme === "upto");
+  return Buffer.from(JSON.stringify({ x402Version: 2, resource: required.resource, accepted,
+    payload: { signature: "0xsigned" }, extensions: required.extensions })).toString("base64");
+}
+
+// A buyer that only ever signs `exact`, like vet402: picks the exact offer instead of the upto one.
+function exactSignature(required, network = BASE) {
+  const accepted = required.accepts.find((a) => a.network === network && a.scheme === "exact");
   return Buffer.from(JSON.stringify({ x402Version: 2, resource: required.resource, accepted,
     payload: { signature: "0xsigned" }, extensions: required.extensions })).toString("base64");
 }
@@ -90,9 +97,11 @@ async function offer(url) {
 test("an unpaid question is offered actual-usage payment on Solana and Base over CDP", async (t) => {
   const { url, facilitator, asked } = await serve(t);
   const required = await offer(url);
-  const solana = required.accepts.find((a) => a.network === SOLANA);
-  const base = required.accepts.find((a) => a.network === BASE);
-  assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto"]);
+  const solana = required.accepts.find((a) => a.network === SOLANA && a.scheme === "upto");
+  const base = required.accepts.find((a) => a.network === BASE && a.scheme === "upto");
+  // `upto` first (what the gateway and most buyers sign), `exact` alongside it for buyers like vet402 that sign
+  // only `exact`.
+  assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto", "exact", "exact"]);
   assert.equal(solana.amount, "3000");
   assert.equal(solana.payTo, SOLANA_PAY_TO);
   assert.deepEqual(solana.extra.billing, SOLANA_TERMS);
@@ -105,6 +114,42 @@ test("an unpaid question is offered actual-usage payment on Solana and Base over
   assert.ok(required.extensions?.eip2612GasSponsoring, "Base payers need no gas");
   assert.equal(asked.length, 0);
   assert.equal(facilitator.calls.verify, 0);
+});
+
+test("the exact offers name the same ceiling as upto, flat and disclosed as such", async (t) => {
+  const { url } = await serve(t);
+  const required = await offer(url);
+  const uptoBase = required.accepts.find((a) => a.network === BASE && a.scheme === "upto");
+  const exactBase = required.accepts.find((a) => a.network === BASE && a.scheme === "exact");
+  const exactSolana = required.accepts.find((a) => a.network === SOLANA && a.scheme === "exact");
+  // Same ceiling as the upto offer for this question, never a different (lower or higher) one.
+  assert.equal(exactBase.amount, uptoBase.amount);
+  assert.equal(exactBase.payTo, BASE_PAY_TO);
+  assert.equal(exactSolana.payTo, SOLANA_PAY_TO);
+  assert.equal(exactBase.extra.billing.mode, "exact_ceiling");
+  assert.equal(exactBase.extra.billing.maxChargeAtomic, exactBase.amount);
+  assert.equal(exactSolana.extra.billing.mode, "exact_ceiling");
+  assert.equal(exactSolana.extra.billing.maxChargeAtomic, exactSolana.amount);
+});
+
+test("an exact payment is settled at the full ceiling, not metered usage, and reports it as such", async (t) => {
+  // The upstream answer costs far less than the ceiling (100 of 3000); exact still settles the whole ceiling.
+  const { url, facilitator } = await serve(t);
+  const required = await offer(url);
+  const response = await post(url, QUESTION, { "PAYMENT-SIGNATURE": exactSignature(required) });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.billing.totalAtomic, "3000");
+  assert.equal(body.billing.mode, "exact_ceiling");
+  assert.deepEqual(facilitator.calls.settle, ["3000"]);
+});
+
+test("a failed upstream request paid with exact is not settled", async (t) => {
+  const { url, facilitator } = await serve(t, { upstream: async () => { throw new UpstreamError("model answered HTTP 503"); } });
+  const required = await offer(url);
+  const response = await post(url, QUESTION, { "PAYMENT-SIGNATURE": exactSignature(required) });
+  assert.equal(response.status, 502);
+  assert.deepEqual(facilitator.calls.settle, []);
 });
 
 test("the payment resource keeps the public HTTPS URL behind the local tunnel", async (t) => {
@@ -166,7 +211,9 @@ test("an empty unpaid request gets the standing offer, so directories can regist
     const response = await fetch(`${url}${ROUTE}`, init);
     assert.equal(response.status, 402);
     const required = decode(response.headers.get("payment-required"));
-    assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[SOLANA, "3000"], [BASE, "3000"]]);
+    assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto", "exact", "exact"]);
+    assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]),
+      [[SOLANA, "3000"], [BASE, "3000"], [SOLANA, "3000"], [BASE, "3000"]]);
     assert.ok(required.extensions?.bazaar?.info, "x402scan needs the input schema to index the route");
     assert.match(required.resource.description, /any model listed at GET \/v1\/models/);
     assert.doesNotMatch(required.resource.description, /at most 0\.003/);
@@ -345,7 +392,7 @@ test("another model gets a ceiling worked out from its own prices; the default a
     return decode(unpaid.headers.get("payment-required")).accepts;
   };
   for (const model of [undefined, "deepseek-v4.1-flash", "singit-ask", "cheap-model"]) {
-    assert.deepEqual((await offerFor(model)).map((a) => a.amount), ["3000", "3000"], String(model));
+    assert.deepEqual((await offerFor(model)).map((a) => a.amount), ["3000", "3000", "3000", "3000"], String(model));
   }
   const pro = await offerFor("pro-model");
   const size = { chars: 26, maxTokens: 300, headroom: THINKING_HEADROOM };

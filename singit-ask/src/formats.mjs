@@ -8,10 +8,12 @@
 import { paymentMiddleware, x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
+import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { baseOffer, ceilings, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
+import { baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
@@ -81,10 +83,12 @@ const refusal = (route, status, message) => (route === "/v1/messages"
 const DESCRIPTIONS = {
   "/v1/messages": "Anthropic's Messages API (what Claude Code and the Anthropic SDK speak) for any model listed at GET "
     + "/v1/models, Claude among them. Pays actual token cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on "
-    + "Solana), up to a ceiling that follows the model's price and the request's size; nothing is charged without an answer.",
+    + "Solana), up to a ceiling that follows the model's price and the request's size; nothing is charged without an "
+    + "answer. Exact payers are instead charged that ceiling flat, with no metering.",
   "/v1/responses": "OpenAI's Responses API for any model listed at GET /v1/models (GPT, Claude, Gemini, DeepSeek and more). "
     + "Pays actual token cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that "
-    + "follows the model's price and the request's size; nothing is charged without an answer.",
+    + "follows the model's price and the request's size; nothing is charged without an answer. Exact payers are instead "
+    + "charged that ceiling flat, with no metering.",
 };
 const EXAMPLES = {
   "/v1/messages": { model: "claude-sonnet-5.5", max_tokens: 300, messages: [{ role: "user", content: "What is x402?" }] },
@@ -96,7 +100,9 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
     const quotes = new WeakMap();
     const server = new x402ResourceServer(facilitatorClient)
       .register(BASE, new UptoEvmScheme())
-      .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }));
+      .register(BASE, new ExactEvmScheme())
+      .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
+      .register(SOLANA, new ExactSvmScheme());
     app.post(route, async (req, res, next) => {
       // x402scan's empty, unpaid probe gets the standing offer, not a "Send a JSON body"/"Name a model" error.
       if (isDiscoveryProbe(req)) { req.askCeilings = ceilings(null, {}); return next(); }
@@ -116,7 +122,8 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       }
     });
     app.use(paymentMiddleware({ [`POST ${route}`]: {
-      accepts: [solanaOffer(config, quotes), baseOffer(config, quotes)], mimeType: "application/json",
+      accepts: [solanaOffer(config, quotes), baseOffer(config, quotes), exactSolanaOffer(config, quotes), exactBaseOffer(config, quotes)],
+      mimeType: "application/json",
       description: `SingIt Ask: ${DESCRIPTIONS[route]}`, serviceName: "SingIt Ask",
       extensions: { ...declareEip2612GasSponsoringExtension(),
         ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route] }) },
@@ -125,8 +132,8 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       const started = Date.now();
       try {
         const header = req.get("payment-signature") ?? req.get("x-payment");
-        const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;
-        const terms = TERMS_BY_NETWORK[network] && { ...TERMS_BY_NETWORK[network], maxChargeAtomic: req.askCeilings[network] };
+        const accepted = JSON.parse(Buffer.from(header, "base64").toString()).accepted ?? {};
+        const terms = TERMS_BY_NETWORK[accepted.network] && { ...TERMS_BY_NETWORK[accepted.network], maxChargeAtomic: req.askCeilings[accepted.network] };
         if (!terms) throw new Error("payment on an unknown network");
         const response = await fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
@@ -135,8 +142,10 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         const data = await response.json().catch(() => null);
         if (!response.ok || !data || typeof data !== "object") throw new Error(`model answered HTTP ${response.status}`);
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
-        const billing = billUsage({ buyer_cost_micro: reported }, terms);
-        setSettlementOverrides(res, { amount: billing.totalAtomic });
+        const usage = billUsage({ buyer_cost_micro: reported }, terms);
+        // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override.
+        const billing = accepted.scheme === "exact" ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
+        if (accepted.scheme !== "exact") setSettlementOverrides(res, { amount: billing.totalAtomic });
         log(`singit-ask: ${route} answered by ${req.format.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
         res.json({ ...scrub(data), billing });
       } catch (error) {

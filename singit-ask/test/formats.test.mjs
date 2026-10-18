@@ -62,8 +62,8 @@ async function serve(t, { surplus = fakeSurplus() } = {}) {
 
 const post = (url, body, headers = {}) => fetch(url, { method: "POST",
   headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
-const pay = (required, network) => ({ "PAYMENT-SIGNATURE": encode({ x402Version: 2, resource: required.resource,
-  accepted: required.accepts.find((a) => a.network === network), payload: { signature: "0xsigned" },
+const pay = (required, network, scheme = "upto") => ({ "PAYMENT-SIGNATURE": encode({ x402Version: 2, resource: required.resource,
+  accepted: required.accepts.find((a) => a.network === network && a.scheme === scheme), payload: { signature: "0xsigned" },
   extensions: required.extensions }) });
 const MESSAGE = { model: "claude-sonnet-5-5-20260101", max_tokens: 300, system: "Be brief.",
   messages: [{ role: "user", content: "What is x402?" }] };
@@ -74,7 +74,8 @@ test("Anthropic's Messages: offered with a ceiling, charged what it cost + 30% +
   const unpaid = await post(`${url}/v1/messages`, MESSAGE);
   assert.equal(unpaid.status, 402);
   const required = decode(unpaid.headers.get("payment-required"));
-  assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto"]);
+  // `upto` first, `exact` alongside it at the same ceiling for buyers that sign only `exact`.
+  assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto", "exact", "exact"]);
   assert.ok(required.extensions?.bazaar);
   const paid = await post(`${url}/v1/messages`, MESSAGE, pay(required, BASE));
   assert.equal(paid.status, 200);
@@ -101,6 +102,27 @@ test("OpenAI's Responses: a length is set when none is asked, and the cost may c
   assert.ok(Number(facilitator.calls.settle[0][1]) >= 2650);
   assert.equal(surplus.calls[0].url, "https://surplus.test/v1/responses");
   assert.equal(surplus.calls[0].body.max_output_tokens, FORMAT_LIMITS.defaultTokens);
+});
+
+test("Anthropic's Messages: an exact payment settles the full ceiling, not metered usage", async (t) => {
+  // Surplus reports 2000 micro-USD of usage, well under the ceiling; exact still settles the whole ceiling.
+  const { url, facilitator } = await serve(t);
+  const required = decode((await post(`${url}/v1/messages`, MESSAGE)).headers.get("payment-required"));
+  const ceiling = required.accepts.find((a) => a.network === BASE && a.scheme === "exact").amount;
+  const paid = await post(`${url}/v1/messages`, MESSAGE, pay(required, BASE, "exact"));
+  assert.equal(paid.status, 200);
+  const body = await paid.json();
+  assert.equal(body.billing.totalAtomic, ceiling);
+  assert.equal(body.billing.mode, "exact_ceiling");
+  assert.deepEqual(facilitator.calls.settle, [[BASE, ceiling]]);
+});
+
+test("Anthropic's Messages: a failed upstream request paid with exact is not settled", async (t) => {
+  const { url, facilitator } = await serve(t, { surplus: fakeSurplus({ status: 500 }) });
+  const required = decode((await post(`${url}/v1/messages`, MESSAGE)).headers.get("payment-required"));
+  const paid = await post(`${url}/v1/messages`, MESSAGE, pay(required, BASE, "exact"));
+  assert.equal(paid.status, 502);
+  assert.deepEqual(facilitator.calls.settle, []);
 });
 
 test("no billable answer, no charge", async (t) => {
@@ -135,7 +157,8 @@ test("x402scan's empty, unpaid probe gets the standing offer; a payment header d
       const probe = await fetch(`${url}${route}`, init);
       assert.equal(probe.status, 402, route);
       required = decode(probe.headers.get("payment-required"));
-      assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto"], route);
+      // Same offer order as a real question: Solana upto, Base upto, Solana exact, Base exact.
+      assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto", "exact", "exact"], route);
       assert.ok(required.extensions?.bazaar?.info, `${route} needs the input schema for x402scan to index it`);
       assert.ok(required.extensions?.bazaar?.schema, route);
     }
