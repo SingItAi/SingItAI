@@ -58,7 +58,7 @@ from eth_utils import keccak
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 SKILL_SCRIPTS = REPO / ".agents" / "skills" / "bitrefill" / "scripts"
-CDP_X402_DIR = Path(os.environ.get("CDP_X402_DIR", Path.home() / "Documents" / "Berlin Hack" / "cdp-x402-service"))
+CDP_X402_DIR = Path(os.environ.get("CDP_X402_DIR", REPO / "cdp-x402-service"))
 STATE_DIR = Path(os.environ.get("STATE_DIR", Path.home() / ".sign402-trezor-poc"))
 KEYSTORES = Path(os.environ.get("KEYSTORES", Path.home() / ".foundry" / "keystores"))
 RPC = os.environ.get("RPC", "https://mainnet.base.org")

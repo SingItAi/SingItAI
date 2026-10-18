@@ -25,12 +25,33 @@ import time
 import urllib.error
 import urllib.request
 
-APP = Path("/home/hermes/apps/sign402")
-HOME = Path("/home/hermes")
-ASK_UNIT = "singit-ask"  # a user unit of hermes
+ASK_UNIT = "singit-ask"  # a user unit of the deploy account
 SYSTEM_UNITS = ["sign402-gateway", "sign402-web-api"]
 ALLOWED = {"sign402-gateway", "singit-ask", "website"}
-JOURNALS = HOME / ".sign402" / "ask-metered"
+APP = HOME = BACKUP_ROOT = STATE_DIR = None
+DEPLOY_USER = ""
+
+
+def _env_path(name):
+    value = os.environ.get(name, "").strip()
+    return Path(value) if value else None
+
+
+def resolve_layout():
+    """Production paths come from the environment, not from this file."""
+    global APP, HOME, BACKUP_ROOT, STATE_DIR, DEPLOY_USER, JOURNALS
+    APP = APP or _env_path("SIGN402_APP_ROOT")
+    HOME = HOME or _env_path("SIGN402_DEPLOY_HOME")
+    BACKUP_ROOT = BACKUP_ROOT or _env_path("SIGN402_BACKUP_ROOT")
+    STATE_DIR = STATE_DIR or _env_path("SIGN402_STATE_DIR")
+    DEPLOY_USER = DEPLOY_USER or os.environ.get("SIGN402_DEPLOY_USER", "").strip()
+    missing = [name for name, value in (
+        ("SIGN402_APP_ROOT", APP), ("SIGN402_BACKUP_ROOT", BACKUP_ROOT),
+        ("SIGN402_STATE_DIR", STATE_DIR), ("SIGN402_DEPLOY_USER", DEPLOY_USER),
+    ) if not value]
+    if missing:
+        raise RuntimeError("Set from private ops notes: " + ", ".join(missing))
+    JOURNALS = STATE_DIR / "ask-metered"
 ASK = "http://127.0.0.1:8140"
 WEB = "http://127.0.0.1:8130"
 
@@ -44,11 +65,11 @@ def sha(path):
 
 
 def user_systemctl(*args):
-    """systemctl for hermes's own units, from hermes itself or from root."""
-    uid = pwd.getpwnam("hermes").pw_uid
+    """systemctl for the deploy user's own units, from that user or from root."""
+    uid = pwd.getpwnam(DEPLOY_USER).pw_uid
     command = ["systemctl", "--user", *args]
     if os.geteuid() == 0:
-        command = ["runuser", "-u", "hermes", "--", "env", f"XDG_RUNTIME_DIR=/run/user/{uid}", *command]
+        command = ["runuser", "-u", DEPLOY_USER, "--", "env", f"XDG_RUNTIME_DIR=/run/user/{uid}", *command]
     return run(command, env={**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{uid}"})
 
 
@@ -103,7 +124,7 @@ def preflight(manifest):
 
 
 def install(release, manifest):
-    owner = pwd.getpwnam("hermes")
+    owner = pwd.getpwnam(DEPLOY_USER)
     for name in manifest["files"]:
         target = APP / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -119,7 +140,7 @@ def install(release, manifest):
 
 def restore(backup, manifest):
     """Put the previous files back (and remove the ones the release added). Code only: no state to undo."""
-    owner = pwd.getpwnam("hermes")
+    owner = pwd.getpwnam(DEPLOY_USER)
     with tarfile.open(backup / "previous-code.tar.gz") as archive:
         for name, hashes in manifest["files"].items():
             target = APP / name
@@ -184,6 +205,7 @@ def main():
     arguments = parser.parse_args()
     if arguments.apply == arguments.check_only:
         raise RuntimeError("Choose exactly one of --apply and --check-only")
+    resolve_layout()
     release = Path(__file__).resolve().parents[1]
     manifest = load(release)
     state = preflight(manifest)
@@ -197,7 +219,7 @@ def main():
         return
     os.umask(0o077)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup = HOME / "sign402-backups" / (stamp + "-ask-models-release")
+    backup = BACKUP_ROOT / (stamp + "-ask-models-release")
     backup.mkdir(parents=True, mode=0o700)
     backup.chmod(0o700)
     with tarfile.open(backup / "previous-code.tar.gz", "w:gz") as archive:

@@ -4,9 +4,11 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/apps/sign402/singit-ask
-EnvironmentFile=%h/.config/singit-ask/service.env
-ExecStart=%h/.hermes/node/bin/node src/server.mjs
+# Substitute these three paths from private ops notes before installing.
+# <APP_CHECKOUT>/singit-ask, <ASK_CONFIG_DIR>/service.env, <AGENT_HOME>/node/bin/node
+WorkingDirectory=<APP_CHECKOUT>/singit-ask
+EnvironmentFile=<ASK_CONFIG_DIR>/service.env
+ExecStart=<AGENT_HOME>/node/bin/node src/server.mjs
 Restart=on-failure
 RestartSec=10
 UMask=0077

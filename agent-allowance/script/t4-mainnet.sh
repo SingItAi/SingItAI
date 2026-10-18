@@ -23,7 +23,7 @@ LOG="$STATE_DIR/t4-log.md"
 KEYSTORES="${KEYSTORES:-$HOME/.foundry/keystores}"
 RPC="${RPC:-https://mainnet.base.org}"
 USDC=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-OWNER="${OWNER:-0xB80b5Ca13583fB7E0236db4bD8834B9035654558}"
+OWNER="${OWNER:?Set OWNER to the Trezor address from private ops notes}"
 read -r -a AGENT_SIGNER <<< "${AGENT_SIGNER:---account sign402-agent}"
 ASSUME_YES="${ASSUME_YES:-0}"   # rehearsal only
 SKIP_VERIFY="${SKIP_VERIFY:-0}" # rehearsal only

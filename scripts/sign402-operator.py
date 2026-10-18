@@ -32,9 +32,9 @@ DEFAULT_USER_WALLET_DB = Path.home() / ".sign402" / "user-wallets.db"
 DEFAULT_IMESSAGE_DB = Path.home() / ".sign402" / "imessage-approvals.db"
 DEFAULT_BANKR_LLM_DB = Path.home() / ".sign402" / "bankr-llm.db"
 DEFAULT_SPEND_LIMITS_JSON = Path.home() / ".sign402" / "user-spend-limits.json"
-DEFAULT_BITREFILL_DB = (
-    Path.home() / "apps" / "sign402" / "demo-dashboard" / "bitrefill-orders.sqlite3"
-)
+# Checkout-relative. The production copy is not named here; set
+# SIGN402_BITREFILL_COMMERCE_STORE_PATH from private ops notes when it lives elsewhere.
+DEFAULT_BITREFILL_DB = Path("demo-dashboard") / "bitrefill-orders.sqlite3"
 
 E164_RE = re.compile(r"^\+[1-9]\d{6,14}$")
 
@@ -147,11 +147,12 @@ def load_config(env: dict[str, str] | None = None) -> OperatorConfig:
 
 def _load_env_values(base_env: dict[str, str]) -> dict[str, str]:
     values: dict[str, str] = {}
-    for path in (
-        Path.home() / ".hermes" / ".env",
-        Path("/etc/sign402-gateway.env"),
-        Path.cwd() / "sign402-gateway" / ".env",
-    ):
+    candidates = [Path.home() / ".hermes" / ".env"]
+    system_env = os.environ.get("SIGN402_SYSTEM_ENV", "").strip()
+    if system_env:
+        candidates.append(Path(system_env))
+    candidates.append(Path.cwd() / "sign402-gateway" / ".env")
+    for path in candidates:
         values.update(_parse_env_file(path))
     values.update({key: str(value) for key, value in base_env.items()})
     return values

@@ -13,13 +13,13 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 SIDECAR="$HERE/../trezor-sidecar"
 PY="$SIDECAR/.venv/bin/python"
 SIDECAR_ENV="${SIDECAR_ENV:-$HOME/.config/sign402-trezor-poc/sidecar.env}"
-CDP_X402_DIR="${CDP_X402_DIR:-$HOME/Documents/Berlin Hack/cdp-x402-service}"
+CDP_X402_DIR="${CDP_X402_DIR:-$HERE/../cdp-x402-service}"
 STATE_DIR="${STATE_DIR:-$HOME/.sign402-trezor-poc}"
 KEYSTORES="${KEYSTORES:-$HOME/.foundry/keystores}"
 LOG="$STATE_DIR/t7-log.md"
 RPC="${RPC:-https://mainnet.base.org}"
 USDC=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-OWNER="${OWNER:-0xB80b5Ca13583fB7E0236db4bD8834B9035654558}"
+OWNER="${OWNER:?Set OWNER to the Trezor address from private ops notes}"
 ASSUME_YES="${ASSUME_YES:-0}"   # rehearsal only
 TRANSFER_TOPIC=0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef
 

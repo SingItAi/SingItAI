@@ -3,13 +3,27 @@
 This checklist is for opening the Telegram bot to external testers while keeping
 the current single-VPS SQLite deployment.
 
+The production address, SSH account, and filesystem layout are not in this
+repository. Real values live in private ops notes. Substitute these placeholders
+before running a command:
+
+| Placeholder | Meaning |
+| --- | --- |
+| `<PROD_HOST>` | Production server address |
+| `<DEPLOY_USER>` | SSH account on that server |
+| `<APP_CHECKOUT>` | Git checkout of this repository on the server |
+| `<STATE_DIR>` | Runtime state directory (wallets, approvals, chat) |
+| `<AGENT_HOME>` | Hermes agent home (environment and plugins) |
+| `<GATEWAY_ENV>` | Gateway environment file |
+| `<BACKUP_ROOT>` | Private backup directory |
+
 ## Deployment Mode
 
 For public beta, expose only the Sign402 plugin. Keep the underlying Hermes
 gateway private to the operator: the Sign402 pre-dispatch hook handles public
 wallet messages before Hermes reaches its general agent and tool dispatcher.
 
-Edit `~/.hermes/.env`:
+Edit `<AGENT_HOME>/.env`:
 
 ```env
 SIGN402_TELEGRAM_SIGN402_ONLY=1
@@ -34,17 +48,17 @@ handling if the explicit mode flag is accidentally omitted.
 ## Server Update
 
 ```bash
-ssh hermes@164.68.104.44
+ssh <DEPLOY_USER>@<PROD_HOST>
 
-cd ~/apps/sign402
+cd <APP_CHECKOUT>
 git pull
 
-rsync -a --delete ~/apps/sign402/hermes-plugins/sign402-wallet/ ~/.hermes/plugins/sign402-wallet/
+rsync -a --delete <APP_CHECKOUT>/hermes-plugins/sign402-wallet/ <AGENT_HOME>/plugins/sign402-wallet/
 ```
 
 ## iMessage Onboarding
 
-Edit `~/.hermes/.env`:
+Edit `<AGENT_HOME>/.env`:
 
 ```env
 SIGN402_PHOTON_AUTO_REGISTER_USERS=1
@@ -96,24 +110,28 @@ Quick replies: Approve, Reject
 ```
 
 Copy the same permanent System User token and Phone Number ID into
-`/etc/sign402-gateway.env` as `SIGN402_WHATSAPP_ACCESS_TOKEN` and
+`<GATEWAY_ENV>` as `SIGN402_WHATSAPP_ACCESS_TOKEN` and
 `SIGN402_WHATSAPP_PHONE_NUMBER_ID`. Also set
-`SIGN402_WHATSAPP_PUBLIC_LINE` in `~/.hermes/.env` to the test business number
+`SIGN402_WHATSAPP_PUBLIC_LINE` in `<AGENT_HOME>/.env` to the test business number
 or its `wa.me` link. Never paste any of these secrets into Telegram or WhatsApp.
 
 ## Backup Before Opening
 
 Run a local state backup before opening access:
 
+Export `SIGN402_BACKUP_ROOT`, `SIGN402_STATE_DIR`, `SIGN402_HERMES_ENV`, and
+`SIGN402_SYSTEM_ENV` from the private ops notes (`<BACKUP_ROOT>`, `<STATE_DIR>`,
+`<AGENT_HOME>/.env`, and `<GATEWAY_ENV>`), then:
+
 ```bash
-cd ~/apps/sign402
+cd <APP_CHECKOUT>
 ./scripts/backup-sign402-state.sh
 ```
 
 The backup is written to:
 
 ```text
-~/sign402-backups/<timestamp>/
+<BACKUP_ROOT>/<timestamp>/
 ```
 
 Treat the backup as secret material. It can include encrypted wallet databases,
@@ -135,7 +153,7 @@ Expected:
 
 ## Configurable Spending Limits
 
-Set the approved production ceilings in `/etc/sign402-gateway.env`:
+Set the approved production ceilings in `<GATEWAY_ENV>`:
 
 ```env
 SIGN402_BITREFILL_LIVE_MAX_USD=1000.00
@@ -163,15 +181,15 @@ chat button. Enabling it needs the flag in **two** places — the gateway and th
 bot read different environments, and setting only one leaves either a button
 with no routes or routes with no button.
 
-`/etc/sign402-gateway.env`:
+`<GATEWAY_ENV>`:
 
 ```env
 SIGN402_AI_CHAT_ENABLED=1
 SIGN402_AI_CHAT_MERCHANT_PAYTO=0x2670b922ef37c7df47158725c0cc407b5382293f
-SIGN402_CHAT_STORE_PATH=/home/hermes/.sign402/chat-sessions.db
+SIGN402_CHAT_STORE_PATH=<STATE_DIR>/chat-sessions.db
 ```
 
-`~/.hermes/.env`:
+`<AGENT_HOME>/.env`:
 
 ```env
 SIGN402_AI_CHAT_ENABLED=1
@@ -182,7 +200,7 @@ service refuses to build without it and the gateway then fails to start,
 taking Bitrefill purchases down with it. Verify before restarting:
 
 ```bash
-sudo grep AI_CHAT /etc/sign402-gateway.env
+sudo grep AI_CHAT <GATEWAY_ENV>
 ```
 
 ### How a user reaches a paid message
@@ -326,8 +344,8 @@ To turn AI Chat off without touching anything else, remove its variables from
 both environments and restart both services:
 
 ```bash
-sudo sed -i '/AI_CHAT/d' /etc/sign402-gateway.env
-sed -i '/AI_CHAT/d' ~/.hermes/.env
+sudo sed -i '/AI_CHAT/d' <GATEWAY_ENV>
+sed -i '/AI_CHAT/d' <AGENT_HOME>/.env
 sudo systemctl restart sign402-gateway
 systemctl --user restart hermes-gateway
 ```

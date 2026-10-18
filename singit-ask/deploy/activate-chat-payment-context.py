@@ -11,6 +11,8 @@ import time
 from datetime import datetime, timezone
 from urllib.request import urlopen
 
+from layout import required
+
 HERE = Path(__file__).parent
 spec = importlib.util.spec_from_file_location('activation_helpers', HERE / 'activate-direct-solana.py')
 helpers = importlib.util.module_from_spec(spec)
@@ -47,12 +49,13 @@ def main():
         return
     helpers.run('sudo', '-v')
     os.umask(0o077)
-    backup = Path.home() / 'sign402-backups' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-before-chat-payment-context')
+    backup = required('SIGN402_BACKUP_ROOT') / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-before-chat-payment-context')
     backup.mkdir(parents=True, mode=0o700)
-    config = subprocess.check_output(['sudo', 'cat', '/etc/sign402-gateway.env'])
+    config = subprocess.check_output(['sudo', 'cat', str(required('SIGN402_SYSTEM_ENV'))])
     (backup / 'gateway.env').write_bytes(config)
     values = helpers.read_env(config)
-    paths = set((Path.home() / '.sign402').glob('*.db')) | set((Path.home() / '.sign402').glob('*.sqlite3'))
+    state = required('SIGN402_STATE_DIR')
+    paths = set(state.glob('*.db')) | set(state.glob('*.sqlite3'))
     paths.update(Path(values[k]).expanduser() for k in ('SIGN402_USER_WALLET_STORE_PATH',
         'SIGN402_ALLOWANCE_DB', 'SIGN402_SOLANA_ALLOWANCE_DB', 'SIGN402_WEB_DB') if values.get(k))
     for name in MANIFEST:

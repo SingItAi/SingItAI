@@ -3,6 +3,11 @@
 This runbook covers the current single-VPS beta deployment that stores Sign402
 state in SQLite and JSON files.
 
+Host, account, and paths below are placeholders. Real values live in private
+ops notes. The names match [production-beta-checklist.md](production-beta-checklist.md):
+`<PROD_HOST>`, `<DEPLOY_USER>`, `<APP_CHECKOUT>`, `<STATE_DIR>`, `<AGENT_HOME>`,
+`<GATEWAY_ENV>`, `<BACKUP_ROOT>`.
+
 ## Critical State
 
 The deployment is recoverable only if both state files and secrets are preserved.
@@ -10,20 +15,20 @@ The deployment is recoverable only if both state files and secrets are preserved
 State files:
 
 ```text
-/home/hermes/.sign402/user-wallets.db
-/home/hermes/.sign402/imessage-approvals.db
-/home/hermes/.sign402/bankr-llm.db
-/home/hermes/.sign402/user-spend-limits.json
-/home/hermes/apps/sign402/demo-dashboard/bitrefill-orders.sqlite3
-/home/hermes/apps/sign402/demo-dashboard/latest-run.json
-/home/hermes/apps/sign402/demo-dashboard/agent-state.json
+<STATE_DIR>/user-wallets.db
+<STATE_DIR>/imessage-approvals.db
+<STATE_DIR>/bankr-llm.db
+<STATE_DIR>/user-spend-limits.json
+<APP_CHECKOUT>/demo-dashboard/bitrefill-orders.sqlite3
+<APP_CHECKOUT>/demo-dashboard/latest-run.json
+<APP_CHECKOUT>/demo-dashboard/agent-state.json
 ```
 
 Secret/config files:
 
 ```text
-/home/hermes/.hermes/.env
-/etc/sign402-gateway.env
+<AGENT_HOME>/.env
+<GATEWAY_ENV>
 ```
 
 The most important value is `SIGN402_WALLET_MASTER_KEY`. If the encrypted wallet
@@ -32,17 +37,18 @@ decrypted.
 
 ## Create Backup
 
-As `hermes` on the VPS:
+As `<DEPLOY_USER>` on the VPS, with `SIGN402_BACKUP_ROOT`, `SIGN402_STATE_DIR`,
+`SIGN402_HERMES_ENV`, and `SIGN402_SYSTEM_ENV` set from the private ops notes:
 
 ```bash
-cd ~/apps/sign402
+cd <APP_CHECKOUT>
 ./scripts/backup-sign402-state.sh
 ```
 
 Backups are stored in:
 
 ```text
-/home/hermes/sign402-backups/<timestamp>/
+<BACKUP_ROOT>/<timestamp>/
 ```
 
 Keep these backups private. They may contain API tokens and the wallet master
@@ -53,7 +59,7 @@ key.
 1. SSH to the VPS.
 
 ```bash
-ssh hermes@164.68.104.44
+ssh <DEPLOY_USER>@<PROD_HOST>
 ```
 
 2. Stop services.
@@ -67,36 +73,36 @@ sudo systemctl stop sign402-gateway
 3. Take a pre-restore backup of the current state.
 
 ```bash
-cd ~/apps/sign402
+cd <APP_CHECKOUT>
 ./scripts/backup-sign402-state.sh
 ```
 
 4. Restore state files from the selected backup.
 
 ```bash
-BACKUP=/home/hermes/sign402-backups/YYYYMMDDTHHMMSSZ
+BACKUP=<BACKUP_ROOT>/YYYYMMDDTHHMMSSZ
 
-mkdir -p /home/hermes/.sign402
-cp -p "$BACKUP/state/"* /home/hermes/.sign402/ 2>/dev/null || true
-cp -p "$BACKUP/repo-state/bitrefill-orders.sqlite3" /home/hermes/apps/sign402/demo-dashboard/ 2>/dev/null || true
-cp -p "$BACKUP/repo-state/latest-run.json" /home/hermes/apps/sign402/demo-dashboard/ 2>/dev/null || true
-cp -p "$BACKUP/repo-state/agent-state.json" /home/hermes/apps/sign402/demo-dashboard/ 2>/dev/null || true
+mkdir -p <STATE_DIR>
+cp -p "$BACKUP/state/"* <STATE_DIR>/ 2>/dev/null || true
+cp -p "$BACKUP/repo-state/bitrefill-orders.sqlite3" <APP_CHECKOUT>/demo-dashboard/ 2>/dev/null || true
+cp -p "$BACKUP/repo-state/latest-run.json" <APP_CHECKOUT>/demo-dashboard/ 2>/dev/null || true
+cp -p "$BACKUP/repo-state/agent-state.json" <APP_CHECKOUT>/demo-dashboard/ 2>/dev/null || true
 ```
 
 5. Restore secrets only when intentionally rolling back env values.
 
 ```bash
-cp -p "$BACKUP/secrets/hermes.env" /home/hermes/.hermes/.env
-sudo cp -p "$BACKUP/secrets/sign402-gateway.env" /etc/sign402-gateway.env
+cp -p "$BACKUP/secrets/hermes.env" <AGENT_HOME>/.env
+sudo cp -p "$BACKUP/secrets/sign402-gateway.env" <GATEWAY_ENV>
 ```
 
 6. Fix permissions.
 
 ```bash
-chmod 700 /home/hermes/.sign402
-chmod 600 /home/hermes/.sign402/* 2>/dev/null || true
-chmod 600 /home/hermes/.hermes/.env
-sudo chmod 600 /etc/sign402-gateway.env
+chmod 700 <STATE_DIR>
+chmod 600 <STATE_DIR>/* 2>/dev/null || true
+chmod 600 <AGENT_HOME>/.env
+sudo chmod 600 <GATEWAY_ENV>
 ```
 
 7. Start services.
@@ -126,11 +132,11 @@ From Telegram:
 ## Emergency Close
 
 If public beta needs to be closed quickly, restore a Telegram allowlist in
-`/home/hermes/.hermes/.env` and restart Hermes gateway:
+`<AGENT_HOME>/.env` and restart Hermes gateway:
 
 ```env
-SIGN402_TELEGRAM_ALLOWED_USERS=1045618308
-TELEGRAM_ALLOWED_USERS=1045618308
+SIGN402_TELEGRAM_ALLOWED_USERS=<operator Telegram ID>
+TELEGRAM_ALLOWED_USERS=<operator Telegram ID>
 ```
 
 ```bash

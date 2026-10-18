@@ -21,10 +21,35 @@ import time
 import urllib.error
 import urllib.request
 
-APP = Path("/home/hermes/apps/sign402")
 UNITS = ["sign402-web-api", "sign402-gateway", "sign402-allowance-watcher"]
-HOME = Path("/home/hermes")
-CONFIG = Path("/etc/sign402-gateway.env")
+# Production layout is not stored here. The offline test assigns these before
+# main(); a real run sets the environment variables from private ops notes.
+APP = HOME = CONFIG = BACKUP_ROOT = STATE_DIR = AGENT_ENV = None
+DEPLOY_USER = ""
+
+
+def _env_path(name):
+    value = os.environ.get(name, "").strip()
+    return Path(value) if value else None
+
+
+def resolve_layout():
+    """Fill unset paths from the environment. Refuse to guess production locations."""
+    global APP, HOME, CONFIG, BACKUP_ROOT, STATE_DIR, AGENT_ENV, DEPLOY_USER
+    APP = APP or _env_path("SIGN402_APP_ROOT")
+    HOME = HOME or _env_path("SIGN402_DEPLOY_HOME")
+    CONFIG = CONFIG or _env_path("SIGN402_GATEWAY_ENV")
+    BACKUP_ROOT = BACKUP_ROOT or _env_path("SIGN402_BACKUP_ROOT")
+    STATE_DIR = STATE_DIR or _env_path("SIGN402_STATE_DIR")
+    AGENT_ENV = AGENT_ENV or _env_path("SIGN402_HERMES_ENV")
+    DEPLOY_USER = DEPLOY_USER or os.environ.get("SIGN402_DEPLOY_USER", "").strip()
+    missing = [name for name, value in (
+        ("SIGN402_APP_ROOT", APP), ("SIGN402_GATEWAY_ENV", CONFIG),
+        ("SIGN402_BACKUP_ROOT", BACKUP_ROOT), ("SIGN402_STATE_DIR", STATE_DIR),
+        ("SIGN402_DEPLOY_USER", DEPLOY_USER),
+    ) if not value]
+    if missing:
+        raise RuntimeError("Set from private ops notes: " + ", ".join(missing))
 
 
 def run(args, **kwargs):
@@ -38,11 +63,11 @@ def process_env(unit):
 
 
 def verify_wallets(release, env, path, apply=False):
-    account = pwd.getpwnam("hermes")
+    account = pwd.getpwnam(DEPLOY_USER)
     args = [str(APP / "sign402-gateway/.venv/bin/python"), str(release / "scripts/verify-managed-wallets.py"),
             "--db", str(path)] + (["--apply"] if apply else [])
     return json.loads(run(args, env=env, cwd=release, user=account.pw_uid, group=account.pw_gid,
-                          extra_groups=os.getgrouplist("hermes", account.pw_gid)))
+                          extra_groups=os.getgrouplist(DEPLOY_USER, account.pw_gid)))
 
 
 def validate_manifest(release, manifest):
@@ -61,6 +86,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", required=True)
     parser.parse_args()
+    resolve_layout()
     if os.geteuid() != 0:
         raise RuntimeError("Run this installer with sudo")
     os.umask(0o077)
@@ -76,8 +102,8 @@ def main():
     web_env = process_env("sign402-web-api")
     if not env.get("SIGN402_WALLET_MASTER_KEY") or env["SIGN402_WALLET_MASTER_KEY"] != web_env.get("SIGN402_WALLET_MASTER_KEY"):
         raise RuntimeError("Gateway and web wallet keys do not match")
-    wallet_db = Path(env.get("SIGN402_USER_WALLET_STORE_PATH", str(HOME / ".sign402/user-wallets.db")))
-    state = (HOME / ".sign402").resolve()
+    wallet_db = Path(env.get("SIGN402_USER_WALLET_STORE_PATH", str(STATE_DIR / "user-wallets.db")))
+    state = STATE_DIR.resolve()
     for value in (wallet_db, Path(env.get("SIGN402_SOLANA_ALLOWANCE_DB", str(state / "solana-allowance.db"))),
                   Path(web_env.get("SIGN402_WEB_DB", str(state / "web.db")))):
         if not value.is_absolute() or not value.resolve().is_relative_to(state):
@@ -87,7 +113,7 @@ def main():
         raise RuntimeError("Required configuration or wallet state is missing")
     print("Preflight wallet verification passed:", json.dumps(before), flush=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup = HOME / "sign402-backups" / (stamp + "-auth-wallet-release")
+    backup = BACKUP_ROOT / (stamp + "-auth-wallet-release")
     backup.mkdir(parents=True, mode=0o700)
     backup.chmod(0o700)
     print("Private backup:", backup, flush=True)
@@ -98,8 +124,10 @@ def main():
             if run(["systemctl", "show", unit, "-p", "MainPID", "--value"]) != "0":
                 raise RuntimeError("Service did not stop")
         with tarfile.open(backup / "state-and-config.tar.gz", "w:gz") as archive:
-            for source in (state, HOME / ".hermes/.env", CONFIG,
-                           APP / "demo-dashboard", APP / "solana-x402-service/.local"):
+            saved = [state, CONFIG, APP / "demo-dashboard", APP / "solana-x402-service/.local"]
+            if AGENT_ENV is not None:
+                saved.insert(1, AGENT_ENV)
+            for source in saved:
                 if source.exists():
                     archive.add(source, arcname=str(source).lstrip("/"))
             for unit in UNITS:
@@ -112,7 +140,7 @@ def main():
         (backup / "release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
         # Validate stopped-state snapshot before changing any production file.
         stable = verify_wallets(release, env, wallet_db)
-        owner = pwd.getpwnam("hermes")
+        owner = pwd.getpwnam(DEPLOY_USER)
         installed = True
         for name in manifest["files"]:
             target = APP / name

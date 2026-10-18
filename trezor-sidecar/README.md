@@ -261,8 +261,11 @@ The user's computer runs the existing sidecar plus
 of adding a Cloudflare route or exposing a new public port:
 
 ```bash
-ssh -N -L 8122:127.0.0.1:8122 hermes@164.68.104.44
+ssh -N -L 8122:127.0.0.1:8122 <DEPLOY_USER>@<PROD_HOST>
 ```
+
+`<DEPLOY_USER>@<PROD_HOST>` is a placeholder. The real SSH target is in private
+ops notes (`SIGN402_TREZOR_VPS` for the launch agent).
 
 This makes the VPS broker available to the local companion at
 `http://127.0.0.1:8122` while leaving the broker loopback-only on both machines.

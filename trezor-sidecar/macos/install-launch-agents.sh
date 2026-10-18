@@ -24,7 +24,8 @@ LOGS="$HOME/Library/Logs/Sign402 Trezor"
 AGENTS="$HOME/Library/LaunchAgents"
 SIDECAR_ENV="${SIGN402_TREZOR_SIDECAR_ENV:-$HOME/.config/sign402-trezor-poc/sidecar.env}"
 COMPANION_ENV="${SIGN402_TREZOR_COMPANION_ENV:-$HOME/.config/sign402-trezor-companion.env}"
-VPS="${SIGN402_TREZOR_VPS:-hermes@164.68.104.44}"
+# <DEPLOY_USER>@<PROD_HOST> from private ops notes. No production target is stored here.
+VPS="${SIGN402_TREZOR_VPS:-}"
 PYTHON="${SIGN402_TREZOR_PYTHON:-$(command -v python3)}"
 DOMAIN="gui/$(id -u)"
 LABELS=(com.sign402.trezor-tunnel com.sign402.trezor-sidecar com.sign402.trezor-companion)
@@ -58,6 +59,7 @@ esac
 
 [ -f "$SIDECAR_ENV" ] || fail "no sidecar settings at $SIDECAR_ENV"
 [ -f "$COMPANION_ENV" ] || fail "no companion settings at $COMPANION_ENV"
+[ -n "$VPS" ] || fail "set SIGN402_TREZOR_VPS to <DEPLOY_USER>@<PROD_HOST> (private ops notes)"
 [ -x "$PYTHON" ] || fail "no python3 found; set SIGN402_TREZOR_PYTHON"
 ssh -o BatchMode=yes -o ConnectTimeout=10 "$VPS" true 2>/dev/null \
   || fail "cannot reach $VPS over SSH without a prompt; the tunnel needs a key that works in the background"

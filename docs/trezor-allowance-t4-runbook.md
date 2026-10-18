@@ -64,7 +64,7 @@ Error selectors, for reading `cast call` output (`execution reverted, data: "0xâ
 cd "/Users/mp/Documents/Berlin Hack/.worktrees/trezor-local-sidecar/agent-allowance"
 export RPC=https://mainnet.base.org
 export USDC=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-export OWNER=0xB80b5Ca13583fB7E0236db4bD8834B9035654558
+export OWNER=<owner wallet>
 ```
 
 **Terminal B â€” the Trezor side**, with Trezor Suite open, MCP on, device unlocked:
