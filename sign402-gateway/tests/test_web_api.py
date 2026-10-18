@@ -57,7 +57,7 @@ class WebAuthTests(unittest.TestCase):
         session = self.auth.session(signed["token"], signed["csrfToken"])
         self.assertEqual(session["address"], self.user.address)
         self.assertEqual(self.store.owner_for(signed["account"]), self.user.address)
-        self.assertIsNone(self.store.owner_for("1045618308"))
+        self.assertIsNone(self.store.owner_for("100000001"))
 
     def expired(self):
         issued = self.auth.nonce(self.user.address)
@@ -681,18 +681,18 @@ class OperationsMigrationTests(unittest.TestCase):
                     state TEXT NOT NULL CHECK(state IN ('WAITING_DEVICE', 'BROADCAST', 'DONE', 'FAILED')),
                     detail TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
                 CREATE INDEX operations_by_user ON operations(user_id, created_at);
-                INSERT INTO operations VALUES ('op_1', '1045618308', 'GRANT', '0xL', 1000000, 'job_1', '0xT',
+                INSERT INTO operations VALUES ('op_1', '100000001', 'GRANT', '0xL', 1000000, 'job_1', '0xT',
                                                'DONE', 'Allowance now 0.8 USDC.', 1, 2);""")
             db.commit()
             db.close()
             store = aa.AllowanceStore(path)
-            row = store.op("1045618308", "op_1")
+            row = store.op("100000001", "op_1")
             self.assertEqual((row["state"], row["method"], row["detail"]), ("DONE", "device", "Allowance now 0.8 USDC."))
             store.insert_op({"op_id": "op_2", "user_id": "u", "kind": "GRANT", "limiter_address": "0xL", "amount": 1,
                              "job_id": None, "tx_hash": None, "state": "PREPARED", "detail": "", "method": "approve",
                              "created_at": 3, "updated_at": 3})
             aa.AllowanceStore(path)  # a second start changes nothing
-            self.assertEqual(len(store.recent_ops("1045618308", 10)), 1)
+            self.assertEqual(len(store.recent_ops("100000001", 10)), 1)
             indexes = sqlite3.connect(path).execute(
                 "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'operations'").fetchall()
             self.assertIn(("operations_by_user",), indexes)

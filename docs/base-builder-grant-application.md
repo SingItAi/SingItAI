@@ -9,7 +9,7 @@ Fields marked **[FILL]** need your data. Everything else is ready to paste.
 **[FILL]**
 
 ## Email *
-kostiantynzubarev@gmail.com
+founder@example.com
 
 ## X (Twitter) handle *
 @SingItAgent

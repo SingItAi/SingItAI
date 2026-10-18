@@ -41,7 +41,7 @@ class ConversationTests(unittest.TestCase):
             return {"ok": True, "models": [{"id": "new-model", "label": "New model", "inputUsdPerMTok": 1, "outputUsdPerMTok": 2}]}
         raise AssertionError(operation)
 
-    def press(self, text, user="1045618308", chat="chat-1", kind="dm"):
+    def press(self, text, user="100000001", chat="chat-1", kind="dm"):
         event = FakeEvent(text, user, chat_id=chat)
         event.source.chat_type = kind
         result = self.plugin.handle_pre_gateway_dispatch(event=event, gateway=self.gateway)
@@ -65,7 +65,7 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(self.operations(), ["start", "approve-policy", "message"])
         self.assertEqual(self.calls[-1][2], {"text": "What is x402?"})
         self.assertEqual(self.calls[-2][2], {"dailyCapAtomic": 5_000_000, "days": 30})
-        self.assertNotIn("1045618308", self.plugin._CHAT_SETUP)
+        self.assertNotIn("100000001", self.plugin._CHAT_SETUP)
 
     def test_no_duplicate_saved_question_after_repeat_approval(self):
         self.review()
@@ -85,7 +85,7 @@ class ConversationTests(unittest.TestCase):
     def test_cancel_discards_question_without_calling_payment_service(self):
         self.review()
         self.press("/cancel")
-        self.assertNotIn("1045618308", self.plugin._CHAT_SETUP)
+        self.assertNotIn("100000001", self.plugin._CHAT_SETUP)
         self.assertEqual(self.operations(), ["start"])
 
     def test_navigation_while_approval_waits_cancels_only_deferred_question(self):
@@ -151,7 +151,7 @@ class ConversationTests(unittest.TestCase):
 
     def test_setup_expires_and_cannot_launch_old_question(self):
         self.review()
-        self.plugin._CHAT_SETUP["1045618308"]["expires"] = 0
+        self.plugin._CHAT_SETUP["100000001"]["expires"] = 0
         self.press("Request budget approval")
         self.assertNotIn("approve-policy", self.operations())
         self.assertNotIn("message", self.operations())
@@ -166,9 +166,9 @@ class ConversationTests(unittest.TestCase):
     def test_setup_draft_is_not_shared_between_users_or_chats(self):
         self.review("alice's question")
         self.press("another question", user="999")
-        self.assertEqual(self.plugin._CHAT_SETUP["1045618308"]["prompt"], "alice's question")
+        self.assertEqual(self.plugin._CHAT_SETUP["100000001"]["prompt"], "alice's question")
         self.assertEqual(self.plugin._CHAT_SETUP["999"]["prompt"], "another question")
-        self.assertIsNone(self.plugin._chat_setup("1045618308", SimpleNamespace(chat_id="different")))
+        self.assertIsNone(self.plugin._chat_setup("100000001", SimpleNamespace(chat_id="different")))
         self.assertNotIn("message", self.operations())
 
     def test_group_and_unknown_commands_never_reach_ai(self):
@@ -202,7 +202,7 @@ class ConversationTests(unittest.TestCase):
         self.assertIn("Choose a daily top-up limit", text)
         self.assertNotIn("message", self.operations())
         self.assertNotIn("approve-policy", self.operations())
-        flow = self.plugin._CHAT_SETUP["1045618308"]
+        flow = self.plugin._CHAT_SETUP["100000001"]
         self.assertEqual(flow["status"]["modelLabel"], "New model")
         self.assertEqual(flow["prompt"], "original question")
         self.assertEqual(flow["status"]["outputUsdPerMTok"], 2)
@@ -216,7 +216,7 @@ class ConversationTests(unittest.TestCase):
         self.assertNotIn("message", self.operations())
 
     def test_phone_form_is_not_sent_to_ai(self):
-        self.plugin._IMESSAGE_CONNECT_SESSIONS["1045618308"] = {"stage": "awaiting-phone", "channel": "whatsapp"}
+        self.plugin._IMESSAGE_CONNECT_SESSIONS["100000001"] = {"stage": "awaiting-phone", "channel": "whatsapp"}
         self.press("not a phone number")
         self.assertEqual(self.calls, [])
 
@@ -244,7 +244,7 @@ class ConversationTests(unittest.TestCase):
         self.status.update(hasPolicy=True, paused=True, pauseReason="RECONCILIATION_REQUIRED")
         text = self.press("/chat_budget")
         self.assertIn("payment status check", text)
-        self.assertNotIn("1045618308", self.plugin._CHAT_SETUP)
+        self.assertNotIn("100000001", self.plugin._CHAT_SETUP)
         self.assertEqual(self.operations(), ["start"])
 
     def test_expired_setup_controls_are_never_paid_ai_prompts(self):
@@ -266,7 +266,7 @@ class ConversationTests(unittest.TestCase):
     def test_expiry_during_external_approval_does_not_send_question(self):
         self.review()
         def expire():
-            self.plugin._CHAT_SETUP["1045618308"]["expires"] = 0
+            self.plugin._CHAT_SETUP["100000001"]["expires"] = 0
         self.on_approve = expire
         self.press("Request budget approval")
         self.assertEqual(self.operations(), ["start", "approve-policy"])
