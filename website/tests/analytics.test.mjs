@@ -2,7 +2,9 @@
 // throws. The module runs its capture at import time, so each scenario needs a fresh module
 // instance (a cache-busting query string) with fresh global stubs in place before importing.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import vm from "node:vm";
 
 const MODULE_URL = new URL("../app/analytics.js", import.meta.url).href;
 let counter = 0;
@@ -115,4 +117,54 @@ test("the module still imports when merely accessing the storage globals throws"
   });
   assert.deepEqual(mod.getUtm(), { utm_source: "x" });
   assert.equal(mod.track("app_open", {}), undefined);
+});
+
+// website/app.js (the landing script) rewrites "open the app" CTAs with the visitor's
+// first-touch attribution. Nothing exports it, so it runs once per scenario in a vm with
+// a minimal document/location fake; reduced-motion makes it exit before any GSAP code.
+const LANDING_SOURCE = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+function runLandingApp({ search = "", hostname = "singitai.app", referrer = "", anchors = [] } = {}) {
+  const context = vm.createContext({
+    URL,
+    URLSearchParams,
+    location: { search, hostname },
+    document: {
+      referrer,
+      querySelector: () => null,
+      querySelectorAll: (selector) => (selector.includes("app.singitai.app") ? anchors : []),
+    },
+    window: { matchMedia: () => ({ matches: true }) },
+  });
+  vm.runInContext(LANDING_SOURCE, context);
+  return context;
+}
+
+function ctaAnchor(href) {
+  return { href, addEventListener() {}, closest: () => null };
+}
+
+const INTERNAL_CTA =
+  "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=hero";
+
+test("landing CTAs: partial external utm_* replaces every internal CTA utm key", () => {
+  const anchor = ctaAnchor(INTERNAL_CTA);
+  runLandingApp({ search: "?utm_source=twitter", anchors: [anchor] });
+  const url = new URL(anchor.href);
+  assert.equal(url.searchParams.get("utm_source"), "twitter");
+  assert.equal(url.searchParams.get("utm_medium"), null);
+  assert.equal(url.searchParams.get("utm_campaign"), null);
+  assert.equal(url.searchParams.get("utm_content"), null);
+  assert.equal(url.searchParams.get("ref_host"), null);
+});
+
+test("landing CTAs: no external utm_* keeps the CTA's own tags and only adds ref_host", () => {
+  const anchor = ctaAnchor(INTERNAL_CTA);
+  runLandingApp({ referrer: "https://x.com/some/post", anchors: [anchor] });
+  const url = new URL(anchor.href);
+  assert.equal(url.searchParams.get("utm_source"), "singitai");
+  assert.equal(url.searchParams.get("utm_medium"), "landing");
+  assert.equal(url.searchParams.get("utm_campaign"), "x402-llm-api");
+  assert.equal(url.searchParams.get("utm_content"), "hero");
+  assert.equal(url.searchParams.get("ref_host"), "x.com");
 });

@@ -52,10 +52,17 @@
     return 'body';
   }
 
+  // External first-touch wins wholesale: when the visitor arrived with any utm_*,
+  // strip the CTA's own utm_* before overlaying, so a partial visitor set (say only
+  // utm_source) can't blend with the page's internal landing tags. A bare ref_host
+  // leaves the CTA's utm_* alone.
+  var hasExternalUtm = UTM_KEYS.some(function (key) { return key in utm; });
+
   Array.prototype.forEach.call(document.querySelectorAll('a[href^="https://app.singitai.app/app/"]'), function (a) {
     if (Object.keys(utm).length) {
       try {
         var url = new URL(a.href);
+        if (hasExternalUtm) UTM_KEYS.forEach(function (key) { url.searchParams.delete(key); });
         Object.keys(utm).forEach(function (key) { url.searchParams.set(key, utm[key]); });
         a.href = url.href;
       } catch (e) { /* a malformed href is left as it is */ }
