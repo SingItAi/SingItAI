@@ -11,6 +11,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import { isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS } from "./pricing.mjs";
 
 export const EXA_URL = "https://api.exa.ai";
@@ -105,6 +106,8 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
   ];
   for (const route of Object.keys(SEARCH_ROUTES)) {
     app.post(route, (req, res, next) => {
+      // x402scan's empty, unpaid probe gets the standing offer, not a "Send a JSON body" 400.
+      if (isDiscoveryProbe(req)) return next();
       try {
         prices.set(req.body, exaPrice(route, req.body));
         next();

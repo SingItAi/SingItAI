@@ -151,6 +151,17 @@ test("what is not sold is refused before any payment is asked", async (t) => {
   assert.deepEqual(surplus.calls, []);
 });
 
+test("an empty unpaid probe is not offered, so x402scan does not index video while the seller refuses jobs", async (t) => {
+  const { url, surplus } = await serve(t);
+  for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }]) {
+    const probe = await fetch(`${url}${VIDEO_ROUTE}`, init);
+    assert.notEqual(probe.status, 402);
+    assert.equal(probe.status, 404, "empty body still fails the model lookup before any offer");
+    assert.equal(probe.headers.get("payment-required"), null);
+  }
+  assert.deepEqual(surplus.calls, []);
+});
+
 test("prices, the request and the free model list", async (t) => {
   assert.deepEqual(videoPrice(80000, SOLANA), { listAtomic: "80000", markupAtomic: "24000", feeAtomic: "2000", totalAtomic: "106000" });
   assert.deepEqual(readVideoRequest({ prompt: "x", audio: true }, VIDEOS.get("venice-seedance-2-fast-t2v")),

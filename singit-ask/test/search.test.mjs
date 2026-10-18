@@ -120,7 +120,7 @@ test("a cost Exa reports above its list price is logged", async (t) => {
 
 test("what is not sold is refused before any payment is asked", async (t) => {
   const { url, exa } = await serve(t);
-  for (const [path, body] of [["/v1/exa/search", {}], ["/v1/exa/search", { query: "x", type: "deep" }],
+  for (const [path, body] of [["/v1/exa/search", { query: "" }], ["/v1/exa/search", { query: "x", type: "deep" }],
     ["/v1/exa/search", { query: "x", numResults: 100 }], ["/v1/exa/search", { query: "x", research: true }],
     ["/v1/exa/search", { query: "x", numResults: 25, contents: { text: true, highlights: true } }],
     ["/v1/exa/contents", { urls: [] }], ["/v1/exa/contents", { urls: Array(11).fill("https://a.test") }],
@@ -128,6 +128,24 @@ test("what is not sold is refused before any payment is asked", async (t) => {
     const refused = await post(`${url}${path}`, body);
     assert.equal(refused.status, 400, JSON.stringify(body));
     assert.equal(refused.headers.get("payment-required"), null);
+  }
+  assert.deepEqual(exa.calls, []);
+});
+
+test("x402scan's empty, unpaid probe gets the standing offer; a payment header does not excuse an invalid body", async (t) => {
+  const { url, exa } = await serve(t);
+  for (const route of ["/v1/exa/search", "/v1/exa/contents", "/v1/exa/answer"]) {
+    let required;
+    for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }]) {
+      const probe = await fetch(`${url}${route}`, init);
+      assert.equal(probe.status, 402, route);
+      required = decode(probe.headers.get("payment-required"));
+      assert.deepEqual(required.accepts.map((a) => [a.scheme, a.network]), [["exact", SOLANA], ["exact", BASE]], route);
+      assert.ok(required.extensions?.bazaar?.info, `${route} needs the input schema for x402scan to index it`);
+      assert.ok(required.extensions?.bazaar?.schema, route);
+    }
+    const paidEmpty = await fetch(`${url}${route}`, { method: "POST", headers: pay(required, BASE) });
+    assert.equal(paidEmpty.status, 400, `${route}: a payment header with no body is still refused, not waved through as a probe`);
   }
   assert.deepEqual(exa.calls, []);
 });
