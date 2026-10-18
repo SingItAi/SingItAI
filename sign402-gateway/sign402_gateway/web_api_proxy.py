@@ -9,8 +9,9 @@ Money: before a request, its likely cost is held on the account's balance (web_b
 bought in the app. A balance too low refuses the request, unless the owner switched on automatic top-ups: then it
 is topped up first, from the owner's limits (the gateway's `credit-topup`). Surplus reports what each answer cost
 (`usage.buyer_cost_micro`, in the body or the last streamed event); that cost plus the markup is charged, and never
-more than the hold. A dearer answer is SingIt's loss, logged, and not a debt on the balance. A failed request
-costs nothing. While the answer is being read the hold is refreshed, and the read stops after twelve minutes, so a
+more than the hold. A stream that ends without its cost (Surplus's Anthropic skin reports none) is charged once
+the cost is read back from Surplus's request log by the answer's `x-request-id`; the hold waits for it. A dearer
+answer is SingIt's loss, logged, and not a debt on the balance. A failed request costs nothing. While the answer is being read the hold is refreshed, and the read stops after twelve minutes, so a
 slow stream cannot outlive the hold and let another request spend the same deposit.
 """
 
@@ -23,6 +24,7 @@ import secrets
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections import defaultdict
 from typing import Any, Callable, Iterable, Iterator, Mapping
@@ -42,6 +44,9 @@ TOKEN_LIMITS = ("max_tokens", "max_completion_tokens", "max_output_tokens")
 UPSTREAM_SECONDS = 600            # one socket read; idle, not the whole request
 ANSWER_DEADLINE_SECONDS = 12 * 60  # the whole request, shorter than a hold's life
 HOLD_TOUCH_SECONDS = 60
+# A streamed answer's cost is read back from Surplus's request log after the stream; the log may lag the stream.
+COST_LOOKUP_DELAYS = (1, 2, 4, 8)
+COST_LOOKUP_SECONDS = 10
 MAX_ANSWER_BYTES = 64 * 1024 * 1024
 # Where each public path goes upstream, and the dialect its errors speak.
 ROUTES = {
@@ -256,6 +261,39 @@ class Upstream:
         except urllib.error.HTTPError as error:
             return error
 
+    def request_record(self, request_id: str) -> Any:
+        """One request from Surplus's request log (`GET /v1/requests/{id}`, needs `usage.read` on the key): its
+        cost and token counts. None while it is not there yet or cannot be read."""
+        request = urllib.request.Request(
+            self.url + "/v1/requests/" + urllib.parse.quote(request_id, safe=""), method="GET",
+            headers={"Accept": "application/json", "Authorization": f"Bearer {self.key}", "User-Agent": USER_AGENT})
+        try:
+            with self.opener(request, timeout=COST_LOOKUP_SECONDS) as response:
+                return json.loads(response.read(1_000_000))
+        except urllib.error.HTTPError as error:
+            error.close()
+            return None
+        except (OSError, ValueError):
+            return None
+
+
+def logged_cost(record: Any, meter: Meter, depth: int = 0) -> None:
+    """Reads a request-log record into `meter`: `buyer_cost_micro` and token counts, wherever in the record they
+    sit (at its top, in `usage`, or one or two objects down). Nothing else is taken for a cost."""
+    if not isinstance(record, dict) or depth > 2:
+        return
+    meter.read({"usage": record})
+    for value in record.values():
+        if isinstance(value, dict):
+            logged_cost(value, meter, depth + 1)
+
+
+def shape(record: Any, depth: int = 0) -> Any:
+    """A record's field names without their values, for the log when it carries no cost."""
+    if isinstance(record, dict) and depth < 2:
+        return {k: shape(v, depth + 1) for k, v in record.items()}
+    return type(record).__name__
+
 
 class Proxy:
     """The paid part of /v1, for ApiKeys.public."""
@@ -408,11 +446,38 @@ class Proxy:
                 self.balances.release(hold_id)
                 done(0)
                 return 0
-            cost = meter.cost
-            if cost is None:
+            if meter.cost is None:
                 header = str(response.headers.get("x-si-buyer-cost-micro") or "")
-                cost = int(header) if header.isdigit() else None
-                meter.cost = cost  # an image's cost comes only in the header; billing shows it too
+                meter.cost = int(header) if header.isdigit() else None  # an image's cost comes only in the header
+            return charge()
+
+        def settle_stream() -> None:
+            """A stream's headers left before its cost was known, so a stream without one in its events is charged
+            once Surplus's request log has it; the hold stays until then."""
+            lookup = getattr(self.upstream, "request_record", None)
+            if status >= 400 or meter.cost is not None or not request_id or lookup is None:
+                settle()
+                return
+
+            def work() -> None:
+                record = None
+                try:
+                    for delay in COST_LOOKUP_DELAYS:
+                        time.sleep(delay)
+                        record = lookup(request_id)
+                        logged_cost(record, meter)
+                        if meter.cost is not None:
+                            break
+                    if meter.cost is None:
+                        logger.warning("web api: %s stream %s has no cost in the request log either; its fields: %s",
+                                       model_id, request_id, json.dumps(shape(record))[:1000])
+                finally:
+                    settle()
+
+            background(work)
+
+        def charge() -> int:
+            cost = meter.cost
             if cost is None:  # an answer that came back without its cost is charged its hold, and logged
                 logger.warning("web api: %s answered %s with no cost; charged the hold", model_id, request_id)
                 charged = hold
@@ -463,7 +528,7 @@ class Proxy:
                     logger.warning("web api: %s stream from upstream broke off", model_id)
                 finally:
                     response.close()
-                    settle()
+                    settle_stream()
 
             return Relay(status, {"Content-Type": content_type, "Cache-Control": "no-store"}, chunks())
 
