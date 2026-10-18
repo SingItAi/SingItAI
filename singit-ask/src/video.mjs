@@ -11,7 +11,6 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS } from "./pricing.mjs";
 
 export const VIDEO_ROUTE = "/v1/video/generations";
@@ -143,9 +142,8 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(VIDEO_ROUTE, async (req, res, next) => {
-    // x402scan's empty, unpaid probe gets the standing offer, not a model-lookup 404: without this, the route
-    // never answers the probe with 402 and the directory never lists it.
-    if (isDiscoveryProbe(req)) return next();
+    // The video seller still refuses jobs, so an unpaid discovery probe keeps the model-lookup 404.
+    // A 402 here would let x402scan index a route that cannot complete a clip.
     try {
       const model = await catalogue.resolveVideo(req.body?.model);
       const request = readVideoRequest(req.body, model);

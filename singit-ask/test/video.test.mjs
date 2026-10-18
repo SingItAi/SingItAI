@@ -151,31 +151,15 @@ test("what is not sold is refused before any payment is asked", async (t) => {
   assert.deepEqual(surplus.calls, []);
 });
 
-test("x402scan's empty, unpaid probe gets the standing offer; a payment header does not excuse an invalid body", async (t) => {
+test("an empty unpaid probe is not offered, so x402scan does not index video while the seller refuses jobs", async (t) => {
   const { url, surplus } = await serve(t);
   for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }]) {
     const probe = await fetch(`${url}${VIDEO_ROUTE}`, init);
-    assert.equal(probe.status, 402);
-    const required = decode(probe.headers.get("payment-required"));
-    assert.deepEqual(required.accepts.map((a) => [a.scheme, a.network]), [["exact", SOLANA], ["exact", BASE]]);
-    assert.ok(required.extensions?.bazaar?.info, "x402scan needs the input schema to index the route");
-    assert.ok(required.extensions?.bazaar?.schema);
+    assert.notEqual(probe.status, 402);
+    assert.equal(probe.status, 404, "empty body still fails the model lookup before any offer");
+    assert.equal(probe.headers.get("payment-required"), null);
   }
-  const required = decode((await post(`${url}${VIDEO_ROUTE}`, VIDEO)).headers.get("payment-required"));
-  const paidEmpty = await fetch(`${url}${VIDEO_ROUTE}`, { method: "POST", headers: pay(required, BASE) });
-  // Not a probe (it carries a payment attempt): refused with no body's model lookup failing first (404), same as
-  // any other unknown-model request; never waved through, never charged.
-  assert.equal(paidEmpty.status, 404, "a payment header with no body is still refused, not waved through as a probe");
   assert.deepEqual(surplus.calls, []);
-});
-
-test("the video route is listed for discovery alongside the other paid routes", async (t) => {
-  const { url } = await serve(t);
-  const known = await (await fetch(`${url}/.well-known/x402`)).json();
-  assert.ok(known.resources.includes(`${url}${VIDEO_ROUTE}`), "video must be in the x402 discovery resource list");
-  const openapi = await (await fetch(`${url}/openapi.json`)).json();
-  assert.ok(openapi.paths[VIDEO_ROUTE], "video must be in the OpenAPI document x402scan reads");
-  assert.ok(openapi.paths[VIDEO_ROUTE].post["x-payment-info"]);
 });
 
 test("prices, the request and the free model list", async (t) => {
