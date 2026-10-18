@@ -20,6 +20,7 @@ takes a signature from the account's wallet over the exact terms, like signing i
 from __future__ import annotations
 
 import hashlib
+import json
 import secrets
 import sqlite3
 import threading
@@ -34,6 +35,7 @@ from eth_account.messages import encode_defunct
 from eth_utils import is_address, to_checksum_address
 
 from .allowance_bitrefill import siwe_message
+from .analytics import looks_like_secret_value
 from .solana_keys import b58decode, b58encode
 
 WEB_DB_ENV = "SIGN402_WEB_DB"
@@ -49,6 +51,22 @@ API_KEYS_PER_ACCOUNT = 10          # live keys at once
 API_KEY_SCOPES = "answers search"  # what a new key may pay for: model answers, and web search and pages (Exa)
 ACCOUNT_PREFIX = "wallet:"         # an EVM wallet (Base)
 SOLANA_PREFIX = "solana:"          # a Solana wallet
+UTM_KEYS = ("utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "ref_host")
+
+
+def sanitize_utm(utm: Any) -> dict[str, str] | None:
+    """The known first-touch attribution keys only, as strings truncated to 100 chars."""
+    if not isinstance(utm, dict):
+        return None
+    out: dict[str, str] = {}
+    for key in UTM_KEYS:
+        value = utm.get(key)
+        if not isinstance(value, str):
+            continue
+        value = value.strip()[:100]
+        if value and not looks_like_secret_value(value):
+            out[key] = value
+    return out or None
 
 
 class WebAuthError(Exception):
@@ -208,6 +226,11 @@ class WebAccountStore:
                 db.execute("ALTER TABLE api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT 'answers'")
             except sqlite3.OperationalError:
                 pass  # the column is there
+            # First-touch attribution (utm_source etc.), set only when the account is created.
+            try:
+                db.execute("ALTER TABLE accounts ADD COLUMN utm_json TEXT")
+            except sqlite3.OperationalError:
+                pass  # the column is there
         try:
             self.path.chmod(0o600)
         except OSError:
@@ -242,12 +265,15 @@ class WebAccountStore:
 
     # -- accounts --
 
-    def ensure_account(self, address: str, now: int) -> str:
+    def ensure_account(self, address: str, now: int, utm: dict[str, str] | None = None) -> tuple[str, bool]:
+        """The account, and whether this call created it (first touch)."""
         account_id = account_id_for(address)
         with self._db() as db:
-            db.execute("INSERT OR IGNORE INTO accounts(account_id, owner_address, created_at) VALUES (?, ?, ?)",
-                       (account_id, normalized(address), now))
-        return account_id
+            cursor = db.execute(
+                "INSERT OR IGNORE INTO accounts(account_id, owner_address, created_at, utm_json) VALUES (?, ?, ?, ?)",
+                (account_id, normalized(address), now, json.dumps(utm) if utm else None))
+            is_new = cursor.rowcount > 0
+        return account_id, is_new
 
     def account(self, account_id: str) -> sqlite3.Row | None:
         with self._db() as db:
@@ -481,7 +507,7 @@ class WebAuth:
             raise WebAuthError("The signature could not be read.") from None
         return signer.lower() == address.lower()
 
-    def verify(self, message: Any, signature: Any) -> dict[str, Any]:
+    def verify(self, message: Any, signature: Any, utm: Any = None) -> dict[str, Any]:
         message, signature = str(message or ""), str(signature or "")
         nonce = next((line[len("Nonce: "):] for line in message.splitlines() if line.startswith("Nonce: ")), "")
         now = int(self.now())
@@ -491,11 +517,11 @@ class WebAuth:
         if not self._signed_by(issued["address"], message, signature):
             raise WebAuthError("The signature is not from the address that asked to sign in.")
         self._check_allowed(issued["address"])
-        account_id = self.store.ensure_account(issued["address"], now)
+        account_id, is_new = self.store.ensure_account(issued["address"], now, sanitize_utm(utm))
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
         self.store.add_session(_hash(token), _hash(csrf), account_id, issued["address"], now, now + SESSION_SECONDS)
         return {"token": token, "csrfToken": csrf, "account": account_id, "address": issued["address"],
-                "chain": chain_of_account(account_id), "expiresAt": now + SESSION_SECONDS}
+                "chain": chain_of_account(account_id), "expiresAt": now + SESSION_SECONDS, "newAccount": is_new}
 
     def session(self, token: str, csrf: str | None = None) -> sqlite3.Row:
         """The live session for this cookie; with `csrf`, also the matching CSRF token."""

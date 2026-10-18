@@ -28,6 +28,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
+from . import analytics
 from .web_accounts import NONCE_SECONDS, WebAuthError, chain_of_account
 
 logger = logging.getLogger(__name__)
@@ -161,6 +162,7 @@ class ApiKeys:
                 raise WebAuthError("The signature is not from this account's wallet.")
             key, row = self.store.add_api_key(account, request["name"], request["daily_cap_atomic"],
                                               request["per_request_cap_atomic"], now, request["expires_at"])
+            analytics.emit("api_key_created", account, scopes=row["scopes"])
             if self.api.push is not None:
                 try:
                     self.api.push.send(account, "SingIt", f'API key "{row["name"]}" was created. '

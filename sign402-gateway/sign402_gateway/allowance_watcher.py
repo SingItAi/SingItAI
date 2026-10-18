@@ -204,7 +204,7 @@ class AllowanceWatcher:
 
     def _alarm(self, user: str, text: str) -> None:
         try:
-            self.service.pause(user)
+            self.service.pause(user, trigger="watcher_auto_pause")
         except Exception as exc:
             text += f" (The pause itself failed: {exc}. Revoke the allowance from your wallet now.)"
             logger.error("allowance watcher: pause for %s failed: %s", user, exc)

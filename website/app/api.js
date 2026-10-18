@@ -89,7 +89,7 @@ async function call(method, path, body) {
 
 export const api = {
   nonce: (address) => call("POST", "/auth/nonce", { address }),
-  verify: (message, signature) => call("POST", "/auth/verify", { message, signature }),
+  verify: (message, signature, utm) => call("POST", "/auth/verify", { message, signature, utm }),
   logout: () => call("POST", "/auth/logout"),
   session: () => call("GET", "/session"),
   allowance: () => call("GET", "/allowance"),

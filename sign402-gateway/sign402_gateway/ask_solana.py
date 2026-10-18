@@ -14,6 +14,7 @@ import subprocess
 import time
 import urllib.request
 
+from . import analytics
 from .agent_allowance import AllowanceError, AllowanceUnavailable
 from .ask_metered import _journal_dir, _read, _save
 
@@ -162,6 +163,8 @@ def _recover(lane, account, journal, checkpoint):
             and str(saved.get("amountAtomic", "")).isdigit()
             and int(saved["amountAtomic"]) <= int(state.get("ceilingAtomic") or CAP)):
         lane.store.settle_metered(hold, int(saved["amountAtomic"]), proof["transaction"], int(lane.now()))
+        analytics.emit("chat_answer_paid", account, lane="solana",
+                       cost_usd=analytics.usdc_to_usd_string(int(saved["amountAtomic"])))
     elif outcome == "unpaid":
         if hold:
             lane.store.release_metered(hold)
@@ -259,6 +262,8 @@ def pay(server, gw, account, body, cap=CAP):
                               fee_payer=saved["feePayer"]):
                 raise AllowanceError("The Solana settlement is not confirmed. No automatic retry was made.")
             lane.store.settle_metered(hold, amount, tx, int(lane.now()))
+            analytics.emit("chat_answer_paid", account, model=str(body.get("model") or "")[:80],
+                           lane="solana", cost_usd=analytics.usdc_to_usd_string(amount))
             complete = True
             return amount, data, tx
         finally:

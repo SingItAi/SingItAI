@@ -36,6 +36,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
 
+from . import analytics
 from .agent_allowance import AllowanceError
 from .web_data import FROM_PAID_TOOLS
 from .bland_calls import pilot_accepts
@@ -694,11 +695,17 @@ class ChatStore:
         return json.loads(row["payload"]) if row is not None else None
 
     def record_usage(self, account: str, chat_id: str, reply: Mapping[str, Any], now: int) -> None:
+        model = str(reply.get("model") or "")[:80]
+        prompt_tokens, completion_tokens = int(reply.get("promptTokens") or 0), int(reply.get("completionTokens") or 0)
+        cost_atomic = max(0, int(reply.get("costAtomic") or 0))
         with self._db() as db:
+            first = db.execute("SELECT 1 FROM chat_usage WHERE account_id = ? LIMIT 1", (account,)).fetchone() is None
             db.execute("INSERT INTO chat_usage VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (
-                account, chat_id, str(reply.get("model") or "")[:80], str(reply.get("modelLabel") or "")[:80],
-                int(reply.get("promptTokens") or 0), int(reply.get("completionTokens") or 0),
-                max(0, int(reply.get("costAtomic") or 0)), now))
+                account, chat_id, model, str(reply.get("modelLabel") or "")[:80],
+                prompt_tokens, completion_tokens, cost_atomic, now))
+        analytics.emit("chat_answer_paid", account, model=model, lane="web_chat",
+                       cost_usd=analytics.usdc_to_usd_string(cost_atomic),
+                       tokens_in=prompt_tokens, tokens_out=completion_tokens, first_answer=first)
 
     def usage(self, account: str, since: int) -> dict[str, Any]:
         """Venice answers since `since`, per model: messages, tokens and cost."""

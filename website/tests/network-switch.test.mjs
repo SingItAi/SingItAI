@@ -61,7 +61,7 @@ test("a new social connection waits for network choice and an explicit sign-in",
   const nonces = [];
   const context = vm.createContext({ state, window: { addEventListener() {} }, location: { reload() {} },
     render() {}, appKitConfigured: () => true, openAppKit: async () => {}, toast() {}, explain: String,
-    busy: async (_text, task) => task(), setCsrf() {},
+    busy: async (_text, task) => task(), setCsrf() {}, getUtm: () => ({}),
     api: { nonce: async (address) => { nonces.push(address); return { message: "test-only sign-in" }; },
       verify: async () => ({ account: "solana:SolanaAddress", address: "SolanaAddress", chain: "solana", csrfToken: "test" }) },
     loadAllowance: async () => {}, loadChats: async () => {}, loadModels: async () => {},

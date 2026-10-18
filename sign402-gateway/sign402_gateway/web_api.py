@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 from urllib.parse import parse_qsl
 
+from . import analytics
 from .agent_allowance import AllowanceError, AllowanceService, AllowanceUnavailable, _usdc_atomic
 from .web_accounts import (
     DEFAULT_WEB_DB, SESSION_SECONDS, WEB_DB_ENV, WebAccountStore, WebAuth, WebAuthError, chain_of_account,
@@ -190,7 +191,8 @@ class WebApi:
         self.keys = ApiKeys(self, now=now)
 
     def handle(self, method: str, path: str, *, token: str, csrf: str | None, body: dict[str, Any],
-               client: str, expected_account: str | None = None) -> tuple[int, dict[str, Any], dict[str, str]]:
+               client: str, expected_account: str | None = None,
+               user_agent: str = "") -> tuple[int, dict[str, Any], dict[str, str]]:
         """(status, JSON body, extra headers)."""
         if method == "POST" and path == "/auth/nonce":
             self.auth_by_ip.hit(client)
@@ -198,7 +200,7 @@ class WebApi:
             return 200, self.auth.nonce(body.get("address")), {}
         if method == "POST" and path == "/auth/verify":
             self.auth_by_ip.hit(client)
-            signed = self.auth.verify(body.get("message"), body.get("signature"))
+            signed = self.auth.verify(body.get("message"), body.get("signature"), body.get("utm"))
             # Switching wallets signs in over a live session: once the new wallet has signed, the
             # browser's previous session ends here, since its cookie is about to be replaced.
             if token:
@@ -208,6 +210,8 @@ class WebApi:
             out = {"account": signed["account"], "address": signed["address"], "chain": signed["chain"],
                    "csrfToken": signed["csrfToken"], "expiresAt": signed["expiresAt"],
                    "telegramLinked": bool(self.auth.store.telegram_for(signed["account"]))}
+            analytics.emit("sign_in", signed["account"], chain=signed["chain"], new_account=bool(signed["newAccount"]),
+                           client_ip=client, user_agent=user_agent)
             return 200, out, {"Set-Cookie": cookie}
         session = self.auth.session(token, None if method == "GET" and expected_account is None else (csrf or ""))
         account, owner = session["account_id"], session["address"]
@@ -761,7 +765,8 @@ class WebHandler(BaseHTTPRequestHandler):
                 token = ""
             status, out, headers = self.server.api.handle(
                 method, path[len(PREFIX):], token=token, csrf=self.headers.get(CSRF_HEADER),
-                body=body, client=self._client(), expected_account=self.headers.get(ACCOUNT_HEADER, ""))
+                body=body, client=self._client(), expected_account=self.headers.get(ACCOUNT_HEADER, ""),
+                user_agent=self.headers.get("User-Agent", ""))
             self._send(status, out, headers)
         except WebError as error:
             self.close_connection = True

@@ -3,6 +3,7 @@
 // chain; this page shows state and hands prepared requests to the wallet.
 
 import { api, ApiError, csrf, setCsrf } from "./api.js";
+import { getUtm, track } from "./analytics.js";
 import {
   appKitConfigured, disconnectAppKit, discover, openAppKit, openOnRamp, switchAppKitNetwork, Wallet, wallets, walletError,
   watchAppKit,
@@ -185,6 +186,7 @@ async function connectInjected(uuid) {
       setWallet(wallet.address ? wallet : null);
     });
     state.wallet = wallet;
+    track("wallet_connect", { chain: wallet.chain, wallet: (choice.info.name || "").toLowerCase(), method: "injected" });
   });
   if (state.switching) {
     state.modal = { type: "switch" };
@@ -203,7 +205,7 @@ async function signIn() {
       if (identity !== walletIdentity(state.wallet)) throw new Error("Your wallet changed. Sign in again.");
       const signature = await wallet.signMessage(message);
       if (identity !== walletIdentity(state.wallet)) throw new Error("Your wallet changed. Sign in again.");
-      const signed = await api.verify(message, signature);
+      const signed = await api.verify(message, signature, getUtm());
       if (identity !== walletIdentity(signed) || identity !== walletIdentity(state.wallet)) {
         throw new Error("Your wallet changed. Sign in again.");
       }
@@ -288,7 +290,7 @@ async function switchSignIn() {
     const signature = await wallet.signMessage(message);
     if (identity !== walletIdentity(state.wallet)) throw new Error("Your wallet changed. Try again.");
     // The server ends the previous session as this one starts (the request carries its cookie).
-    const signed = await api.verify(message, signature);
+    const signed = await api.verify(message, signature, getUtm());
     if (identity !== walletIdentity(signed)) throw new Error("Your wallet changed. Try again.");
     setCsrf(signed.csrfToken, signed.account);
     Object.assign(state, accountState(), { session: signed });
@@ -1976,6 +1978,7 @@ async function loadChats() {
 async function sendMessage(text) {
   text = String(text || "").trim();
   if (!text || state.sending) return;
+  track("chat_message_sent", { chat_new: !state.chatId, private_mode: isPrivate() });
   state.view = "chat";
   state.menuOpen = false;
   state.messages.push({ id: "pending", role: "user", text, cards: [] });
@@ -2471,7 +2474,7 @@ window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();  // shown from the menu, when asked, not as a banner over the chat
   installPrompt = event;
 });
-window.addEventListener("appinstalled", () => { installPrompt = null; render(); });
+window.addEventListener("appinstalled", () => { installPrompt = null; track("pwa_installed"); render(); });
 
 const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -2626,6 +2629,7 @@ async function enablePush() {
   const subscription = (await registration.pushManager.getSubscription())
     || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: serverKey(state.push.key) });
   await api.pushSubscribe(subscription.toJSON());
+  track("push_enabled");
 }
 
 async function disablePush() {
@@ -2690,13 +2694,24 @@ async function reloadIfStale() {
 
 async function start() {
   if (await reloadIfStale()) return;
+  track("app_open", { standalone: matchMedia("(display-mode: standalone)").matches });
   watchForNewPage();
   registerServiceWorker();
   fitToVisibleHeight();
   swipeableSidebar();
   longPressChatMenu();
   discover(() => { if (state.modal?.type === "wallets") renderModal(); });
-  if (appKitConfigured()) watchAppKit(setWallet).catch((error) => toast(explain(error), true));
+  if (appKitConfigured()) {
+    let lastConnected = null;
+    watchAppKit((wallet) => {
+      const identity = walletIdentity(wallet);
+      if (wallet && identity !== lastConnected) {
+        track("wallet_connect", { chain: wallet.chain, wallet: (wallet.name || "").toLowerCase(), method: "appkit" });
+      }
+      lastConnected = identity;
+      setWallet(wallet);
+    }).catch((error) => toast(explain(error), true));
+  }
   if (csrf()) {
     try {
       state.session = await api.session();

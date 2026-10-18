@@ -39,6 +39,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from eth_utils import to_checksum_address
 
+from . import analytics
 from .agent_allowance import USDC, USER_AGENT, AllowanceError, AllowanceService
 
 logger = logging.getLogger(__name__)
@@ -226,6 +227,13 @@ def _payment_uri(raw: Any) -> tuple[str, int, str, int] | None:
     return match.group(1).lower(), int(match.group(2)), recipient.lower(), int(amount)
 
 
+def _bitrefill_failure_reason(message: str) -> str:
+    """A `purchase_failed` reason for a refusal raised before paying (see `_deposit`)."""
+    if "asks more" in message:
+        return "price_moved"
+    return "seller_error"
+
+
 def _find(obj: Any, name: str) -> Any:
     if isinstance(obj, dict):
         if obj.get(name) not in (None, ""):
@@ -384,8 +392,13 @@ class BitrefillX402:
         invoice_id, access = client._invoice_id(invoice), client._invoice_access_token(invoice)
         if not invoice_id:
             raise AllowanceError("Bitrefill did not create the order. Nothing was paid.")
-        pay_to, amount = self._deposit(client, invoice, ceiling_atomic, quoted)
-        self._check_unchanged(client, invoice_id, access, pay_to, amount)
+        try:
+            pay_to, amount = self._deposit(client, invoice, ceiling_atomic, quoted)
+            self._check_unchanged(client, invoice_id, access, pay_to, amount)
+        except AllowanceError as exc:
+            analytics.emit("purchase_failed", user_id, chain="base", category="bitrefill",
+                           reason=_bitrefill_failure_reason(str(exc)))
+            raise
 
         from . import purchase_progress
         purchase_progress.mark("paying")

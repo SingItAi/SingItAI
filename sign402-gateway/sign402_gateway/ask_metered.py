@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import time
 
+from . import analytics
 from .agent_allowance import AllowanceError, AllowanceUnavailable, USDC, TRANSFER_TOPIC, encode_call
 
 URL = "https://ask.singitai.app/v1/chat/completions/metered"
@@ -220,6 +221,8 @@ def pay(server, gw, account, body, cap=CAP):
                 gw._settle_user_wallet_spend(server, reservation, {"id": "data.singit-ask"}, URL, actual,
                     {"txId": tx}, payment=payment, claim_id=claim, actual_amount_atomic=amount)
                 service.store.count_settlement(tx, index, account, PAY_TO, amount, URL, int(time.time()))
+                analytics.emit("chat_answer_paid", account, model=str(body.get("model") or "")[:80],
+                               lane="x402_metered", cost_usd=analytics.usdc_to_usd_string(amount))
                 complete = True
             return amount, data, tx
         finally:
