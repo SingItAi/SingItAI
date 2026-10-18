@@ -7,12 +7,18 @@ answer comes back as Surplus sends it, chunk by chunk.
 
 Money: before a request, its likely cost is held on the account's balance (web_balance.Balances), which the owner
 bought in the app. A balance too low refuses the request, unless the owner switched on automatic top-ups: then it
-is topped up first, from the owner's limits (the gateway's `credit-topup`). Surplus reports what each answer cost
-(`usage.buyer_cost_micro`, in the body or the last streamed event); that cost plus the markup is charged, and never
-more than the hold. A stream that ends without its cost (Surplus's Anthropic skin reports none) is charged once
-the cost is read back from Surplus's request log by the answer's `x-request-id`; the hold waits for it. A dearer
-answer is SingIt's loss, logged, and not a debt on the balance. A failed request costs nothing. While the answer is being read the hold is refreshed, and the read stops after twelve minutes, so a
-slow stream cannot outlive the hold and let another request spend the same deposit.
+is topped up first, from the owner's limits (the gateway's `credit-topup`). The hold counts the whole question at
+the list price but at most HOLD_OUTPUT_TOKENS of answer: Claude Code asks for answers of up to 128k tokens and
+rarely gets a tenth of that, and holding them all would ask a dollar or more before every request.
+
+Surplus reports what each answer cost (`usage.buyer_cost_micro`, in the body or the last streamed event); that cost
+plus the markup is charged. An answer dearer than its hold takes the rest from what is free on the balance, up to
+the most the request could have cost and never past the key's limit for one request; the key's daily cap counts
+that most while the request runs. What still is not covered is SingIt's loss, logged, and not a debt on the
+balance. A stream that ends without its cost (Surplus's Anthropic skin reports none) is charged once the cost is
+read back from Surplus's request log by the answer's `x-request-id`; the hold waits for it. A failed request costs
+nothing. While the answer is being read the hold is refreshed, and the read stops after twelve minutes, so a slow
+stream cannot outlive the hold and let another request spend the same deposit.
 """
 
 from __future__ import annotations
@@ -39,7 +45,8 @@ USER_AGENT = ask_catalogue.USER_AGENT
 MARKUP_BPS = 3000                 # cost + 30%, as at SingIt Ask
 DEFAULT_MODEL = "deepseek-v4.1-flash"
 DEFAULT_OUTPUT_TOKENS = 4096      # the answer length a request that names none is held for
-CHARS_PER_TOKEN = 3               # a fair guess for the hold; the charge is the reported cost, capped at the hold
+HOLD_OUTPUT_TOKENS = 16_000       # the most answer a hold counts; a longer one is paid from the free balance
+CHARS_PER_TOKEN = 3               # a fair guess for the hold; the charge is the reported cost
 TOKEN_LIMITS = ("max_tokens", "max_completion_tokens", "max_output_tokens")
 UPSTREAM_SECONDS = 600            # one socket read; idle, not the whole request
 ANSWER_DEADLINE_SECONDS = 12 * 60  # the whole request, shorter than a hold's life
@@ -67,9 +74,9 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024  # OpenAI's own limit for a transcription
 AUDIO_BITS_PER_SECOND = 32_000      # the hold counts an audio file as speech this compact; the charge is what was used
 FREE_PATHS = {"/messages/count_tokens"}
 FORWARDED_HEADERS = ("anthropic-version", "anthropic-beta")
-# Claude Code and the Anthropic SDK name models as Anthropic does (claude-sonnet-5-5, maybe dated); Surplus as
-# claude-sonnet-5.5.
-ANTHROPIC_ID = re.compile(r"(claude-(?:opus|sonnet|haiku))-(\d+)-(\d+)(?:-\d{8})?")
+# Claude Code and the Anthropic SDK name models as Anthropic does (claude-sonnet-5-5, claude-fable-5-1, maybe dated);
+# Surplus as claude-sonnet-5.5.
+ANTHROPIC_ID = re.compile(r"(claude-(?:opus|sonnet|haiku|fable))-(\d+)-(\d+)(?:-\d{8})?")
 
 
 def charge_for(cost: int) -> int:
@@ -108,14 +115,14 @@ def output_tokens(body: Mapping[str, Any]) -> int:
     return DEFAULT_OUTPUT_TOKENS if chosen is None else chosen
 
 
-def estimate(model_id: str, body: Mapping[str, Any]) -> int | None:
-    """A likely cost of this request in micro-USD with the markup, from the model's list price; None when the
-    model is not in the list."""
+def estimate(model_id: str, body: Mapping[str, Any], answer_cap: int | None = None) -> int | None:
+    """The most this request may cost in micro-USD with the markup, from the model's list price, counting at most
+    `answer_cap` tokens of answer when one is given; None when the model is not in the list."""
     model = ask_catalogue.resolve(model_id)
     if model is None:
         output_tokens(body)  # still refuse a limit we would otherwise forward unpriced
         return None
-    output = output_tokens(body)
+    output = output_tokens(body) if answer_cap is None else min(output_tokens(body), answer_cap)
     chars = len(json.dumps(body.get("messages") or body.get("input") or "", ensure_ascii=False))
     chars += len(json.dumps(body.get("system") or body.get("instructions") or "", ensure_ascii=False))
     chars += len(json.dumps(body.get("tools") or "", ensure_ascii=False))
@@ -124,8 +131,9 @@ def estimate(model_id: str, body: Mapping[str, Any]) -> int | None:
 
 
 # What Surplus adds to a standard answer that only tells who sold it and for how much: the seller, its cost
-# breakdown and its own price field. The caller sees SingIt's charge in `billing` instead.
-UPSTREAM_FIELDS = ("provider",)
+# breakdown and its own price fields (a streamed chat's last chunk carries `cost` with the seller's own unit).
+# The caller sees SingIt's charge in `billing` instead.
+UPSTREAM_FIELDS = ("provider", "cost")
 UPSTREAM_USAGE_FIELDS = ("cost", "is_byok", "cost_details", "buyer_cost_micro")
 
 
@@ -401,15 +409,16 @@ class Proxy:
                 listed, units = ask_catalogue.transcription_list_usd(model_id), len(raw[0]) * 8 / AUDIO_BITS_PER_SECOND / 60
             if listed is None:
                 raise error(404, f"No such model here. See {MEDIA_PATHS[path]}.", code="model_not_found")
-            likely = charge_for(max(1, -int(-listed * units * 1_000_000 // 1)))
+            likely = most = charge_for(max(1, -int(-listed * units * 1_000_000 // 1)))
         else:
-            likely = estimate(model_id, request)
+            likely, most = estimate(model_id, request, HOLD_OUTPUT_TOKENS), estimate(model_id, request)
         if likely is not None and likely > per:
             raise error(400, f"This request may cost up to {likely / 1e6:.4f} USDC, above this key's limit of "
                         f"{per / 1e6:g} USDC per request. Ask for less, or make a key with a higher limit.",
                         code="over_request_limit")
         hold = likely if likely is not None else per
-        done = reserve(hold)  # the key's own daily cap, counting requests in flight
+        ceiling = min(per, most) if most is not None else per  # the most this request is ever charged
+        done = reserve(ceiling)  # the key's own daily cap, counting requests in flight
         hold_id = "hold_" + secrets.token_hex(10)
         try:
             self.fund(account, hold, error)
@@ -480,16 +489,16 @@ class Proxy:
             cost = meter.cost
             if cost is None:  # an answer that came back without its cost is charged its hold, and logged
                 logger.warning("web api: %s answered %s with no cost; charged the hold", model_id, request_id)
-                charged = hold
+                asked = hold
             else:
-                priced = charge_for(cost)
-                charged = min(priced, hold)
-                if priced > hold:
-                    logger.warning("web api: %s cost %s micro-USD, above the hold of %s; charged the hold",
-                                   model_id, cost, hold)
-            after = self.balances.charge(account, hold_id, charged, int(self.keys.now()), key_id=key_id,
-                                         model=model_id, ref=request_id, cost=cost, input_tokens=meter.input_tokens,
-                                         output_tokens=meter.output_tokens)
+                asked = min(charge_for(cost), ceiling)
+            charged, after = self.balances.bill(account, hold_id, asked, int(self.keys.now()),
+                                                beyond_hold=ceiling - hold, key_id=key_id, model=model_id,
+                                                ref=request_id, cost=cost, input_tokens=meter.input_tokens,
+                                                output_tokens=meter.output_tokens)
+            if cost is not None and charge_for(cost) > charged:
+                logger.warning("web api: %s cost %s micro-USD; charged %s (hold %s, at most %s)",
+                               model_id, cost, charged, hold, ceiling)
             done(charged)
             self.refill_later(account, after)
             return charged

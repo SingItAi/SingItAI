@@ -130,9 +130,11 @@ test("what is not sold is refused before any payment is asked", async (t) => {
 test("names, sizes and scrubbing", () => {
   assert.equal(surplusModel("claude-opus-5-5"), "claude-opus-5.5");
   assert.equal(surplusModel("claude-haiku-4-5-20251001"), "claude-haiku-4.5");
+  assert.equal(surplusModel("claude-fable-5-1"), "claude-fable-5.1");
   assert.equal(surplusModel("gpt-5.5"), "gpt-5.5");
   const read = readFormatRequest("/v1/messages", { ...MESSAGE, tools: [{ name: "Bash" }] });
   assert.equal(read.maxTokens, 300);
   assert.ok(read.chars > 20);
   assert.deepEqual(scrub({ provider: "x", usage: { input_tokens: 1, cost: 2, buyer_cost_micro: 3 } }), { usage: { input_tokens: 1 } });
+  assert.deepEqual(scrub({ cost: { usd: 0, diem: 1e-5 }, usage: { input_tokens: 1 } }), { usage: { input_tokens: 1 } });
 });

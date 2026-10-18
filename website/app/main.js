@@ -1589,7 +1589,7 @@ function usdOf(x) {
   return `${n < 0 ? "−" : ""}$${Number(whole).toLocaleString("en-US")}.${cents.padEnd(2, "0")}`;
 }
 
-const TOPUP_PRESETS = [5, 10, 20, 50];
+const TOPUP_PRESETS = [1, 5, 10, 20];
 const KEY_KINDS = {
   code: { label: "My code", daily: "5", per: "0.25", hint: "Scripts, bots and apps: short questions." },
   agent: { label: "Claude Code", daily: "20", per: "2", hint: "Coding agents send long contexts: up to $2 a request." },
@@ -2089,7 +2089,7 @@ const actions = {
   "hide-key": () => { state.newKey = null; render(); },
   "dev-tab": (el) => { state.devTab = el.dataset.devTab; render(); },
   "dev-refresh": async () => { await loadDevelopers(); render(); },
-  "open-topup": () => { state.modal = { type: "topup", amount: 10 }; render(); },
+  "open-topup": () => { state.modal = { type: "topup", amount: 1 }; render(); },
   "topup-preset": (el) => { state.modal = { type: "topup", amount: Number(el.dataset.amount) }; render(); },
   "open-auto-topup": () => { state.modal = { type: "auto-topup" }; render(); },
   "auto-toggle": (el) => { state.modal = { ...state.modal, on: el.dataset.on === "1" }; render(); },
