@@ -77,9 +77,9 @@ class DailyMetricsTests(unittest.TestCase):
             if with_chat_usage:
                 db.execute("""CREATE TABLE chat_usage (account_id TEXT, chat_id TEXT, model TEXT, model_label TEXT,
                     prompt_tokens INTEGER, completion_tokens INTEGER, cost_atomic INTEGER, created_at INTEGER)""")
-                db.execute("INSERT INTO chat_usage VALUES ('wallet:AAA', 'c1', 'gpt', 'GPT', 10, 20, 1_500_000, ?)",
+                db.execute("INSERT INTO chat_usage VALUES ('wallet:AAA', 'c1', 'gpt', 'GPT', 10, 20, 1500000, ?)",
                           (self.s + 10,))
-                db.execute("INSERT INTO chat_usage VALUES ('wallet:AAA', 'c2', 'gpt', 'GPT', 5, 5, 500_000, ?)",
+                db.execute("INSERT INTO chat_usage VALUES ('wallet:AAA', 'c2', 'gpt', 'GPT', 5, 5, 500000, ?)",
                           (self.s + 20,))
             if with_events:
                 db.execute("CREATE TABLE events (id INTEGER PRIMARY KEY, at INTEGER, name TEXT, uid TEXT,"
@@ -95,9 +95,9 @@ class DailyMetricsTests(unittest.TestCase):
             db.execute("INSERT INTO accounts VALUES ('wallet:OLD', '0xOLD', NULL, ?, NULL)", (self.s - 1000,))
             db.execute("INSERT INTO sessions VALUES ('h1', 'wallet:AAA', ?)", (self.s + 7,))
             db.execute("INSERT INTO api_keys VALUES ('key1', 'wallet:AAA', ?)", (self.s + 8,))
-            db.execute("INSERT INTO credit_topups VALUES ('t1', 'wallet:AAA', 2_000_000, 'credited', 2_000_000,"
+            db.execute("INSERT INTO credit_topups VALUES ('t1', 'wallet:AAA', 2000000, 'credited', 2000000,"
                       " ?, ?)", (self.s + 9, self.s + 9))
-            db.execute("INSERT INTO credit_topups VALUES ('t2', 'wallet:AAA', 500_000, 'failed', NULL, ?, ?)",
+            db.execute("INSERT INTO credit_topups VALUES ('t2', 'wallet:AAA', 500000, 'failed', NULL, ?, ?)",
                       (self.s + 9, self.s + 9))
         db.close()
         return path
@@ -118,26 +118,26 @@ class DailyMetricsTests(unittest.TestCase):
                     amount INTEGER, first_seen INTEGER, resolved INTEGER, PRIMARY KEY (tx_hash, log_index));
             """)
             db.execute("INSERT INTO limiters VALUES ('0xL1', 'wallet:AAA', 'ACTIVE', ?)", (self.s + 1,))
-            db.execute("INSERT INTO operations VALUES ('op1', 'wallet:AAA', 'GRANT', 'DONE', 1_000_000, ?)",
+            db.execute("INSERT INTO operations VALUES ('op1', 'wallet:AAA', 'GRANT', 'DONE', 1000000, ?)",
                       (self.s + 2,))
             db.execute("INSERT INTO operations VALUES ('op2', 'wallet:AAA', 'GRANT', 'FAILED', 0, ?)", (self.s + 3,))
             db.execute("INSERT INTO operations VALUES ('op3', 'wallet:AAA', 'REVOKE', 'DONE', 0, ?)", (self.s + 4,))
             db.execute("INSERT INTO operations VALUES ('op4', 'wallet:AAA', 'PAUSE', 'DONE', 0, ?)", (self.s + 5,))
-            db.execute("INSERT INTO settlements VALUES ('0xtx1', '0', 'wallet:AAA', '0xpay', 3_000_000,"
+            db.execute("INSERT INTO settlements VALUES ('0xtx1', '0', 'wallet:AAA', '0xpay', 3000000,"
                       " 'bitrefill:invoice:1', ?)", (self.s + 6,))
             db.execute("INSERT INTO settlements VALUES ('0xtx2', '0', 'wallet:AAA', '0xpay',"
-                      " 400_000, 'https://ask.singitai.app/v1/chat/completions/metered', ?)", (self.s + 7,))
+                      " 400000, 'https://ask.singitai.app/v1/chat/completions/metered', ?)", (self.s + 7,))
             # A balance top-up settlement: must be excluded from purchases/spenders/volume, and
             # reported under its own credit_topup bucket (it would otherwise double-count with
             # web.db's own credit_topups table).
             db.execute("INSERT INTO settlements VALUES ('0xtx3', '0', 'wallet:AAA', '0xpay',"
-                      " 250_000, 'https://ask.singitai.app/v1/credit', ?)", (self.s + 7,))
+                      " 250000, 'https://ask.singitai.app/v1/credit', ?)", (self.s + 7,))
             # Non-metered chat completions count as chat_answer, same as the metered resource.
             db.execute("INSERT INTO settlements VALUES ('0xtx4', '0', 'wallet:AAA', '0xpay',"
-                      " 100_000, 'https://ask.singitai.app/v1/chat/completions', ?)", (self.s + 8,))
+                      " 100000, 'https://ask.singitai.app/v1/chat/completions', ?)", (self.s + 8,))
             # A legacy Telegram-lane id (no "wallet:" prefix) buying a data/tool resource.
             db.execute("INSERT INTO settlements VALUES ('0xtx5', '0', '123456789', '0xpay',"
-                      " 50_000, 'https://api.exa.ai/search', ?)", (self.s + 9,))
+                      " 50000, 'https://api.exa.ai/search', ?)", (self.s + 9,))
             db.execute("INSERT INTO alerts VALUES (1, 'wallet:AAA', 'ALARM', 'paused', ?)", (self.s + 5,))
             db.execute("INSERT INTO agent_outflows VALUES ('0xo1', '0', 'wallet:AAA', '0xr', 1, ?, 0)", (self.s,))
         db.close()
@@ -157,19 +157,19 @@ class DailyMetricsTests(unittest.TestCase):
             """)
             db.execute("INSERT INTO limits VALUES ('solana:BBB', 'BBB', 1, 1, ?, ?, ?)",
                       (self.s + 100000, self.s + 1, self.s + 1))
-            db.execute("INSERT INTO ops VALUES ('sop1', 'solana:BBB', 'GRANT', 500_000, 'DONE', ?)", (self.s + 2,))
-            db.execute("INSERT INTO spends VALUES (1, 'solana:BBB', 700_000, 'Exa web search', 'tx1', ?)",
+            db.execute("INSERT INTO ops VALUES ('sop1', 'solana:BBB', 'GRANT', 500000, 'DONE', ?)", (self.s + 2,))
+            db.execute("INSERT INTO spends VALUES (1, 'solana:BBB', 700000, 'Exa web search', 'tx1', ?)",
                       (self.s + 3,))
-            db.execute("INSERT INTO spends VALUES (2, 'solana:BBB', 100_000, 'Exa web search', NULL, ?)",
+            db.execute("INSERT INTO spends VALUES (2, 'solana:BBB', 100000, 'Exa web search', NULL, ?)",
                       (self.e - 10000,))  # unconfirmed, older than an hour before window end
             # Abandoned: a GRANT prepared today but never signed, old enough to call abandoned.
-            db.execute("INSERT INTO ops VALUES ('sop2', 'solana:BBB', 'GRANT', 200_000, 'PREPARED', ?)",
+            db.execute("INSERT INTO ops VALUES ('sop2', 'solana:BBB', 'GRANT', 200000, 'PREPARED', ?)",
                       (self.e - 10000,))
             # Abandoned, from an earlier day (counts toward total_outstanding, not "today").
-            db.execute("INSERT INTO ops VALUES ('sop3', 'solana:BBB', 'GRANT', 300_000, 'PREPARED', ?)",
+            db.execute("INSERT INTO ops VALUES ('sop3', 'solana:BBB', 'GRANT', 300000, 'PREPARED', ?)",
                       (self.s - 100000,))
             # Not abandoned: prepared recently (within the last hour before the window ends).
-            db.execute("INSERT INTO ops VALUES ('sop4', 'solana:BBB', 'GRANT', 400_000, 'PREPARED', ?)",
+            db.execute("INSERT INTO ops VALUES ('sop4', 'solana:BBB', 'GRANT', 400000, 'PREPARED', ?)",
                       (self.e - 100,))
         db.close()
         return path
