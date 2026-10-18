@@ -8,6 +8,7 @@ import json
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
@@ -391,6 +392,80 @@ class ProxyTests(ProxyFixture):
         self.assertEqual(headers, {"anthropic-version": "2023-06-01", "anthropic-beta": "tools-2024"})
         line = self.balances.ledger(self.account)[0]
         self.assertEqual((-line["amount_atomic"], line["input_tokens"], line["output_tokens"]), (26_000, 12, 3))
+
+    def anthropic_stream_without_cost(self):
+        """What Surplus's Anthropic skin streams: usage 0/0 and no cost, with its request id in the headers."""
+        events = sse({"type": "message_start", "message": {"usage": {"input_tokens": 0, "output_tokens": 0}}},
+                     {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hi"}},
+                     {"type": "message_delta", "usage": {"input_tokens": 0, "output_tokens": 0}},
+                     {"type": "message_stop"})
+        self.surplus.replies.append(Response(200, events, {"Content-Type": "text/event-stream",
+                                                           "x-request-id": "req_stream"}))
+        _, relay = self.send("/messages", {"model": "claude-opus-5-5", "max_tokens": 1000, "stream": True,
+                                           "messages": [{"role": "user", "content": "Hi"}]})
+        return relay
+
+    def test_a_stream_without_its_cost_is_charged_what_the_request_log_says(self):
+        self.surplus.request_record = Mock(side_effect=[
+            None,  # not in the log yet
+            {"id": "req_stream", "status": "succeeded",
+             "usage": {"input_tokens": 1200, "output_tokens": 40, "buyer_cost_micro": 2_000}}])
+        with patch.object(web_api_proxy.time, "sleep") as sleep:
+            relay = self.anthropic_stream_without_cost()
+            self.assertGreater(self.balances.state(self.account)["heldAtomic"], 0)  # held until the cost is known
+            self.body_of(relay)
+        self.assertEqual([c.args for c in self.surplus.request_record.call_args_list], [("req_stream",), ("req_stream",)])
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [1, 2])
+        line = self.balances.ledger(self.account)[0]
+        self.assertEqual((-line["amount_atomic"], line["cost_atomic"], line["input_tokens"], line["output_tokens"]),
+                         (charge_for(2_000), 2_000, 1200, 40))
+        self.assertEqual(self.balances.state(self.account)["heldAtomic"], 0)
+
+    def test_a_cost_deeper_in_the_record_is_found_and_nothing_else_is_taken_for_one(self):
+        self.surplus.request_record = Mock(return_value={"data": {"settlement": {"buyer_cost_micro": "700"},
+                                                                  "cost_usd": 5, "price_micro": 9_000}})
+        with patch.object(web_api_proxy.time, "sleep"):
+            self.body_of(self.anthropic_stream_without_cost())
+        self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -charge_for(700))
+        self.assertEqual(self.surplus.request_record.call_count, 1)
+
+    def test_a_stream_whose_cost_never_shows_is_charged_its_hold_and_the_record_shape_is_logged(self):
+        self.surplus.request_record = Mock(return_value={"id": "req_stream", "total_usd": 0.002,
+                                                         "usage": {"input_tokens": 9}})
+        hold = web_api_proxy.estimate("claude-opus-5.5", {"model": "claude-opus-5.5", "max_tokens": 1000,
+                                                          "messages": [{"role": "user", "content": "Hi"}]})
+        with patch.object(web_api_proxy.time, "sleep"), \
+                self.assertLogs("sign402_gateway.web_api_proxy", "WARNING") as logs:
+            self.body_of(self.anthropic_stream_without_cost())
+        self.assertEqual(self.surplus.request_record.call_count, len(web_api_proxy.COST_LOOKUP_DELAYS))
+        self.assertEqual(self.balances.ledger(self.account)[0]["amount_atomic"], -hold)
+        shown = "\n".join(logs.output)
+        self.assertIn('"total_usd": "float"', shown)
+        self.assertNotIn("0.002", shown)
+
+    def test_the_request_log_is_read_with_singits_key(self):
+        seen = []
+
+        class Reply(io.BytesIO):
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def opener(request, timeout):
+            seen.append((request.full_url, request.get_method(), request.headers.get("Authorization"), timeout))
+            return Reply(json.dumps({"buyer_cost_micro": 5}).encode())
+
+        upstream = web_api_proxy.Upstream("inf_test", "https://surplus.example/", opener)
+        self.assertEqual(upstream.request_record("req/1 2"), {"buyer_cost_micro": 5})
+        self.assertEqual(seen, [("https://surplus.example/v1/requests/req%2F1%202", "GET", "Bearer inf_test",
+                                 web_api_proxy.COST_LOOKUP_SECONDS)])
+
+        def down(request, timeout):
+            raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+
+        self.assertIsNone(web_api_proxy.Upstream("inf_test", opener=down).request_record("req_1"))
 
     def test_an_openai_stream_gets_its_usage_chunk_only_when_it_asked(self):
         chunk = {"choices": [{"index": 0, "delta": {"content": "Hi"}}]}
