@@ -2,12 +2,14 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from cryptography.fernet import Fernet
 from eth_account import Account
 from eth_utils import keccak, to_checksum_address
 
 from sign402_gateway import agent_allowance as aa
+from sign402_gateway import analytics
 from sign402_gateway.base_balances import BaseBalanceError
 
 OWNER = "0x1111111111111111111111111111111111111111"
@@ -330,6 +332,14 @@ class AllowanceServiceTests(unittest.TestCase):
         again = self.service.setup(USER, "100", "10", "30")
         self.assertFalse(again["created"])
         self.assertEqual(len(self.evm.sent), 2)
+
+    def test_limits_set_is_emitted_only_when_a_limiter_is_created(self):
+        with patch.object(analytics, "emit") as emit:
+            self.service.setup(USER, "100", "10", "30")
+            self.service.setup(USER, "100", "10", "30")
+        limits_set = [c for c in emit.call_args_list if c.args[0] == "limits_set"]
+        self.assertEqual(len(limits_set), 1)
+        self.assertTrue(limits_set[0].kwargs["first_time"])
 
     def test_gas_follows_the_price_of_the_deployment(self):
         self.evm.deploy_cost = 300_000_000_000_000  # 0.0003 ETH, a fee spike

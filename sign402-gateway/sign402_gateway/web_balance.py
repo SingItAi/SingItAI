@@ -31,6 +31,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+from . import analytics
 from .agent_allowance import AllowanceError, AllowanceUnavailable
 
 logger = logging.getLogger(__name__)
@@ -258,6 +259,10 @@ class Balances:
             db.execute("INSERT INTO balance_ledger(account_id, at, kind, amount_atomic, balance_after, ref, key_id, model,"
                        " cost_atomic, input_tokens, output_tokens) VALUES (?, ?, 'charge', ?, ?, ?, ?, ?, ?, ?, ?)",
                        (account, now, -billed, after, ref, key_id, model, cost, input_tokens, output_tokens))
+        if billed and model:
+            analytics.emit("chat_answer_paid", account, model=model, lane="api_key",
+                           cost_usd=analytics.usdc_to_usd_string(billed),
+                           tokens_in=input_tokens or 0, tokens_out=output_tokens or 0)
         return billed, after
 
     # -- topping up --
@@ -301,6 +306,8 @@ class Balances:
             after = int(db.execute("SELECT balance_atomic FROM balances WHERE account_id = ?", (account,)).fetchone()[0])
             db.execute("INSERT INTO balance_ledger(account_id, at, kind, amount_atomic, balance_after, ref, tx_id, network)"
                        " VALUES (?, ?, 'topup', ?, ?, ?, ?, ?)", (account, now, credit, after, topup_id, tx_id, network))
+        analytics.emit("funds_added", account, chain=network, amount_usd=analytics.usdc_to_usd_string(credit),
+                       source="credit_topup")
         return after
 
 

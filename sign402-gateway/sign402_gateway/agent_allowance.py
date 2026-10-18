@@ -40,6 +40,7 @@ from typing import Any, Callable, Iterator, Mapping
 from eth_account import Account
 from eth_utils import keccak, to_checksum_address
 
+from . import analytics
 from .base_balances import BaseBalanceError
 
 logger = logging.getLogger(__name__)
@@ -599,11 +600,22 @@ class AllowanceStore:
     def count_settlement(self, tx_hash: str, log_index: str, user_id: str, pay_to: str, amount: int,
                          resource: str, now: int) -> None:
         with self._db() as db:
+            # Not a purchase count: a credit top-up settlement would otherwise inflate purchase_n.
+            before = db.execute("SELECT COUNT(*) FROM settlements WHERE user_id = ? AND resource NOT LIKE '%/v1/credit'",
+                                (user_id,)).fetchone()[0]
             db.execute(
                 "INSERT INTO settlements (tx_hash, log_index, user_id, pay_to, amount, resource, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (tx_hash.lower(), log_index, user_id, pay_to, amount, resource, now),
             )
+        # A metered chat answer is also a settlement; chat_answer_paid covers it with more detail
+        # (model, tokens). A credit top-up settlement is covered by funds_added once web_balance.py
+        # credits it. Neither is double-counted here as a purchase.
+        category = _settlement_category(resource)
+        if category is not None:
+            analytics.emit("purchase_completed", user_id, chain="base", category=category,
+                           amount_usd=analytics.usdc_to_usd_string(amount),
+                           first_purchase=before == 0, purchase_n=before + 1)
 
     def settlement_for(self, user_id: str, resource: str) -> sqlite3.Row | None:
         with self._db() as db:
@@ -840,6 +852,17 @@ def _usdc_text(atomic: int) -> str:
     return f"{text} USDC"
 
 
+def _settlement_category(resource: str) -> str | None:
+    """The analytics category for a settled `resource`; None skips purchase_completed."""
+    if resource.startswith("bitrefill:invoice:"):
+        return "bitrefill"
+    if resource.endswith("/v1/credit"):
+        return None  # a balance top-up (web_balance.CREDIT_URL); funds_added covers it
+    if resource.endswith("/chat/completions/metered") or resource.endswith("/chat/completions"):
+        return None  # chat_answer_paid already covers (or should cover) this settlement
+    return "data_tool"
+
+
 def _facilitator_short_of_funds(result: Mapping[str, Any]) -> bool:
     """A payment refused (402) because the facilitator saw too little USDC: its error field, not any
     text the seller put in a delivered answer."""
@@ -1007,6 +1030,9 @@ class AllowanceService:
                     f"\n\nYour previous limiter {previous['limiter_address']} still holds an allowance of "
                     f"{_usdc_text(left)} from your wallet. Revoke it from your wallet; replacing a limiter does not."
                 )
+        analytics.emit("limits_set", user_id, chain="base", daily_cap_usd=analytics.usdc_to_usd_string(daily_cap),
+                       per_purchase_cap_usd=analytics.usdc_to_usd_string(per_purchase_cap),
+                       expiry_days=lifetime, first_time=previous is None)
         return result
 
     def ensure_gas(self, agent: str, next_cost_wei: int) -> None:
@@ -1266,6 +1292,16 @@ class AllowanceService:
                     self._advance_op(op)
                 except AllowanceError as error:
                     self.store.update_op(op["op_id"], int(self.now()), state="FAILED", detail=str(error))
+                    self._emit_op_event(op, "FAILED", int(self.now()))
+
+    def _emit_op_event(self, op: Mapping[str, Any], state: str, now: int) -> None:
+        """approval_signed for a GRANT, revoke for a REVOKE; PAUSE is emitted at pause()."""
+        if op["kind"] not in ("GRANT", "REVOKE"):
+            return
+        name = "approval_signed" if op["kind"] == "GRANT" else "revoke"
+        analytics.emit(name, op["user_id"], chain="base", method=op["method"], state=state,
+                       amount_usd=analytics.usdc_to_usd_string(op["amount"]),
+                       seconds_from_prepare=now - op["created_at"])
 
     def _advance_op(self, op: sqlite3.Row) -> None:
         """One step for one operation. A transient failure leaves it where it is.
@@ -1356,6 +1392,7 @@ class AllowanceService:
             if op["kind"] == "REVOKE":
                 detail += self._return_float_if_closed(op["user_id"], owner)
             self.store.update_op(op["op_id"], now, state="DONE", detail=detail)
+            self._emit_op_event(op, "DONE", now)
             return
         if now - op["updated_at"] > DEVICE_JOB_SECONDS:
             raise AllowanceError(f"The approve {op['tx_hash']} was sent but not mined. Check it on BaseScan before retrying.")
@@ -1651,7 +1688,7 @@ class AllowanceService:
 
     # -- the guardian: pause without the device --
 
-    def pause(self, user_id: str) -> dict[str, Any]:
+    def pause(self, user_id: str, *, trigger: str = "user") -> dict[str, Any]:
         self.owner_of(user_id)
         active = self.store.active_limiter(user_id)
         if active is None:
@@ -1671,6 +1708,8 @@ class AllowanceService:
             "created_at": now, "updated_at": now,
         })
         logger.info("allowance: guardian paused %s for user %s in %s", limiter, user_id, tx)
+        analytics.emit("pause", user_id, chain="base", trigger=trigger,
+                       days_since_grant=(now - active["created_at"]) // 86400)
         described = self._describe(active)
         described["telegramText"] = (
             f"Paused. The limiter {limiter} can no longer move anything, permanently (tx {tx}).\n"

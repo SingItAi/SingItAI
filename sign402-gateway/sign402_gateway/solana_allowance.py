@@ -32,6 +32,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
 
+from . import analytics
 from .agent_allowance import AllowanceError, AllowanceUnavailable
 from .secure_state import ensure_private_directory, ensure_private_file
 from .solana_keys import generate_keypair
@@ -272,6 +273,11 @@ class SolanaAllowanceStore:
         with self._db() as db:
             db.execute("UPDATE spends SET pull_tx = COALESCE(?, pull_tx) WHERE id = ?", (pull_tx, spend_id))
 
+    def settled_spend_count(self, account: str) -> int:
+        with self._db() as db:
+            return int(db.execute("SELECT COUNT(*) FROM spends WHERE account = ? AND pull_tx IS NOT NULL",
+                                  (account,)).fetchone()[0])
+
     def drop_spend(self, spend_id: int) -> None:
         with self._db() as db:
             db.execute("DELETE FROM spends WHERE id = ?", (spend_id,))
@@ -372,7 +378,11 @@ class SolanaAllowanceService:
                                  f"per purchase and {self.max_days} days.")
         agent, _ = self.agent_key(account)
         now = int(self.now())
+        first_time = self.store.limits(account) is None
         self.store.set_limits(account, owner, daily_cap, per_cap, now + days * DAY, now)
+        analytics.emit("limits_set", account, chain="solana", daily_cap_usd=analytics.usdc_to_usd_string(daily_cap),
+                       per_purchase_cap_usd=analytics.usdc_to_usd_string(per_cap), expiry_days=days,
+                       first_time=first_time)
         return {"limiter": agent, "dailyCapAtomic": daily_cap, "perPurchaseCapAtomic": per_cap, "expiry": now + days * DAY}
 
     def prepare_wallet(self, account: str, kind: str, *, amount: Any = None, **_: Any) -> dict[str, Any]:
@@ -475,7 +485,17 @@ class SolanaAllowanceService:
             self.store.finish_pending_op(account, op_id, state, detail, int(self.now()))
         else:
             self.store.update_op(op_id, state, int(self.now()), tx=result.get("transaction"), detail=detail)
+            self._emit_op_event(op, state)
         return self.operation(account, op_id)
+
+    def _emit_op_event(self, op: Mapping[str, Any], state: str) -> None:
+        """approval_signed for a GRANT, revoke for a REVOKE; FUND_GAS is not a user-facing allowance event."""
+        if op["kind"] not in ("GRANT", "REVOKE"):
+            return
+        name = "approval_signed" if op["kind"] == "GRANT" else "revoke"
+        analytics.emit(name, op["account"], chain="solana", state=state,
+                       amount_usd=analytics.usdc_to_usd_string(op["amount"]),
+                       seconds_from_prepare=int(self.now()) - op["created_at"])
 
     def operation(self, account: str, op_id: str) -> dict[str, Any]:
         op = self.store.op(account, str(op_id))
@@ -543,10 +563,16 @@ class SolanaAllowanceService:
                                    account, amount)
                 raise
             state = result.get("state")
+            category = "bitrefill" if purpose.startswith("Bitrefill") else "data_tool"
             if state in ("accepted", "confirmed"):
+                before = self.store.settled_spend_count(account)
                 self.store.confirm_spend(spend_id, result.get("transaction"))
+                analytics.emit("purchase_completed", account, chain="solana", category=category,
+                               amount_usd=analytics.usdc_to_usd_string(amount),
+                               first_purchase=before == 0, purchase_n=before + 1)
             elif state in NOTHING_SENT_STATES:
                 self.store.drop_spend(spend_id)
+                analytics.emit("purchase_failed", account, chain="solana", category=category, reason="seller_error")
             else:
                 logger.warning("solana allowance: %s payment of %s ended %r; it stays counted", account, amount, state)
         logger.info("solana allowance: %s paid %s for %s (%s)", account, amount, purpose[:60], result.get("state"))

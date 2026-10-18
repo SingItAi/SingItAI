@@ -39,6 +39,10 @@ Blockchain transactions are public by design. A public blockchain may permanentl
 
 SingIt may also disclose information when required by law, to protect users or the service, or as part of a business reorganization subject to appropriate safeguards.
 
+## Analytics
+
+SingIt measures product usage (such as sign-ins, limits set, and purchases) with a self-hosted, cookieless analytics tool that runs on SingIt's own server; no analytics data is sent to a third party or used for advertising. A visitor or account is identified only by a one-way hash that cannot be turned back into a wallet address. SingIt never sends wallet addresses, email addresses, transaction hashes, chat content, or any other sensitive value to analytics.
+
 ## Data retention
 
 SingIt retains information only for as long as reasonably necessary to provide the service, maintain security and accounting records, resolve disputes, and comply with legal obligations. Retention periods may differ depending on the type of record and the feature used.

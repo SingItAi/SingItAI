@@ -83,7 +83,7 @@ class WatcherTests(unittest.TestCase):
     def test_a_spend_to_anyone_else_pauses_at_once(self):
         self.chain.spent(STRANGER, 300_000)
         self.watcher.run_once()
-        self.service.pause.assert_called_once_with(USER)
+        self.service.pause.assert_called_once_with(USER, trigger="watcher_auto_pause")
         severity, text = self.alerts()[0]
         self.assertEqual(severity, "ALARM")
         self.assertIn(f"went to {STRANGER}, not to your agent", text)
@@ -93,7 +93,7 @@ class WatcherTests(unittest.TestCase):
         for _ in range(3):
             self.chain.spent(AGENT, 1_000)
         self.watcher.run_once()
-        self.service.pause.assert_called_once_with(USER)
+        self.service.pause.assert_called_once_with(USER, trigger="watcher_auto_pause")
         self.assertIn("3 spends through your limiter in the last hour", self.alerts()[-1][1])
 
     def test_a_pass_never_reports_the_same_event_twice(self):
@@ -114,7 +114,7 @@ class WatcherTests(unittest.TestCase):
 
         self.clock[0] += aw.OUTFLOW_GRACE_SECONDS + 1
         self.watcher.run_once()
-        self.service.pause.assert_called_once_with(USER)
+        self.service.pause.assert_called_once_with(USER, trigger="watcher_auto_pause")
         self.assertIn("0.19 USDC left your agent", self.alerts()[-1][1])
         self.assertNotIn(returned, " ".join(t for _, t in self.alerts()))
 
