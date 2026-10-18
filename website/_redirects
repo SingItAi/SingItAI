@@ -3,3 +3,8 @@
 # 302, not 301: browsers keep a 301 forever, and this host may serve something under /app/ one day.
 /app https://app.singitai.app/app/ 302
 /app/* https://app.singitai.app/app/:splat 302
+
+# Do not add a catch-all rewrite to /index.html. Cloudflare Pages serves a real
+# file before the dashboard SPA fallback, which is why /robots.txt and
+# /sitemap.xml used to return the landing HTML: the files were missing.
+# A splat rule here would hide them again.
