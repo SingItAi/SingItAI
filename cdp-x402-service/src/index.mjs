@@ -23,6 +23,7 @@ import {
 } from "./staged-swap.mjs";
 import { loadBuilderCodeDataSuffix, walletClientOptions } from "./builder-code.mjs";
 import { returnErc20 } from "./token-return.mjs";
+import { transferUsdc as sendUsdcTransfer } from "./usdc-transfer.mjs";
 import { humanTokenAmountToAtomic } from "./user-token-transfer.mjs";
 
 dotenv.config();
@@ -318,21 +319,13 @@ async function transferUsdc(options) {
   const to = requiredOption(options, "to");
   const amount = parseUnits(requiredOption(options, "amount"), 6);
   const network = networkName(options.chain || "base");
-  const result = await account.transfer({
+  return sendUsdcTransfer({
+    account,
     to,
     amount,
-    token: "usdc",
     network,
+    dataSuffix: await loadBuilderCodeDataSuffix(),
   });
-  const transactionHash = result.transactionHash || result.hash;
-  return {
-    ok: true,
-    transactionHash,
-    to,
-    amount: amount.toString(),
-    token: "usdc",
-    network,
-  };
 }
 
 function basePublicClient(chainName) {
