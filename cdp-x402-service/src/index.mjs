@@ -21,6 +21,7 @@ import {
   StagedCdpError,
   stagedErrorPayload,
 } from "./staged-swap.mjs";
+import { loadBuilderCodeDataSuffix, walletClientOptions } from "./builder-code.mjs";
 import { returnErc20 } from "./token-return.mjs";
 import { humanTokenAmountToAtomic } from "./user-token-transfer.mjs";
 
@@ -34,32 +35,8 @@ const DEFAULT_ACCOUNT_NAME = "sign402-mainnet-buyer";
 // attributed to this app in base.dev. Costs 16 gas per non-zero byte.
 // Set SIGN402_BASE_BUILDER_CODE to the code from base.dev > Settings > Builder Code.
 // Unset means no suffix and unchanged behaviour.
-let builderCodeDataSuffix;
-
-async function loadBuilderCodeDataSuffix() {
-  if (builderCodeDataSuffix !== undefined) {
-    return builderCodeDataSuffix;
-  }
-  const code = (process.env.SIGN402_BASE_BUILDER_CODE || "").trim();
-  if (!code) {
-    builderCodeDataSuffix = null;
-    return builderCodeDataSuffix;
-  }
-  try {
-    const { Attribution } = await import("ox/erc8021");
-    builderCodeDataSuffix = Attribution.toDataSuffix({ codes: [code] });
-  } catch (error) {
-    // Attribution is a reporting nicety. It must never block a payment.
-    console.error(`builder code attribution disabled: ${error.message}`);
-    builderCodeDataSuffix = null;
-  }
-  return builderCodeDataSuffix;
-}
-
-async function walletClientOptions(base) {
-  const dataSuffix = await loadBuilderCodeDataSuffix();
-  return dataSuffix ? { ...base, dataSuffix } : base;
-}
+// viem's createWalletClient accepts a client-level `dataSuffix`, which every
+// sendTransaction/writeContract call on that client then appends automatically.
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
