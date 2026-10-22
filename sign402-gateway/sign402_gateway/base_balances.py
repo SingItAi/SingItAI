@@ -13,11 +13,15 @@ BASE_CHAIN_ID = 8453
 BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 DEFAULT_SINGIT_TOKEN_ADDRESS = "0xc2c1e0b7C401e6217193732272444D928646eba3"
 
+# Public endpoints behind Cloudflare refuse Python's default User-Agent.
+USER_AGENT = "sign402-gateway/0.1 (+balances)"
+
 _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _HEX_RE = re.compile(r"^0x[0-9a-fA-F]+$")
 _BALANCE_OF_SELECTOR = "70a08231"
 _MAX_DISCOVERY_ROWS = 100
 _MAX_UNVERIFIED_TOKENS = 10
+_MAX_CONFIGURED_TOKENS = 10
 
 
 class BaseBalanceError(RuntimeError):
@@ -32,11 +36,13 @@ class JsonRpcClient:
         opener: Callable[..., Any] = urlopen,
         timeout: float = 5.0,
         max_response_bytes: int = 256 * 1024,
+        user_agent: str = USER_AGENT,
     ):
         self.endpoint_url = str(endpoint_url)
         self.opener = opener
         self.timeout = timeout
         self.max_response_bytes = max_response_bytes
+        self.user_agent = str(user_agent)
         self._id_lock = threading.Lock()
         self._next_request_id = 1
 
@@ -111,6 +117,7 @@ class JsonRpcClient:
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/json",
+                "User-Agent": self.user_agent,
             },
             method="POST",
         )
@@ -143,12 +150,23 @@ class AlchemyBaseBalanceProvider:
         rpc_url: str = "",
         singit_token_address: str = DEFAULT_SINGIT_TOKEN_ADDRESS,
         rpc_client: JsonRpcClient | None = None,
+        alchemy_discovery: bool | None = None,
+        configured_tokens: list[tuple[str, str, int]] | None = None,
     ):
         self.rpc = rpc_client or JsonRpcClient(endpoint_url=rpc_url)
         self.singit_token_address = _require_address(
             singit_token_address,
             field_name="SINGIT token address",
         )
+        self.configured_tokens = list(configured_tokens or [])
+        if alchemy_discovery is None:
+            endpoint = rpc_url or getattr(self.rpc, "endpoint_url", None)
+            alchemy_discovery = (
+                True
+                if endpoint is None
+                else _looks_like_alchemy_host(urlparse(endpoint).hostname or "")
+            )
+        self.alchemy_discovery = bool(alchemy_discovery)
 
     def __call__(self, wallet_address: str) -> dict[str, Any]:
         address = _require_address(wallet_address, field_name="wallet address")
@@ -165,7 +183,14 @@ class AlchemyBaseBalanceProvider:
                 [{"to": self.singit_token_address, "data": calldata}, "latest"],
             ),
         ]
-        chain_raw, eth_raw, usdc_raw, singit_raw = self.rpc.batch(trusted_calls)
+        try:
+            chain_raw, eth_raw, usdc_raw, singit_raw = self.rpc.batch(trusted_calls)
+        except BaseBalanceError:
+            # Some providers reject JSON-RPC batches outright; fall back to
+            # issuing the same four reads individually.
+            chain_raw, eth_raw, usdc_raw, singit_raw = [
+                self.rpc.call(method, params) for method, params in trusted_calls
+            ]
         chain_id = _parse_hex_quantity(chain_raw)
         if chain_id != BASE_CHAIN_ID:
             raise BaseBalanceError("RPC endpoint is not Base Mainnet")
@@ -185,6 +210,54 @@ class AlchemyBaseBalanceProvider:
         }
 
     def _discover_tokens(self, wallet_address: str) -> list[dict[str, str]]:
+        if self.alchemy_discovery:
+            try:
+                return self._discover_tokens_via_alchemy(wallet_address)
+            except BaseBalanceError:
+                pass
+        return self._discover_configured_tokens(wallet_address)
+
+    def _discover_configured_tokens(
+        self, wallet_address: str
+    ) -> list[dict[str, str]]:
+        if not self.configured_tokens:
+            return []
+        calldata = encode_erc20_balance_of(wallet_address)
+        calls = [
+            ("eth_call", [{"to": address, "data": calldata}, "latest"])
+            for _symbol, address, _decimals in self.configured_tokens
+        ]
+        try:
+            results = self.rpc.batch(calls, allow_errors=True)
+        except BaseBalanceError:
+            return []
+
+        tokens: list[dict[str, str]] = []
+        for (symbol, address, decimals), raw in zip(
+            self.configured_tokens, results
+        ):
+            if raw is None:
+                continue
+            try:
+                balance = _parse_uint256_hex(raw)
+            except BaseBalanceError:
+                continue
+            if balance <= 0:
+                continue
+            tokens.append(
+                {
+                    "symbol": symbol,
+                    "contractAddress": address.lower(),
+                    "balance": format_atomic_amount(balance, decimals),
+                    "decimals": decimals,
+                }
+            )
+        tokens.sort(key=lambda token: token["contractAddress"])
+        return tokens
+
+    def _discover_tokens_via_alchemy(
+        self, wallet_address: str
+    ) -> list[dict[str, str]]:
         result = self.rpc.call(
             "alchemy_getTokenBalances",
             [wallet_address, "erc20", {"maxCount": _MAX_DISCOVERY_ROWS}],
@@ -244,6 +317,12 @@ class AlchemyBaseBalanceProvider:
         return tokens
 
 
+# The alchemy_* discovery calls are optional convenience on top of the
+# trusted ETH/USDC/SINGIT reads, so any standard Base JSON-RPC endpoint can
+# serve this provider; keep the old name exported for existing imports.
+BaseBalanceProvider = AlchemyBaseBalanceProvider
+
+
 def build_base_balance_provider_from_env(
     env: Mapping[str, str],
 ) -> AlchemyBaseBalanceProvider | None:
@@ -251,15 +330,24 @@ def build_base_balance_provider_from_env(
     if not rpc_url:
         return None
     _validate_rpc_url(rpc_url)
+    singit_token_address = str(
+        env.get(
+            "SIGN402_SINGIT_TOKEN_ADDRESS",
+            DEFAULT_SINGIT_TOKEN_ADDRESS,
+        )
+        or DEFAULT_SINGIT_TOKEN_ADDRESS
+    ).strip()
+    configured_tokens = _parse_configured_tokens_env(
+        env.get("SIGN402_BASE_BALANCE_TOKENS", ""),
+        trusted_addresses={
+            BASE_USDC_ADDRESS.lower(),
+            singit_token_address.lower(),
+        },
+    )
     return AlchemyBaseBalanceProvider(
         rpc_url=rpc_url,
-        singit_token_address=str(
-            env.get(
-                "SIGN402_SINGIT_TOKEN_ADDRESS",
-                DEFAULT_SINGIT_TOKEN_ADDRESS,
-            )
-            or DEFAULT_SINGIT_TOKEN_ADDRESS
-        ).strip(),
+        singit_token_address=singit_token_address,
+        configured_tokens=configured_tokens,
     )
 
 
@@ -297,14 +385,81 @@ def _normalize_token_metadata(metadata: object) -> tuple[str, int] | None:
         return None
     if decimals < 0 or decimals > 36:
         return None
-    symbol = "".join(
+    symbol = _sanitize_symbol(raw_symbol)
+    if not symbol:
+        return None
+    return symbol, decimals
+
+
+def _sanitize_symbol(raw_symbol: str) -> str:
+    return "".join(
         char
         for char in raw_symbol
         if char.isascii() and (char.isalnum() or char in "._-")
     )[:16]
-    if not symbol:
-        return None
-    return symbol, decimals
+
+
+def _looks_like_alchemy_host(hostname: str) -> bool:
+    host = (hostname or "").lower()
+    return (
+        host == "alchemy.com"
+        or host.endswith(".alchemy.com")
+        or host.endswith(".alchemyapi.io")
+    )
+
+
+def _parse_configured_tokens_env(
+    raw_value: object,
+    *,
+    trusted_addresses: set[str],
+) -> list[tuple[str, str, int]]:
+    raw = str(raw_value or "").strip()
+    if not raw:
+        return []
+    entries = [entry for entry in raw.split(",") if entry.strip()]
+    if len(entries) > _MAX_CONFIGURED_TOKENS:
+        raise BaseBalanceError(
+            "SIGN402_BASE_BALANCE_TOKENS has more than "
+            f"{_MAX_CONFIGURED_TOKENS} entries"
+        )
+
+    tokens: list[tuple[str, str, int]] = []
+    seen_addresses: set[str] = set()
+    for entry in entries:
+        parts = entry.strip().split(":")
+        if len(parts) != 3:
+            raise BaseBalanceError(
+                "SIGN402_BASE_BALANCE_TOKENS entries must be "
+                "SYMBOL:0xaddress:decimals"
+            )
+        raw_symbol, raw_address, raw_decimals = (part.strip() for part in parts)
+        symbol = _sanitize_symbol(raw_symbol)
+        if not symbol:
+            raise BaseBalanceError(
+                "SIGN402_BASE_BALANCE_TOKENS entry has an invalid symbol"
+            )
+        address = _require_address(
+            raw_address, field_name="SIGN402_BASE_BALANCE_TOKENS token address"
+        )
+        try:
+            decimals = int(raw_decimals)
+        except ValueError:
+            raise BaseBalanceError(
+                "SIGN402_BASE_BALANCE_TOKENS entry has invalid decimals"
+            ) from None
+        if decimals < 0 or decimals > 36:
+            raise BaseBalanceError(
+                "SIGN402_BASE_BALANCE_TOKENS entry has invalid decimals"
+            )
+
+        normalized_address = address.lower()
+        if normalized_address in trusted_addresses:
+            continue
+        if normalized_address in seen_addresses:
+            continue
+        seen_addresses.add(normalized_address)
+        tokens.append((symbol, address, decimals))
+    return tokens
 
 
 def _parse_hex_quantity(value: object) -> int:

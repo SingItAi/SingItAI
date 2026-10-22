@@ -159,24 +159,39 @@ creates the wallet directory as `0700` and the SQLite database as `0600`.
 
 ### Base wallet balances
 
-Hosted wallet balances require an explicit private Base Mainnet RPC endpoint.
-Use an Alchemy Base Mainnet HTTPS endpoint in the `sign402-gateway` service
-environment:
+Hosted wallet balances require an explicit private Base Mainnet JSON-RPC
+endpoint. Any standard Base Mainnet RPC works; the recommended one is a CDP
+Node RPC endpoint from the Coinbase Developer Platform:
 
 ```env
-SIGN402_BASE_RPC_URL=https://base-mainnet.g.alchemy.com/v2/<private-api-key>
+SIGN402_BASE_RPC_URL=https://api.developer.coinbase.com/rpc/v1/base/<client-api-key>
 ```
 
-Treat the full URL as a secret because it contains the Alchemy API key. Do not
+An Alchemy Base Mainnet endpoint also works and additionally enables automatic
+discovery of other ERC-20 balances via the Alchemy Token API; this is optional.
+
+Treat the full RPC URL as a secret because it contains your API key. Do not
 put it in Hermes prompts, Telegram, screenshots, repository files, or shared
 logs. The hosted balance provider does not silently fall back to the public,
 rate-limited Base endpoint.
 
 `/agent/wallet-balance` always reads Base Mainnet ETH, canonical USDC, and
-SINGIT. When the endpoint supports Alchemy Token API, it also discovers up to
-10 additional non-zero ERC-20 balances. Those assets are labeled as unverified,
-include their contract address, and remain display-only: discovery never grants
-the agent permission to spend them.
+SINGIT. When the endpoint is Alchemy, it also discovers up to 10 additional
+non-zero ERC-20 balances automatically via the Alchemy Token API. On any other
+RPC, set `SIGN402_BASE_BALANCE_TOKENS` to list specific ERC-20 tokens to read
+instead:
+
+```env
+SIGN402_BASE_BALANCE_TOKENS=SYMBOL:0xaddress:decimals,SYMBOL2:0xaddress2:decimals2
+```
+
+Comma-separated, up to 10 entries. These extra tokens are labeled as
+unverified, include their contract address, and remain display-only:
+listing them never grants the agent permission to spend them.
+
+The CDP Node RPC URL above also works for `SIGN402_ALLOWANCE_RPC_URL`, which
+needs `eth_getLogs`; the public `https://mainnet.base.org` endpoint refuses
+that method.
 
 ## Running the gateway
 
