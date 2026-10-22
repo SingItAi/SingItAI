@@ -13,6 +13,7 @@ from sign402_gateway.base_balances import (
     build_base_balance_provider_from_env,
     encode_erc20_balance_of,
     format_atomic_amount,
+    _looks_like_alchemy_host,
 )
 
 
@@ -117,6 +118,7 @@ class JsonRpcClientTests(unittest.TestCase):
         self.assertEqual(timeout, 5.0)
         self.assertEqual(request.method, "POST")
         self.assertEqual(request.get_header("Content-type"), "application/json")
+        self.assertEqual(request.get_header("User-agent"), "sign402-gateway/0.1 (+balances)")
         self.assertEqual(
             json.loads(request.data),
             {
@@ -128,6 +130,22 @@ class JsonRpcClientTests(unittest.TestCase):
         )
         self.assertTrue(response.closed)
         self.assertEqual(response.read_size, 262145)
+
+    def test_batch_sends_user_agent_and_content_type_headers(self):
+        response = FakeResponse(
+            [{"jsonrpc": "2.0", "id": 1, "result": "0x2105"}]
+        )
+        opener = QueueOpener(response)
+        client = JsonRpcClient(
+            endpoint_url="https://base-mainnet.g.alchemy.com/v2/private-key",
+            opener=opener,
+        )
+
+        client.batch([("eth_chainId", [])])
+
+        request, _timeout = opener.requests[0]
+        self.assertEqual(request.get_header("Content-type"), "application/json")
+        self.assertEqual(request.get_header("User-agent"), "sign402-gateway/0.1 (+balances)")
 
     def test_batch_returns_results_in_request_order(self):
         response = FakeResponse(
@@ -399,6 +417,185 @@ class AlchemyBaseBalanceProviderTests(unittest.TestCase):
 
         self.assertIsInstance(provider, AlchemyBaseBalanceProvider)
         self.assertEqual(provider.singit_token_address, "0x" + "44" * 20)
+
+    def test_non_alchemy_rpc_never_calls_alchemy_methods(self):
+        token_zero = "0x" + "11" * 20
+        token_nonzero = "0x" + "22" * 20
+        configured_tokens = [
+            ("ZERO", token_zero, 18),
+            ("AAA", token_nonzero, 6),
+        ]
+
+        for rpc_url in (
+            "https://api.developer.coinbase.com/rpc/v1/base/test-key",
+            "https://mainnet.base.org",
+        ):
+            with self.subTest(rpc_url=rpc_url):
+                rpc = StubRpc(
+                    batch_results=[
+                        trusted_batch(),
+                        [hex(0), hex(1_250_000)],
+                    ],
+                )
+                provider = AlchemyBaseBalanceProvider(
+                    rpc_url=rpc_url,
+                    rpc_client=rpc,
+                    configured_tokens=configured_tokens,
+                )
+
+                result = provider(WALLET)
+
+                self.assertEqual(
+                    result["balances"],
+                    {"ETH": "0.001", "USDC": "12.5", "SINGIT": "250"},
+                )
+                self.assertEqual(
+                    result["unverifiedTokens"],
+                    [
+                        {
+                            "symbol": "AAA",
+                            "contractAddress": token_nonzero,
+                            "balance": "1.25",
+                            "decimals": 6,
+                        }
+                    ],
+                )
+                self.assertEqual(rpc.calls, [])
+                for calls, _allow_errors in rpc.batch_calls:
+                    for method, _params in calls:
+                        self.assertFalse(method.startswith("alchemy_"))
+
+    def test_alchemy_discovery_failure_falls_back_to_configured_tokens(self):
+        configured_tokens = [("AAA", "0x" + "22" * 20, 6)]
+        rpc = StubRpc(
+            batch_results=[trusted_batch(), [hex(1_250_000)]],
+            call_results=[BaseBalanceError("alchemy token api failed")],
+        )
+        provider = AlchemyBaseBalanceProvider(
+            rpc_url="https://base-mainnet.g.alchemy.com/v2/private-key",
+            rpc_client=rpc,
+            configured_tokens=configured_tokens,
+        )
+
+        result = provider(WALLET)
+
+        self.assertEqual(
+            result["unverifiedTokens"],
+            [
+                {
+                    "symbol": "AAA",
+                    "contractAddress": "0x" + "22" * 20,
+                    "balance": "1.25",
+                    "decimals": 6,
+                }
+            ],
+        )
+        self.assertEqual(
+            [method for method, _params in rpc.calls],
+            ["alchemy_getTokenBalances"],
+        )
+
+    def test_trusted_batch_rejected_falls_back_to_individual_calls(self):
+        rpc = StubRpc(
+            batch_results=[BaseBalanceError("batch rejected")],
+            call_results=[
+                *trusted_batch(),
+                BaseBalanceError("discovery unavailable"),
+            ],
+        )
+        provider = AlchemyBaseBalanceProvider(rpc_client=rpc)
+
+        result = provider(WALLET)
+
+        self.assertEqual(
+            result["balances"],
+            {"ETH": "0.001", "USDC": "12.5", "SINGIT": "250"},
+        )
+        self.assertEqual(result["unverifiedTokens"], [])
+        self.assertEqual(
+            [method for method, _params in rpc.calls[:4]],
+            ["eth_chainId", "eth_getBalance", "eth_call", "eth_call"],
+        )
+
+
+class AlchemyHostDetectionTests(unittest.TestCase):
+    def test_detects_alchemy_hosts(self):
+        for host in (
+            "alchemy.com",
+            "base-mainnet.g.alchemy.com",
+            "dashboard.alchemy.com",
+            "foo.alchemyapi.io",
+        ):
+            with self.subTest(host=host):
+                self.assertTrue(_looks_like_alchemy_host(host))
+
+    def test_rejects_lookalike_and_non_alchemy_hosts(self):
+        for host in (
+            "evilalchemy.com",
+            "alchemy.com.evil.com",
+            "notalchemy.com",
+            "api.developer.coinbase.com",
+            "mainnet.base.org",
+            "",
+        ):
+            with self.subTest(host=host):
+                self.assertFalse(_looks_like_alchemy_host(host))
+
+
+class ConfiguredTokensEnvParsingTests(unittest.TestCase):
+    def _env(self, tokens_value):
+        return {
+            "SIGN402_BASE_RPC_URL": (
+                "https://api.developer.coinbase.com/rpc/v1/base/test-key"
+            ),
+            "SIGN402_BASE_BALANCE_TOKENS": tokens_value,
+        }
+
+    def test_parses_valid_entries_and_skips_trusted_and_duplicate_addresses(self):
+        token_address = "0x" + "11" * 20
+        tokens_value = ",".join(
+            [
+                f"AAA:{token_address}:18",
+                f"USDC:{BASE_USDC_ADDRESS}:6",
+                f"SINGIT:{DEFAULT_SINGIT_TOKEN_ADDRESS}:18",
+                f"AAA:{token_address}:18",
+            ]
+        )
+
+        provider = build_base_balance_provider_from_env(self._env(tokens_value))
+
+        self.assertEqual(
+            provider.configured_tokens,
+            [("AAA", token_address, 18)],
+        )
+
+    def test_rejects_invalid_entry_format(self):
+        with self.assertRaisesRegex(BaseBalanceError, "SYMBOL:0xaddress:decimals"):
+            build_base_balance_provider_from_env(
+                self._env("AAA:" + "0x" + "11" * 20)
+            )
+
+    def test_rejects_invalid_address(self):
+        with self.assertRaisesRegex(BaseBalanceError, "token address"):
+            build_base_balance_provider_from_env(self._env("AAA:not-an-address:18"))
+
+    def test_rejects_invalid_decimals(self):
+        token_address = "0x" + "11" * 20
+        with self.assertRaisesRegex(BaseBalanceError, "decimals"):
+            build_base_balance_provider_from_env(
+                self._env(f"AAA:{token_address}:not-a-number")
+            )
+        with self.assertRaisesRegex(BaseBalanceError, "decimals"):
+            build_base_balance_provider_from_env(
+                self._env(f"AAA:{token_address}:99")
+            )
+
+    def test_rejects_more_than_ten_entries(self):
+        entries = ",".join(
+            f"T{i}:0x{i:040x}:18" for i in range(1, 12)
+        )
+        with self.assertRaisesRegex(BaseBalanceError, "more than 10"):
+            build_base_balance_provider_from_env(self._env(entries))
 
 
 if __name__ == "__main__":
