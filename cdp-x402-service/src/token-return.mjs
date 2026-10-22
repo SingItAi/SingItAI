@@ -14,7 +14,7 @@ const HEX_SUFFIX_PATTERN = /^0x(?:[0-9a-fA-F]{2})+$/;
 // the encoded arguments; offchain indexers read them to attribute the transfer.
 // An invalid suffix is dropped rather than sent, because attribution must never
 // change the bytes that move money.
-function appendDataSuffix(data, dataSuffix) {
+export function appendDataSuffix(data, dataSuffix) {
   if (!dataSuffix) {
     return data;
   }
