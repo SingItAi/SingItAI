@@ -11,6 +11,19 @@
 // it to the wallet.
 
 const APPKIT = "https://cdn.jsdelivr.net/npm/@reown/appkit-cdn@1.8.24/dist/appkit.js";
+// ERC-8021 Base Builder Code attribution: appended to calldata so base.dev
+// counts this app's onchain activity; contracts ignore the extra bytes.
+// Config'd via config.js baseBuilderCode (empty = disabled, no tx change).
+// Encoded inline (schema 0, one code) to avoid loading third-party code into
+// the wallet path; byte-identical to ox's Attribution.toDataSuffix.
+const ERC8021_MARKER = "80218021802180218021802180218021";
+export function baseBuilderCodeDataSuffix(code = window.SINGIT_APP_CONFIG?.baseBuilderCode) {
+  code = (code || "").trim();
+  if (!/^[a-z0-9_]{1,32}$/.test(code)) return null;
+  const hex = (n) => n.toString(16).padStart(2, "0");
+  const ascii = Array.from(code, (c) => hex(c.charCodeAt(0))).join("");
+  return `0x${ascii}${hex(code.length)}00${ERC8021_MARKER}`;
+}
 const BASE = {
   chainId: "0x2105",
   chainName: "Base",
@@ -179,9 +192,11 @@ export class Wallet {
 
   async sendTransaction(tx) {
     await this.ensureBase();
+    const suffix = baseBuilderCodeDataSuffix();
+    const data = suffix ? (tx.data || "0x") + suffix.slice(2) : tx.data;
     return this.provider.request({
       method: "eth_sendTransaction",
-      params: [{ from: this.address, to: tx.to, data: tx.data, value: tx.value || "0x0" }],
+      params: [{ from: this.address, to: tx.to, data, value: tx.value || "0x0" }],
     });
   }
 

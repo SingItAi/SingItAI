@@ -42,6 +42,7 @@ from eth_utils import keccak, to_checksum_address
 
 from . import analytics
 from .base_balances import BaseBalanceError
+from .base_builder_code import append_suffix, load_data_suffix
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +190,14 @@ class EvmClient:
         self.now = now
         self._chain_confirmed = False
         self._send_lock = threading.Lock()
+        # Loaded once, like the JS side's loadBuilderCodeDataSuffix: disabled
+        # (None) unless SIGN402_BASE_BUILDER_CODE is set to a valid code.
+        self._builder_code_suffix = load_data_suffix()
+
+    def _with_builder_code(self, data: str) -> str:
+        """`data` plus the Base Builder Code suffix, if attribution is on and
+        this client talks to Base (mainnet or Sepolia). A no-op otherwise."""
+        return append_suffix(data, chain_id=BASE_CHAIN_ID, suffix=self._builder_code_suffix)
 
     def call(self, method: str, params: list) -> Any:
         for wait in (1, 2, 4, 8, None):
@@ -228,6 +237,9 @@ class EvmClient:
     def quote(self, sender: str, *, to: str | None, data: str = "0x", value: int = 0) -> dict[str, int]:
         """Gas, fees and the most the transaction can cost at current prices."""
         self.require_base()
+        # Matches what `send` will actually sign: the gas limit must cover the
+        # builder-code suffix's own cost, not just the call it is appended to.
+        data = self._with_builder_code(data)
         priority = int(self.call("eth_maxPriorityFeePerGas", []), 16)
         base_fee = int(self.call("eth_getBlockByNumber", ["latest", False])["baseFeePerGas"], 16)
         estimate_request = {"from": sender, "data": data, "value": hex(value)}
@@ -240,6 +252,9 @@ class EvmClient:
     def send(self, private_key: str, *, to: str | None, data: str = "0x", value: int = 0) -> str:
         """Sign and broadcast one transaction; returns its hash."""
         self.require_base()
+        # Appended before the gas estimate below, so the limit covers the
+        # suffix's own cost (16 gas per non-zero byte) and not just the call.
+        data = self._with_builder_code(data)
         account = Account.from_key(private_key)
         with self._send_lock:
             nonce = int(self.call("eth_getTransactionCount", [account.address, "pending"]), 16)
