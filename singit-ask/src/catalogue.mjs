@@ -117,10 +117,42 @@ function parseMarket(data) {
 // Whether a model can be answered right now: some offer in its order book is trusted (the key routes to trusted
 // sellers only), healthy and available, and not from a provider the key blocks. A model with none is not offered:
 // choosing it would only end in an error. Measured on 12 October: 39 of 227 listed models had no such offer.
+function qualifies(offer, blocked) {
+  return offer?.trusted === true && offer?.healthy === true && offer?.available === true
+    && !blocked.has(String(offer.provider_id ?? "").toLowerCase());
+}
 function canServe(book, blocked) {
   const offers = book?.data?.offers ?? book?.offers ?? [];
-  return offers.some((o) => o?.trusted === true && o?.healthy === true && o?.available === true
-                             && !blocked.has(String(o.provider_id ?? "").toLowerCase()));
+  return offers.some((o) => qualifies(o, blocked));
+}
+
+// The cheapest share of list price among a model's qualifying offers (share = (100 - discount_pct) / 100), or
+// null when none qualifies or names a usable discount. This is what Surplus could really charge if told to route
+// there (catalogue.mjs's `guardShare`, pricing.mjs's `priceGuard`), not the best offer overall: an offer that is
+// not trusted, healthy, available or from a blocked provider is never actually reachable.
+function cheapestShare(book, blocked) {
+  const offers = book?.data?.offers ?? book?.offers ?? [];
+  let best = null;
+  for (const o of offers) {
+    if (!qualifies(o, blocked)) continue;
+    const discount = Number(o?.discount_pct);
+    if (!(discount >= 0 && discount <= 100)) continue;
+    const share = (100 - discount) / 100;
+    if (best === null || share < best) best = share;
+  }
+  return best;
+}
+
+// The ceiling share Surplus is bound to for a model, and the X-Min-Discount header value that binds it: the
+// cheapest qualifying share, rounded up to a whole percent so the header asks for an integer, plus a small buffer
+// (config.priceBufferPp, default 1 percentage point) for the market to move between quote and payment, capped at
+// list price. No guard share known (book not read, model unknown) prices at list (share 1, no header sent): the
+// ceiling still holds, just without Surplus being told to beat it.
+export function priceGuard(catalogue, id, bufferPp) {
+  const cheapest = catalogue?.guardShare ? catalogue.guardShare(id) : null;
+  if (cheapest === null || cheapest === undefined) return { share: 1, minDiscount: null };
+  const share = Math.min(1, (Math.ceil(cheapest * 100) + bufferPp) / 100);
+  return { share, minDiscount: share < 1 ? 100 - Math.round(share * 100) : null };
 }
 
 // Both lists are read from Surplus, which takes a second or three; a visitor must never wait for that. What is
@@ -131,6 +163,7 @@ export class ModelCatalogue {
     Object.assign(this, { url, fetchImpl, now });
     this.blocked = new Set(blocked.map((p) => String(p).toLowerCase()));
     this.served = null;  // ids of the models that can be answered now; null until first read
+    this.guardShares = new Map();  // cheapest qualifying share of list per model id, from the same order books
     this.servedAt = 0;
     this.loadingServed = null;
     this.models = null;
@@ -185,6 +218,7 @@ export class ModelCatalogue {
       try {
         const ids = [...((this.models ?? (await this.loadModels(), this.models)) ?? new Map()).keys()];
         const served = new Set();
+        const guards = new Map();
         let next = 0;
         const worker = async () => {
           while (next < ids.length) {
@@ -194,13 +228,19 @@ export class ModelCatalogue {
                                                     { signal: AbortSignal.timeout(10_000) });
               const book = response.ok ? await response.json() : null;
               if (book ? canServe(book, this.blocked) : (this.served?.has(id) ?? true)) served.add(id);
-            } catch { if (this.served?.has(id) ?? true) served.add(id); }
+              const share = book ? cheapestShare(book, this.blocked) : null;
+              if (share !== null) guards.set(id, share);
+              else if (this.guardShares.has(id)) guards.set(id, this.guardShares.get(id));
+            } catch {
+              if (this.served?.has(id) ?? true) served.add(id);
+              if (this.guardShares.has(id)) guards.set(id, this.guardShares.get(id));
+            }
             if (pauseMs) await new Promise((resolve) => setTimeout(resolve, pauseMs));
           }
         };
         await Promise.all(Array.from({ length: 2 }, worker));
         const floor = this.served ? this.served.size / 2 : ids.length / 4;
-        if (ids.length && served.size >= floor) { this.served = served; this.servedAt = this.now(); }
+        if (ids.length && served.size >= floor) { this.served = served; this.guardShares = guards; this.servedAt = this.now(); }
         else if (ids.length) this.servedAt = this.now();  // keep what was offered; try again next time
       } finally { this.loadingServed = null; }
     })();
@@ -211,6 +251,13 @@ export class ModelCatalogue {
   async canAnswer(id) {
     if (this.served && this.now() - this.servedAt >= MARKET_TTL_MS) this.loadServed();
     return this.served ? this.served.has(id) : true;
+  }
+
+  // The cheapest qualifying share of list price last seen for a model, read synchronously from the order books
+  // (same pass as `served`): null until read, or when none qualified. Used to price a ceiling's worst case closer
+  // to what Surplus would really charge (pricing.mjs's `priceGuard`), never to lower it unguarded.
+  guardShare(id) {
+    return this.guardShares.has(id) ? this.guardShares.get(id) : null;
   }
 
   async all() {

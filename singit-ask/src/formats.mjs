@@ -12,9 +12,9 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { UnknownModel } from "./catalogue.mjs";
+import { UnknownModel, priceGuard } from "./catalogue.mjs";
 import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -41,7 +41,7 @@ export function readFormatRequest(route, body) {
     throw new FormatError(400, "Name a model from GET /v1/models.");
   }
   const request = { ...body, model: surplusModel(body.model.trim()) };
-  let maxTokens, sized;
+  let maxTokens, sized, messageCount;
   if (route === "/v1/messages") {
     if (!Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > 200) {
       throw new FormatError(400, "Send 1 to 200 messages.");
@@ -51,6 +51,7 @@ export function readFormatRequest(route, body) {
     }
     maxTokens = body.max_tokens;
     sized = [body.messages, body.system ?? "", body.tools ?? ""];
+    messageCount = body.messages.length;
   } else {
     if (!(typeof body.input === "string" && body.input.trim()) && !(Array.isArray(body.input) && body.input.length)) {
       throw new FormatError(400, "Send input: text or a list of items.");
@@ -63,10 +64,11 @@ export function readFormatRequest(route, body) {
     maxTokens = body.max_output_tokens ?? FORMAT_LIMITS.defaultTokens;
     request.max_output_tokens = maxTokens;
     sized = [body.input, body.instructions ?? "", body.tools ?? ""];
+    messageCount = Array.isArray(body.input) ? body.input.length : 1;
   }
   const chars = sized.reduce((n, part) => n + (typeof part === "string" ? part.length : JSON.stringify(part).length), 0);
   if (chars > FORMAT_LIMITS.chars) throw new FormatError(400, `Keep the request under ${FORMAT_LIMITS.chars} characters.`);
-  return { request, model: request.model, chars, maxTokens };
+  return { request, model: request.model, chars, maxTokens, messageCount };
 }
 
 // An answer as the format has it, without Surplus's own fields.
@@ -96,6 +98,8 @@ const EXAMPLES = {
 };
 
 export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error }) {
+  const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
+  const bufferPp = config.priceBufferPp ?? 1;
   for (const [route, upstreamPath] of Object.entries(FORMAT_ROUTES)) {
     const quotes = new WeakMap();
     const server = new x402ResourceServer(facilitatorClient)
@@ -105,15 +109,15 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       .register(SOLANA, new ExactSvmScheme());
     app.post(route, async (req, res, next) => {
       // x402scan's empty, unpaid probe gets the standing offer, not a "Send a JSON body"/"Name a model" error.
-      if (isDiscoveryProbe(req)) { req.askCeilings = ceilings(null, {}); return next(); }
+      if (isDiscoveryProbe(req)) { req.askCeilings = ceilings(null, {}, exactOutputFraction); return next(); }
       try {
         const input = readFormatRequest(route, req.body);
         const info = await catalogue.resolve(input.model);
         if (catalogue.canAnswer && !(await catalogue.canAnswer(info.id))) {
           throw new FormatError(400, "No trusted seller offers that model right now. Pick another; nothing was paid.");
         }
-        req.format = input;
-        req.askCeilings = ceilings(info, input);
+        req.format = { ...input, ...priceGuard(catalogue, info.id, bufferPp) };
+        req.askCeilings = ceilings(info, req.format, exactOutputFraction);
         quotes.set(req.body, req.askCeilings);
         next();
       } catch (error) {
@@ -133,19 +137,24 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       try {
         const header = req.get("payment-signature") ?? req.get("x-payment");
         const accepted = JSON.parse(Buffer.from(header, "base64").toString()).accepted ?? {};
-        const terms = TERMS_BY_NETWORK[accepted.network] && { ...TERMS_BY_NETWORK[accepted.network], maxChargeAtomic: req.askCeilings[accepted.network] };
+        const exact = accepted.scheme === "exact";
+        const bucket = exact ? req.askCeilings?.exact : req.askCeilings?.upto;
+        const terms = TERMS_BY_NETWORK[accepted.network] && bucket && { ...TERMS_BY_NETWORK[accepted.network], maxChargeAtomic: bucket[accepted.network] };
         if (!terms) throw new Error("payment on an unknown network");
         const response = await fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
+                     ...(req.format.minDiscount != null ? { "X-Min-Discount": String(req.format.minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
           body: JSON.stringify(req.format.request), signal: AbortSignal.timeout(FORMAT_LIMITS.timeoutMs) });
         const data = await response.json().catch(() => null);
         if (!response.ok || !data || typeof data !== "object") throw new Error(`model answered HTTP ${response.status}`);
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
-        const usage = billUsage({ buyer_cost_micro: reported }, terms);
-        // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override.
-        const billing = accepted.scheme === "exact" ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
-        if (accepted.scheme !== "exact") setSettlementOverrides(res, { amount: billing.totalAtomic });
+        const usage = billUsage({ buyer_cost_micro: reported }, terms, { allowOverrun: exact });
+        // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override,
+        // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
+        const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
+        if (exact && usage.overrunAtomic) log(`singit-ask: ${route} exact overrun ${usage.overrunAtomic} micro-USDC`);
+        if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
         log(`singit-ask: ${route} answered by ${req.format.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
         res.json({ ...scrub(data), billing });
       } catch (error) {

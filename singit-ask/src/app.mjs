@@ -14,8 +14,8 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
-import { UnknownModel, ModelCatalogue } from "./catalogue.mjs";
-import { LIMITS, THINKING_HEADROOM } from "./limits.mjs";
+import { UnknownModel, ModelCatalogue, priceGuard } from "./catalogue.mjs";
+import { LIMITS } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { addCreditRoute } from "./credit.mjs";
@@ -31,7 +31,7 @@ export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 export const ROUTE = "/v1/chat/completions";
 
-export { LIMITS, THINKING_HEADROOM };
+export { LIMITS };
 const ROLES = new Set(["system", "user", "assistant"]);
 
 export class RequestError extends Error {
@@ -64,20 +64,27 @@ export function readRequest(body) {
   if (model !== undefined && (typeof model !== "string" || !model.trim() || model.length > 120)) {
     throw new RequestError(400, "model must be the id of a model listed at GET /v1/models.");
   }
-  return { messages: clean, maxTokens, chars, model: model?.trim() };
+  return { messages: clean, maxTokens, chars, model: model?.trim(), messageCount: clean.length };
 }
 
-// The model an answer is bought from and what it may cost. No model, or the default one, keeps the standing
-// ceiling; any other must be on Surplus's list, and its ceiling follows its own prices.
+// The model an answer is bought from and what it may cost. No model, or the default one, is still looked up on
+// Surplus's list when there is one, so its ceiling follows the same formula as any other model (metered.mjs
+// clamps it to the standing ceiling); a catalogue that cannot resolve it, or no catalogue at all, keeps the old
+// standing ceiling. Any other model must be on Surplus's list, and its ceiling follows its own prices.
 export async function chooseModel(config, catalogue, input) {
-  if (!input.model || input.model === config.model) return { ...input, model: config.model, info: null };
+  const bufferPp = config.priceBufferPp ?? 1;
+  if (!input.model || input.model === config.model) {
+    const info = catalogue ? await catalogue.resolve(config.model).catch(() => null) : null;
+    return { ...input, model: config.model, info, isDefault: true,
+      ...(info ? priceGuard(catalogue, info.id, bufferPp) : { share: 1, minDiscount: null }) };
+  }
   if (!catalogue) throw new RequestError(400, "Choosing a model is not offered here.");
   try {
     const info = await catalogue.resolve(input.model);
     if (catalogue.canAnswer && !(await catalogue.canAnswer(info.id))) {
       throw new RequestError(400, "No trusted seller offers that model right now. Pick another; nothing was paid.");
     }
-    return { ...input, info };
+    return { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) };
   } catch (error) {
     if (error instanceof UnknownModel) throw new RequestError(400, error.message);
     throw error;
@@ -94,11 +101,12 @@ export class UpstreamError extends Error {}
 // is mandatory for this endpoint"), and Surplus gives up after two of them; such a refusal costs nothing, so the
 // question is asked once more with as little thinking as the seller allows. Surplus documents all three:
 // docs/reference/reasoning, docs/marketplace/routing-controls.
-export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model) {
+export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount } = {}) {
   const ask = (reasoning) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}` },
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens + THINKING_HEADROOM, temperature: 0.4,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
+               ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
+    body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: 0.4,
                            reasoning_effort: reasoning, si_route: { objective: "price" } }),
     signal: AbortSignal.timeout(LIMITS.timeoutMs),
   });
@@ -162,8 +170,10 @@ const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, "").repla
 
 // The least and the most one answer can be charged, for discovery. The least is Base's settlement fee; the most is
 // the dearest listed model's ceiling for the largest question and answer this service takes, on Solana's terms.
+// `charsPerToken: 1` matches the `upto` authorization this max actually describes (see pricing.mjs's
+// `ceilingAtomic`): the loosest input estimate, so a dense worst-case prompt is never quoted below what it costs.
 export async function priceRange(catalogue) {
-  const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, headroom: THINKING_HEADROOM };
+  const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 };
   const listed = catalogue ? await catalogue.list().catch(() => []) : [];
   const most = listed.reduce((top, m) => {
     const c = BigInt(ceilingAtomic(m, size, SOLANA_TERMS));
@@ -388,8 +398,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
 
   const choose = input => chooseModel(config, catalogue, input);
   // Every answer that came back teaches the price shown for its model. It never delays or fails the answer.
-  const learning = async (config_, messages, maxTokens, fetchImpl_, model = config.model) => {
-    const answer = await upstream(config_, messages, maxTokens, fetchImpl_, model);
+  const learning = async (config_, messages, maxTokens, fetchImpl_, model = config.model, options) => {
+    const answer = await upstream(config_, messages, maxTokens, fetchImpl_, model, options);
     catalogue?.resolve(model).then((list) => observed.record(model, answer.usage, list)).catch(() => {});
     return answer;
   };

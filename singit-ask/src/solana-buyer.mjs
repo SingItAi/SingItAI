@@ -13,14 +13,16 @@ export function selectSolanaOffer(q) {
   const offers=q?.accepts?.filter(a=>a.scheme==='upto'&&a.network===SOLANA)??[];
   if(q?.x402Version!==2||q.resource?.url!==ENDPOINT||offers.length!==1)throw new Error('Unexpected Solana resource.');
   const a=offers[0],e=a.extra;
-  if(a.asset!==SOLANA_ASSET||a.payTo!==SOLANA_PAY_TO||a.amount!==SOLANA_TERMS.maxChargeAtomic
+  // The ceiling follows the question (SI-60): any amount up to the standing one, never above it.
+  if(a.asset!==SOLANA_ASSET||a.payTo!==SOLANA_PAY_TO||!/^[1-9][0-9]{0,17}$/.test(a.amount??'')
+    ||BigInt(a.amount)>BigInt(SOLANA_TERMS.maxChargeAtomic)||e?.billing?.maxChargeAtomic!==a.amount
     ||a.maxTimeoutSeconds!==300||e?.withdrawDelay!==300||e?.tokenProgram!==TOKEN_PROGRAM_ADDRESS
     ||(e.paymentFlow??'escrow')!=='escrow'||!isAddress(e.feePayer??'')||!isAddress(e.receiverAuthorizer??'')
-    ||Object.entries(SOLANA_TERMS).some(([k,v])=>e.billing?.[k]!==v))throw new Error('Changed Solana billing terms.');
+    ||Object.entries(SOLANA_TERMS).some(([k,v])=>k!=='maxChargeAtomic'&&e.billing?.[k]!==v))throw new Error('Changed Solana billing terms.');
   return a;
 }
-export function validateSolanaBill(data) {
-  const expected=billUsage(data?.usage,SOLANA_TERMS);
+export function validateSolanaBill(data,ceiling=SOLANA_TERMS.maxChargeAtomic) {
+  const expected=billUsage(data?.usage,{...SOLANA_TERMS,maxChargeAtomic:ceiling});
   if(Object.entries(expected).some(([k,v])=>data?.billing?.[k]!==v))throw new Error('Invalid actual-usage invoice.');
   return expected;
 }
@@ -31,8 +33,8 @@ export async function requireReceiver(rpc) {
     const error=new Error('Merchant USDC account is not ready.');error.code='receiver_not_ready';throw error;
   }
 }
-export async function validateSolanaSettlement(tx,{payer,channelId,amount,signature}) {
-  const cap=BigInt(SOLANA_TERMS.maxChargeAtomic),actual=BigInt(amount);
+export async function validateSolanaSettlement(tx,{payer,channelId,amount,signature,ceiling=SOLANA_TERMS.maxChargeAtomic}) {
+  const cap=BigInt(ceiling),actual=BigInt(amount);
   if(!tx?.meta||tx.meta.err!==null||!tx.transaction?.signatures?.includes(signature))throw new Error('Settlement not confirmed.');
   const keys=tx.transaction.message.accountKeys.map(k=>typeof k==='string'?k:k.pubkey);
   const recipientAta=await ata(SOLANA_PAY_TO),payerAta=await ata(payer),escrowAta=await ata(channelId);
@@ -71,7 +73,7 @@ export async function paySolana({signer,body,rpc,rpcUrl,fetchImpl=fetch,beforeSu
   const header=response.headers.get('payment-response'),receipt=header?decode(header):null;
   const refunded=response.status!==200&&receipt?.amount==='0';
   if(response.status!==200&&!refunded)throw new Error('Payment or refund needs review. The request was not repeated.');
-  const data=refunded?null:await response.json(),billing=refunded?{totalAtomic:'0'}:validateSolanaBill(data);
+  const data=refunded?null:await response.json(),billing=refunded?{totalAtomic:'0'}:validateSolanaBill(data,accepted.amount);
   if(receipt?.success!==true||receipt.network!==SOLANA||receipt.payer!==signer.address||receipt.amount!==billing.totalAtomic
     ||typeof receipt.transaction!=='string'||!/^([1-9A-HJ-NP-Za-km-z]){80,90}$/.test(receipt.transaction))throw new Error('Invalid Solana receipt.');
   let tx;
@@ -80,7 +82,7 @@ export async function paySolana({signer,body,rpc,rpcUrl,fetchImpl=fetch,beforeSu
     if(tx)break;
     await sleep(1500);
   }
-  await validateSolanaSettlement(tx,{payer:signer.address,channelId:p.channelId,amount:billing.totalAtomic,signature:receipt.transaction});
+  await validateSolanaSettlement(tx,{payer:signer.address,channelId:p.channelId,amount:billing.totalAtomic,signature:receipt.transaction,ceiling:p.maxAmount});
   return {ok:!refunded,refunded,body:data,amountAtomic:billing.totalAtomic,transaction:receipt.transaction,payer:signer.address,
     channelId:p.channelId,refundAtomic:(BigInt(p.maxAmount)-BigInt(billing.totalAtomic)).toString()};
 }

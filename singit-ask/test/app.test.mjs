@@ -3,9 +3,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
-import { BASE, SOLANA, ROUTE, LIMITS, THINKING_HEADROOM, RequestError, UpstreamError, readRequest, askSurplus, createApp } from "../src/app.mjs";
-import { SOLANA_TERMS, TERMS, ceilingAtomic, billUsage } from "../src/pricing.mjs";
-import { ModelCatalogue, UnknownModel } from "../src/catalogue.mjs";
+import { BASE, SOLANA, ROUTE, LIMITS, RequestError, UpstreamError, readRequest, askSurplus, createApp } from "../src/app.mjs";
+import { FORMAT_ROUTES } from "../src/formats.mjs";
+import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage } from "../src/pricing.mjs";
+import { ModelCatalogue, UnknownModel, priceGuard } from "../src/catalogue.mjs";
 
 const SOLANA_PAY_TO = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
 const BASE_PAY_TO = "0x1111111111111111111111111111111111111111";
@@ -277,8 +278,9 @@ test("the OpenAPI document lists the paid route the way x402scan reads it", asyn
   assert.equal(price.mode, "dynamic");
   assert.equal(price.currency, "USD");
   assert.equal(price.min, "0.001");
-  // The dearest listed model (PRICEY) at the largest question and answer, on Solana's terms.
-  const most = ceilingAtomic(PRICEY, { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, headroom: THINKING_HEADROOM }, SOLANA_TERMS);
+  // The dearest listed model (PRICEY) at the largest question and answer, on Solana's terms; `upto`'s loosest
+  // input estimate (1 char/token), same as priceRange.
+  const most = ceilingAtomic(PRICEY, { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 }, SOLANA_TERMS);
   assert.equal(Number(price.max), Number(most) / 1e6);
   assert.ok(op.responses[402]);
   assert.deepEqual(op.security, [{ x402: [] }]);
@@ -323,7 +325,7 @@ test("health and the model list are free, and the old test page is gone", async 
 
 test("readRequest keeps the question within what one answer pays for", () => {
   assert.deepEqual(readRequest({ messages: [{ role: "user", content: "hi", name: "x" }] }),
-                   { messages: [{ role: "user", content: "hi" }], maxTokens: LIMITS.defaultTokens, chars: 2, model: undefined });
+                   { messages: [{ role: "user", content: "hi" }], maxTokens: LIMITS.defaultTokens, chars: 2, model: undefined, messageCount: 1 });
   assert.equal(readRequest({ ...QUESTION, max_tokens: 100_000 }).maxTokens, LIMITS.maxTokens);
   assert.equal(readRequest({ ...QUESTION, max_tokens: -5 }).maxTokens, LIMITS.defaultTokens);
   assert.throws(() => readRequest(null), RequestError);
@@ -346,11 +348,16 @@ test("askSurplus sends the key and model, and turns every failure into an Upstre
   assert.equal(sent.url, "https://surplus.test/v1/chat/completions");
   assert.equal(sent.init.headers.Authorization, "Bearer inf_test");
   assert.equal(JSON.parse(sent.init.body).model, "deepseek-v4.1-flash");
-  // Thinking off, and room for it where a seller thinks anyway, so the answer is never cut short.
+  assert.equal(sent.init.headers["X-Min-Discount"], undefined, "no guard, no header");
+  // Thinking off; max_tokens caps the answer and any thinking together, so neither gets room beyond it.
   assert.equal(JSON.parse(sent.init.body).reasoning_effort, "none");
   // The cheapest seller first (measured on 12 October: as fast, and cheaper).
   assert.deepEqual(JSON.parse(sent.init.body).si_route, { objective: "price" });
-  assert.equal(JSON.parse(sent.init.body).max_tokens, 300 + THINKING_HEADROOM);
+  assert.equal(JSON.parse(sent.init.body).max_tokens, 300);
+
+  const guarded = await askSurplus(CONFIG, QUESTION.messages, 300, ok, CONFIG.model, { minDiscount: 59 });
+  assert.equal(guarded.content, "ciao");
+  assert.equal(sent.init.headers["X-Min-Discount"], "59");
 
   const failing = [
     async () => { throw new TypeError("fetch failed"); },
@@ -384,23 +391,95 @@ test("a seller that will not switch thinking off is asked once more with as litt
   assert.deepEqual(twice, ["none", "low"]);
 });
 
-test("another model gets a ceiling worked out from its own prices; the default and cheap ones keep 3000", async (t) => {
+test("another model gets a ceiling worked out from its own prices; unresolvable default/standing models keep 3000", async (t) => {
   const { url, facilitator } = await serve(t);
   const offerFor = async (model) => {
     const unpaid = await post(url, { ...QUESTION, model });
     assert.equal(unpaid.status, 402);
     return decode(unpaid.headers.get("payment-required")).accepts;
   };
-  for (const model of [undefined, "deepseek-v4.1-flash", "singit-ask", "cheap-model"]) {
+  // CONFIG.model ("deepseek-v4.1-flash") is not in the fake catalogue, so the default still falls back to null
+  // info and the old standing ceiling.
+  for (const model of [undefined, "deepseek-v4.1-flash", "singit-ask"]) {
     assert.deepEqual((await offerFor(model)).map((a) => a.amount), ["3000", "3000", "3000", "3000"], String(model));
   }
+  const size = { chars: 26, maxTokens: 300, messageCount: 1 };
+  const uptoSize = { ...size, charsPerToken: 1 };
+  // Explicitly chosen (not the default), so a cheap model's own honest worst case is offered, floored at
+  // MIN_CEILING_ATOMIC rather than forced up to the standing 3000.
+  const cheap = await offerFor("cheap-model");
+  assert.equal(cheap.find((a) => a.network === BASE && a.scheme === "upto").amount, ceilingAtomic(CHEAP, uptoSize, TERMS));
+  assert.equal(cheap.find((a) => a.network === SOLANA && a.scheme === "upto").amount, ceilingAtomic(CHEAP, uptoSize, SOLANA_TERMS));
+  assert.equal(cheap.find((a) => a.network === BASE && a.scheme === "upto").amount, MIN_CEILING_ATOMIC);
   const pro = await offerFor("pro-model");
-  const size = { chars: 26, maxTokens: 300, headroom: THINKING_HEADROOM };
-  assert.equal(pro.find((a) => a.network === BASE).amount, ceilingAtomic(PRICEY, size, TERMS));
-  assert.equal(pro.find((a) => a.network === SOLANA).amount, ceilingAtomic(PRICEY, size, SOLANA_TERMS));
-  assert.ok(BigInt(pro[0].amount) > 200_000n, "a dear model is authorized for what it can really cost");
+  // `.find` on network alone picks the `upto` offer: it is listed before `exact` (see the ordering test below).
+  assert.equal(pro.find((a) => a.network === BASE).amount, ceilingAtomic(PRICEY, uptoSize, TERMS));
+  assert.equal(pro.find((a) => a.network === SOLANA).amount, ceilingAtomic(PRICEY, uptoSize, SOLANA_TERMS));
+  assert.ok(BigInt(pro[0].amount) > 50_000n, "a dear model is authorized for what it can really cost");
   assert.equal(pro.find((a) => a.network === BASE).extra.billing.maxChargeAtomic, pro.find((a) => a.network === BASE).amount);
   assert.equal(facilitator.calls.verify, 0);
+});
+
+test("the default model, when it resolves, uses its own formula but is clamped to the standing ceiling", async (t) => {
+  // A catalogue that happens to resolve the default model id: a cheap default gets an honest, lower ceiling; a
+  // dear one never gets authorized above the standing 3000.
+  const facilitator = fakeFacilitator();
+  const cheapDefault = { payToSolana: SOLANA_PAY_TO, payToBase: BASE_PAY_TO, surplusKey: "inf_test",
+    surplusUrl: "https://surplus.test", model: "cheap-model" };
+  const dearDefault = { ...cheapDefault, model: "pro-model" };
+  const app1 = createApp(cheapDefault, { facilitatorClient: facilitator, upstream: async () => ({ content: "ok", finishReason: "stop", usage: {} }),
+    log: () => {}, catalogue: fakeCatalogue });
+  const l1 = await new Promise((resolve) => { const l = app1.listen(0, "127.0.0.1", () => resolve(l)); }); t.after(() => l1.close());
+  const size = { chars: 26, maxTokens: 300, messageCount: 1, charsPerToken: 1 };
+  const unpaid1 = await post(`http://127.0.0.1:${l1.address().port}`, QUESTION);
+  const required1 = decode(unpaid1.headers.get("payment-required"));
+  assert.equal(required1.accepts.find((a) => a.network === BASE && a.scheme === "upto").amount, ceilingAtomic(CHEAP, size, TERMS));
+  assert.ok(BigInt(required1.accepts.find((a) => a.network === BASE && a.scheme === "upto").amount) < 3000n, "honestly below the standing ceiling");
+
+  const app2 = createApp(dearDefault, { facilitatorClient: facilitator, upstream: async () => ({ content: "ok", finishReason: "stop", usage: {} }),
+    log: () => {}, catalogue: fakeCatalogue });
+  const l2 = await new Promise((resolve) => { const l = app2.listen(0, "127.0.0.1", () => resolve(l)); }); t.after(() => l2.close());
+  const unpaid2 = await post(`http://127.0.0.1:${l2.address().port}`, QUESTION);
+  const required2 = decode(unpaid2.headers.get("payment-required"));
+  assert.equal(required2.accepts.find((a) => a.network === BASE && a.scheme === "upto").amount, "3000", "clamped, not the far higher natural ceiling");
+});
+
+test("the paid call carries X-Min-Discount from the share guard fixed at quote time; none without a guard share", async (t) => {
+  const guardedCatalogue = { ...fakeCatalogue, guardShare: (id) => (id === "pro-model" ? 0.4 : null) };
+  const facilitator = fakeFacilitator();
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, headers: init.headers });
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" }, finish_reason: "stop" } ], usage: { buyer_cost_micro: 10 } }), { status: 200 });
+  };
+  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue: guardedCatalogue, fetchImpl, upstream: askSurplus, log: () => {} });
+  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
+  t.after(() => listener.close());
+  const url = `http://127.0.0.1:${listener.address().port}`;
+  // pro-model: a 0.4 share, plus the default 1pp buffer, rounds to 0.41 -> X-Min-Discount 59.
+  const requiredPro = decode((await post(url, { ...QUESTION, model: "pro-model" })).headers.get("payment-required"));
+  const paidPro = await post(url, { ...QUESTION, model: "pro-model" }, { "PAYMENT-SIGNATURE": baseSignature(requiredPro) });
+  assert.equal(paidPro.status, 200);
+  assert.equal(calls.at(-1).headers["X-Min-Discount"], "59");
+  // cheap-model: no guard share known (book not read) -> list price, no header at all.
+  const requiredCheap = decode((await post(url, { ...QUESTION, model: "cheap-model" })).headers.get("payment-required"));
+  const paidCheap = await post(url, { ...QUESTION, model: "cheap-model" }, { "PAYMENT-SIGNATURE": baseSignature(requiredCheap) });
+  assert.equal(paidCheap.status, 200);
+  assert.equal(calls.at(-1).headers["X-Min-Discount"], undefined);
+});
+
+test("every route offers all `upto` schemes before any `exact` scheme", async (t) => {
+  const { url } = await serve(t);
+  const probe = async (path, body) => {
+    const response = await fetch(`${url}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    assert.equal(response.status, 402, path);
+    return decode(response.headers.get("payment-required")).accepts.map((a) => a.scheme);
+  };
+  assert.deepEqual(await probe(ROUTE, {}), ["upto", "upto", "exact", "exact"], ROUTE);
+  assert.deepEqual(await probe(METERED_ROUTE, { messages: [{ role: "user", content: "Hi" }] }), ["upto", "exact"], METERED_ROUTE);
+  for (const route of Object.keys(FORMAT_ROUTES)) {
+    assert.deepEqual(await probe(route, {}), ["upto", "upto", "exact", "exact"], route);
+  }
 });
 
 test("a model that is not on the list is refused before any payment is asked for", async (t) => {
@@ -414,9 +493,10 @@ test("a model that is not on the list is refused before any payment is asked for
 
 test("a paid question on another model is bought from that model and charged its actual cost under its own ceiling", async (t) => {
   const seen = [];
+  // Comfortably under pro-model's ~71629 Base ceiling for this question.
   const { url, facilitator } = await serve(t, { upstream: async (_c, _m, _t, _f, model) => {
     seen.push(model);
-    return { content: "ok", finishReason: "stop", usage: { buyer_cost_micro: 150_000 } };
+    return { content: "ok", finishReason: "stop", usage: { buyer_cost_micro: 50_000 } };
   } });
   const unpaid = await post(url, { ...QUESTION, model: "pro-model" });
   const required = decode(unpaid.headers.get("payment-required"));
@@ -424,7 +504,7 @@ test("a paid question on another model is bought from that model and charged its
   assert.equal(paid.status, 200);
   assert.deepEqual(seen, ["pro-model"]);
   const body = await paid.json();
-  assert.equal(body.billing.totalAtomic, String(150_000 + 45_000 + 1_000));
+  assert.equal(body.billing.totalAtomic, String(50_000 + 15_000 + 1_000));
   assert.deepEqual(facilitator.calls.settle, [body.billing.totalAtomic]);
 });
 
@@ -463,9 +543,75 @@ test("ModelCatalogue reads text models with prices, caches them, and survives a 
   assert.equal((await catalogue.resolve("a")).id, "a", "a failed refresh keeps the last list");
 });
 
-test("ceilingAtomic never drops below the standing ceiling", () => {
-  assert.equal(ceilingAtomic({ promptUsdPerToken: 0, completionUsdPerToken: 0 }, { chars: 10, maxTokens: 100, headroom: 1000 }, TERMS), "3000");
+test("ceilingAtomic never drops below MIN_CEILING_ATOMIC", () => {
+  assert.equal(ceilingAtomic({ promptUsdPerToken: 0, completionUsdPerToken: 0 }, { chars: 10, maxTokens: 100, messageCount: 1 }, TERMS), MIN_CEILING_ATOMIC);
   assert.equal(billUsage({ buyer_cost_micro: 100 }, { ...TERMS, maxChargeAtomic: "50000" }).totalAtomic, "1130");
+});
+
+test("ceilingAtomic: input is ~4 chars/token plus 4 tokens of overhead per message, output is the whole max_tokens budget", () => {
+  const model = { promptUsdPerToken: 4e-6, completionUsdPerToken: 20e-6 };
+  // (ceil(64/4) + 4*1) * 4 + 500 * 20 = 20*4 + 10000 = 10080 micro of worst-case tokens; + 30% markup (3024,
+  // rounded up) + the 1000 settlement fee = 14104.
+  assert.equal(ceilingAtomic(model, { chars: 64, maxTokens: 500, messageCount: 1 }, TERMS), "14104");
+  // More messages add more per-message overhead, all else equal.
+  const withExtraMessage = ceilingAtomic(model, { chars: 64, maxTokens: 500, messageCount: 2 }, TERMS);
+  assert.ok(BigInt(withExtraMessage) > 14104n);
+});
+
+test("ceilingAtomic: charsPerToken: 1 bounds a dense (CJK/emoji) prompt the same way `upto` authorizes it; the chars/4 default is what `exact` charges flat", () => {
+  const model = { promptUsdPerToken: 4e-6, completionUsdPerToken: 20e-6 };
+  const base = { chars: 4000, maxTokens: 100, messageCount: 1 };
+  // upto: ceil(4000/1) + 4*1 = 4004 input tokens; (4004*4 + 100*20) = 18016 worst-case micro;
+  // + 30% markup (ceil(5404.8) = 5405) + the 1000 settlement fee = 24421.
+  assert.equal(ceilingAtomic(model, { ...base, charsPerToken: 1 }, TERMS), "24421");
+  // exact (the default): ceil(4000/4) + 4*1 = 1004 input tokens; (1004*4 + 100*20) = 6016 worst-case micro;
+  // + 30% markup (ceil(1804.8) = 1805) + the 1000 settlement fee = 8821. A CJK/emoji prompt tokenizes to more
+  // than chars/4 estimates, but `exact` absorbs that overrun via `allowOverrun` instead of refusing the answer.
+  assert.equal(ceilingAtomic(model, base, TERMS), "8821");
+});
+
+test("ceilingAtomic: share prices a smaller fraction of list, the worst case Surplus is bound to by X-Min-Discount", () => {
+  const model = { promptUsdPerToken: 4e-6, completionUsdPerToken: 20e-6 };
+  const atList = ceilingAtomic(model, { chars: 64, maxTokens: 500, messageCount: 1 }, TERMS, 1);
+  const atHalf = ceilingAtomic(model, { chars: 64, maxTokens: 500, messageCount: 1 }, TERMS, 0.5);
+  assert.equal(atList, "14104");
+  // Half the list price: 10080 * 0.5 = 5040 worst-case micro, + markup (1512) + fee (1000) = 7552; below
+  // MIN_CEILING_ATOMIC it would floor there instead, but 7552 is well above it.
+  assert.equal(atHalf, "7552");
+});
+
+test("priceGuard: the ceiling share is the cheapest qualifying share rounded up a whole percent plus the buffer, capped at list price", () => {
+  // 25% off list (share 0.75) plus a 1pp buffer -> share 0.76, so Surplus must beat a 24% discount.
+  assert.deepEqual(priceGuard({ guardShare: () => 0.75 }, "m", 1), { share: 0.76, minDiscount: 24 });
+  // A share that already rounds to a whole percent still gets the buffer added.
+  assert.deepEqual(priceGuard({ guardShare: () => 0.6 }, "m", 2), { share: 0.62, minDiscount: 38 });
+  // The buffer never pushes the share past list price (1): no header is sent, since there is nothing to bound.
+  assert.deepEqual(priceGuard({ guardShare: () => 0.995 }, "m", 2), { share: 1, minDiscount: null });
+  // No guard share known (book not read, or no guardShare at all): list price, no header.
+  assert.deepEqual(priceGuard({ guardShare: () => null }, "m", 1), { share: 1, minDiscount: null });
+  assert.deepEqual(priceGuard(null, "m", 1), { share: 1, minDiscount: null });
+});
+
+test("ModelCatalogue.guardShare: the cheapest qualifying offer's share of list, from the same order books as canAnswer", async () => {
+  const offer = (o) => ({ trusted: true, healthy: true, available: true, provider_id: "openai", discount_pct: 50, ...o });
+  const books = {
+    cheapest: [offer({ discount_pct: 80 }), offer({ discount_pct: 20 })],  // 80% off (share 0.2) is the cheapest qualifying
+    disqualified: [offer({ discount_pct: 90, trusted: false }), offer({ discount_pct: 10 })],  // the 90%-off offer does not qualify
+    none: [offer({ discount_pct: 90, healthy: false })],
+  };
+  const fetchImpl = async (url) => {
+    url = String(url);
+    if (url.endsWith("/v1/models")) return new Response(JSON.stringify({ data: Object.keys(books).map((id) => ({
+      id, name: id, architecture: { modality: "text->text" }, supported_parameters: ["max_tokens"], pricing: { prompt: "0", completion: "0" } })) }));
+    const id = decodeURIComponent(url.split("/api/markets/")[1]);
+    return new Response(JSON.stringify({ data: { offers: books[id] } }));
+  };
+  const catalogue = new ModelCatalogue({ url: "https://x", fetchImpl, now: () => 0 });
+  assert.equal(catalogue.guardShare("cheapest"), null, "unread until the books are loaded");
+  await catalogue.loadServed(0);
+  assert.equal(catalogue.guardShare("cheapest"), 0.2);
+  assert.equal(catalogue.guardShare("disqualified"), 0.9);
+  assert.equal(catalogue.guardShare("none"), null);
 });
 
 test("the model list carries the price an answer is expected to cost, from trusted sellers until answers teach it", async (t) => {
