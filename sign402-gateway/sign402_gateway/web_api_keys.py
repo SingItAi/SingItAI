@@ -93,8 +93,8 @@ def key_message(address: str, name: str, daily: int, per_request: int, until: in
         "from your SingIt limits.\n"
         f"Valid until: {_date(until)}\n"
         f"Account: {address}\n\n"
-        "This key can only pay for model answers and web search (Exa) in SingIt. It cannot move your funds or "
-        "change your limits.\n\n"
+        "This key can only pay for model answers, web search (Exa) and paid data lookups (weather, market data, "
+        "ENS and similar) in SingIt. It cannot move your funds or change your limits.\n\n"
         f"Nonce: {nonce}\n"
         f"Issued At: {_date(issued)}"
     )
@@ -324,6 +324,33 @@ class ApiKeys:
             data["poll"] = f"/v1/video/generations/{data['id']}"
             data["results"] = [{**r, "url": str(r.get("url", "")).replace(ASK_URL, "")} for r in data.get("results") or []
                                if isinstance(r, dict)]
+        return 200, data, {"X-SingIt-Charged-Atomic": str(cost)}
+
+    def tool(self, row, tool_id: str, args: Mapping[str, Any]) -> tuple[int, dict[str, Any], dict[str, str]]:
+        """One of server.PAID_TOOLS, bought at its x402 price from the owner's wallet within its limits, per
+        request: the MCP server (web_mcp.py) calls this; it does not rate the key itself (the caller does, once
+        per tools/call, since this is not reached through _search)."""
+        if "tools" not in str(row["scopes"]).split():
+            raise ApiError(403, "This key was made before paid data tools existed. Create a new key in the SingIt "
+                           "app to use them.", type_="permission_error", code="scope_missing")
+        if chain_of_account(row["account_id"]) != "base":
+            raise ApiError(400, "Paid data tools are on Base only for now.", code="base_only")
+        per = int(row["per_request_cap_atomic"])
+        done = self._reserve(row, per)
+        try:
+            status, reply = self._shop("api-tool", row["account_id"], {
+                "toolId": tool_id, "args": dict(args), "limitAtomic": per})
+        except BaseException:
+            done(0)
+            raise
+        if status != 200:
+            done(0)
+            raise _api_error(status, reply)
+        cost = reply.get("costAtomic")
+        cost = cost if type(cost) is int and cost >= 0 else per
+        done(cost)
+        data = {"data": reply.get("data"), "billing": {"chargedAtomic": cost, "txId": reply.get("txId") or None,
+                "network": "base", "paidFrom": "your wallet, within your SingIt limits"}}
         return 200, data, {"X-SingIt-Charged-Atomic": str(cost)}
 
     def _video_job(self, job_id: str, content: bool, headers: Mapping[str, Any],

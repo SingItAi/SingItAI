@@ -525,6 +525,88 @@ Removing the dashboard HTML does not move or delete existing runtime data:
 <repo>/demo-dashboard/latest-run.json
 ```
 
+## MCP server (remote, for Claude Code, Cursor, Codex)
+
+SingIt runs a remote MCP server at `https://app.singitai.app/mcp`, on the public web API process
+(`sign402_gateway/web_api.py`, `sign402_gateway/web_mcp.py`). It is a minimal MCP server over
+Streamable HTTP: JSON responses only, no SSE stream, no session — one POST is one answer. It is
+authenticated the same way as the rest of `/v1`: a SingIt API key (`sk_singit_…`), made in the SingIt
+app, as `Authorization: Bearer sk_singit_…` (or `x-api-key`, for clients that only know that header).
+
+Tools:
+
+| Tool | Cost | What |
+|------|------|------|
+| `get_price` | Free | A crypto, metal or fx price |
+| `list_price_symbols` | Free | Every symbol `get_price` knows |
+| `list_models` | Free | Models this key can ask for (chat, images, audio), with their SingIt prices |
+| `web_search` | Paid, needs `search` scope | Search the web (Exa) |
+| `read_page` | Paid, needs `search` scope | Read a web page's text (Exa) |
+| `get_weather` | Paid, needs `tools` scope | A weather forecast |
+| `get_sign402_report` | Paid, needs `tools` scope | The Sign402 report |
+| `get_singit_risk_check` | Paid, needs `tools` scope | A SINGIT risk analysis |
+| `get_x_profile` | Paid, needs `tools` scope | An X/Twitter profile by username |
+| `get_crypto_news` | Paid, needs `tools` scope | Crypto market news |
+| `get_hyperliquid_market` | Paid, needs `tools` scope | Hyperliquid perpetuals market data |
+| `get_funding_rates` | Paid, needs `tools` scope | Cross-venue funding rates |
+| `resolve_ens` | Paid, needs `tools` scope | Resolve a `.eth` name or address |
+| `get_token_price` | Paid, needs `tools` scope | A token's USD price |
+
+Every paid call is billed exactly like `/v1`: from the key's own daily and per-request caps, out of
+its account's own SingIt limits (Base USDC). Nothing here can move funds, change limits, or buy goods
+(no Bitrefill, no wallet/allowance tools — that stays out of MCP for now, v2 at the earliest).
+
+Install:
+
+```bash
+# Claude Code
+claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_KEY"
+```
+
+Cursor (`~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "singit": {
+      "url": "https://app.singitai.app/mcp",
+      "headers": { "Authorization": "Bearer ${env:SINGIT_KEY}" }
+    }
+  }
+}
+```
+
+Codex (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.singit]
+url = "https://app.singitai.app/mcp"
+bearer_token_env_var = "SINGIT_KEY"
+```
+
+To try it locally, run the gateway and the web API (`python -m sign402_gateway.web_api` with
+`SIGN402_WEB_ENABLED=1`, see `docs/allowance-web-v1.md`), make a key in the app, and point at
+`127.0.0.1:8130` instead:
+
+```bash
+curl -s http://127.0.0.1:8130/mcp \
+  -H "Authorization: Bearer $SINGIT_KEY" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Limits:
+
+- Keys made before this change were signed for `answers search` only; they lack the `tools` scope, so
+  the paid data tools above refuse them with a message to make a new key. `get_price`,
+  `list_price_symbols`, `list_models`, `web_search` and `read_page` work with any still-live key, per
+  its own scopes (`web_search` and `read_page` need `search`).
+- The key's own rate limit (60 requests a minute) applies to `tools/call` as it does to `/v1`.
+- The paid data tools are sold on Base only; a Solana account's key gets a clear refusal for them.
+- A request with a browser `Origin` header is refused (403), as on `/v1`: keys belong in server code.
+- `GET /mcp` answers 405: there is no server-to-client SSE stream.
+
 ## Safety
 
 - The gateway reads the Algorand private key from the local `payment-executor/.env`.

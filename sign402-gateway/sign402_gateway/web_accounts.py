@@ -48,7 +48,8 @@ STATEMENT = "Sign in to SingIt. This signature does not move funds or approve an
 API_KEY_PREFIX = "sk_singit_"
 API_KEY_SHOWN = 14                 # characters of a key shown in lists: "sk_singit_Ab3x"
 API_KEYS_PER_ACCOUNT = 10          # live keys at once
-API_KEY_SCOPES = "answers search"  # what a new key may pay for: model answers, and web search and pages (Exa)
+API_KEY_SCOPES = "answers search tools"  # what a new key may pay for: model answers, web search and pages
+                                          # (Exa), and paid data tools (weather, market data, ENS and similar)
 ACCOUNT_PREFIX = "wallet:"         # an EVM wallet (Base)
 SOLANA_PREFIX = "solana:"          # a Solana wallet
 UTM_KEYS = ("utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "ref_host")

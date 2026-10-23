@@ -870,7 +870,7 @@ class SearchTests(Fixture):
 
     def test_new_keys_may_search_and_say_so(self):
         _, keys, _ = self.call("GET", "/api-keys")
-        self.assertEqual(keys["keys"][0]["scopes"], ["answers", "search"])
+        self.assertEqual(keys["keys"][0]["scopes"], ["answers", "search", "tools"])
 
 
 class VideoKeyTests(Fixture):
