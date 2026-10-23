@@ -20,6 +20,10 @@
 //   SINGIT_ASK_EXA_API_KEY     SingIt's Exa API key: turns on /v1/exa/search, /contents and /answer, resold over x402
 //                              at Exa's list price + 30% (src/search.mjs)
 //   SINGIT_ASK_BASE_RPC        the Base RPC free prices read Chainlink from (https://mainnet.base.org)
+//   SINGIT_ASK_PRICE_BUFFER_PP percentage points added to a model's cheapest known Surplus share before it is
+//                              turned into the X-Min-Discount header (src/catalogue.mjs's priceGuard), default 1
+//   SINGIT_ASK_EXACT_OUTPUT_FRACTION  fraction (0,1] of max_tokens that `exact` offers price their output at;
+//                              `upto` always prices the whole budget. Default 1 (no difference)
 
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
@@ -50,6 +54,12 @@ const config = {
   observedFile: process.env.SINGIT_ASK_OBSERVED_PRICES
     || `${process.env.HOME}/.config/singit-ask/observed-prices.json`,
 };
+{
+  const bufferPp = Number(process.env.SINGIT_ASK_PRICE_BUFFER_PP);
+  config.priceBufferPp = Number.isInteger(bufferPp) && bufferPp >= 0 ? bufferPp : 1;
+  const fraction = Number(process.env.SINGIT_ASK_EXACT_OUTPUT_FRACTION);
+  config.exactOutputFraction = fraction > 0 && fraction <= 1 ? fraction : 1;
+}
 const model = config.model;
 config.freeModels = process.env.SINGIT_ASK_FREE_MODELS === undefined ? [model]
   : process.env.SINGIT_ASK_FREE_MODELS.split(",").map((m) => m.trim()).filter(Boolean);

@@ -13,7 +13,6 @@ import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic } from "./pricing.mjs";
-import { THINKING_HEADROOM } from "./limits.mjs";
 
 // Actual model cost + 30% + the network's settlement fee. Solana's upto escrows the ceiling, then
 // settles the actual amount and refunds the rest: two transactions, hence its higher fee.
@@ -26,25 +25,26 @@ export const baseOffer = (config, quotes) => ({
   // 120 s covers the model and settlement; after it, a lost answer's signature is provably unusable.
   scheme: "upto", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
   price: ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.[BASE] ?? TERMS.maxChargeAtomic;
+    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[BASE] ?? TERMS.maxChargeAtomic;
     return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2", billing: { ...TERMS, maxChargeAtomic: amount } } };
   },
 });
 export const solanaOffer = (config, quotes) => ({
   scheme: "upto", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 300,
   price: ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.[SOLANA] ?? SOLANA_TERMS.maxChargeAtomic;
+    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[SOLANA] ?? SOLANA_TERMS.maxChargeAtomic;
     return { asset: SOLANA_ASSET, amount, extra: { billing: { ...SOLANA_TERMS, maxChargeAtomic: amount } } };
   },
 });
 
-// `exact` at the same per-question ceiling `upto` offers, charged flat (see the file header for why). Reuses the
-// same `quotes` lookup as the `upto` offers above, so both schemes are always quoted the same ceiling for a
-// question, and `mode: "exact_ceiling"` in the offer's billing tells buyers this one is not metered.
+// `exact` at its own, usually smaller, per-question ceiling (config.exactOutputFraction of `upto`'s output
+// budget: see `ceilings`), charged flat (see the file header for why). Reuses the same `quotes` lookup as the
+// `upto` offers above, so both schemes are always quoted from the one choice made for this question, and
+// `mode: "exact_ceiling"` in the offer's billing tells buyers this one is not metered.
 export const exactBaseOffer = (config, quotes) => ({
   scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
   price: ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.[BASE] ?? TERMS.maxChargeAtomic;
+    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[BASE] ?? TERMS.maxChargeAtomic;
     return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2",
       billing: { ...TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
   },
@@ -52,26 +52,37 @@ export const exactBaseOffer = (config, quotes) => ({
 export const exactSolanaOffer = (config, quotes) => ({
   scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 300,
   price: ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.[SOLANA] ?? SOLANA_TERMS.maxChargeAtomic;
+    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[SOLANA] ?? SOLANA_TERMS.maxChargeAtomic;
     return { asset: SOLANA_ASSET, amount, extra: { billing: { ...SOLANA_TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
   },
 });
 
-// The ceiling each network's offer carries for this question.
-export function ceilings(info, input) {
-  const size = { chars: input.chars, maxTokens: input.maxTokens, headroom: THINKING_HEADROOM };
-  return Object.fromEntries(Object.entries(TERMS_BY_NETWORK).map(([net, terms]) =>
-    [net, info ? ceilingAtomic(info, size, terms) : terms.maxChargeAtomic]));
+// The ceiling each network's offer carries for this question, separately for `upto` (authorizes up to the whole
+// answer budget, settles actual usage) and `exact` (charged flat, so priced at a fraction of that budget when
+// configured: `upto` still authorizes and settles the full answer regardless). `info` null means no catalogue
+// entry for the model (not on Surplus's list, or not looked up): the old standing ceiling, for both. `input.share`
+// and `input.isDefault` come from `chooseModel`/`priceGuard` (app.mjs, catalogue.mjs), fixed at quote time so the
+// paid call is billed exactly what was quoted; the default model's ceiling is clamped to the standing maximum so
+// nothing is ever authorized above it, same as before this formula existed.
+export function ceilings(info, input, exactOutputFraction = 1) {
+  const size = { chars: input.chars, messageCount: input.messageCount };
+  const build = maxTokens => Object.fromEntries(Object.entries(TERMS_BY_NETWORK).map(([net, terms]) => {
+    if (!info) return [net, terms.maxChargeAtomic];
+    const amount = ceilingAtomic(info, { ...size, maxTokens }, terms, input.share ?? 1);
+    return [net, input.isDefault && BigInt(amount) > BigInt(terms.maxChargeAtomic) ? terms.maxChargeAtomic : amount];
+  }));
+  return { upto: build(input.maxTokens), exact: build(Math.ceil(input.maxTokens * exactOutputFraction)) };
 }
 
-// The terms of the network the payer chose, with the ceiling this question was offered, and which scheme they
-// signed. The middleware has already matched the payment to an offer, so the network is one of ours; the ceiling
-// is ours, never the payer's.
+// The terms of the network the payer chose, with the ceiling this question was offered for the scheme they
+// signed, and that scheme. The middleware has already matched the payment to an offer, so the network is one of
+// ours; the ceiling is ours, never the payer's.
 function paidTerms(req) {
   const header = req.get("payment-signature") ?? req.get("x-payment");
   const { network, scheme } = JSON.parse(Buffer.from(header, "base64").toString()).accepted ?? {};
   const terms = TERMS_BY_NETWORK[network];
-  return terms && { terms: { ...terms, maxChargeAtomic: req.askCeilings[network] }, scheme };
+  const bucket = scheme === "exact" ? req.askCeilings?.exact : req.askCeilings?.upto;
+  return terms && bucket && { terms: { ...terms, maxChargeAtomic: bucket[network] }, scheme };
 }
 
 // A request with no body at all: what a directory's crawler sends to see whether a route takes payment.
@@ -154,15 +165,16 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
     .register(SOLANA, new ExactSvmScheme());
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
+  const exactOutputFraction = config.exactOutputFraction ?? 1;
   app.post(route, async (req, res, next) => {
     // It gets the standing offer; paying it with no question is still refused below.
     if (offerEmptyProbe && isDiscoveryProbe(req)) {
-      req.askCeilings = ceilings(null, {});
+      req.askCeilings = ceilings(null, {}, exactOutputFraction);
       return next();
     }
     try {
       req.askInput = await choose(readRequest(req.body));
-      req.askCeilings = ceilings(req.askInput.info, req.askInput);
+      req.askCeilings = ceilings(req.askInput.info, req.askInput, exactOutputFraction);
       quotes.set(req.body, req.askCeilings);
       next();
     } catch (error) {
@@ -178,12 +190,17 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     try {
       const paid = paidTerms(req);
       if (!paid) throw new Error("payment on an unknown network");
-      const answer = await upstream(config, req.askInput.messages, req.askInput.maxTokens, fetchImpl, req.askInput.model);
-      const usage = billUsage(answer.usage, paid.terms);
+      const exact = paid.scheme === "exact";
+      const answer = await upstream(config, req.askInput.messages, req.askInput.maxTokens, fetchImpl, req.askInput.model,
+        { minDiscount: req.askInput.minDiscount });
+      const usage = billUsage(answer.usage, paid.terms, { allowOverrun: exact });
       // `exact` already settled the full ceiling it was offered: there is no lower amount to settle to, and no
-      // way to refund the unused part, so the override below is only ever for `upto`.
-      const billing = paid.scheme === "exact" ? { ...usage, mode: "exact_ceiling", totalAtomic: paid.terms.maxChargeAtomic } : usage;
-      if (paid.scheme !== "exact") setSettlementOverrides(res, { amount: billing.totalAtomic });
+      // way to refund the unused part, so the override below is only ever for `upto`. Its actual cost may run
+      // over that flat ceiling (usage.overrunAtomic): the payer is never charged more than they signed for, this
+      // service absorbs the difference instead of discarding an otherwise-good answer.
+      const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: paid.terms.maxChargeAtomic } : usage;
+      if (exact && usage.overrunAtomic) log(`singit-ask: exact overrun ${usage.overrunAtomic} micro-USDC`);
+      if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
       log(`singit-ask: answered in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: "singit-ask", choices: [{ index: 0, message: { role: "assistant", content: answer.content },

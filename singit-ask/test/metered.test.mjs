@@ -175,3 +175,55 @@ test('a raised ceiling is accepted only up to the cap the caller worked out, and
   for(const bad of ['0','-5','1e5','04000',400000,null]){const q=raised('400000');q.accepts[0].amount=bad;assert.throws(()=>selectOffer(q,'400000'));}
   assert.throws(()=>selectOffer(raised('400000'),'oops'));
 });
+
+const fullFacilitator=(settled)=>({getSupported:async()=>({kinds:[{x402Version:2,scheme:'exact',network:BASE},{x402Version:2,scheme:'exact',network:'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',extra:{feePayer:'4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu'}},{x402Version:2,scheme:'upto',network:BASE,extra:{facilitatorAddress:CDP_SIGNER}},SOLANA_UPTO],extensions:['eip2612GasSponsoring'],signers:{}}),
+  verify:async()=>({isValid:true,payer:account.address}),settle:async(_p,r)=>{settled.push(r.amount);return{success:true,network:BASE,transaction:tx,payer:account.address};}});
+
+test("exact prices its output at exactOutputFraction of max_tokens; upto always prices the whole budget",async t=>{
+  // Not the default model (config.model is 'test'), so its ceiling is not clamped to the standing 3000: the
+  // difference between upto's and exact's output budget is visible in the amounts offered.
+  const priced={id:'priced-model',promptUsdPerToken:4e-6,completionUsdPerToken:20e-6};
+  const catalogue={async resolve(id){if(id==='priced-model')return priced;throw new Error('unknown');},async canAnswer(){return true;}};
+  const app=createApp({payToBase:PAY_TO,payToSolana:'4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu',model:'test',exactOutputFraction:0.5},
+    {facilitatorClient:fullFacilitator([]),upstream:async()=>({content:'Hello',finishReason:'stop',usage:{buyer_cost_micro:10}}),log:()=>{},catalogue});
+  const listener=await new Promise(resolve=>{const l=app.listen(0,'127.0.0.1',()=>resolve(l));});t.after(()=>listener.close());
+  const url=`http://127.0.0.1:${listener.address().port}${METERED_ROUTE}`;
+  const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:'Hi'}],model:'priced-model'})});
+  assert.equal(response.status,402);
+  const q=decode(response.headers.get('payment-required'));
+  const upto=q.accepts.find(a=>a.scheme==='upto'&&a.network===BASE).amount;
+  const exact=q.accepts.find(a=>a.scheme==='exact'&&a.network===BASE).amount;
+  assert.ok(BigInt(exact)<BigInt(upto),`exact (${exact}) should price less output than upto (${upto})`);
+});
+
+test('exact overrun: actual cost over the flat ceiling still answers, settles the ceiling flat, and reports the overrun',async t=>{
+  const settled=[];
+  const app=createApp({payToBase:PAY_TO,payToSolana:'4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu',model:'test'},
+    {facilitatorClient:fullFacilitator(settled),upstream:async()=>({content:'Hello',finishReason:'stop',usage:{buyer_cost_micro:10_000}}),log:()=>{}});
+  const listener=await new Promise(resolve=>{const l=app.listen(0,'127.0.0.1',()=>resolve(l));});t.after(()=>listener.close());
+  const url=`http://127.0.0.1:${listener.address().port}${METERED_ROUTE}`;
+  const send=headers=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify({messages:[{role:'user',content:'Hi'}]})});
+  const q=decode((await send({})).headers.get('payment-required'));
+  const exact=q.accepts.find(a=>a.scheme==='exact');
+  const paid=await send({'PAYMENT-SIGNATURE':encode({x402Version:2,resource:q.resource,accepted:exact,payload:{signature:'0xsigned'},extensions:q.extensions})});
+  assert.equal(paid.status,200);
+  const body=await paid.json();
+  // 10,000 cost + 3,000 markup (30%) + 1,000 fee = 14,000, over the 3,000 ceiling by 11,000.
+  assert.equal(body.billing.totalAtomic,'3000');
+  assert.equal(body.billing.overrunAtomic,'11000');
+  assert.deepEqual(settled,['3000']);
+});
+
+test('upto still refuses an answer over its ceiling, even where exact would have absorbed the overrun',async t=>{
+  const settled=[];
+  const app=createApp({payToBase:PAY_TO,payToSolana:'4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu',model:'test'},
+    {facilitatorClient:fullFacilitator(settled),upstream:async()=>({content:'Hello',finishReason:'stop',usage:{buyer_cost_micro:10_000}}),log:()=>{}});
+  const listener=await new Promise(resolve=>{const l=app.listen(0,'127.0.0.1',()=>resolve(l));});t.after(()=>listener.close());
+  const url=`http://127.0.0.1:${listener.address().port}${METERED_ROUTE}`;
+  const send=headers=>fetch(url,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify({messages:[{role:'user',content:'Hi'}]})});
+  const q=decode((await send({})).headers.get('payment-required'));
+  const upto=q.accepts.find(a=>a.scheme==='upto');
+  const paid=await send({'PAYMENT-SIGNATURE':encode({x402Version:2,resource:q.resource,accepted:upto,payload:{signature:'0xsigned'},extensions:q.extensions})});
+  assert.equal(paid.status,502);
+  assert.deepEqual(settled,[]);
+});

@@ -7,7 +7,6 @@ import {DatabaseSync} from 'node:sqlite';
 import {isAddress} from '@solana/kit';
 import {ExactSvmScheme} from '@x402/svm/exact/server';
 import {SOLANA, SOLANA_ASSET, SOLANA_PAY_TO, DIRECT_TERMS, QUOTED_ROUTE, QUOTED_URL, billUsage, ceilingAtomic} from './pricing.mjs';
-import {THINKING_HEADROOM} from './limits.mjs';
 
 const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64');
 const digest=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -80,10 +79,13 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,readRequest,c
       const kind=supported.kinds.find(x=>x.x402Version===2&&x.scheme==='exact'&&x.network===SOLANA);
       if(!isAddress(kind?.extra?.feePayer??'')||[owner,agent].includes(kind.extra.feePayer))throw new Error('no_sponsor');
       const asked=Date.now();
-      const answer=await upstream(config,input.messages,input.maxTokens,fetchImpl,chosen.model);
+      const answer=await upstream(config,input.messages,input.maxTokens,fetchImpl,chosen.model,{minDiscount:chosen.minDiscount});
       log(`singit-ask Solana: model answered in ${Date.now()-asked} ms`);
-      // The standing ceiling for the default model; for another, what its own prices allow for this question.
-      const cap=chosen.info?ceilingAtomic(chosen.info,{chars:input.chars,maxTokens:input.maxTokens,headroom:THINKING_HEADROOM},DIRECT_TERMS):DIRECT_TERMS.maxChargeAtomic;
+      // What its own prices allow for this question, clamped to the standing ceiling for the default model so it
+      // is never authorized above it; the standing ceiling outright when there is no catalogue entry at all.
+      const size={chars:input.chars,maxTokens:input.maxTokens,messageCount:input.messageCount};
+      const worst=chosen.info?ceilingAtomic(chosen.info,size,DIRECT_TERMS,chosen.share??1):DIRECT_TERMS.maxChargeAtomic;
+      const cap=chosen.isDefault&&BigInt(worst)>BigInt(DIRECT_TERMS.maxChargeAtomic)?DIRECT_TERMS.maxChargeAtomic:worst;
       const billing=billUsage(answer.usage,{...DIRECT_TERMS,maxChargeAtomic:cap});
       const requirement=await new ExactSvmScheme().enhancePaymentRequirements({scheme:'exact',network:SOLANA,
         asset:SOLANA_ASSET,amount:billing.totalAtomic,payTo:SOLANA_PAY_TO,maxTimeoutSeconds:300,

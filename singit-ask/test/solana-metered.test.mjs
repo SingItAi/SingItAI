@@ -84,3 +84,12 @@ for(const fail of [false,true])test(`public route: Solana deposits before the mo
   const response=await send({'PAYMENT-SIGNATURE':encode({x402Version:2,resource:q.resource,accepted,payload:p})});
   assert.equal(response.status,fail?502:200);assert.equal(decode(response.headers.get('payment-response')).amount,fail?'0':'2130');assert.deepEqual(settles,[{type:'deposit',amount:'3000'},{type:'claim',amount:fail?'0':'2130'}]);
 });
+
+test('SI-60: a Solana upto offer below the standing ceiling is accepted, one above it is not', () => {
+  const low = offer(); low.accepts[0].amount = '2100'; low.accepts[0].extra.billing = { ...SOLANA_TERMS, maxChargeAtomic: '2100' };
+  assert.equal(selectSolanaOffer(low).amount, '2100');
+  const high = offer(); high.accepts[0].amount = '3001'; high.accepts[0].extra.billing = { ...SOLANA_TERMS, maxChargeAtomic: '3001' };
+  assert.throws(() => selectSolanaOffer(high));
+  const mismatch = offer(); mismatch.accepts[0].amount = '2100';
+  assert.throws(() => selectSolanaOffer(mismatch));
+});
