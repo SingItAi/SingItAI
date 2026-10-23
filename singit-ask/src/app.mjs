@@ -170,8 +170,10 @@ const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, "").repla
 
 // The least and the most one answer can be charged, for discovery. The least is Base's settlement fee; the most is
 // the dearest listed model's ceiling for the largest question and answer this service takes, on Solana's terms.
+// `charsPerToken: 1` matches the `upto` authorization this max actually describes (see pricing.mjs's
+// `ceilingAtomic`): the loosest input estimate, so a dense worst-case prompt is never quoted below what it costs.
 export async function priceRange(catalogue) {
-  const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages };
+  const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 };
   const listed = catalogue ? await catalogue.list().catch(() => []) : [];
   const most = listed.reduce((top, m) => {
     const c = BigInt(ceilingAtomic(m, size, SOLANA_TERMS));

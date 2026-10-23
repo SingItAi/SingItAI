@@ -83,7 +83,10 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,readRequest,c
       log(`singit-ask Solana: model answered in ${Date.now()-asked} ms`);
       // What its own prices allow for this question, clamped to the standing ceiling for the default model so it
       // is never authorized above it; the standing ceiling outright when there is no catalogue entry at all.
-      const size={chars:input.chars,maxTokens:input.maxTokens,messageCount:input.messageCount};
+      // `charsPerToken: 1` is the loosest input estimate (see pricing.mjs's `ceilingAtomic`): this cap is checked
+      // against actual usage below, after the model already answered and was already paid for upstream, so a
+      // dense prompt (CJK, emoji, ...) must never tokenize to more than it authorized and lose the answer.
+      const size={chars:input.chars,maxTokens:input.maxTokens,messageCount:input.messageCount,charsPerToken:1};
       const worst=chosen.info?ceilingAtomic(chosen.info,size,DIRECT_TERMS,chosen.share??1):DIRECT_TERMS.maxChargeAtomic;
       const cap=chosen.isDefault&&BigInt(worst)>BigInt(DIRECT_TERMS.maxChargeAtomic)?DIRECT_TERMS.maxChargeAtomic:worst;
       const billing=billUsage(answer.usage,{...DIRECT_TERMS,maxChargeAtomic:cap});

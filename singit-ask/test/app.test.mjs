@@ -278,8 +278,9 @@ test("the OpenAPI document lists the paid route the way x402scan reads it", asyn
   assert.equal(price.mode, "dynamic");
   assert.equal(price.currency, "USD");
   assert.equal(price.min, "0.001");
-  // The dearest listed model (PRICEY) at the largest question and answer, on Solana's terms.
-  const most = ceilingAtomic(PRICEY, { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages }, SOLANA_TERMS);
+  // The dearest listed model (PRICEY) at the largest question and answer, on Solana's terms; `upto`'s loosest
+  // input estimate (1 char/token), same as priceRange.
+  const most = ceilingAtomic(PRICEY, { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 }, SOLANA_TERMS);
   assert.equal(Number(price.max), Number(most) / 1e6);
   assert.ok(op.responses[402]);
   assert.deepEqual(op.security, [{ x402: [] }]);
@@ -403,15 +404,17 @@ test("another model gets a ceiling worked out from its own prices; unresolvable 
     assert.deepEqual((await offerFor(model)).map((a) => a.amount), ["3000", "3000", "3000", "3000"], String(model));
   }
   const size = { chars: 26, maxTokens: 300, messageCount: 1 };
+  const uptoSize = { ...size, charsPerToken: 1 };
   // Explicitly chosen (not the default), so a cheap model's own honest worst case is offered, floored at
   // MIN_CEILING_ATOMIC rather than forced up to the standing 3000.
   const cheap = await offerFor("cheap-model");
-  assert.equal(cheap.find((a) => a.network === BASE && a.scheme === "upto").amount, ceilingAtomic(CHEAP, size, TERMS));
-  assert.equal(cheap.find((a) => a.network === SOLANA && a.scheme === "upto").amount, ceilingAtomic(CHEAP, size, SOLANA_TERMS));
+  assert.equal(cheap.find((a) => a.network === BASE && a.scheme === "upto").amount, ceilingAtomic(CHEAP, uptoSize, TERMS));
+  assert.equal(cheap.find((a) => a.network === SOLANA && a.scheme === "upto").amount, ceilingAtomic(CHEAP, uptoSize, SOLANA_TERMS));
   assert.equal(cheap.find((a) => a.network === BASE && a.scheme === "upto").amount, MIN_CEILING_ATOMIC);
   const pro = await offerFor("pro-model");
-  assert.equal(pro.find((a) => a.network === BASE).amount, ceilingAtomic(PRICEY, size, TERMS));
-  assert.equal(pro.find((a) => a.network === SOLANA).amount, ceilingAtomic(PRICEY, size, SOLANA_TERMS));
+  // `.find` on network alone picks the `upto` offer: it is listed before `exact` (see the ordering test below).
+  assert.equal(pro.find((a) => a.network === BASE).amount, ceilingAtomic(PRICEY, uptoSize, TERMS));
+  assert.equal(pro.find((a) => a.network === SOLANA).amount, ceilingAtomic(PRICEY, uptoSize, SOLANA_TERMS));
   assert.ok(BigInt(pro[0].amount) > 50_000n, "a dear model is authorized for what it can really cost");
   assert.equal(pro.find((a) => a.network === BASE).extra.billing.maxChargeAtomic, pro.find((a) => a.network === BASE).amount);
   assert.equal(facilitator.calls.verify, 0);
@@ -427,7 +430,7 @@ test("the default model, when it resolves, uses its own formula but is clamped t
   const app1 = createApp(cheapDefault, { facilitatorClient: facilitator, upstream: async () => ({ content: "ok", finishReason: "stop", usage: {} }),
     log: () => {}, catalogue: fakeCatalogue });
   const l1 = await new Promise((resolve) => { const l = app1.listen(0, "127.0.0.1", () => resolve(l)); }); t.after(() => l1.close());
-  const size = { chars: 26, maxTokens: 300, messageCount: 1 };
+  const size = { chars: 26, maxTokens: 300, messageCount: 1, charsPerToken: 1 };
   const unpaid1 = await post(`http://127.0.0.1:${l1.address().port}`, QUESTION);
   const required1 = decode(unpaid1.headers.get("payment-required"));
   assert.equal(required1.accepts.find((a) => a.network === BASE && a.scheme === "upto").amount, ceilingAtomic(CHEAP, size, TERMS));
@@ -553,6 +556,18 @@ test("ceilingAtomic: input is ~4 chars/token plus 4 tokens of overhead per messa
   // More messages add more per-message overhead, all else equal.
   const withExtraMessage = ceilingAtomic(model, { chars: 64, maxTokens: 500, messageCount: 2 }, TERMS);
   assert.ok(BigInt(withExtraMessage) > 14104n);
+});
+
+test("ceilingAtomic: charsPerToken: 1 bounds a dense (CJK/emoji) prompt the same way `upto` authorizes it; the chars/4 default is what `exact` charges flat", () => {
+  const model = { promptUsdPerToken: 4e-6, completionUsdPerToken: 20e-6 };
+  const base = { chars: 4000, maxTokens: 100, messageCount: 1 };
+  // upto: ceil(4000/1) + 4*1 = 4004 input tokens; (4004*4 + 100*20) = 18016 worst-case micro;
+  // + 30% markup (ceil(5404.8) = 5405) + the 1000 settlement fee = 24421.
+  assert.equal(ceilingAtomic(model, { ...base, charsPerToken: 1 }, TERMS), "24421");
+  // exact (the default): ceil(4000/4) + 4*1 = 1004 input tokens; (1004*4 + 100*20) = 6016 worst-case micro;
+  // + 30% markup (ceil(1804.8) = 1805) + the 1000 settlement fee = 8821. A CJK/emoji prompt tokenizes to more
+  // than chars/4 estimates, but `exact` absorbs that overrun via `allowOverrun` instead of refusing the answer.
+  assert.equal(ceilingAtomic(model, base, TERMS), "8821");
 });
 
 test("ceilingAtomic: share prices a smaller fraction of list, the worst case Surplus is bound to by X-Min-Discount", () => {

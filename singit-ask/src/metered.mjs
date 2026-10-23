@@ -64,14 +64,19 @@ export const exactSolanaOffer = (config, quotes) => ({
 // and `input.isDefault` come from `chooseModel`/`priceGuard` (app.mjs, catalogue.mjs), fixed at quote time so the
 // paid call is billed exactly what was quoted; the default model's ceiling is clamped to the standing maximum so
 // nothing is ever authorized above it, same as before this formula existed.
+//
+// `upto` authorizes with the loosest, one-token-per-character input estimate (see pricing.mjs's `ceilingAtomic`):
+// it only ever settles actual usage, so a higher authorization costs the payer nothing, and a dense prompt (CJK,
+// emoji, ...) can never tokenize to more than it authorized. `exact` is charged flat at the tighter ~4-chars-per-
+// token estimate, since it already absorbs an overrun via `allowOverrun` instead of refusing the answer.
 export function ceilings(info, input, exactOutputFraction = 1) {
   const size = { chars: input.chars, messageCount: input.messageCount };
-  const build = maxTokens => Object.fromEntries(Object.entries(TERMS_BY_NETWORK).map(([net, terms]) => {
+  const build = (maxTokens, charsPerToken) => Object.fromEntries(Object.entries(TERMS_BY_NETWORK).map(([net, terms]) => {
     if (!info) return [net, terms.maxChargeAtomic];
-    const amount = ceilingAtomic(info, { ...size, maxTokens }, terms, input.share ?? 1);
+    const amount = ceilingAtomic(info, { ...size, maxTokens, charsPerToken }, terms, input.share ?? 1);
     return [net, input.isDefault && BigInt(amount) > BigInt(terms.maxChargeAtomic) ? terms.maxChargeAtomic : amount];
   }));
-  return { upto: build(input.maxTokens), exact: build(Math.ceil(input.maxTokens * exactOutputFraction)) };
+  return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction)) };
 }
 
 // The terms of the network the payer chose, with the ceiling this question was offered for the scheme they
