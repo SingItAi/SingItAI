@@ -5,7 +5,7 @@
 //
 // The request goes to Surplus as it came, with this service's key, apart from the model's name (Anthropic's dated
 // names become Surplus's) and a bounded answer length. Streaming is not offered here: an answer is paid for whole.
-import { paymentMiddleware, x402ResourceServer, setSettlementOverrides } from "@x402/express";
+import { x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -13,7 +13,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
+import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
@@ -121,13 +121,13 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         res.status(status).json(refusal(route, status, status === 503 ? "Try again shortly." : error.message));
       }
     });
-    app.use(paymentMiddleware({ [`POST ${route}`]: {
+    addPaymentRoute(app, { [`POST ${route}`]: {
       accepts: [solanaOffer(config, quotes), baseOffer(config, quotes), exactSolanaOffer(config, quotes), exactBaseOffer(config, quotes)],
       mimeType: "application/json",
       description: `SingIt Ask: ${DESCRIPTIONS[route]}`, serviceName: "SingIt Ask",
       extensions: { ...declareEip2612GasSponsoringExtension(),
         ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route] }) },
-    } }, server));
+    } }, server);
     app.post(route, async (req, res) => {
       const started = Date.now();
       try {

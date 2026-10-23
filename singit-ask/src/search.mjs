@@ -7,11 +7,11 @@
 // above SEARCH_TERMS.maxExaAtomic is not sold. Exa's own cost report is kept here; if it ever exceeds the list price
 // we charged against, that is logged.
 import crypto from "node:crypto";
-import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { isDiscoveryProbe } from "./metered.mjs";
+import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS } from "./pricing.mjs";
 
 export const EXA_URL = "https://api.exa.ai";
@@ -116,10 +116,10 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
       }
     });
   }
-  app.use(paymentMiddleware(Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [`POST ${route}`, {
+  addPaymentRoute(app, Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [`POST ${route}`, {
     accepts: offers, mimeType: "application/json", description: `SingIt Search: ${DESCRIPTION}`,
     extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route] }),
-  }])), server));
+  }])), server);
   for (const [route, exaPath] of Object.entries(SEARCH_ROUTES)) {
     app.post(route, async (req, res) => {
       const header = req.get("payment-signature") ?? req.get("x-payment");

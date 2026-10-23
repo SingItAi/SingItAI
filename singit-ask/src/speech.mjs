@@ -5,12 +5,12 @@
 // payment is verified, Surplus makes the audio, and only then is the payment settled: no audio, no charge. The audio
 // comes back as it is (mp3 by default), with what was charged in the X-SingIt-* headers.
 import crypto from "node:crypto";
-import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { isDiscoveryProbe } from "./metered.mjs";
+import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS } from "./pricing.mjs";
 
 export const SPEECH_ROUTE = "/v1/audio/speech";
@@ -103,7 +103,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
         code: status === 404 ? "model_not_found" : undefined, message: status === 503 ? "Try again shortly." : error.message } });
     }
   });
-  app.use(paymentMiddleware({ [`POST ${SPEECH_ROUTE}`]: {
+  addPaymentRoute(app, { [`POST ${SPEECH_ROUTE}`]: {
     accepts: [
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
       { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120, price: price(BASE) },
@@ -111,7 +111,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
     mimeType: "audio/mpeg", description: `SingIt Speech: ${DESCRIPTION}`,
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: { model: "venice-kokoro-tts", input: "Hello from SingIt.", voice: "af_heart", response_format: "mp3" } }),
-  } }, server));
+  } }, server);
   app.post(SPEECH_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;
