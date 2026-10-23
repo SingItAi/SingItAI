@@ -12,7 +12,8 @@ import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic } from "./pricing.mjs";
+import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic,
+  DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 
 // Actual model cost + 30% + the network's settlement fee. Solana's upto escrows the ceiling, then
 // settles the actual amount and refunds the rest: two transactions, hence its higher fee.
@@ -69,7 +70,7 @@ export const exactSolanaOffer = (config, quotes) => ({
 // it only ever settles actual usage, so a higher authorization costs the payer nothing, and a dense prompt (CJK,
 // emoji, ...) can never tokenize to more than it authorized. `exact` is charged flat at the tighter ~4-chars-per-
 // token estimate, since it already absorbs an overrun via `allowOverrun` instead of refusing the answer.
-export function ceilings(info, input, exactOutputFraction = 1) {
+export function ceilings(info, input, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION) {
   const size = { chars: input.chars, messageCount: input.messageCount };
   const build = (maxTokens, charsPerToken) => Object.fromEntries(Object.entries(TERMS_BY_NETWORK).map(([net, terms]) => {
     if (!info) return [net, terms.maxChargeAtomic];
@@ -170,7 +171,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
     .register(SOLANA, new ExactSvmScheme());
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
-  const exactOutputFraction = config.exactOutputFraction ?? 1;
+  const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   app.post(route, async (req, res, next) => {
     // It gets the standing offer; paying it with no question is still refused below.
     if (offerEmptyProbe && isDiscoveryProbe(req)) {

@@ -12,6 +12,13 @@ export const SOLANA_ASSET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const SOLANA_PAY_TO = "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu";
 export const SOLANA_TERMS = Object.freeze({ ...TERMS, settlementFeeAtomic: "2000" });
 
+// p90 of 38 recorded answer lengths was 0.65 of the max_tokens asked for: most answers stop well short of their
+// budget, so pricing `exact`'s flat ceiling at the whole budget (fraction 1) overcharges the typical question.
+// At this fraction, with the 30% markup and settlement fee, 2 of those 38 recorded cases (both Opus 5.5,
+// 2000-char/1000-token questions) would have landed slightly negative, about -$0.0000 — an exact overrun that
+// `allowOverrun` (below) absorbs instead of refusing the answer.
+export const DEFAULT_EXACT_OUTPUT_FRACTION = 0.65;
+
 // Below this, a request is never authorized: cheap enough that a sensible floor matters more than honesty.
 // Unlike `terms.maxChargeAtomic`, which the gateway and every buyer pin as the standing maximum, this floor is
 // free to move: it only ever pushes a ceiling up, never past that maximum.

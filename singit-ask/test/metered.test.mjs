@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createApp } from '../src/app.mjs';
-import { BASE, ASSET, PAY_TO, TERMS, METERED_ROUTE, billUsage } from '../src/pricing.mjs';
+import { BASE, ASSET, PAY_TO, TERMS, METERED_ROUTE, billUsage, ceilingAtomic, DEFAULT_EXACT_OUTPUT_FRACTION } from '../src/pricing.mjs';
+import { ceilings } from '../src/metered.mjs';
 import { ENDPOINT, selectOffer, payMetered, validateTransfer } from '../src/metered-buyer.mjs';
 const CDP_SIGNER = '0x2A89407a98A0732b7fD578c4E156B7166540EB5A';
 // CDP also supports Solana upto, which the public route offers next to Base.
@@ -194,6 +195,19 @@ test("exact prices its output at exactOutputFraction of max_tokens; upto always 
   const upto=q.accepts.find(a=>a.scheme==='upto'&&a.network===BASE).amount;
   const exact=q.accepts.find(a=>a.scheme==='exact'&&a.network===BASE).amount;
   assert.ok(BigInt(exact)<BigInt(upto),`exact (${exact}) should price less output than upto (${upto})`);
+});
+
+test('ceilings: with no exactOutputFraction given, exact prices ceil(maxTokens*DEFAULT_EXACT_OUTPUT_FRACTION); exactOutputFraction 1 restores equal output budgets',()=>{
+  const model={promptUsdPerToken:4e-6,completionUsdPerToken:20e-6};
+  // chars and messageCount are 0, so the input estimate (which upto and exact bound differently, see pricing.mjs)
+  // contributes nothing: any remaining difference between exact and upto is purely the output budget.
+  const input={chars:0,messageCount:0,maxTokens:1000};
+  const defaults=ceilings(model,input);
+  assert.equal(defaults.exact[BASE],ceilingAtomic(model,{...input,maxTokens:Math.ceil(1000*DEFAULT_EXACT_OUTPUT_FRACTION)},TERMS));
+  assert.equal(defaults.upto[BASE],ceilingAtomic(model,{...input,maxTokens:1000,charsPerToken:1},TERMS));
+  assert.ok(BigInt(defaults.exact[BASE])<BigInt(defaults.upto[BASE]),'exact prices less than the whole max_tokens budget by default');
+  const atOne=ceilings(model,input,1);
+  assert.equal(atOne.exact[BASE],atOne.upto[BASE],'exactOutputFraction 1 gives exact the same output budget as upto');
 });
 
 test('exact overrun: actual cost over the flat ceiling still answers, settles the ceiling flat, and reports the overrun',async t=>{

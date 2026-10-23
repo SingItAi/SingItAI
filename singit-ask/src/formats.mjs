@@ -14,7 +14,7 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
 import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -98,7 +98,7 @@ const EXAMPLES = {
 };
 
 export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error }) {
-  const exactOutputFraction = config.exactOutputFraction ?? 1;
+  const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const bufferPp = config.priceBufferPp ?? 1;
   for (const [route, upstreamPath] of Object.entries(FORMAT_ROUTES)) {
     const quotes = new WeakMap();
