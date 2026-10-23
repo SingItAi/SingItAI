@@ -14,6 +14,15 @@ what it actually cost; nothing is charged without an answer.
 - **Public API:** `POST /v1/chat/completions`. Any x402 agent pays with `upto`: on Base
   a bounded, gas-sponsored Permit2 signature; on Solana a 0.003 USDC escrow from which
   CDP settles the actual amount and refunds the rest. Listed for discovery (Bazaar).
+- **Discovery probes:** `GET` and `HEAD` on every route listed for discovery
+  (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/images/generations`,
+  `/v1/audio/speech`, `/v1/exa/search`, `/v1/exa/contents`, `/v1/exa/answer`) answer
+  with the same 402 challenge an empty, unpaid `POST` gets — same offers, same Bazaar
+  extension, same resource URL — instead of Express's default 404, which is how
+  x402scan, Coinbase's Bazaar and 402 Index find a route in the first place. Neither
+  verb ever verifies or settles, even if the request carries a payment header.
+  `/v1/chat/completions/metered` and `/v1/video/generations` are paid routes that are
+  not listed for discovery, so `GET`/`HEAD` on them still 404.
 - **Web agent, Base:** `POST /v1/chat/completions/metered`, the same Base `upto` offer
   at an address the gateway's buyer pins. Its limiter funding path is unchanged;
   that separate funding leg still uses the existing gas policy.

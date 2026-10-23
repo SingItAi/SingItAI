@@ -6,7 +6,8 @@
 // and a facilitator cannot settle an exact payment for less than what was signed), so it is priced at the full
 // ceiling and that is disclosed in the offer's own `extra.billing.mode`. `upto` is unaffected and keeps paying
 // only the answer's actual cost.
-import { paymentMiddleware, x402ResourceServer, setSettlementOverrides } from "@x402/express";
+import { ExpressAdapter, paymentMiddlewareFromHTTPServer, x402HTTPResourceServer, x402ResourceServer, setSettlementOverrides } from "@x402/express";
+import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -83,6 +84,68 @@ export const isEmptyBody = body => body === undefined || body === null
 // it must still be validated and rejected without charging, same as any other malformed paid request.
 export const isDiscoveryProbe = req => isEmptyBody(req.body) && !(req.get("payment-signature") ?? req.get("x-payment"));
 
+// A GET/HEAD request never carries a real x402 payment attempt here, no matter what headers it sends: hiding
+// payment-signature/x-payment, rather than branching on them, is what guarantees `discoveryChallenge` below can
+// never find a payload to verify or settle.
+class DiscoveryAdapter extends ExpressAdapter {
+  getHeader(name) {
+    return ["payment-signature", "x-payment"].includes(name.toLowerCase()) ? undefined : super.getHeader(name);
+  }
+}
+
+// x402scan, Coinbase's Bazaar and 402 Index probe a paid route with GET and HEAD before listing it, not just an
+// empty POST; Express has no handler for those verbs on a POST-only route and answers with its own 404, which
+// reads as "not for sale" to a crawler that only checks GET/HEAD. This answers them with the exact 402 an empty,
+// unpaid POST gets from `httpServer`'s own route config: same offers, same Bazaar extension, same resource url.
+// `context.method` is pinned to POST (never the request's real GET/HEAD) so the enriched extension and the
+// resource both describe the route the one way it is actually called.
+//
+// The POST middleware loads the facilitator's supported kinds (fee payer, facilitator address) before its first
+// challenge, and retries that load while it keeps failing; a GET that arrives first must not answer with a challenge
+// missing those, so it waits for the same load. Once loaded, it is never reloaded from here: `initialize()` clears
+// the kinds before fetching them again, which a concurrent POST must never see.
+function discoveryChallenge(httpServer) {
+  let loading = null;
+  const ready = () => httpServer.ResourceServer.supportedResponsesMap?.size > 0 ? null
+    : (loading ??= httpServer.initialize().finally(() => { loading = null; }));
+  return async (req, res, next) => {
+    const context = { adapter: new DiscoveryAdapter(req), path: req.path, decodedPath: req.path, method: "POST" };
+    let result;
+    try {
+      await ready();
+      result = await httpServer.processHTTPRequest(context);
+    } catch {
+      return res.status(503).json({ error: { message: "Try again shortly.", type: "upstream_error" } });
+    }
+    // With no payment header ever reaching it, processHTTPRequest never verifies or settles: anything but the
+    // challenge (no route matched) is left to Express's own 404.
+    if (result.type !== "payment-error") return next();
+    const { response } = result;
+    res.status(response.status);
+    // Sent the way the POST middleware sends it, so a browser opening the URL gets the same paywall page.
+    for (const [key, value] of Object.entries(response.headers)) res.setHeader(key, value);
+    if (response.isHtml) res.send(response.body);
+    else res.json(response.body || {});
+  };
+}
+
+// One `x402HTTPResourceServer` per call, shared by the POST route(s) it pays for and their free GET/HEAD discovery
+// challenge: `routes` is `paymentMiddleware`'s own shape, `{ "POST /the/route": { accepts, mimeType, ... } }`.
+// `discoverable` should mirror whichever check already grants that route's empty-POST probe the same 402 (see
+// `isDiscoveryProbe` above) — a route that does not offer that probe should not advertise itself over GET either.
+export function addPaymentRoute(app, routes, server, { discoverable = true } = {}) {
+  if (!server.hasExtension("bazaar")) server.registerExtension(bazaarResourceServerExtension);
+  const httpServer = new x402HTTPResourceServer(server, routes);
+  app.use(paymentMiddlewareFromHTTPServer(httpServer));
+  if (discoverable) {
+    for (const pattern of Object.keys(routes)) {
+      const [verb, route] = pattern.split(" ");
+      if (verb === "POST") app.get(route, discoveryChallenge(httpServer));
+    }
+  }
+  return httpServer;
+}
+
 export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, offerEmptyProbe = false }) {
   const offers = makeOffers(quotes);
   const server = new x402ResourceServer(facilitatorClient)
@@ -108,7 +171,8 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         type: error.status ? "invalid_request_error" : "upstream_error" } });
     }
   });
-  app.use(paymentMiddleware({ [`POST ${route}`]: { accepts: offers, mimeType: "application/json", ...details } }, server));
+  addPaymentRoute(app, { [`POST ${route}`]: { accepts: offers, mimeType: "application/json", ...details } }, server,
+    { discoverable: offerEmptyProbe });
   app.post(route, async (req, res) => {
     const started = Date.now();
     try {

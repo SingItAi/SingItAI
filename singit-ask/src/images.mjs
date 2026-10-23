@@ -6,12 +6,12 @@
 // is verified, Surplus makes the image, and only then is the payment settled: no image, no charge. What Surplus
 // actually charged is logged against the list price, so an allowance that runs short shows.
 import crypto from "node:crypto";
-import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { isDiscoveryProbe } from "./metered.mjs";
+import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS } from "./pricing.mjs";
 
 export const IMAGE_ROUTE = "/v1/images/generations";
@@ -122,7 +122,7 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
         code: status === 404 ? "model_not_found" : undefined, message: status === 503 ? "Try again shortly." : error.message } });
     }
   });
-  app.use(paymentMiddleware({ [`POST ${IMAGE_ROUTE}`]: {
+  addPaymentRoute(app, { [`POST ${IMAGE_ROUTE}`]: {
     accepts: [
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 180, price: price(SOLANA) },
       { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 180, price: price(BASE) },
@@ -130,7 +130,7 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
     mimeType: "application/json", description: `SingIt Images: ${DESCRIPTION}`,
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: { model: "venice-seedream-v5-lite", prompt: "a small green robot holding a coin, flat illustration", n: 1, size: "1024x1024" } }),
-  } }, server));
+  } }, server);
   app.post(IMAGE_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;
