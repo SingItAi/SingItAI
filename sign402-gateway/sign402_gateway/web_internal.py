@@ -73,7 +73,7 @@ class ToolQuotes:
 # paused (SIGN402_PURCHASES_PAUSED). A new paying action belongs here. The chat checks the pause itself,
 # before each paid search or answer, so the chat stays open while only spending stops.
 PAYING_ACTIONS = frozenset({"tool-buy", "bitrefill-buy", "bitrefill-solana-buy", "venice-solana-topup", "data-buy",
-                            "email-send", "call-start", "api-chat", "credit-topup", "api-search"})
+                            "email-send", "call-start", "api-chat", "credit-topup", "api-search", "api-tool"})
 
 # What a Solana account may do before the Solana allowance exists: look, never pay.
 SOLANA_READ_ONLY = {"tools", "catalog-search", "purchases", "purchase-reveal", "purchase-progress", "venice-models", "venice-model",
@@ -232,6 +232,9 @@ def _handle(server: Any, action: str, payload: dict[str, Any]) -> tuple[int, dic
         return 200, web_data.search(server, gw, account, payload.get("path"), payload.get("body"),
                                     limit=limit if type(limit) is int and limit > 0 else None)
 
+    if action == "api-tool":  # one of gw.PAID_TOOLS for an API key (web_api.py / the MCP server): priced and paid
+        return _buy_tool_direct(server, gw, account, payload)       # in one step, no quote, from this account's own limits
+
     if action == "credit-topup":  # SingIt credit for this account's API balance, bought from its own limits
         from . import web_balance  # noqa: PLC0415
         if not account.startswith(SOLANA_PREFIX):
@@ -341,6 +344,42 @@ def _buy_tool(server: Any, gw: Any, account: str, quote_id: str) -> tuple[int, d
                                   payment_context=gw._tool_payment_context(tool, quote["payload"]),
                                   approval=web_confirmation(quote_id), claim_scope=quote_id)
     return (200 if enriched["ok"] else 400), enriched
+
+
+def _buy_tool_direct(server: Any, gw: Any, account: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    """One of gw.PAID_TOOLS for an API key: the price asked and paid in one step, no quote (web_internal._buy_tool
+    is the quoted, web-chat counterpart). `payload["args"]` holds the tool's own arguments (username, symbol, …),
+    which the resolver and the URL and payment-context builders expect at the top level."""
+    service = server.allowance
+    if account.startswith(SOLANA_PREFIX):
+        raise AllowanceError("Paid data tools are on Base only for now.")
+    args = payload.get("args") if isinstance(payload.get("args"), dict) else {}
+    tool_id = payload.get("toolId")
+    merged = {**args, "toolId": tool_id, "tool": tool_id}
+    tool = gw._resolve_paid_tool(merged)
+    resource_url = gw._paid_tool_resource_url(tool, merged)
+    if service.lane_for(account) is None:
+        raise AllowanceUnavailable("Set up your allowance first.")
+    gw._enforce_user_purchase_rate(account)
+    _limits_from_limiter(server, gw, account)
+    server.user_event_store.preflight_write()
+    request_body = tool.get("requestBody") if isinstance(tool.get("requestBody"), dict) else None
+    requirements = gw.normalize_x402_payment_required(
+        gw.fetch_x402_payment_required(resource_url, request_body=request_body), resource_url=resource_url)
+    gw._validate_base_usdc_x402_requirement(requirements)
+    amount = gw._payment_amount_atomic(requirements)
+    limit = payload.get("limitAtomic")
+    if type(limit) is int and limit > 0 and amount > limit:
+        raise AllowanceError("This tool costs more than this key's per-request limit. Nothing was paid.")
+    enriched = pay_from_allowance(
+        server, gw, account, tool, resource_url, requirements, request_body=request_body,
+        payment_context=gw._tool_payment_context(tool, merged),
+        approval={"ok": True, "status": "approved", "source": "api_key", "approvalId": "api-tool-" + secrets.token_hex(6)},
+        claim_scope="api-tool-" + secrets.token_hex(6), record=True)
+    resource_result = enriched.get("resourceResult") or {}
+    data = resource_result.get("body") if "body" in resource_result else resource_result.get("data")
+    return (200 if enriched["ok"] else 400), {"ok": enriched["ok"], "data": data, "costAtomic": amount,
+                                              "txId": enriched.get("txId")}
 
 
 def pay_from_allowance(server: Any, gw: Any, account: str, tool: dict[str, Any], resource_url: str,

@@ -54,6 +54,7 @@ from .web_accounts import (
 )
 from .web_api_keys import ApiError, ApiKeys, Stream
 from .web_api_proxy import Relay
+from .web_mcp import McpServer, rpc_error
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ ACCOUNT_HEADER = "X-SingIt-Account"
 MAX_BODY = 16 * 1024
 API_PREFIX = "/v1"            # the OpenAI-compatible API that API keys open (web_api_keys.py)
 API_MAX_BODY = 160 * 1024     # a question may be 24,000 characters, several bytes each
+MCP_PATH = "/mcp"              # SingIt's remote MCP server (web_mcp.py), on the same API keys
 PROXY_MAX_BODY = 16 * 1024 * 1024  # relayed requests: a coding agent's whole context, images included
 MAX_UPLOAD = 25 * 1024 * 1024      # an audio file to transcribe, OpenAI's own limit
 REQUEST_READ_SECONDS = 15
@@ -189,6 +191,7 @@ class WebApi:
         self.push_by_account = RateLimit(20, 3600)
         self.keys_by_account = RateLimit(20, 3600)
         self.keys = ApiKeys(self, now=now)
+        self.mcp = McpServer(self.keys)
 
     def handle(self, method: str, path: str, *, token: str, csrf: str | None, body: dict[str, Any],
                client: str, expected_account: str | None = None,
@@ -641,6 +644,10 @@ class WebHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        if self.path.split("?", 1)[0] == MCP_PATH:
+            self._send(405, {"ok": False, "error": "method_not_allowed",
+                             "message": "This endpoint offers no SSE stream. Send POST."}, {"Allow": "POST"})
+            return
         if self.path.startswith(API_PREFIX + "/"):
             self._public("GET")
             return
@@ -648,6 +655,13 @@ class WebHandler(BaseHTTPRequestHandler):
             self._static()
             return
         self._dispatch("GET")
+
+    def do_DELETE(self) -> None:
+        if self.path.split("?", 1)[0] == MCP_PATH:
+            self._send(405, {"ok": False, "error": "method_not_allowed",
+                             "message": "This endpoint offers no SSE stream. Send POST."}, {"Allow": "POST"})
+            return
+        self._send(404, {"ok": False, "error": "not_found", "message": "No such endpoint."})
 
     def do_HEAD(self) -> None:
         """The page answers HEAD as GET without a body; an API route is never run for one.
@@ -697,10 +711,39 @@ class WebHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def do_POST(self) -> None:
+        if self.path.split("?", 1)[0] == MCP_PATH:
+            self._mcp()
+            return
         if self.path.startswith(API_PREFIX + "/"):
             self._public("POST")
             return
         self._dispatch("POST")
+
+    def _mcp(self) -> None:
+        """POST /mcp: SingIt's remote MCP server, over Streamable HTTP with JSON responses only."""
+        try:
+            if self.headers.get_content_type() != "application/json":
+                self._send(415, rpc_error(None, -32600, "Send JSON."))
+                return
+            raw = self._raw_body(API_MAX_BODY)
+            status, out, headers = self.server.api.mcp.handle(
+                authorization=self.headers.get("Authorization"), api_key=self.headers.get("x-api-key"),
+                origin=self.headers.get("Origin"), protocol_version=self.headers.get("MCP-Protocol-Version"),
+                body=raw)
+            if out is None:
+                self.send_response(status)
+                for key, value in headers.items():
+                    self.send_header(key, value)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self._send(status, out, headers)
+        except WebError as error:
+            self.close_connection = True
+            self._send(error.status, rpc_error(None, -32600, error.message))
+        except Exception:
+            logger.exception("web api: POST /mcp failed")
+            self._send(500, rpc_error(None, -32603, "Something went wrong on our side."))
 
     def _public(self, method: str) -> None:
         """/v1: code holding an API key. Errors keep OpenAI's shape so SDKs show them as they are."""

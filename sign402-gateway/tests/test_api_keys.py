@@ -77,7 +77,7 @@ class MakingKeysTests(Fixture):
     def test_a_signed_request_makes_a_key_shown_once_and_stored_as_a_hash(self):
         _, prepared, _ = self.call("POST", "/api-keys/prepare", {"name": "my bot", "dailyUsd": 2, "perRequestUsd": 0.1})
         self.assertIn("Spends up to 2 USDC a day and 0.1 USDC per request", prepared["message"])
-        self.assertIn("model answers and web search (Exa)", prepared["message"])
+        self.assertIn("model answers, web search (Exa) and paid data lookups", prepared["message"])
         self.assertIn("cannot move your funds or change your limits", prepared["message"])
         _, made, _ = self.call("POST", "/api-keys", {"message": prepared["message"],
                                                    "signature": sign(self.user, prepared["message"])})
