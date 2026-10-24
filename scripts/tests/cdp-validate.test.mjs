@@ -2,7 +2,10 @@
 // pinned against fake fetch implementations. Nothing in this file makes a request.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_ENDPOINT, evaluate, readConfig, validateAll, validateResource } from "../cdp-validate.mjs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { DEFAULT_ENDPOINT, evaluate, main, readConfig, validateAll, validateResource } from "../cdp-validate.mjs";
 
 const URL = "https://ask.singitai.app/v1/exa/answer";
 const entry = { url: URL, method: "POST" };
@@ -75,9 +78,53 @@ test("exit codes: 0 when every resource passes, 1 on a failed resource, 2 when t
   assert.equal(rejected.code, 1);
   const broken = await validateAll({ resources, fetchImpl: async () => { throw new Error("ENOTFOUND"); } });
   assert.equal(broken.code, 2);
-  // A transport error outranks a verdict: the run is incomplete, not a clean failure.
-  const mixed = await validateAll({ resources: [{ url: URL, method: "GET" }], fetchImpl: stub(reply(accepted)) });
-  assert.equal(mixed.code, 0);
+  // A transport error outranks a failed verdict: the run is incomplete, not a clean failure.
+  let n = 0;
+  const half = async () => { if (n++ === 0) return reply({ valid: true, simulation: { outcome: "rejected" } }); throw new Error("ENOTFOUND"); };
+  assert.equal((await validateAll({ resources, fetchImpl: half })).code, 2);
+  assert.equal((await validateAll({ resources: [{ url: URL, method: "GET" }], fetchImpl: stub(reply(accepted)) })).code, 0);
+});
+
+const configFile = (content) => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "cdp-validate-")), "resources.json");
+  writeFileSync(file, typeof content === "string" ? content : JSON.stringify(content));
+  return file;
+};
+
+test("readConfig rejects an empty list, a non-https url and an unsupported method", () => {
+  assert.throws(() => readConfig(configFile({ resources: [] })), /non-empty/);
+  assert.throws(() => readConfig(configFile({})), /non-empty/);
+  assert.throws(() => readConfig(configFile({ resources: [{ url: "http://ask.singitai.app/v1/x", method: "POST" }] })), /https url/);
+  assert.throws(() => readConfig(configFile({ resources: [{ url: URL, method: "PUT" }] })), /GET or POST/);
+  assert.throws(() => readConfig(configFile("not json")));
+  assert.equal(readConfig(configFile({ resources: [entry] })).endpoint, DEFAULT_ENDPOINT);
+  assert.equal(readConfig(configFile({ validateEndpoint: "https://validator.test/x", resources: [entry] })).endpoint, "https://validator.test/x");
+});
+
+test("main returns the exit code, prints a report, and never calls out on a bad config", async () => {
+  const lines = [];
+  const out = (line) => lines.push(line);
+  const config = configFile({ resources: [entry] });
+  assert.equal(await main(["--config", config], { fetchImpl: stub(reply(accepted)), out }), 0);
+  assert.match(lines.join("\n"), /ok\s+POST https:\/\/ask\.singitai\.app\/v1\/exa\/answer/);
+  assert.match(lines.join("\n"), /1 resource\(s\), 1 passed, 0 did not/);
+
+  lines.length = 0;
+  const failing = reply({ valid: true, simulation: { outcome: "accepted" }, preflight: { failures: [{ code: "no_output", message: "no output example" }], recommendations: ["add an icon"] } });
+  assert.equal(await main(["--config", config], { fetchImpl: stub(failing), out }), 1);
+  const text = lines.join("\n");
+  assert.match(text, /FAIL no_output: no output example/);
+  assert.match(text, /advice: add an icon/);
+
+  lines.length = 0;
+  assert.equal(await main(["--config", config, "--json"], { fetchImpl: stub(reply(accepted)), out }), 0);
+  assert.equal(JSON.parse(lines[0]).code, 0);
+
+  const errors = [];
+  const fetchImpl = stub(reply(accepted));
+  assert.equal(await main(["--config", configFile({ resources: [] })], { fetchImpl, out, err: (m) => errors.push(m) }), 2);
+  assert.equal(fetchImpl.calls.length, 0);
+  assert.match(errors[0], /cdp-validate:/);
 });
 
 test("the committed config lists live https resources with a supported method", () => {

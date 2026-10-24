@@ -107,3 +107,39 @@ templates that run one round every minute. They are not installed or enabled.
 Installing the timer, publishing any status page or status JSON, and enabling
 any alert channel need the owner's OK and are not done by this change. Operator
 alerts are a separate script and are out of scope here.
+
+## Bazaar Metadata Lint and CDP Validator
+
+Both are Node 22 scripts; the checklist they serve is in
+[bazaar-curation](../docs/bazaar-curation.md).
+
+`scripts/bazaar-lint.mjs` is offline. It boots `singit-ask` in-process with a
+fake facilitator and catalogue (so `singit-ask/node_modules` must be installed),
+requests every route listed for discovery with `GET`, `HEAD` and an empty
+`POST`, and checks the 402 challenge: `x402Version`, offers with
+scheme/network/asset/payTo/amount, an https resource URL, a description of at
+most 500 characters, no instruction-like phrases, a Bazaar input schema and
+examples, and an `iconUrl` that is not SVG. It also cross-checks
+`bazaar-resources.json` against the routes the code advertises. It sends no
+payment and makes no network call. CI runs it in `security-gate.yml` (job
+`bazaar-lint`).
+
+```bash
+node scripts/bazaar-lint.mjs            # exit 1 on any FAIL; warnings (e.g. no iconUrl) exit 0
+node scripts/bazaar-lint.mjs --strict   # warnings fail too
+node scripts/bazaar-lint.mjs --json
+node --test scripts/tests/*.test.mjs    # lint and validator unit tests
+```
+
+`scripts/cdp-validate.mjs` sends `{resource, method}` for each entry of
+`scripts/bazaar-resources.json` to Coinbase's free validate endpoint (no API
+key, no payment header) and prints `valid`, `simulation.outcome`, preflight
+failures and recommendations. Exit 0: all valid and accepted; 1: a resource
+failed validation; 2: the check could not run (bad config, network error,
+timeout). It calls an external API, so it is not part of the offline gate: only
+`.github/workflows/bazaar-validate.yml` runs it, on manual dispatch and weekly.
+
+```bash
+node scripts/cdp-validate.mjs           # needs network access to api.cdp.coinbase.com
+node scripts/cdp-validate.mjs --json
+```

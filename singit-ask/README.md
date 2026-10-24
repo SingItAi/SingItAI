@@ -23,6 +23,9 @@ what it actually cost; nothing is charged without an answer.
   verb ever verifies or settles, even if the request carries a payment header.
   `/v1/chat/completions/metered` and `/v1/video/generations` are paid routes that are
   not listed for discovery, so `GET`/`HEAD` on them still 404.
+- **Bazaar curation:** [docs/bazaar-curation.md](../docs/bazaar-curation.md) checks these routes against
+  Coinbase's curation rules. `node ../scripts/bazaar-lint.mjs` lints the advertised metadata offline (run in CI);
+  every paid path's error responses in `/openapi.json` are covered by `test/openapi-errors.test.mjs`.
 - **Web agent, Base:** `POST /v1/chat/completions/metered`, the same Base `upto` offer
   at an address the gateway's buyer pins. Its limiter funding path is unchanged;
   that separate funding leg still uses the existing gas policy.
