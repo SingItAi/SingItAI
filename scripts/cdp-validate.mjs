@@ -21,7 +21,7 @@ export const DEFAULT_CONFIG = path.join(HERE, "bazaar-resources.json");
 export const DEFAULT_ENDPOINT = "https://api.cdp.coinbase.com/platform/v2/x402/validate";
 export const TIMEOUT_MS = 20_000;
 
-// The reply's `preflight` holds required failures and advisory recommendations. The documented field names
+// The reply's `preflight` holds required failures and advisory recommendations (see evaluate). Older/other
 // could change, so read the few shapes that make sense and keep whatever text each entry carries.
 const text = (entry) => {
   if (typeof entry === "string") return entry;
@@ -34,10 +34,20 @@ const text = (entry) => {
 const list = (value) => (Array.isArray(value) ? value.map(text) : value && typeof value === "object" ? Object.values(value).flat().map(text) : []);
 
 // Turns one validator reply into { ok, valid, outcome, failures, recommendations, reasons }.
+// The live reply (checked 2026-10-24) has `preflight` as an array of checks:
+// { check, passed, severity: "required" | "advisory", detail, expected?, actual? }. A failed required check is a
+// failure; a failed advisory check is a recommendation. The object shapes below are kept as a fallback.
 export function evaluate(reply) {
   const preflight = reply?.preflight ?? {};
-  const failures = list(preflight.failures ?? preflight.required ?? preflight.requiredFailures ?? preflight.errors);
-  const recommendations = list(preflight.recommendations ?? preflight.advisory ?? preflight.warnings);
+  let failures, recommendations;
+  if (Array.isArray(preflight)) {
+    const failed = preflight.filter((c) => c && typeof c === "object" && c.passed === false);
+    failures = failed.filter((c) => c.severity === "required").map(text);
+    recommendations = failed.filter((c) => c.severity !== "required").map(text);
+  } else {
+    failures = list(preflight.failures ?? preflight.required ?? preflight.requiredFailures ?? preflight.errors);
+    recommendations = list(preflight.recommendations ?? preflight.advisory ?? preflight.warnings);
+  }
   const valid = reply?.valid === true;
   const outcome = reply?.simulation?.outcome ?? null;
   const reasons = [];

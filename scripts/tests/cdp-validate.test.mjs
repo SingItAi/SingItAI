@@ -137,3 +137,22 @@ test("the committed config lists live https resources with a supported method", 
   }
   assert.equal(new Set(config.resources.map((r) => r.url)).size, config.resources.length);
 });
+
+test("the live array shape: failed required checks are failures, failed advisory checks are recommendations", () => {
+  // Trimmed from a real validator reply for /v1/responses (2026-10-24); addresses left out on purpose.
+  const live = {
+    valid: false, statusCode: 402, simulation: { outcome: "accepted" },
+    preflight: [
+      { check: "returns_402", passed: true, severity: "required", detail: "Endpoint correctly returns HTTP 402 Payment Required" },
+      { check: "bazaar.info.input.method.matches_request", passed: false, severity: "required", detail: "Endpoint declares method POST but was probed with GET" },
+      { check: "bazaar.info.output", passed: false, severity: "advisory", detail: "Missing info.output" },
+    ],
+  };
+  const result = evaluate(live);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.failures, ["bazaar.info.input.method.matches_request: Endpoint declares method POST but was probed with GET"]);
+  assert.deepEqual(result.recommendations, ["bazaar.info.output: Missing info.output"]);
+  const passing = evaluate({ ...live, valid: true, preflight: live.preflight.filter((c) => c.severity !== "required" || c.passed) });
+  assert.equal(passing.ok, true);
+  assert.equal(passing.recommendations.length, 1);
+});
