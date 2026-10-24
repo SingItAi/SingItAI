@@ -86,9 +86,22 @@ export class DailyLimiter {
       );
     }
     this.spentAtomic += amount;
-    return () => { this.spentAtomic -= amount; };
+    // A release only ever touches the day it was reserved on: a request that spans UTC midnight must not take
+    // yesterday's reservation off today's counter (Codex review).
+    const day = this.day;
+    let done = false;
+    const release = () => {
+      if (done) return;
+      done = true;
+      this.#rollIfNeeded();
+      if (this.day === day) this.spentAtomic -= amount;
+    };
+    release.day = day;
+    return release;
   }
   settle(release, actualAtomic, worstCaseAtomic) {
+    this.#rollIfNeeded();
+    if (release.day !== this.day) return; // yesterday's spend; today's counter starts clean
     release();
     this.spentAtomic += BigInt(actualAtomic ?? worstCaseAtomic);
   }

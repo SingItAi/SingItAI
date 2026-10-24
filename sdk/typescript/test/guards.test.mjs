@@ -87,3 +87,15 @@ test("usdToAtomic converts whole-dollar USD ceilings to micro-USDC", () => {
 test("usdToAtomic refuses a negative ceiling", () => {
   assert.throws(() => usdToAtomic(-1), SingItPaymentError);
 });
+
+test("a reservation from yesterday never reduces today's counter (Codex review)", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-24T23:59:59Z") });
+  const limiter = new DailyLimiter("1000");
+  const release = limiter.reserve("600"); // just before UTC midnight
+  t.mock.timers.setTime(Date.parse("2026-10-25T00:00:01Z"));
+  limiter.reserve("1000"); // today's counter is full
+  release(); // yesterday's release must not free today's room
+  assert.equal(limiter.remainingAtomic(), 0n);
+  limiter.settle(release, "100", "600");
+  assert.equal(limiter.remainingAtomic(), 0n);
+});

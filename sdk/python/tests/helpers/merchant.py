@@ -143,6 +143,7 @@ class Merchant:
         self.routes = routes or {}
         self.payment_headers: list[str] = []
         self.requests = 0
+        self.refuse = False  # answer a signed payment with 402, as a facilitator that rejects it would
         self.bill = bill or (lambda offer: offer["amount"] if offer["scheme"] == "exact" else str(int(offer["amount"]) // 2))
         outer = self
 
@@ -176,7 +177,7 @@ class Merchant:
                 offer = payment_payload["accepted"]
                 verify = verify_upto_payload if offer["scheme"] == "upto" else verify_exact_payload
                 ok, payer = verify(payment_payload)
-                if not ok:
+                if not ok or outer.refuse:
                     self.send_response(402)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()

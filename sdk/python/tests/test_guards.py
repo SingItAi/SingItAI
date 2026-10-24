@@ -105,3 +105,25 @@ def test_usd_to_atomic():
 def test_usd_to_atomic_refuses_negative():
     with pytest.raises(SingItPaymentError):
         usd_to_atomic(-1)
+
+
+def test_a_reservation_from_yesterday_never_reduces_todays_counter(monkeypatch):
+    from datetime import datetime as real_datetime, timezone as tz
+    from singit import guards
+
+    now = {"t": real_datetime(2026, 10, 24, 23, 59, 59, tzinfo=tz.utc)}
+
+    class Clock(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now["t"]
+
+    monkeypatch.setattr(guards, "datetime", Clock)
+    limiter = guards.DailyLimiter("1000")
+    release = limiter.reserve("600")  # reserved just before UTC midnight
+    now["t"] = real_datetime(2026, 10, 25, 0, 0, 1, tzinfo=tz.utc)
+    limiter.reserve("1000")  # today's counter is full
+    release()  # yesterday's release must not free today's room
+    assert limiter.remaining_atomic() == 0
+    limiter.settle(release, "100", "600")
+    assert limiter.remaining_atomic() == 0

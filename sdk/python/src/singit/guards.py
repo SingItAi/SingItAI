@@ -114,13 +114,26 @@ class DailyLimiter:
                 f"{amount} more would exceed {self.cap_atomic} micro-USDC."
             )
         self._spent_atomic += amount
+        # A release only ever touches the day it was reserved on: a request spanning UTC midnight must not take
+        # yesterday's reservation off today's counter (Codex review).
+        day = self._day
+        state = {"done": False}
 
         def release():
-            self._spent_atomic -= amount
+            if state["done"]:
+                return
+            state["done"] = True
+            self._roll_if_needed()
+            if self._day == day:
+                self._spent_atomic -= amount
 
+        release.day = day
         return release
 
     def settle(self, release, actual_atomic: str | None, worst_case_atomic: str) -> None:
+        self._roll_if_needed()
+        if getattr(release, "day", self._day) != self._day:
+            return  # yesterday's spend; today's counter starts clean
         release()
         self._spent_atomic += int(actual_atomic if actual_atomic is not None else worst_case_atomic)
 

@@ -106,11 +106,20 @@ def test_daily_cap_applies_across_two_calls(account, start):
     assert len(merchant.payment_headers) == 1
 
 
-def test_a_rejected_payment_frees_the_daily_reservation(account, start):
+def test_an_unresolved_payment_keeps_its_reservation(account, start):
     merchant = start([exact("2000")])
     singit = client(account, merchant, max_per_call_usd=0.003, max_per_day_usd=0.003)
-    merchant.bill = lambda offer: "999999"  # invoice above the ceiling: unresolved, reservation released
+    merchant.bill = lambda offer: "999999"  # invoice above the ceiling: it may still have settled
     with pytest.raises(SingItPaymentError, match="invoice"):
+        singit.chat(messages=MESSAGES, scheme="exact")
+    assert singit.limiter.remaining_atomic() == 1000  # the 2000 ceiling stays counted
+
+
+def test_a_refused_payment_frees_the_daily_reservation(account, start):
+    merchant = start([exact("2000")])
+    merchant.refuse = True  # HTTP 402 to the signed payment: nothing settled
+    singit = client(account, merchant, max_per_call_usd=0.003, max_per_day_usd=0.003)
+    with pytest.raises(SingItPaymentError, match="refused"):
         singit.chat(messages=MESSAGES, scheme="exact")
     assert singit.limiter.remaining_atomic() == 3000
 

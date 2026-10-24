@@ -129,22 +129,29 @@ export class SingIt {
       throw error;
     }
 
+    // Once a signed payment has left, only a 402 (payment refused) proves nothing settled. A dropped connection,
+    // another status or an unreadable invoice may still have settled, so the worst-case reservation stays counted
+    // against today's cap (Codex review).
     let response;
     try {
       response = await send({ "PAYMENT-SIGNATURE": Buffer.from(JSON.stringify(payload)).toString("base64") });
     } catch (error) {
+      throw new SingItPaymentError(`The paid request failed after the payment was sent (${error.message}); `
+        + "it was not repeated and its ceiling stays counted against the daily cap.");
+    }
+    if (response.status === 402) {
       release();
-      throw error;
+      throw new SingItPaymentError("The merchant refused the payment (HTTP 402); nothing was paid and it was not repeated.");
     }
     if (response.status !== 200) {
-      release();
-      throw new SingItPaymentError(`Paid request returned HTTP ${response.status}; it was not repeated.`);
+      throw new SingItPaymentError(`Paid request returned HTTP ${response.status}; it was not repeated, and its ceiling `
+        + "stays counted against the daily cap in case it settled.");
     }
-    const result = await response.json();
+    const result = await response.json().catch(() => null);
     const totalAtomic = result?.billing?.totalAtomic;
     if (!isAtomicAmount(totalAtomic) || BigInt(totalAtomic) > BigInt(offer.amount)) {
-      release();
-      throw new SingItPaymentError("The invoice does not match the offered ceiling; treating the payment as unresolved.");
+      throw new SingItPaymentError("The invoice does not match the offered ceiling; treating the payment as unresolved "
+        + "(its ceiling stays counted against the daily cap).");
     }
     this.limiter.settle(release, totalAtomic, offer.amount);
 

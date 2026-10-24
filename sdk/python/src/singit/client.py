@@ -180,19 +180,30 @@ class SingIt:
             release()
             raise
 
+        # Once a signed payment has left, only a 402 (payment refused) proves nothing settled. A dropped connection,
+        # another status or an unreadable invoice may still have settled, so the worst-case reservation stays
+        # counted against today's cap (Codex review).
         try:
             status, headers, raw = _post_json(url, encoded, {"PAYMENT-SIGNATURE": encode_header(payload)})
-        except Exception:
+        except Exception as error:
+            raise SingItPaymentError(
+                f"The paid request failed after the payment was sent ({error}); it was not repeated and its "
+                "ceiling stays counted against the daily cap.") from error
+        if status == 402:
             release()
-            raise
+            raise SingItPaymentError("The merchant refused the payment (HTTP 402); nothing was paid and it was not repeated.")
         if status != 200:
-            release()
-            raise SingItPaymentError(f"Paid request returned HTTP {status}; it was not repeated.")
-        result = json.loads(raw)
-        total_atomic = (result.get("billing") or {}).get("totalAtomic")
+            raise SingItPaymentError(
+                f"Paid request returned HTTP {status}; it was not repeated, and its ceiling stays counted against "
+                "the daily cap in case it settled.")
+        try:
+            result = json.loads(raw)
+        except ValueError:
+            result = {}
+        total_atomic = ((result or {}).get("billing") or {}).get("totalAtomic")
         if not is_atomic_amount(total_atomic) or int(total_atomic) > int(offer["amount"]):
-            release()
-            raise SingItPaymentError("The invoice does not match the offered ceiling; treating the payment as unresolved.")
+            raise SingItPaymentError("The invoice does not match the offered ceiling; treating the payment as unresolved "
+                                     "(its ceiling stays counted against the daily cap).")
         self.limiter.settle(release, total_atomic, offer["amount"])
 
         receipt_header = headers.get("payment-response")
