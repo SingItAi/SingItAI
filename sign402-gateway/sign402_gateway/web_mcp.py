@@ -21,13 +21,18 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import re
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Callable
 from urllib.parse import quote
 
+from . import analytics
 from .web_api_keys import ASK_URL, ApiError, ApiKeys
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 OUR_VERSION = SUPPORTED_VERSIONS[0]
@@ -159,6 +164,24 @@ def _tool_error(message: str) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": message}], "isError": True}
 
 
+def _classify(exc: ApiError | None) -> tuple[str, str]:
+    """(status, error_kind) of a failed tool call, from the ApiError's status/code only, never its message."""
+    if exc is None:
+        return "error", "upstream"
+    code = exc.code
+    if code == "rate_limit_exceeded":
+        return "rate_limited", "limit"
+    if code in ("scope_missing", "base_only"):
+        return "refused", "scope"
+    if code in ("insufficient_quota", "payment_not_ready"):
+        return "refused", "limit"
+    if exc.status in (401, 403):
+        return "refused", "auth"
+    if exc.status in (400, 404):
+        return "error", "bad_args"
+    return "error", "upstream"
+
+
 class McpServer:
     """One request, one answer: no session, no SSE. Construct with the web app's ApiKeys."""
 
@@ -208,7 +231,7 @@ class McpServer:
         if method == "tools/list":
             return {"tools": tools()}
         if method == "tools/call":
-            return self._tools_call(row, params)
+            return self._tools_call_observed(row, params)
         raise _MethodNotFound(f"Unknown method '{method}'.")
 
     def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -217,7 +240,40 @@ class McpServer:
         return {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": dict(SERVER_INFO), "instructions": INSTRUCTIONS}
 
-    def _tools_call(self, row, params: dict[str, Any]) -> dict[str, Any]:
+    def _tools_call_observed(self, row, params: dict[str, Any]) -> dict[str, Any]:
+        """_tools_call, then one `mcp_call` analytics event (docs/analytics.md). The event is built from the
+        outcome only; it never reads tool arguments, and nothing in here can raise into the request."""
+        started, seen = time.monotonic(), []
+        try:
+            result = self._tools_call(row, params, seen)
+        except _BadArgs:
+            self._record_call(row, params, started, None, "error", "bad_args")
+            raise
+        except Exception:
+            self._record_call(row, params, started, None, "error", "internal")
+            raise
+        status, kind = ("ok", None) if not result.get("isError") else _classify(seen[0] if seen else None)
+        self._record_call(row, params, started, result, status, kind)
+        return result
+
+    def _record_call(self, row, params, started: float, result, status: str, error_kind: str | None) -> None:
+        try:
+            name = params.get("name")
+            known = {t["name"] for t in OWN_TOOLS} | set(_paid_tools()[0])
+            props: dict[str, Any] = {"tool": name if isinstance(name, str) and name in known else "unknown",
+                                     "status": status, "latency_ms": int((time.monotonic() - started) * 1000),
+                                     "paid": False, "key_ref": analytics.key_ref(row["key_id"])}
+            if error_kind:
+                props["error_kind"] = error_kind
+            billing = (result or {}).get("structuredContent", {}).get("billing") if status == "ok" else None
+            charged = billing.get("chargedAtomic") if isinstance(billing, dict) else None
+            if type(charged) is int and charged > 0:
+                props["paid"], props["cost_usd"] = True, analytics.usdc_to_usd_precise(charged)
+            analytics.emit("mcp_call", row["account_id"], **props)
+        except Exception as exc:  # noqa: BLE001 - analytics must never break a tool call
+            logger.warning("mcp_call analytics failed: %s", exc)
+
+    def _tools_call(self, row, params: dict[str, Any], seen: list | None = None) -> dict[str, Any]:
         name = params.get("name")
         if not isinstance(name, str) or not name:
             raise _BadArgs("name is required.")
@@ -228,6 +284,8 @@ class McpServer:
                 self.keys._rate(row["key_id"])
             data = self._call_tool(row, name, args)
         except ApiError as exc:
+            if seen is not None:
+                seen.append(exc)
             return _tool_error(exc.message)
         return _tool_success(data)
 

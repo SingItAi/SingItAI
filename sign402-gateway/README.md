@@ -606,6 +606,10 @@ Limits:
 - The paid data tools are sold on Base only; a Solana account's key gets a clear refusal for them.
 - A request with a browser `Origin` header is refused (403), as on `/v1`: keys belong in server code.
 - `GET /mcp` answers 405: there is no server-to-client SSE stream.
+- Each `tools/call` writes one `mcp_call` analytics event (tool, status, error class, latency, whether it was
+  charged and how much, a salted reference to the key) and nothing else: no key, address, account id or tool
+  argument. `initialize` and `tools/list` are not recorded, and a failing analytics write never affects the
+  call. See [analytics](../docs/analytics.md#mcp_call).
 
 ## Safety
 

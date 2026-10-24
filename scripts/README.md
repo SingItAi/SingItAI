@@ -68,3 +68,22 @@ hermes gateway restart
 
 See `hermes-plugins/sign402-wallet/README.md` for the secure configuration,
 allowlist-first test flow, and diagnostics.
+
+## Daily Metrics and Dashboard
+
+`daily-metrics.py` prints one day of aggregate counts as JSON (`--out DIR` also
+writes `DIR/YYYY-MM-DD.json`); `metrics-dashboard.py` turns the last N of those
+files into one static HTML page. Both are read-only and print no address,
+account id or key. `SIGN402_METRICS_EXCLUDE_UIDS` / `--exclude-uids-file PATH`
+drop your own test accounts (uid hashes, one per line in the file; keep the file
+out of git) from the events-based counts.
+
+```bash
+cd <APP_CHECKOUT>
+python3 scripts/daily-metrics.py --out ~/.sign402/metrics
+python3 scripts/metrics-dashboard.py            # -> ~/.sign402/metrics/dashboard.html
+```
+
+The dashboard is operator-only: view it over `ssh`/`scp`, never serve it on a
+public route. See [analytics](../docs/analytics.md) for every field, the
+margin caveat and the suggested cron lines.

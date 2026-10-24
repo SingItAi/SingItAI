@@ -59,6 +59,7 @@ KNOWN_EVENTS = frozenset({
     "api_key_created",
     "pwa_installed",
     "push_enabled",
+    "mcp_call",
 })
 
 # Prop keys that are known to be safe even though a word inside them would otherwise match a
@@ -66,6 +67,7 @@ KNOWN_EVENTS = frozenset({
 # clarity and so a future rename of the sensitive-word list cannot silently start dropping it).
 _SAFE_PROP_KEYS = frozenset({
     "tokens_in", "tokens_out", "cost_usd", "amount_usd", "daily_cap_usd", "per_purchase_cap_usd",
+    "key_ref",  # a salted 12-hex digest of an API key's id, never the key: "key" would otherwise drop it
 })
 
 # Whole snake_case words that make a prop key sensitive (matched word-by-word, not by substring,
@@ -119,6 +121,15 @@ def usdc_to_usd_string(amount_atomic: int) -> str:
     return f"{int(amount_atomic) / 1_000_000:.2f}"
 
 
+def usdc_to_usd_precise(amount_atomic: int) -> str:
+    """USDC atomic (1e-6) as an exact USD decimal string with at least 2 places, e.g. 3000 -> "0.003".
+
+    usdc_to_usd_string rounds to cents, which turns a $0.001 tool call into "0.00"."""
+    text = f"{int(amount_atomic) / 1_000_000:.6f}".rstrip("0")
+    whole, _, frac = text.partition(".")
+    return f"{whole}.{frac.ljust(2, '0')}"
+
+
 _salt_warning_lock = threading.Lock()
 _salt_warned = False
 
@@ -138,6 +149,15 @@ def hash_account_id(account_id: str, salt: str | None = None) -> str:
         _warn_missing_salt_once()
     digest = hashlib.sha256((str(account_id) + salt).encode("utf-8")).hexdigest()
     return digest[:16]
+
+
+def key_ref(key_id: str, salt: str | None = None) -> str:
+    """A stable, one-way reference to an API key's id (never its secret): the first 12 hex of
+    sha256(ANALYTICS_SALT + key_id). Lets a dashboard count distinct keys without naming one."""
+    salt = salt if salt is not None else os.environ.get(SALT_ENV, "")
+    if not salt:
+        _warn_missing_salt_once()
+    return hashlib.sha256((salt + str(key_id)).encode("utf-8")).hexdigest()[:12]
 
 
 class _EventStore:
