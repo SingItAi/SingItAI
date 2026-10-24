@@ -12,7 +12,7 @@
 import express from "express";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer } from "./metered.mjs";
+import { addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue, priceGuard } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
@@ -25,7 +25,7 @@ import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, addFormatRoutes } from "./formats.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic } from "./pricing.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 
 export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -168,6 +168,39 @@ const OUTPUT_SCHEMA = {
 
 const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 
+// The one question /pricing.json prices every model against: a single short message, and the max_tokens a
+// request gets when it omits the field (LIMITS.defaultTokens), the same default readRequest applies.
+const PRICING_REFERENCE = Object.freeze({ content: "What is the capital of France?", maxTokens: LIMITS.defaultTokens });
+
+// What a real POST of PRICING_REFERENCE's exact size would be offered: readRequest's own shape, fed through the
+// same chooseModel and ceilings() the 402 challenge calls (app.mjs's addUsageRoute, metered.mjs). `upto` is the
+// ceiling it authorizes (it settles only actual usage once an answer comes back, which is normally less);
+// `exact` is the flat ceiling it is charged, with no metering and no refund.
+async function pricingFor(config, catalogue, modelId) {
+  const chars = PRICING_REFERENCE.content.length;
+  const input = { messages: [{ role: "user", content: PRICING_REFERENCE.content }], maxTokens: PRICING_REFERENCE.maxTokens,
+    chars, messageCount: 1, model: modelId };
+  const askInput = await chooseModel(config, catalogue, input);
+  const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
+  const { upto, exact } = ceilings(askInput.info, askInput, exactOutputFraction);
+  const price = net => ({ priceAtomic: upto[net], usd: Number(usd(upto[net])) });
+  const ceiling = net => ({ ceilingAtomic: exact[net], usd: Number(usd(exact[net])) });
+  return {
+    upto: { base: price(BASE), solana: price(SOLANA) },
+    exact: { base: ceiling(BASE), solana: ceiling(SOLANA) },
+  };
+}
+
+// The same expected-price-per-million-tokens shown at GET /v1/models (observed cost if this service has answered
+// that model before, else the trusted market's cheapest qualifying share), null when neither is known.
+function perMillionFor(m, observed, market) {
+  const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
+  const share = seen ?? trusted ?? null;
+  const listed = m.promptUsdPerToken > 0 || m.completionUsdPerToken > 0;
+  const ours = share === null || !listed ? null : share * (1 + TERMS.markupBps / 10_000);
+  return ours === null ? null : { input: m.promptUsdPerToken * 1e6 * ours, output: m.completionUsdPerToken * 1e6 * ours };
+}
+
 // The least and the most one answer can be charged, for discovery. The least is Base's settlement fee; the most is
 // the dearest listed model's ceiling for the largest question and answer this service takes, on Solana's terms.
 // `charsPerToken: 1` matches the `upto` authorization this max actually describes (see pricing.mjs's
@@ -253,6 +286,44 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               singitUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * ours, output: m.completionUsdPerToken * 1e6 * ours },
               savingsVsListPct: Math.round((1 - ours) * 100) }) };
         })] });
+  });
+
+  // Free: the same per-model ceilings the 402 challenge offers, computed by the same chooseModel/ceilingAtomic
+  // functions, for one reference question — so a buyer (or the website's pricing page) can compare SingIt's
+  // price without sending a real request or a payment. 503 while the catalogue has never loaded, rather than a
+  // list with invented or stale prices; a catalogue that loaded once and later failed to refresh keeps serving
+  // its last list, same as /v1/models.
+  app.get("/pricing.json", open, async (_req, res) => {
+    if (catalogue && catalogue.models === null) {
+      res.set("Retry-After", "5");
+      return res.status(503).json({ error: { message: "The model catalogue has not loaded yet. Try again shortly.",
+        type: "upstream_error" } });
+    }
+    const listed = catalogue ? await catalogue.list().catch(() => []) : [];
+    const answerable = await Promise.all(listed.map((m) => (catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
+    const models = listed.filter((m, i) => answerable[i] || m.id === config.model);
+    const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
+    const priced = [];
+    for (const m of models) {
+      let p;
+      try { p = await pricingFor(config, catalogue, m.id); } catch { continue; } // not resolvable right now; omit it
+      const perMillion = perMillionFor(m, observed, market);
+      priced.push({ id: m.id, name: m.name, ...p, ...(perMillion ? { perMillion } : {}) });
+    }
+    const chars = PRICING_REFERENCE.content.length;
+    res.json({
+      generatedAt: new Date().toISOString(),
+      currency: "USDC",
+      referenceRequest: { messages: 1, chars, inputTokens: Math.ceil(chars / 4) + 4, maxOutputTokens: PRICING_REFERENCE.maxTokens },
+      networks: {
+        base: { chain: BASE, settlementFeeAtomic: TERMS.settlementFeeAtomic, settlementFeeUsd: Number(usd(TERMS.settlementFeeAtomic)) },
+        solana: { chain: SOLANA, settlementFeeAtomic: SOLANA_TERMS.settlementFeeAtomic,
+                  settlementFeeUsd: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) },
+      },
+      note: "upto settles actual usage (priced here at the reference request's own token counts, never a worst-case "
+        + "ceiling); exact pays the ceiling shown, flat, with no metering and no refund.",
+      models: priced,
+    });
   });
 
   // Free: how directories (x402scan, agents) find the paid route. x402scan reads this first, then /.well-known/x402.
@@ -379,6 +450,14 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         "/v1/models": { get: {
           operationId: "listModels", summary: "Models that can be asked for now, with their prices",
           responses: { 200: { description: "Model list" } }, security: [],
+        } },
+        "/pricing.json": { get: {
+          operationId: "listPricing", summary: "Free: per-model upto/exact 402 prices for one reference question",
+          description: "What GET/HEAD discovery and a real paid request would be offered for each model that can be "
+            + "asked for now, computed by the same chooseModel/ceilingAtomic functions, for a documented reference "
+            + "question. No payment, no model call.",
+          responses: { 200: { description: "Price by model" },
+                       503: { description: "The model catalogue has never loaded yet; see Retry-After" } }, security: [],
         } },
       },
       components: { securitySchemes: { x402: { type: "apiKey", in: "header", name: "PAYMENT-SIGNATURE",
