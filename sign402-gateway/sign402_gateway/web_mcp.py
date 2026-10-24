@@ -303,7 +303,10 @@ class McpServer:
                                   "web pages."), {}
         status, result, headers = self._authenticated(authorization, api_key, protocol_version, body)
         if origin:  # trusted, checked above: let the caller read the answer across origins
-            headers = {**headers, "Access-Control-Allow-Origin": origin, "Vary": "Origin"}
+            # Expose-Headers on the real answer too, not only the preflight: a 401's WWW-Authenticate is
+            # otherwise unreadable to the page (Codex review).
+            headers = {**headers, "Access-Control-Allow-Origin": origin, "Vary": "Origin",
+                       "Access-Control-Expose-Headers": "WWW-Authenticate, Mcp-Session-Id"}
         return status, result, headers
 
     def _authenticated(self, authorization: str | None, api_key: str | None, protocol_version: str | None,

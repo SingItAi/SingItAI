@@ -54,7 +54,7 @@ from .web_accounts import (
 )
 from .web_api_keys import ApiError, ApiKeys, Stream
 from .web_api_proxy import Relay
-from .web_mcp import McpServer, glama_json, rpc_error, server_card
+from .web_mcp import McpServer, allowed_origins_from_env, glama_json, rpc_error, server_card
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +174,7 @@ class WebApi:
         shop: Callable[[str, str, Mapping[str, Any] | None], tuple[int, dict[str, Any]]] | None = None,
         now: Callable[[], float] = time.time,
         public_origin: str = "",
+        mcp_allowed_origins: frozenset[str] | None = None,
     ):
         self.auth = auth
         self.allowance = allowance
@@ -196,7 +197,7 @@ class WebApi:
         self.push_by_account = RateLimit(20, 3600)
         self.keys_by_account = RateLimit(20, 3600)
         self.keys = ApiKeys(self, now=now)
-        self.mcp = McpServer(self.keys, public_origin=public_origin)
+        self.mcp = McpServer(self.keys, public_origin=public_origin, allowed_origins=mcp_allowed_origins)
 
     def handle(self, method: str, path: str, *, token: str, csrf: str | None, body: dict[str, Any],
                client: str, expected_account: str | None = None,
@@ -916,6 +917,7 @@ def build_web_api_from_env(allowance: AllowanceService, env: Mapping[str, str] |
         max_deploys_per_day=int(values.get("SIGN402_WEB_MAX_DEPLOYS_PER_DAY", "50")),
         shop=shop,
         public_origin=uri,  # the MCP host's own origin: trusted for /mcp's Origin check and its server-card
+        mcp_allowed_origins=allowed_origins_from_env(values),  # the same env mapping, not os.environ (Codex review)
     )
     api.solana = solana
     surplus_key = str(values.get("SIGN402_WEB_SURPLUS_API_KEY", "")).strip()

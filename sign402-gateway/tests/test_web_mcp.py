@@ -177,6 +177,11 @@ class AuthTests(Fixture):
         self.assertEqual(headers["Access-Control-Allow-Origin"], "https://glama.ai")
         self.assertEqual(headers["Vary"], "Origin")
 
+    def test_a_trusted_origin_can_read_www_authenticate_on_a_401(self):
+        status, _, headers = self.rpc(None, "initialize", origin="https://glama.ai")
+        self.assertEqual(status, 401)
+        self.assertIn("WWW-Authenticate", headers["Access-Control-Expose-Headers"])
+
     def test_the_mcp_hosts_own_origin_is_trusted(self):
         made = self.make_key()
         status, out, headers = self.rpc(made["key"], "initialize", origin=URI)
@@ -200,6 +205,13 @@ class AllowedOriginsEnvTests(unittest.TestCase):
         origins = allowed_origins_from_env({"SINGIT_MCP_ALLOWED_ORIGINS": "https://only.example, https://also.example/"})
         self.assertEqual(origins, {"https://only.example", "https://also.example"})
         self.assertNotIn("https://glama.ai", origins)
+
+    def test_web_api_passes_its_allowlist_to_the_mcp_server(self):
+        from sign402_gateway.web_mcp import McpServer
+        server = McpServer(Mock(), allowed_origins=allowed_origins_from_env(
+            {"SINGIT_MCP_ALLOWED_ORIGINS": "https://only.example"}))
+        self.assertTrue(server.is_trusted_origin("https://only.example"))
+        self.assertFalse(server.is_trusted_origin("https://glama.ai"))
 
 
 class FreeToolTests(Fixture):
