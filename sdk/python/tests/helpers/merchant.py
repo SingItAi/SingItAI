@@ -138,8 +138,11 @@ def exact_offer(*, network, asset, pay_to, amount, max_timeout_seconds=120, asse
 class Merchant:
     """Starts a one-shot local HTTP merchant on a background thread."""
 
-    def __init__(self, accepts, bill=None):
+    def __init__(self, accepts, bill=None, routes=None):
         self.accepts = accepts
+        self.routes = routes or {}
+        self.payment_headers: list[str] = []
+        self.requests = 0
         self.bill = bill or (lambda offer: offer["amount"] if offer["scheme"] == "exact" else str(int(offer["amount"]) // 2))
         outer = self
 
@@ -147,7 +150,15 @@ class Merchant:
             def log_message(self, *args):
                 pass
 
+            def do_GET(self):
+                status, body = outer.routes.get(self.path, (404, {"error": "Not found."}))
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(body).encode())
+
             def do_POST(self):
+                outer.requests += 1
                 length = int(self.headers.get("Content-Length") or 0)
                 body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
                 payment_header = self.headers.get("payment-signature")
@@ -160,6 +171,7 @@ class Merchant:
                     self.end_headers()
                     self.wfile.write(json.dumps({"error": "Payment required."}).encode())
                     return
+                outer.payment_headers.append(payment_header)
                 payment_payload = decode(payment_header)
                 offer = payment_payload["accepted"]
                 verify = verify_upto_payload if offer["scheme"] == "upto" else verify_exact_payload

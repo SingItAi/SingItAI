@@ -9,10 +9,10 @@ configuration (both version 0.1.0). Publishing to npm/PyPI needs a separate OK f
 | | TypeScript | Python |
 |---|---|---|
 | Package | [`@singit/sdk`](typescript) (ESM, Node ≥20) | [`singit`](python) (Python ≥3.10) |
-| Base / Base Sepolia | `upto` (default) and `exact` | `exact` only |
+| Base / Base Sepolia | `upto` (default) and `exact` | `upto` (default) and `exact` |
 | Solana | `exact` (via `@x402/svm`) | `exact`, optional extra `singit[svm]` |
 
-Python is `exact`-only because the official `x402` Python package has no `upto` client scheme yet.
+Both use the official x402 client packages (`@x402/*` 2.28.0, `x402` 2.25.0 on PyPI) for signing.
 
 ## Quick start
 
