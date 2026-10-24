@@ -288,6 +288,27 @@ class DailyMetricsTests(unittest.TestCase):
                          {"web": {"count": 3, "buyers": 1, "usd": "3.50"},
                           "telegram": {"count": 1, "buyers": 1, "usd": "0.05"}})
 
+    def test_unsigned_solana_expiries_are_not_counted_as_errors(self):
+        path = self.root / "solana-allowance.db"
+        db = sqlite3.connect(path)
+        with db:
+            db.executescript("""
+                CREATE TABLE limits (account TEXT PRIMARY KEY, owner TEXT, daily_cap INTEGER, per_purchase_cap INTEGER,
+                    expiry INTEGER, created_at INTEGER, updated_at INTEGER);
+                CREATE TABLE ops (op_id TEXT PRIMARY KEY, account TEXT, kind TEXT, amount INTEGER, state TEXT,
+                    created_at INTEGER, detail TEXT NOT NULL DEFAULT '');
+                CREATE TABLE spends (id INTEGER PRIMARY KEY, account TEXT, amount INTEGER, purpose TEXT,
+                    pull_tx TEXT, created_at INTEGER);
+            """)
+            for i, detail in enumerate(self.dm.SOLANA_UNSIGNED_DETAILS):
+                db.execute("INSERT INTO ops VALUES (?, 'solana:BBB', 'GRANT', 1, 'EXPIRED', ?, ?)",
+                           (f"u{i}", self.s + 5, detail))
+            db.execute("INSERT INTO ops VALUES ('late', 'solana:BBB', 'GRANT', 1, 'EXPIRED', ?, "
+                       "'Too late for this transaction; prepare it again.')", (self.s + 6,))
+        db.close()
+        report = self.dm.build_report(DAY, **self.missing_paths(solana_db=path))
+        self.assertEqual(report["errors"]["ops_expired"], 1)  # only the signed-but-too-late one
+
     def test_solana_allowance_metrics(self):
         solana = self.seed_solana()
         report = self.dm.build_report(DAY, **self.missing_paths(solana_db=solana))

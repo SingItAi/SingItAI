@@ -32,6 +32,9 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 TZ_NAME = "Europe/Prague"
+# solana_allowance.py's details for a Solana op that was never signed (expire_stale_prepared and
+# supersede_prepared); keep in sync.
+SOLANA_UNSIGNED_DETAILS = ("Not signed in time.", "Replaced by a newer request.")
 
 STATE_DIR_ENV = "SIGN402_STATE_DIR"
 DEFAULT_STATE_DIR = "~/.sign402"
@@ -267,8 +270,16 @@ def solana_allowance_metrics(path: Path, s: int, e: int) -> dict[str, Any] | Non
         out: dict[str, Any] = {}
         out["limits_set"] = _scalar(db, "SELECT COUNT(*) FROM limits WHERE created_at >= ? AND created_at < ?", (s, e))
         op_rows = _rows(
-            db, "SELECT kind, state, COUNT(*) n FROM ops WHERE created_at >= ? AND created_at < ? GROUP BY kind, state",
-            (s, e))
+            # A prompt the owner never signed (superseded by a retry, or left until its blockhash died) is
+            # EXPIRED in the store but is a retry, not an error: report it as UNSIGNED so errors.ops_expired
+            # keeps meaning "signed but too late" (SI-45, Codex review).
+            db, "SELECT kind, CASE WHEN state = 'EXPIRED' AND detail IN (?, ?) THEN 'UNSIGNED' ELSE state END st,"
+                " COUNT(*) n FROM ops WHERE created_at >= ? AND created_at < ? GROUP BY kind, st",
+            (*SOLANA_UNSIGNED_DETAILS, s, e))
+        if op_rows is None:  # an older store without ops.detail: plain states, as before
+            op_rows = _rows(db, "SELECT kind, state st, COUNT(*) n FROM ops WHERE created_at >= ? AND created_at < ?"
+                                " GROUP BY kind, state", (s, e))
+        op_rows = [{"kind": r["kind"], "state": r["st"], "n": r["n"]} for r in op_rows] if op_rows else op_rows
         out["_ops"] = op_rows
         settled = _rows(
             db, "SELECT COUNT(*) n, COUNT(DISTINCT account) accounts, SUM(amount) usd FROM spends"
