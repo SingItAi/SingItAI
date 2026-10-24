@@ -135,7 +135,9 @@ class Reconciliation:
         known = agent is not None or limiter is not None
         if limiter is None:
             return known, ({"configured": False, "state": "none"} if known else None)
-        spent = sum(a for a, r, _ in self.base.settlements_between(account, today, now) if not r.endswith("/v1/credit"))
+        # Every settlement today, credit top-ups included: a top-up is paid through the limiter too, so it uses the
+        # daily cap even though the spend breakdown above reports it separately (Codex review).
+        spent = sum(a for a, _, _ in self.base.settlements_between(account, today, now))
         state = ("paused" if self.base.limiter_paused(limiter["limiter_address"])
                  else "expired" if limiter["expiry"] <= now else "active")
         # Our own bookkeeping of today's settled spend. The limiter's remainingToday() on chain is authoritative.

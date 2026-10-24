@@ -334,7 +334,12 @@ async function cancelSwitch() {
 async function loadAllowance() {
   state.allowance = await api.allowance();
   // A line of context under the allowance card; it never blocks or fails the card.
-  api.walletReport(state.session.address).then((r) => { state.spend30 = r.spent; render(); }).catch(() => {});
+  // Dropped if the wallet changed while it was on its way (Codex review): never show another wallet's spend.
+  const address = state.session.address;
+  api.walletReport(address).then((r) => {
+    if (state.session?.address !== address) return;
+    state.spend30 = r.spent; render();
+  }).catch(() => {});
 }
 
 const last30Line = () => state.spend30

@@ -72,7 +72,8 @@ class BaseReportTests(Base):
         self.assertEqual(out["creditTopUps"], {"count": 1, "atomic": "4000000", "usd": "4.00"})
         self.assertEqual(out["allowance"], {
             "configured": True, "state": "active", "dailyCapAtomic": "5000000", "perPurchaseCapAtomic": "2000000",
-            "spentTodayAtomic": "300000", "remainingTodayAtomic": "4700000", "expiry": NOW + 10 * DAY,
+            # today: the 0.30 answer and the 4.00 credit top-up, which is paid through the limiter too
+            "spentTodayAtomic": "4300000", "remainingTodayAtomic": "700000", "expiry": NOW + 10 * DAY,
             "limiter": "0x" + "11" * 20})
 
     def test_days_narrows_the_window(self):
