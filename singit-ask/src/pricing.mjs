@@ -63,9 +63,14 @@ export function billUsage(usage, terms = TERMS, { allowOverrun = false } = {}) {
 // known (metered.mjs's `ceilings`, catalogue.mjs's `priceGuard`): Surplus's own list prices are above what a
 // seller actually charges, so a ceiling priced at list (share 1) holds even when a dearer seller wins; a smaller
 // share holds only together with the X-Min-Discount header that makes it true.
-export function ceilingAtomic(model, { chars, maxTokens, messageCount, charsPerToken = 4 }, terms, share = 1) {
+// The most the model itself could bill for this question and answer size, in micro-units, before markup and fee.
+export function worstModelCostMicro(model, { chars, maxTokens, messageCount, charsPerToken = 4 }, share = 1) {
   const inputTokens = Math.ceil(chars / charsPerToken) + 4 * messageCount;
-  const worst = Math.ceil((inputTokens * model.promptUsdPerToken + maxTokens * model.completionUsdPerToken) * share * 1e6);
+  return Math.ceil((inputTokens * model.promptUsdPerToken + maxTokens * model.completionUsdPerToken) * share * 1e6);
+}
+
+export function ceilingAtomic(model, size, terms, share = 1) {
+  const worst = worstModelCostMicro(model, size, share);
   const total = BigInt(worst) + (BigInt(worst) * BigInt(terms.markupBps) + 9999n) / 10000n + BigInt(terms.settlementFeeAtomic);
   const floor = BigInt(MIN_CEILING_ATOMIC);
   return (total > floor ? total : floor).toString();

@@ -133,7 +133,10 @@ node --env-file=.env src/server.mjs
 | `SINGIT_ASK_MODEL` | Upstream model. Default: `deepseek-v4.1-flash`. |
 | `SINGIT_ASK_PORT` | Loopback port. Default: `8140`. |
 | `SINGIT_ASK_FREE_MODELS` | Models answered free as `free/<id>` on the public route, comma-separated. Unset: the default model. Empty: free answers off. |
-| `SINGIT_ASK_FREE_PER_VISITOR`, `SINGIT_ASK_FREE_PER_DAY` | Free answers a day per visitor (Cloudflare client address) and for everyone together. Defaults: 20 and 1000. Free answers are capped at 400 tokens and 4000 characters of question. |
+| `SINGIT_ASK_FREE_PER_VISITOR`, `SINGIT_ASK_FREE_PER_DAY` | Free answers a day per visitor and for everyone together. Defaults: 20 and 1000. A visitor is a network, not an address: the Cloudflare client address's IPv4 /24 or IPv6 /64 (an IPv4-mapped IPv6 address counts as its IPv4 network), so rotating addresses in one subnet does not multiply the allowance. Free answers are capped at 400 tokens and 4000 characters of question. |
+| `SINGIT_ASK_FREE_BUDGET_USD_PER_DAY` | Optional daily dollar budget for free answers. Unset (default): no budget is checked. When set, each free answer is counted at the model cost Surplus reports for it (`usage.buyer_cost_micro`, validated like a paid answer's, with no markup or fee); with no usable report it counts at the model's list price for its worst case (400 output tokens, input at 4 characters per token). Once the day's spend reaches the budget, free answers are refused with `429` and `Retry-After` until midnight UTC. While a budget is set, a model whose price is not known is not answered free (`503`). Counters are in memory and restart with the service. |
+
+Free answers have no wallet, so there is no per-wallet limit here: the network above is the only identity they carry. Free models are listed in `GET /v1/models` as `free/<id>` entries (`free: true`, with their `limits`) next to the paid ones, and in `/openapi.json` under the chat route's `x-free-models`. Wallet-based limits belong to the gateway's free models (`sign402-gateway/README.md`).
 
 The service listens on 127.0.0.1 only. Configure a Cloudflare tunnel hostname to publish it. Only loopback proxies are trusted for the forwarded HTTPS scheme.
 
