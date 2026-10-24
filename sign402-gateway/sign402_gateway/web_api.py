@@ -25,6 +25,10 @@ Environment:
     SIGN402_WEB_SURPLUS_API_KEY          a Surplus buyer key (inf_…): turns on the universal /v1 paid from the
                                          account's balance (web_api_proxy.py); without it /v1 pays per answer
     SIGN402_WEB_SURPLUS_URL              Surplus's API (https://api.surplusintelligence.ai)
+    SIGN402_WEB_FREE_MODELS              chat models answered free as "free/<id>" on /v1, comma-separated; needs the
+                                         Surplus key. Empty (default): OFF (web_free.py)
+    SIGN402_WEB_FREE_PER_ACCOUNT_PER_DAY, SIGN402_WEB_FREE_PER_NETWORK_PER_DAY, SIGN402_WEB_FREE_PER_DAY,
+    SIGN402_WEB_FREE_MAX_TOKENS          the free limits: 20, 40, 1000 and 400 by default
 plus everything SIGN402_ALLOWANCE_* the lane itself needs.
 """
 
@@ -774,7 +778,8 @@ class WebHandler(BaseHTTPRequestHandler):
                     raise error_ from None
             status, out, headers = self.server.api.keys.public(
                 method, path[len(API_PREFIX):], authorization=self.headers.get("Authorization"),
-                origin=self.headers.get("Origin"), body=body, headers=self.headers, query=dict(parse_qsl(query)), raw=raw)
+                origin=self.headers.get("Origin"), body=body, headers=self.headers, query=dict(parse_qsl(query)), raw=raw,
+                client=self._client())
             if isinstance(out, Relay):
                 self._send_relay(out)
             elif isinstance(out, Stream):
@@ -783,7 +788,8 @@ class WebHandler(BaseHTTPRequestHandler):
                 self._send(status, out, headers)
         except ApiError as error:
             self.close_connection = True
-            self._send(error.status, error.body())
+            self._send(error.status, error.body(),
+                       {"Retry-After": str(error.retry_after)} if error.retry_after else None)
         except WebError as error:
             self._send(error.status, ApiError(error.status, error.message, type_="api_error", code=error.code).body())
         except Exception:
@@ -870,6 +876,27 @@ def build_web_api_from_env(allowance: AllowanceService, env: Mapping[str, str] |
 
         api.keys.proxy = Proxy(api.keys, Upstream(surplus_key, str(values.get("SIGN402_WEB_SURPLUS_URL", "")
                                                                    or SURPLUS_URL)), Balances(store.path))
+        free_models = [m.strip() for m in str(values.get("SIGN402_WEB_FREE_MODELS", "")).split(",") if m.strip()]
+        if free_models:  # OFF unless configured
+            from . import web_free
+
+            def free_limit(name: str, default: int) -> int:
+                raw = str(values.get(name, "") or "").strip()
+                if not raw:
+                    return default
+                if not raw.isdigit() or int(raw) < 1:
+                    raise ValueError(f"{name} must be a whole number above zero.")
+                return int(raw)
+
+            api.keys.free = web_free.FreeModels(
+                free_models, api.keys.proxy.upstream,
+                per_account=free_limit("SIGN402_WEB_FREE_PER_ACCOUNT_PER_DAY", web_free.DEFAULT_PER_ACCOUNT),
+                per_network=free_limit("SIGN402_WEB_FREE_PER_NETWORK_PER_DAY", web_free.DEFAULT_PER_NETWORK),
+                per_day=free_limit("SIGN402_WEB_FREE_PER_DAY", web_free.DEFAULT_PER_DAY),
+                max_tokens=free_limit("SIGN402_WEB_FREE_MAX_TOKENS", web_free.DEFAULT_MAX_TOKENS))
+    elif str(values.get("SIGN402_WEB_FREE_MODELS", "")).strip():
+        logger.warning("web api: SIGN402_WEB_FREE_MODELS is ignored: free answers need SIGN402_WEB_SURPLUS_API_KEY "
+                       "and SIGN402_WEB_INTERNAL_TOKEN")
     from .web_push import from_env as push_from_env
 
     try:

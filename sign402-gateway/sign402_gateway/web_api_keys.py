@@ -51,9 +51,11 @@ NAME = re.compile(r"[\w .,:()'-]{1,40}")
 class ApiError(Exception):
     """An error in OpenAI's shape, so SDKs show its message as it is."""
 
-    def __init__(self, status: int, message: str, *, type_: str = "invalid_request_error", code: str | None = None):
+    def __init__(self, status: int, message: str, *, type_: str = "invalid_request_error", code: str | None = None,
+                 retry_after: int | None = None):
         super().__init__(message)
         self.status, self.message, self.type, self.code = status, message, type_, code
+        self.retry_after = retry_after  # seconds, sent as Retry-After
         self.anthropic = False  # set for /v1/messages: Anthropic's SDK and Claude Code read their own shape
 
     def body(self) -> dict[str, Any]:
@@ -118,6 +120,7 @@ class ApiKeys:
         self._reserved: dict[str, int] = defaultdict(int)  # key_id -> most the answers in flight may cost
         self._calls: dict[str, list[float]] = defaultdict(list)
         self.proxy = None  # web_api_proxy.Proxy when a Surplus key is set: every format, paid from the balance
+        self.free = None  # web_free.FreeModels when SIGN402_WEB_FREE_MODELS is set (and there is a Surplus key)
 
     @property
     def store(self):
@@ -247,17 +250,19 @@ class ApiKeys:
 
     def public(self, method: str, path: str, *, authorization: str | None, origin: str | None,
                body: Mapping[str, Any], headers: Mapping[str, Any] | None = None,
-               query: Mapping[str, str] | None = None, raw: tuple[bytes, str] | None = None) -> tuple[int, Any, dict[str, str]]:
+               query: Mapping[str, str] | None = None, raw: tuple[bytes, str] | None = None,
+               client: str = "") -> tuple[int, Any, dict[str, str]]:
         try:
             return self._public(method, path, authorization=authorization, origin=origin, body=body,
-                                headers=headers or {}, query=query or {}, raw=raw)
+                                headers=headers or {}, query=query or {}, raw=raw, client=client)
         except ApiError as error:
             error.anthropic = path.startswith("/messages")
             raise
 
     def _public(self, method: str, path: str, *, authorization: str | None, origin: str | None,
                 body: Mapping[str, Any], headers: Mapping[str, Any],
-                query: Mapping[str, str], raw: tuple[bytes, str] | None = None) -> tuple[int, Any, dict[str, str]]:
+                query: Mapping[str, str], raw: tuple[bytes, str] | None = None,
+                client: str = "") -> tuple[int, Any, dict[str, str]]:
         if origin:
             # A key belongs in server code. A page that holds one gives it to everyone who opens it.
             raise ApiError(403, "API keys are for server code, not browsers. Keep the key out of web pages.",
@@ -265,6 +270,14 @@ class ApiKeys:
         row = self._key(authorization, headers.get("x-api-key"))
         if method == "POST" and path in SEARCH_PATHS:
             return self._search(row, path, body)
+        if method == "POST" and path == "/chat/completions" and self.free is not None and self.free.asks(body.get("model")):
+            # Before every limit below: a free answer is not a paid request, so it is not counted against the key's
+            # per-minute rate or daily cap, and it holds and spends nothing.
+            status, out, headers = self.free.answer(row, body, client, ApiError)
+            if body.get("stream"):
+                options = body.get("stream_options") if isinstance(body.get("stream_options"), dict) else {}
+                return status, Stream(sse(out, include_usage=bool(options.get("include_usage")))), headers
+            return status, out, headers
         job = VIDEO_JOB.fullmatch(path) if method == "GET" else None
         if job:
             return self._video_job(job.group(1), bool(job.group(2)), headers, query)
@@ -283,7 +296,8 @@ class ApiKeys:
             status, reply = self._shop("api-models", row["account_id"], {})
             if status != 200:
                 raise ApiError(502, "The model list is unavailable right now.", type_="api_error")
-            return 200, {"object": "list", "data": reply.get("data") or []}, {}
+            free = self.free.listing() if self.free is not None else []
+            return 200, {"object": "list", "data": [*free, *(reply.get("data") or [])]}, {}
         if method == "POST" and path == "/chat/completions":
             return self._chat(row, body)
         if self.proxy is not None:
