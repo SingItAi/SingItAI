@@ -617,18 +617,20 @@ settlement, spend and account stores — never a wallet address or account id. I
 (`*`), `Cache-Control: public, max-age=300`, cached in process for 5 minutes (so a page refreshing per
 visitor does not hit SQLite each time), and rate-limited per IP.
 
+Example (the seeded test data in tests/test_brand_numbers.py, not production numbers):
+
 ```json
 {
   "version": 1,
-  "measuredAt": "2026-10-24T15:10:00.000Z",
+  "measuredAt": "…",
   "scope": "Counts payments made through the SingIt app and its agents' Base and Solana allowance lanes (settlements and spends), excluding credit top-ups. Direct x402 calls to ask.singitai.app settle on-chain and are not counted here.",
   "chains": ["base", "solana"],
   "payments": {
-    "settled": { "total": 412, "last30d": 96 },
-    "payingWallets": { "total": 180, "last30d": 41 },
-    "usdcVolume": { "total": 37.52, "last30d": 9.11 }
+    "settled": { "total": 3, "last30d": 2 },
+    "payingWallets": { "total": 3, "last30d": 2 },
+    "usdcVolume": { "total": 10.7, "last30d": 8.2 }
   },
-  "accounts": 203,
+  "accounts": 2,
   "mcpTools": 14,
   "models": null
 }
