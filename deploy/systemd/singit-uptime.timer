@@ -1,0 +1,16 @@
+# TEMPLATE ONLY. This unit is NOT installed or enabled by anything in this repository.
+# Installing and enabling it needs the owner's OK. It is a USER timer for singit-uptime.service:
+#   cp singit-uptime.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now singit-uptime.timer
+# (run those steps only after the owner has agreed.)
+
+[Unit]
+Description=Run the SingIt uptime probe every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

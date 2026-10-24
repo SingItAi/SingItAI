@@ -1,0 +1,92 @@
+// The CDP validator script is the only thing here that talks to the network, so its parsing and exit codes are
+// pinned against fake fetch implementations. Nothing in this file makes a request.
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { DEFAULT_ENDPOINT, evaluate, readConfig, validateAll, validateResource } from "../cdp-validate.mjs";
+
+const URL = "https://ask.singitai.app/v1/exa/answer";
+const entry = { url: URL, method: "POST" };
+const reply = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(body) });
+const stub = (response) => { const calls = []; const impl = async (url, init) => { calls.push({ url, init }); return typeof response === "function" ? response(url, init) : response; }; impl.calls = calls; return impl; };
+const accepted = { valid: true, simulation: { outcome: "accepted" }, preflight: { failures: [], recommendations: [] } };
+
+test("an accepted simulation with no required failures is ok", () => {
+  assert.deepEqual(evaluate(accepted), { ok: true, valid: true, outcome: "accepted", failures: [], recommendations: [], reasons: [] });
+  assert.equal(evaluate({ valid: true, simulation: { outcome: "accepted" } }).ok, true);
+});
+
+test("invalid, rejected, or a required preflight failure is not ok", () => {
+  const invalid = evaluate({ ...accepted, valid: false });
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.reasons[0], /valid is false/);
+  const rejected = evaluate({ valid: true, simulation: { outcome: "rejected" } });
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.reasons[0], /outcome is "rejected"/);
+  const noSimulation = evaluate({ valid: true });
+  assert.match(noSimulation.reasons[0], /outcome is null/);
+  const required = evaluate({ ...accepted, preflight: { failures: [{ code: "resource_unreachable", message: "resource did not answer" }] } });
+  assert.equal(required.ok, false);
+  assert.deepEqual(required.failures, ["resource_unreachable: resource did not answer"]);
+});
+
+test("failure and recommendation entries are read from the shapes the reply may use", () => {
+  const findings = evaluate({ ...accepted,
+    preflight: { requiredFailures: ["no output example"], recommendations: { warnings: ["add an icon"] } } });
+  assert.deepEqual(findings.failures, ["no output example"]);
+  assert.deepEqual(findings.recommendations, ["add an icon"]);
+  // Recommendations alone never fail the check.
+  assert.equal(evaluate({ ...accepted, preflight: { recommendations: ["add an icon"] } }).ok, true);
+});
+
+test("the request carries the resource and method, and no payment or credential", async () => {
+  const fetchImpl = stub(reply(accepted));
+  const result = await validateResource(entry, { fetchImpl });
+  assert.equal(result.ok, true);
+  const [call] = fetchImpl.calls;
+  assert.equal(call.url, DEFAULT_ENDPOINT);
+  assert.equal(call.init.method, "POST");
+  assert.deepEqual(JSON.parse(call.init.body), { resource: URL, method: "POST" });
+  assert.deepEqual(Object.keys(call.init.headers).sort(), ["accept", "content-type"]);
+  assert.ok(!/payment|authorization|x-api-key|cookie/i.test(JSON.stringify(call.init.headers)));
+});
+
+test("a failed call is reported as an error, not as a passed or failed resource", async () => {
+  const rateLimited = await validateResource(entry, { fetchImpl: stub(reply({ message: "slow down" }, 429)) });
+  assert.deepEqual(rateLimited, { url: URL, method: "POST", error: "HTTP 429: slow down" });
+  const html = await validateResource(entry, { fetchImpl: stub({ ok: true, status: 200, text: async () => "<html>" }) });
+  assert.match(html.error, /not JSON/);
+  const down = await validateResource(entry, { fetchImpl: async () => { throw new Error("connect ECONNREFUSED"); } });
+  assert.match(down.error, /request failed: connect ECONNREFUSED/);
+  const slow = await validateResource(entry, { fetchImpl: async () => { throw Object.assign(new Error("timeout"), { name: "TimeoutError" }); }, timeoutMs: 1500 });
+  assert.equal(slow.error, "timed out after 1500 ms");
+});
+
+test("a 4xx that still carries a verdict is judged on that verdict", async () => {
+  const result = await validateResource(entry, { fetchImpl: stub(reply({ valid: false, simulation: { outcome: "rejected" } }, 400)) });
+  assert.equal(result.ok, false);
+  assert.equal(result.error, undefined);
+  assert.equal(result.outcome, "rejected");
+});
+
+test("exit codes: 0 when every resource passes, 1 on a failed resource, 2 when the check could not run", async () => {
+  const resources = [entry, { url: "https://ask.singitai.app/v1/responses", method: "POST" }];
+  assert.equal((await validateAll({ resources, fetchImpl: stub(reply(accepted)) })).code, 0);
+  const rejected = await validateAll({ resources, fetchImpl: stub(reply({ valid: true, simulation: { outcome: "rejected" } })) });
+  assert.equal(rejected.code, 1);
+  const broken = await validateAll({ resources, fetchImpl: async () => { throw new Error("ENOTFOUND"); } });
+  assert.equal(broken.code, 2);
+  // A transport error outranks a verdict: the run is incomplete, not a clean failure.
+  const mixed = await validateAll({ resources: [{ url: URL, method: "GET" }], fetchImpl: stub(reply(accepted)) });
+  assert.equal(mixed.code, 0);
+});
+
+test("the committed config lists live https resources with a supported method", () => {
+  const config = readConfig();
+  assert.equal(config.endpoint, DEFAULT_ENDPOINT);
+  assert.equal(config.resources.length, 8);
+  for (const resource of config.resources) {
+    assert.match(resource.url, /^https:\/\/[^/]+\/v1\//);
+    assert.ok(["GET", "POST"].includes(resource.method));
+  }
+  assert.equal(new Set(config.resources.map((r) => r.url)).size, config.resources.length);
+});

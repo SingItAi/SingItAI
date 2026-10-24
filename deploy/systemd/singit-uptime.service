@@ -1,0 +1,22 @@
+# TEMPLATE ONLY. This unit is NOT installed or enabled by anything in this repository.
+# Installing it (and the matching singit-uptime.timer) on a host needs the owner's OK.
+#
+# It is a USER unit: copy it to ~/.config/systemd/user/ only after that OK, adjust ExecStart to
+# the real checkout path, then `systemctl --user daemon-reload`.
+#
+# One run sends six unpaid GET requests, records them in ~/.sign402/uptime.db (or
+# $SINGIT_UPTIME_DB) and exits 0 even when an endpoint is down: it is a recorder, not an alerter.
+# No secrets are used or needed.
+
+[Unit]
+Description=SingIt uptime probe (one round of unpaid GET checks, recorded locally)
+Documentation=file://%h/SingItAI/scripts/README.md
+
+[Service]
+Type=oneshot
+# Placeholder path: point it at the real checkout.
+ExecStart=/usr/bin/python3 %h/SingItAI/scripts/singit-uptime.py
+# Uncomment to keep the table bounded (90 days of one-minute probes is about 780k rows).
+# ExecStart=/usr/bin/python3 %h/SingItAI/scripts/singit-uptime.py --prune-days 90
+TimeoutStartSec=30
+Nice=10

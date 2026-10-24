@@ -71,6 +71,24 @@ jobs:
           node-version: "22"
       - run: node --test website/tests/*.test.mjs
 
+  bazaar-lint:
+    # Offline: boots singit-ask in-process with fakes and checks the x402 / Bazaar metadata it advertises
+    # (docs/bazaar-curation.md). No network, no payment, no secrets. The live CDP check is a separate,
+    # manually triggered workflow (bazaar-validate.yml).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install singit-ask dependencies
+        working-directory: singit-ask
+        run: npm ci --ignore-scripts
+      - name: Bazaar metadata lint
+        run: node scripts/bazaar-lint.mjs
+      - name: Lint and validator unit tests
+        run: node --test scripts/tests/*.test.mjs
+
   node-audit:
     runs-on: ubuntu-latest
     steps:

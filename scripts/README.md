@@ -68,3 +68,42 @@ hermes gateway restart
 
 See `hermes-plugins/sign402-wallet/README.md` for the secure configuration,
 allowlist-first test flow, and diagnostics.
+
+## SingIt Uptime
+
+`scripts/singit-uptime.py` measures how often SingIt's public endpoints answer
+as expected. Each run sends plain, unpaid `GET` requests (never a payment
+header, never a body, 10 s timeout, redirects are not followed) to the
+`ask.singitai.app` routes `/v1/responses`, `/v1/chat/completions`,
+`/openapi.json` and `/health`, and to `app.singitai.app` `/app/` and `/mcp`.
+The two paid routes must answer `402` with a well-formed x402 challenge (a
+`402` without one counts as down). The web API has no `/health`, so `/app/`
+stands in for it. Every probe is one row in a local SQLite table
+`probes(ts, endpoint, ok, status, latency_ms, error)`; `error` is only a class
+(`timeout`, `connection`, `tls`, `http_status`, `bad_challenge`, `bad_body`),
+never a response body or message.
+
+```bash
+cd <APP_CHECKOUT>
+python3 scripts/singit-uptime.py                         # one probe round, recorded
+python3 scripts/singit-uptime.py --report                # JSON: 24h/7d/30d availability, p50/p95, failures
+python3 scripts/singit-uptime.py --report-file report.json
+python3 scripts/singit-uptime.py --status-json status.json   # small public-safe summary
+python3 scripts/singit-uptime.py --html status.html          # static status page
+python3 scripts/singit-uptime.py --prune-days 90         # optional, after a probe round
+```
+
+The database is `~/.sign402/uptime.db`, or `$SINGIT_UPTIME_DB`, or `--db PATH`.
+`--endpoints FILE` replaces the endpoint list with a JSON list of
+`{name, url, expect, kind}`. Probe mode is a recorder and exits 0 even when
+endpoints are down. Availability is `null` for a window with no probes, never
+100%, and each window carries a `covered` flag: it is false until the recorded
+history reaches back over the whole window, so a 30-day figure built from a
+few hours of data is visibly partial.
+
+`deploy/systemd/singit-uptime.service` and `singit-uptime.timer` are user-unit
+templates that run one round every minute. They are not installed or enabled.
+
+Installing the timer, publishing any status page or status JSON, and enabling
+any alert channel need the owner's OK and are not done by this change. Operator
+alerts are a separate script and are out of scope here.

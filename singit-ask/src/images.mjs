@@ -80,6 +80,29 @@ const DESCRIPTION = "Images from 36 models (Nano Banana, GPT Image, Flux, Seedre
   + "settlement fee (0.001 USDC on Base, 0.002 on Solana). From about 0.014 USDC an image. OpenAI images format. "
   + "Nothing is charged without an image.";
 
+const INPUT_SCHEMA = { properties: {
+  model: { type: "string", examples: ["venice-seedream-v5-lite"], description: "An image model id from GET /v1/images/models." },
+  prompt: { type: "string", minLength: 1, maxLength: IMAGE_TERMS.maxPromptChars, description: "What to draw." },
+  n: { type: "integer", minimum: 1, maximum: IMAGE_TERMS.maxImages, default: 1, description: "How many images; the price is per image." },
+  size: { type: "string", pattern: "^[1-9][0-9]{2,3}x[1-9][0-9]{2,3}$", examples: ["1024x1024"],
+    description: "WIDTHxHEIGHT; the sizes each model takes are listed at GET /v1/images/models." },
+  quality: { type: "string", maxLength: 40, description: "Only for models that take it." },
+  style: { type: "string", maxLength: 40, description: "Only for models that take it." },
+  response_format: { type: "string", enum: ["b64_json", "url"], description: "How the image comes back." },
+}, required: ["model", "prompt"] };
+// Shape and charge of a real answer: a 10000 micro-USD list price, 3000 markup, 1000 settlement fee (Base).
+const OUTPUT_EXAMPLE = { created: 1791932400, model: "venice-seedream-v5-lite",
+  data: [{ b64_json: "iVBORw0KGgoAAAANSUhEUgAA…" }],
+  billing: { listAtomic: "10000", markupAtomic: "3000", feeAtomic: "1000", totalAtomic: "14000", currency: "USDC" } };
+const OUTPUT_SCHEMA = { type: "object", required: ["data", "billing"], properties: {
+  created: { type: "integer", description: "Unix seconds" }, model: { type: "string" },
+  data: { type: "array", items: { type: "object", properties: {
+    b64_json: { type: "string", description: "The image, base64" }, url: { type: "string", description: "Or a link to it" } } } },
+  billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
+    listAtomic: { type: "string" }, markupAtomic: { type: "string" }, feeAtomic: { type: "string" },
+    totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } },
+} };
+
 export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
@@ -127,9 +150,11 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 180, price: price(SOLANA) },
       { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 180, price: price(BASE) },
     ],
-    mimeType: "application/json", description: `SingIt Images: ${DESCRIPTION}`,
+    mimeType: "application/json", description: `SingIt Images: ${DESCRIPTION}`, serviceName: "SingIt Images",
+    tags: ["image", "image-generation", "text-to-image", "openai-compatible", "flux", "pay-per-use", "solana", "base", "singit"],
     extensions: declareDiscoveryExtension({ bodyType: "json",
-      input: { model: "venice-seedream-v5-lite", prompt: "a small green robot holding a coin, flat illustration", n: 1, size: "1024x1024" } }),
+      input: { model: "venice-seedream-v5-lite", prompt: "a small green robot holding a coin, flat illustration", n: 1, size: "1024x1024" },
+      inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
   } }, server);
   app.post(IMAGE_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");

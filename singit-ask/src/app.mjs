@@ -195,6 +195,32 @@ const EXAMPLE = {
   },
 };
 
+// Error bodies, as the handlers send them: `{ error: { type, message } }`; /v1/messages uses Anthropic's own
+// envelope. Only codes a route really answers with are listed in openapi.json (test/openapi-errors.test.mjs).
+const ERROR_SCHEMA = { type: "object", required: ["error"], properties: { error: { type: "object", required: ["type", "message"],
+  properties: { type: { type: "string", enum: ["invalid_request_error", "upstream_error", "rate_limit_error"] },
+                message: { type: "string" }, code: { type: "string", examples: ["model_not_found"] } } } } };
+const ANTHROPIC_ERROR_SCHEMA = { type: "object", required: ["type", "error"], properties: { type: { type: "string", enum: ["error"] },
+  error: { type: "object", required: ["type", "message"], properties: {
+    type: { type: "string", enum: ["invalid_request_error", "not_found_error", "api_error"] }, message: { type: "string" } } } } };
+const errorBody = (description, schema = ERROR_SCHEMA) => ({ description, content: { "application/json": { schema } } });
+const PAYMENT_REQUIRED = { description: "Payment Required: the x402 v2 challenge is in the PAYMENT-REQUIRED response header "
+    + "(base64 JSON: x402Version, resource, accepts); the body is an empty JSON object. Sign one of the accepts and retry "
+    + "with PAYMENT-SIGNATURE.",
+  headers: { "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
+  content: { "application/json": { schema: { type: "object", maxProperties: 0 } } } };
+const BAD_REQUEST = "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged";
+const TOO_LARGE = "The JSON body is over 128 kB; nothing was charged";
+const UNAVAILABLE = "The model list or a seller could not be reached; try again shortly. Nothing was charged";
+const DUPLICATE = "This payment signature was already used; nothing was charged again";
+// Shared by every paid POST: express.json runs first and refuses what it cannot read.
+const paidErrors = ({ notFound, duplicate, upstream502, schema } = {}) => ({
+  400: errorBody(BAD_REQUEST, schema), 402: PAYMENT_REQUIRED, 413: errorBody(TOO_LARGE, schema),
+  ...(notFound ? { 404: errorBody(notFound, schema) } : {}),
+  ...(duplicate ? { 409: errorBody(DUPLICATE, schema) } : {}),
+  502: errorBody(upstream502, schema), 503: errorBody(UNAVAILABLE, schema),
+});
+
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
                                     exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [] }) : null,
@@ -205,6 +231,15 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
+  // ...with a JSON body like every other refusal, not Express's HTML page (documented in openapi.json).
+  app.use((error, req, res, next) => {
+    const tooLarge = error.type === "entity.too.large";
+    if (!tooLarge && error.type !== "entity.parse.failed") return next(error);
+    const message = tooLarge ? "The request body is too large." : "Send valid JSON.";
+    res.status(tooLarge ? 413 : 400).json(req.path === "/v1/messages"
+      ? { type: "error", error: { type: "invalid_request_error", message } }
+      : { error: { type: "invalid_request_error", message } });
+  });
 
   const pricing = { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS };
   const free = freeTerms(config);
@@ -273,10 +308,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           responses: {
             200: { description: "The answer, with what it was charged",
                    content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
-            429: { description: "Free answers (model free/…) used up for today, or busy; see Retry-After" },
-            400: { description: "The question cannot be answered here; nothing was charged" },
-            402: { description: "Payment Required: x402 challenge in the PAYMENT-REQUIRED header" },
-            502: { description: "No billable answer came back; nothing was charged" },
+            ...paidErrors({ upstream502: "No billable answer came back; nothing was charged" }),
+            429: { ...errorBody("Free answers (model free/…) used up for today, or busy; nothing was charged"),
+                   headers: { "Retry-After": { description: "Seconds until the next free answer", schema: { type: "string" } } } },
           },
           security: [{ x402: [] }],
         } },
@@ -288,9 +322,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             + "(0.001 USDC on Base, 0.002 on Solana). Nothing is charged without an answer.",
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.0023", max: "0.067" }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
-          responses: { 200: { description: "Exa's answer, with billing" }, 400: { description: "Not offered; nothing charged" },
-                       402: { description: "Payment Required" }, 502: { description: "No answer; nothing charged" },
-                       503: { description: "Paused or Exa unavailable; nothing charged" } },
+          responses: { 200: { description: "Exa's answer, with billing" },
+                       ...Object.fromEntries(Object.entries(paidErrors({ duplicate: true, upstream502: "Exa did not answer, or refused the request; nothing charged" }))
+                         .filter(([code]) => code !== "503")) },
           security: [{ x402: [] }],
         } }])) : {}),
         ...(catalogue ? Object.fromEntries(Object.keys(FORMAT_ROUTES).map((route) => [route, { post: {
@@ -302,8 +336,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model"] } } } },
           responses: { 200: { description: "The answer in that API's format, with billing" },
-                       400: { description: "Not offered; nothing charged" }, 402: { description: "Payment Required" },
-                       404: { description: "No such model" }, 502: { description: "No billable answer; nothing charged" } },
+                       ...paidErrors({ notFound: "No such model; nothing was charged", upstream502: "No billable answer; nothing charged",
+                                       schema: route === "/v1/messages" ? ANTHROPIC_ERROR_SCHEMA : ERROR_SCHEMA }) },
           security: [{ x402: [] }],
         } }])) : {}),
         ...(catalogue ? { [IMAGE_ROUTE]: { post: {
@@ -315,9 +349,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "prompt"],
             properties: { model: { type: "string" }, prompt: { type: "string" }, n: { type: "integer", minimum: 1, maximum: 4 },
                           size: { type: "string", examples: ["1024x1024"] }, response_format: { type: "string", enum: ["b64_json", "url"] } } } } } },
-          responses: { 200: { description: "The images, with billing" }, 400: { description: "Not offered; nothing charged" },
-                       402: { description: "Payment Required" }, 404: { description: "No such image model" },
-                       502: { description: "No image; nothing charged" } },
+          responses: { 200: { description: "The images, with billing" },
+                       ...paidErrors({ notFound: "No such image model; nothing was charged", duplicate: true, upstream502: "No image; nothing charged" }) },
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "Image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
@@ -331,9 +364,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               properties: { model: { type: "string" }, input: { type: "string", maxLength: 4096 }, voice: { type: "string" },
                             response_format: { type: "string", enum: ["mp3", "opus", "aac", "flac", "wav", "pcm"] },
                             speed: { type: "number" } } } } } },
-            responses: { 200: { description: "The audio", content: { "audio/mpeg": {} } }, 400: { description: "Not offered; nothing charged" },
-                         402: { description: "Payment Required" }, 404: { description: "No such voice model" },
-                         502: { description: "No audio; nothing charged" } },
+            responses: { 200: { description: "The audio", content: { "audio/mpeg": {} } },
+                         ...paidErrors({ notFound: "No such voice model; nothing was charged", duplicate: true, upstream502: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "Voice models and their prices",
@@ -348,14 +380,15 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "prompt"],
               properties: { model: { type: "string" }, prompt: { type: "string", maxLength: 2000 }, duration_seconds: { type: "integer" },
                             resolution: { type: "string" }, aspect_ratio: { type: "string" }, audio: { type: "boolean" } } } } } },
-            responses: { 200: { description: "The accepted job, its token and billing" }, 400: { description: "Not offered; nothing charged" },
-                         402: { description: "Payment Required" }, 404: { description: "No such video model" },
-                         502: { description: "Not started; nothing charged" } },
+            responses: { 200: { description: "The accepted job, its token and billing" },
+                         ...paidErrors({ notFound: "No such video model; nothing was charged", duplicate: true, upstream502: "Not started; nothing charged" }) },
             security: [{ x402: [] }],
           } },
           [`${VIDEO_ROUTE}/{id}`]: { get: { operationId: "getVideo", security: [],
             summary: "Free: a video job's status and files (header X-Job-Token, or ?token=)",
-            responses: { 200: { description: "Finished" }, 202: { description: "Still running" }, 403: { description: "Wrong token" } } } },
+            responses: { 200: { description: "Finished" }, 202: { description: "Still running" },
+                         400: errorBody("No job id or no token"), 403: errorBody("Wrong token"), 404: errorBody("No such job"),
+                         502: errorBody("Surplus answered something unreadable"), 503: errorBody(UNAVAILABLE) } } },
           "/v1/video/models": { get: { operationId: "listVideoModels", summary: "Video models and their prices",
             responses: { 200: { description: "Model list" } }, security: [] } } } : {}),
         ...(priceBook ? {
