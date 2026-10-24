@@ -234,19 +234,3 @@ class SingIt:
         """The on-chain spending limit set in the SingIt app for `address`, with today's spent/remaining."""
         report = self.wallet_report(address, **kwargs)
         return report.get("allowance") if isinstance(report, dict) else None
-
-
-def select_offer_for(singit: SingIt, scheme: str, challenge: dict, url: str) -> dict:
-    from .guards import select_offer
-
-    pin = singit.pin
-    return select_offer(
-        challenge,
-        scheme=scheme,
-        network_id=pin.caip,
-        family=pin.family,
-        asset=pin.asset,
-        pay_to=singit.pay_to,
-        max_cap_atomic=singit.max_per_call_atomic,
-        resource_url=url,
-    )
