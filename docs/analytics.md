@@ -61,8 +61,8 @@ building or storing the event is logged and swallowed: it never reaches the requ
 | `status` | `ok`, `error`, `refused` (a scope, spend-limit or allowance refusal) or `rate_limited`. |
 | `error_kind` | Only when `status` is not `ok`. A short class, never a message: `auth`, `scope`, `limit`, `upstream`, `bad_args` (an unknown tool or invalid arguments), `internal`. |
 | `latency_ms` | Integer milliseconds from the start of the call to its result. |
-| `paid` | `true` only when the call was actually charged to the key. |
-| `cost_usd` | USD decimal string of what the key was charged (at least 2 places, sub-cent kept: `"0.003"`). Present only when `paid` is `true` and the charge is known; otherwise omitted, never `0`. |
+| `paid` | `true` when the tool is a paid one (`web_search`, `read_page`, or a `tools`-scope tool), whether or not this call was charged. |
+| `cost_usd` | USD decimal string of what the key was charged (at least 2 places, sub-cent kept: `"0.003"`). Present only when the result reports an actual charge; otherwise omitted, never `0`. |
 | `key_ref` | The first 12 hex characters of `sha256(ANALYTICS_SALT + key_id)`, where `key_id` is the key's public id (`key_…`) — never the secret, its prefix or its hash. It lets one key's calls be grouped without naming it. |
 | `client` | **Never set today.** The server is stateless, and a client's name only travels in `initialize`, which is not recorded. The prop is reserved (40 characters at most, dropped if it looks like an address or an email) for the day a session exists. |
 

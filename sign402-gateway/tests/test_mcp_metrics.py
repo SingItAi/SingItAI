@@ -84,7 +84,8 @@ class McpCallEventTests(Fixture):
         status, out, _ = self.call_tool(made["key"], "get_token_price", {"symbol": "eth"})
         self.assertTrue(out["result"]["isError"])
         _, _, props = self.only_call()
-        self.assertEqual((props["status"], props["error_kind"], props["paid"]), ("error", "upstream", False))
+        # A paid tool that failed upstream: paid=True (it is a paid tool), but nothing was charged.
+        self.assertEqual((props["status"], props["error_kind"], props["paid"]), ("error", "upstream", True))
         self.assertNotIn("cost_usd", props)
         self.assertNotIn("secret detail", json.dumps(props))
 

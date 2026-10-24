@@ -259,16 +259,20 @@ class McpServer:
     def _record_call(self, row, params, started: float, result, status: str, error_kind: str | None) -> None:
         try:
             name = params.get("name")
-            known = {t["name"] for t in OWN_TOOLS} | set(_paid_tools()[0])
-            props: dict[str, Any] = {"tool": name if isinstance(name, str) and name in known else "unknown",
-                                     "status": status, "latency_ms": int((time.monotonic() - started) * 1000),
-                                     "paid": False, "key_ref": analytics.key_ref(row["key_id"])}
+            paid_names = set(SEARCH_TOOLS) | set(_paid_tools()[0])
+            known = {t["name"] for t in OWN_TOOLS} | paid_names
+            tool = name if isinstance(name, str) and name in known else "unknown"
+            # `paid` is whether the tool is a paid one (Codex review: don't infer it from the result shape);
+            # `cost_usd` is only set when the result reports an actual charge.
+            props: dict[str, Any] = {"tool": tool, "status": status,
+                                     "latency_ms": int((time.monotonic() - started) * 1000),
+                                     "paid": tool in paid_names, "key_ref": analytics.key_ref(row["key_id"])}
             if error_kind:
                 props["error_kind"] = error_kind
             billing = (result or {}).get("structuredContent", {}).get("billing") if status == "ok" else None
             charged = billing.get("chargedAtomic") if isinstance(billing, dict) else None
             if type(charged) is int and charged > 0:
-                props["paid"], props["cost_usd"] = True, analytics.usdc_to_usd_precise(charged)
+                props["cost_usd"] = analytics.usdc_to_usd_precise(charged)
             analytics.emit("mcp_call", row["account_id"], **props)
         except Exception as exc:  # noqa: BLE001 - analytics must never break a tool call
             logger.warning("mcp_call analytics failed: %s", exc)
