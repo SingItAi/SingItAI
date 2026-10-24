@@ -130,6 +130,17 @@ class RpcCheckTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertNotIn("SECRET-KEY", result["message"])
 
+    def test_http_403_with_an_empty_body_is_a_failure(self):
+        with patch.object(self.ha.urllib.request, "urlopen", fake_urlopen([(403, b"{}")])):
+            result = self.ha.check_rpc("https://rpc.test/v2/SECRET-KEY", timeout=5)
+        self.assertFalse(result["ok"])
+        self.assertNotIn("SECRET-KEY", result["message"])
+
+    def test_an_answer_without_a_block_number_is_a_failure(self):
+        with patch.object(self.ha.urllib.request, "urlopen", fake_urlopen([(200, b"{}")])):
+            result = self.ha.check_rpc("https://rpc.test/v2/SECRET-KEY", timeout=5)
+        self.assertFalse(result["ok"])
+
     def test_redact_keeps_only_scheme_and_host(self):
         self.assertEqual(self.ha.redact("https://rpc.test/v2/SECRET-KEY?x=1"), "https://rpc.test")
 
@@ -324,6 +335,20 @@ class MainTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("Recovered", out)
         self.assertIn("ask: ok", out)
+
+    def test_an_undelivered_alert_is_retried_on_the_next_run(self):
+        env = {"SINGIT_ALERT_WEBHOOK_URL": "https://hooks.test/SECRET"}
+        with patch.object(self.ha.urllib.request, "urlopen",
+                          fake_urlopen([(503, b""), (200, b"<html>app</html>"), (500, b"")])):
+            code1, out1 = self.run_main(["--state", str(self.state_path)], env=env)
+        self.assertIn("could not deliver", out1)
+        self.assertNotIn("SECRET", out1)
+        sent = []
+        with patch.object(self.ha.urllib.request, "urlopen",
+                          fake_urlopen([(503, b""), (200, b"<html>app</html>")])), \
+                patch.object(self.ha, "send_webhook", lambda url, message, timeout: sent.append(message)):
+            self.run_main(["--state", str(self.state_path)], env=env)
+        self.assertEqual(len(sent), 1)  # not suppressed by the failed first delivery
 
     def test_extra_urls_from_env_are_checked(self):
         with patch.object(self.ha.urllib.request, "urlopen", fake_urlopen(

@@ -138,6 +138,8 @@ def check_rpc(url: str, *, timeout: float) -> dict[str, Any]:
         return {"name": name, "ok": False, "message": f"rpc_quota_or_error: {host} unreachable ({type(error).__name__})"}
     if status == 429 or status >= 500:
         return {"name": name, "ok": False, "message": f"rpc_quota_or_error: {host} returned HTTP {status}"}
+    if status != 200:  # 401/403 (a revoked or over-quota key on some providers) is a failure too
+        return {"name": name, "ok": False, "message": f"rpc_error: {host} returned HTTP {status}"}
     try:
         payload = json.loads(raw)
     except ValueError:
@@ -148,6 +150,9 @@ def check_rpc(url: str, *, timeout: float) -> dict[str, Any]:
         text = str((error.get("message") if isinstance(error, dict) else error) or "")
         tag = "rpc_quota_or_error" if code in RPC_QUOTA_CODES or RPC_QUOTA_WORDS.search(text) else "rpc_error"
         return {"name": name, "ok": False, "message": f"{tag}: {host}: {text[:200]}"}
+    result = payload.get("result") if isinstance(payload, dict) else None
+    if not (isinstance(result, str) and re.fullmatch(r"0x[0-9a-fA-F]+", result)):
+        return {"name": name, "ok": False, "message": f"rpc_error: {host} answered without a block number"}
     return {"name": name, "ok": True, "message": "ok"}
 
 
@@ -315,6 +320,9 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None,
             note = deliver(message, env=values, timeout=args.timeout)
             if note:
                 print(note)
+                # Not delivered: keep the previous state so the next run tries again, instead of
+                # recording an alert (or a recovery) nobody received.
+                next_state = state
     if not args.dry_run:
         save_state(state_path, next_state)
 

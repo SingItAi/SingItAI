@@ -168,6 +168,15 @@ class FailedAuthIpLimitTests(Fixture):
         status, _, _ = self.rpc(made["key"], "ping", client_ip="198.51.100.9")
         self.assertEqual(status, 200)
 
+    def test_a_valid_key_is_served_even_from_a_throttled_address(self):
+        made = self.make_key()
+        for _ in range(wm.AUTH_FAILURES_PER_WINDOW + 1):
+            self.rpc(None, "initialize", client_ip="198.51.100.9")
+        status, _, _ = self.rpc(None, "initialize", client_ip="198.51.100.9")
+        self.assertEqual(status, 429)
+        status, _, _ = self.rpc(made["key"], "ping", client_ip="198.51.100.9")
+        self.assertEqual(status, 200)
+
     def test_no_client_ip_means_no_limiting(self):
         for _ in range(wm.AUTH_FAILURES_PER_WINDOW + 5):
             status, _, _ = self.rpc(None, "initialize")

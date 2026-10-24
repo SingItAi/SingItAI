@@ -22,6 +22,7 @@ the two buckets interfere.
 
 A client address, when the caller has one, is also limited on failed authentication (a wrong or revoked
 key): too many in a short window gets 429s instead of 401s, to blunt key guessing against this endpoint.
+A valid key is always served, whatever its address has been doing.
 """
 
 from __future__ import annotations
@@ -58,6 +59,7 @@ MCP_REQUESTS_PER_MINUTE_ENV = "SINGIT_MCP_REQUESTS_PER_MINUTE"
 DEFAULT_MCP_REQUESTS_PER_MINUTE = 60
 AUTH_FAILURES_PER_WINDOW = 30       # per client address, to blunt key guessing against this endpoint
 AUTH_FAILURE_WINDOW_SECONDS = 600
+AUTH_FAILURE_TABLE_MAX = 10_000     # addresses kept before stale ones are pruned
 
 
 def _env_requests_per_minute() -> int:
@@ -210,14 +212,14 @@ class McpServer:
             # A key is for server code; the page never holds one. Also satisfies the spec's DNS-rebinding check.
             return 403, rpc_error(None, -32600, "API keys are for server code, not browsers. Keep the key out of "
                                   "web pages."), {}
-        if client_ip is not None and self._too_many_failed_auths(client_ip):
-            return (429, rpc_error(None, -32029, "Too many failed sign-ins from this address. Try again in a "
-                                   "few minutes."), {"Retry-After": str(AUTH_FAILURE_WINDOW_SECONDS)})
         try:
             row = self.keys._key(authorization, api_key)
         except ApiError:
-            if client_ip is not None:
-                self._record_auth_failure(client_ip)
+            # Checked only after the key failed, so a valid key behind a shared NAT or proxy is never locked
+            # out by someone else's bad requests from the same address (Codex review).
+            if client_ip is not None and self._failed_auth(client_ip):
+                return (429, rpc_error(None, -32029, "Too many failed sign-ins from this address. Try again in a "
+                                       "few minutes."), {"Retry-After": str(AUTH_FAILURE_WINDOW_SECONDS)})
             return (401, rpc_error(None, -32001, "Invalid or revoked API key. Create one in the SingIt app."),
                    {"WWW-Authenticate": 'Bearer realm="singit", error="invalid_token"'})
         if isinstance(body, (bytes, bytearray)):
@@ -259,16 +261,21 @@ class McpServer:
             recent.append(now)
             self._calls[key_id] = recent
 
-    def _too_many_failed_auths(self, client_ip: str) -> bool:
+    def _failed_auth(self, client_ip: str) -> bool:
+        """Records one failed authentication from `client_ip`; True once it is over the limit for the window.
+        Stale addresses are dropped whenever the table grows large, so it cannot grow without bound."""
         now = self.keys.now()
+        cutoff = now - AUTH_FAILURE_WINDOW_SECONDS
         with self._lock:
-            recent = [t for t in self._auth_failures[client_ip] if t > now - AUTH_FAILURE_WINDOW_SECONDS]
+            if len(self._auth_failures) > AUTH_FAILURE_TABLE_MAX:
+                for ip in [ip for ip, times in self._auth_failures.items() if not times or times[-1] <= cutoff]:
+                    del self._auth_failures[ip]
+            recent = [t for t in self._auth_failures[client_ip] if t > cutoff]
+            over = len(recent) >= AUTH_FAILURES_PER_WINDOW
+            if not over:
+                recent.append(now)
             self._auth_failures[client_ip] = recent
-            return len(recent) >= AUTH_FAILURES_PER_WINDOW
-
-    def _record_auth_failure(self, client_ip: str) -> None:
-        with self._lock:
-            self._auth_failures[client_ip].append(self.keys.now())
+            return over
 
     def _dispatch(self, row, method: str, params: dict[str, Any], protocol_version: str | None) -> Any:
         if method == "initialize":
