@@ -40,6 +40,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
@@ -55,10 +56,13 @@ from .web_accounts import (
 from .web_api_keys import ApiError, ApiKeys, Stream
 from .web_api_proxy import Relay
 from .web_mcp import McpServer, rpc_error
+from .web_mcp import tools as mcp_tools
 
 logger = logging.getLogger(__name__)
 
 PREFIX = "/web/v1"
+NUMBERS_PATH = "/brand/numbers.json"  # public, unauthenticated: live counts for the marketing site
+NUMBERS_CACHE_SECONDS = 300
 COOKIE = "singit_session"
 CSRF_HEADER = "X-SingIt-CSRF"
 ACCOUNT_HEADER = "X-SingIt-Account"
@@ -192,6 +196,43 @@ class WebApi:
         self.keys_by_account = RateLimit(20, 3600)
         self.keys = ApiKeys(self, now=now)
         self.mcp = McpServer(self.keys)
+        self.numbers_by_ip = RateLimit(60, 60)  # generous: almost every hit is served from _numbers_cache
+        self._numbers_cache: dict[str, Any] | None = None
+        self._numbers_cache_at: float = 0.0
+
+    def brand_numbers(self) -> dict[str, Any]:
+        """GET /brand/numbers.json: live, aggregate-only counts for the marketing site — no wallet address or
+        account id leaves this method. Settled payments and USDC volume mirror scripts/daily-metrics.py's own
+        categories (resource NOT LIKE '%/v1/credit' on Base, pull_tx IS NOT NULL on Solana: a credit top-up is
+        never counted as a purchase here either). Cached for NUMBERS_CACHE_SECONDS: every miss re-reads three
+        SQLite stores, which a page refreshing per visitor must not do."""
+        now = self.now()
+        if self._numbers_cache is not None and now - self._numbers_cache_at < NUMBERS_CACHE_SECONDS:
+            return self._numbers_cache
+        since = int(now) - 30 * 86400
+        empty = {"total": {"count": 0, "wallets": 0, "usdAtomic": 0}, "last30d": {"count": 0, "wallets": 0, "usdAtomic": 0}}
+        base = self.allowance.store.settlement_totals(since)
+        solana = self.solana.store.settlement_totals(since) if self.solana else empty
+        combine = lambda bucket, field: base[bucket][field] + solana[bucket][field]  # noqa: E731
+        numbers = {
+            "version": 1,
+            "measuredAt": datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+            "scope": "Counts payments made through the SingIt app and its agents' Base and Solana allowance "
+                     "lanes (settlements and spends), excluding credit top-ups. Direct x402 calls to "
+                     "ask.singitai.app settle on-chain and are not counted here.",
+            "chains": ["base", "solana"],
+            "payments": {
+                "settled": {"total": combine("total", "count"), "last30d": combine("last30d", "count")},
+                "payingWallets": {"total": combine("total", "wallets"), "last30d": combine("last30d", "wallets")},
+                "usdcVolume": {"total": round(combine("total", "usdAtomic") / 1_000_000, 2),
+                               "last30d": round(combine("last30d", "usdAtomic") / 1_000_000, 2)},
+            },
+            "accounts": self.auth.store.count(),
+            "mcpTools": len(mcp_tools()),
+            "models": None,
+        }
+        self._numbers_cache, self._numbers_cache_at = numbers, now
+        return numbers
 
     def handle(self, method: str, path: str, *, token: str, csrf: str | None, body: dict[str, Any],
                client: str, expected_account: str | None = None,
@@ -582,6 +623,24 @@ class WebHandler(BaseHTTPRequestHandler):
             self.close_connection = True
             logger.info("web api: %s: the page left before its answer", self.path.partition("?")[0])
 
+    def _send_public(self, status: int, body: dict[str, Any], max_age: int | None = None) -> None:
+        """A document with nothing account-specific in it (GET /brand/numbers.json): open to every origin,
+        never the credentialed, single-origin CORS `_send` uses for the signed-in page's own API."""
+        data = json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", f"public, max-age={max_age}" if max_age else "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(data)))
+        try:
+            self.end_headers()
+            if not self.head_only:
+                self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+            logger.info("web api: %s: the page left before its answer", self.path.partition("?")[0])
+
     def _send_relay(self, relay: Relay) -> None:
         """An upstream answer as it comes (web_api_proxy.Relay). It is read to the end even when the client left,
         because its last event says what it cost."""
@@ -643,7 +702,22 @@ class WebHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _brand_numbers(self) -> None:
+        """GET /brand/numbers.json: public, no account, no session — rate-limited by IP and cached in
+        WebApi.brand_numbers() so this almost never touches SQLite."""
+        try:
+            self.server.api.numbers_by_ip.hit(self._client())
+            self._send_public(200, self.server.api.brand_numbers(), max_age=NUMBERS_CACHE_SECONDS)
+        except WebError as error:
+            self._send_public(error.status, {"ok": False, "error": error.code, "message": error.message})
+        except Exception:
+            logger.exception("web api: GET %s failed", NUMBERS_PATH)
+            self._send_public(500, {"ok": False, "error": "internal", "message": "Something went wrong on our side."})
+
     def do_GET(self) -> None:
+        if self.path.split("?", 1)[0] == NUMBERS_PATH:
+            self._brand_numbers()
+            return
         if self.path.split("?", 1)[0] == MCP_PATH:
             self._send(405, {"ok": False, "error": "method_not_allowed",
                              "message": "This endpoint offers no SSE stream. Send POST."}, {"Allow": "POST"})

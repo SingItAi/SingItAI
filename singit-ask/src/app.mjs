@@ -320,8 +320,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         solana: { chain: SOLANA, settlementFeeAtomic: SOLANA_TERMS.settlementFeeAtomic,
                   settlementFeeUsd: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) },
       },
-      note: "upto settles actual usage (priced here at the reference request's own token counts, never a worst-case "
-        + "ceiling); exact pays the ceiling shown, flat, with no metering and no refund.",
+      note: "upto settles actual usage: the amount shown is the ceiling the reference request would be asked to "
+        + "authorize, and a real answer normally settles for less once it comes back. exact pays the ceiling "
+        + "shown, flat, with no metering and no refund.",
       models: priced,
     });
   });
