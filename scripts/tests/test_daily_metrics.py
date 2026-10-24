@@ -162,15 +162,26 @@ class DailyMetricsTests(unittest.TestCase):
                       (self.s + 3,))
             db.execute("INSERT INTO spends VALUES (2, 'solana:BBB', 100000, 'Exa web search', NULL, ?)",
                       (self.e - 10000,))  # unconfirmed, older than an hour before window end
-            # Abandoned: a GRANT prepared today but never signed, old enough to call abandoned.
+            # BBB did grant (sop1 DONE), so these PREPARED rows are retries (SI-45), not an
+            # abandoned setup: a closed/rejected wallet prompt or an expired blockhash, not
+            # someone who never came back.
             db.execute("INSERT INTO ops VALUES ('sop2', 'solana:BBB', 'GRANT', 200000, 'PREPARED', ?)",
-                      (self.e - 10000,))
-            # Abandoned, from an earlier day (counts toward total_outstanding, not "today").
+                      (self.e - 10000,))  # today
             db.execute("INSERT INTO ops VALUES ('sop3', 'solana:BBB', 'GRANT', 300000, 'PREPARED', ?)",
-                      (self.s - 100000,))
-            # Not abandoned: prepared recently (within the last hour before the window ends).
+                      (self.s - 100000,))  # an earlier day: counts toward "total", not "today"
             db.execute("INSERT INTO ops VALUES ('sop4', 'solana:BBB', 'GRANT', 400000, 'PREPARED', ?)",
-                      (self.e - 100,))
+                      (self.e - 100,))  # today
+            # CCC never granted at all: its limits are old enough (today) to call it abandoned.
+            db.execute("INSERT INTO limits VALUES ('solana:CCC', 'CCC', 1, 1, ?, ?, ?)",
+                      (self.s + 100000, self.e - 10000, self.e - 10000))
+            # DDD never granted either, but its limits are from an earlier day: counts toward
+            # "total", not "today".
+            db.execute("INSERT INTO limits VALUES ('solana:DDD', 'DDD', 1, 1, ?, ?, ?)",
+                      (self.s + 100000, self.s - 200000, self.s - 200000))
+            # EEE set limits too recently (within the last hour before the window ends) to call
+            # it abandoned yet.
+            db.execute("INSERT INTO limits VALUES ('solana:EEE', 'EEE', 1, 1, ?, ?, ?)",
+                      (self.s + 100000, self.e - 100, self.e - 100))
         db.close()
         return path
 
@@ -280,14 +291,21 @@ class DailyMetricsTests(unittest.TestCase):
     def test_solana_allowance_metrics(self):
         solana = self.seed_solana()
         report = self.dm.build_report(DAY, **self.missing_paths(solana_db=solana))
-        self.assertEqual(report["limits_set"], {"solana": 1})
+        self.assertEqual(report["limits_set"], {"solana": 3})  # BBB, CCC, EEE; DDD is from an earlier day
         self.assertEqual(report["approvals_done"], 1)
         self.assertEqual(report["usdc_volume"]["solana"], "0.70")
         self.assertEqual(report["purchases"], {"data_tool": 1})
         self.assertEqual(report["errors"]["stuck_reservations"], 1)
-        # sop2 (today, old enough) and sop3 (an earlier day) are abandoned; sop4 (prepared in the
-        # last hour) and sop1 (already DONE) are not.
-        self.assertEqual(report["abandoned_solana_setups"], {"today": 1, "total_outstanding": 2})
+        detail = report["detail"]["solana_allowance"]
+        self.assertEqual(detail["accounts_with_limits"], 4)  # BBB, CCC, DDD, EEE
+        self.assertEqual(detail["accounts_granted"], 1)  # BBB only (sop1 DONE)
+        # CCC (today, old enough) and DDD (an earlier day) never granted; EEE is too recent to
+        # call abandoned yet, and BBB did grant (its PREPARED rows are retries, not abandonment).
+        self.assertEqual(detail["abandoned_setups"], {"today": 1, "total": 2})
+        self.assertEqual(report["abandoned_solana_setups"], detail["abandoned_setups"])
+        # sop2 and sop4 (today) plus sop3 (an earlier day) are all retries from BBB, which did
+        # eventually grant.
+        self.assertEqual(detail["grant_retries"], {"today": 2, "total": 3})
 
     def test_telegram_metrics(self):
         telegram = self.seed_telegram()
@@ -316,7 +334,7 @@ class DailyMetricsTests(unittest.TestCase):
                                     solana_db=self.seed_solana(), user_wallet_db=self.seed_telegram())
         report = self.dm.build_report(DAY, **paths)
         self.assertEqual(report["new_accounts"], {"base": 1, "solana": 1})
-        self.assertEqual(report["limits_set"], {"base": 1, "solana": 1})
+        self.assertEqual(report["limits_set"], {"base": 1, "solana": 3})
         self.assertEqual(report["telegram_new_wallets"], 2)
         json.dumps(report)  # the whole thing must be JSON-serializable
 

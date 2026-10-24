@@ -290,15 +290,35 @@ def solana_allowance_metrics(path: Path, s: int, e: int) -> dict[str, Any] | Non
                 " HAVING COUNT(*) >= 2 AND MAX(created_at) >= ?)", (s,))
         out["stuck_reservations"] = _scalar(
             db, "SELECT COUNT(*) FROM spends WHERE pull_tx IS NULL AND created_at < ?", (e - 3600,))
-        # A GRANT that is still PREPARED an hour after it was made was never signed in the
-        # wallet: an abandoned limit setup, not a failure of anything the gateway did.
+        # Counting PREPARED GRANT op rows (the old "abandoned_setups") is misleading: a wallet
+        # prompt that is closed/rejected/expires and retried leaves several PREPARED rows for one
+        # account that *did* grant a moment later (SI-45). Account-level numbers instead:
+        out["accounts_with_limits"] = _scalar(db, "SELECT COUNT(*) FROM limits")
+        out["accounts_granted"] = _scalar(
+            db, "SELECT COUNT(DISTINCT account) FROM ops WHERE kind = 'GRANT' AND state = 'DONE'")
+        # An account whose limits are over an hour old and that never completed a GRANT: the
+        # owner never came back to sign the wallet transaction at all.
         out["abandoned_setups"] = {
             "today": _scalar(
-                db, "SELECT COUNT(*) FROM ops WHERE kind = 'GRANT' AND state = 'PREPARED'"
-                    " AND created_at >= ? AND created_at < ? AND created_at < ?", (s, e, e - 3600)),
-            "total_outstanding": _scalar(
-                db, "SELECT COUNT(*) FROM ops WHERE kind = 'GRANT' AND state = 'PREPARED' AND created_at < ?",
+                db, "SELECT COUNT(*) FROM limits l WHERE l.created_at >= ? AND l.created_at < ? AND l.created_at < ?"
+                    " AND NOT EXISTS (SELECT 1 FROM ops o WHERE o.account = l.account AND o.kind = 'GRANT' AND o.state = 'DONE')",
+                (s, e, e - 3600)),
+            "total": _scalar(
+                db, "SELECT COUNT(*) FROM limits l WHERE l.created_at < ?"
+                    " AND NOT EXISTS (SELECT 1 FROM ops o WHERE o.account = l.account AND o.kind = 'GRANT' AND o.state = 'DONE')",
                 (e - 3600,)),
+        }
+        # PREPARED/EXPIRED GRANT rows from an account that did eventually grant: these are the
+        # retries findings.md identified, not abandonment.
+        out["grant_retries"] = {
+            "today": _scalar(
+                db, "SELECT COUNT(*) FROM ops o WHERE o.kind = 'GRANT' AND o.state IN ('PREPARED', 'EXPIRED')"
+                    " AND o.created_at >= ? AND o.created_at < ?"
+                    " AND EXISTS (SELECT 1 FROM ops d WHERE d.account = o.account AND d.kind = 'GRANT' AND d.state = 'DONE')",
+                (s, e)),
+            "total": _scalar(
+                db, "SELECT COUNT(*) FROM ops o WHERE o.kind = 'GRANT' AND o.state IN ('PREPARED', 'EXPIRED')"
+                    " AND EXISTS (SELECT 1 FROM ops d WHERE d.account = o.account AND d.kind = 'GRANT' AND d.state = 'DONE')"),
         }
         return out
 
@@ -463,6 +483,7 @@ def text_summary(report: dict[str, Any]) -> str:
     new_accounts = report["new_accounts"] or {}
     usdc = report["usdc_volume"] or {}
     errors = report["errors"] or {}
+    solana = (report.get("detail") or {}).get("solana_allowance") or {}
     lines = [
         f"SingIt daily metrics — {report['day']} ({report['timezone']})",
         f"New accounts: base {new_accounts.get('base', '—')}, solana {new_accounts.get('solana', '—')}"
@@ -477,7 +498,9 @@ def text_summary(report: dict[str, Any]) -> str:
         f"USDC volume — base {usdc.get('base')}, solana {usdc.get('solana')}",
         f"Chat answers: {report['chat_answers']} (${report['chat_cost_usd']})",
         f"Top-ups credited: ${report['topups_credited_usd']}",
-        f"Abandoned Solana setups: {report['abandoned_solana_setups']}",
+        f"Solana setups: {solana.get('accounts_with_limits', '—')} with limits,"
+        f" {solana.get('accounts_granted', '—')} granted, abandoned {report['abandoned_solana_setups']},"
+        f" retries {solana.get('grant_retries', '—')}",
         f"Errors: {errors}",
         f"Alarms: {report['alarms']}; Telegram new wallets: {report['telegram_new_wallets']}",
     ]
