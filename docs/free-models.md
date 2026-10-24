@@ -72,7 +72,7 @@ How to read it:
 - The expected price of `deepseek-v4.1-flash` in the snapshot is 0 (`observed`). That is what Surplus reported when
   the snapshot was taken, not a promise that it stays 0; the list price is the number to plan the ceiling on.
 - The prices are as of the snapshot. Re-run the script on a fresh `/v1/models` before deciding.
-- The script uses the same chars/4 input bound as singit-ask's pricing. It does not include the 30% markup or
+- The script estimates input at chars/4, like singit-ask's default price estimate; the live budget check counts a question without a cost report at one token per character, the looser bound. It does not include the 30% markup or
   settlement fee, because a free answer pays neither.
 
 ## What is actually used

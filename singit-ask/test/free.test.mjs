@@ -212,10 +212,11 @@ test("a daily budget counts each answer's reported cost and refuses with Retry-A
 
 test("without a reported cost, an answer counts at the model's list price for its worst case", () => {
   const input = { chars: 400, messages: [{}] };
-  // (100 + 4) input tokens at 0.3e-6 and 400 output tokens at 1.2e-6 = 0.0005112 USD, rounded up to micro-units.
-  assert.equal(freeAnswerCost(null, DEFAULT, input, 400), 512);
+  // One token per character (the loosest bound): (400 + 4) input tokens at 0.3e-6 and 400 output tokens at 1.2e-6
+  // = 0.0006012 USD, rounded up to micro-units.
+  assert.equal(freeAnswerCost(null, DEFAULT, input, 400), 602);
   assert.equal(freeAnswerCost({ buyer_cost_micro: 7 }, DEFAULT, input, 400), 7, "a reported cost wins");
-  assert.equal(freeAnswerCost({ buyer_cost_micro: -1 }, DEFAULT, input, 400), 512, "an invalid report is not trusted");
+  assert.equal(freeAnswerCost({ buyer_cost_micro: -1 }, DEFAULT, input, 400), 602, "an invalid report is not trusted");
   assert.equal(freeAnswerCost(null, null, input, 400), null, "no price at all");
 });
 

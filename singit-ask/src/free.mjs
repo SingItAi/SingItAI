@@ -122,14 +122,15 @@ export const visitorOf = (req) => networkOf(req.get("cf-connecting-ip") || req.i
 
 // What a free answer cost the service, in USDC micro-units, with no markup and no fee: the cost Surplus reports
 // for it, validated as the paid path validates it (billUsage). Without a usable report, the most this question
-// could have cost at the model's list price (worstModelCostMicro, input at chars/4). Null when even that is unknown.
+// could have cost at the model's list price (worstModelCostMicro, input at one token per character: the loosest bound, so dense text such as CJK
+// can never be under-counted against the budget; Codex review). Null when even that is unknown.
 const AT_COST = Object.freeze({ ...TERMS, markupBps: 0, settlementFeeAtomic: "0", maxChargeAtomic: String(Number.MAX_SAFE_INTEGER) });
 export function freeAnswerCost(usage, info, input, maxTokens) {
   try {
     return Number(billUsage(usage, AT_COST).providerCostAtomic);
   } catch { /* no usable report: price the worst case */ }
   if (!info) return null;
-  return worstModelCostMicro(info, { chars: input.chars, maxTokens, messageCount: input.messages.length });
+  return worstModelCostMicro(info, { chars: input.chars, maxTokens, messageCount: input.messages.length, charsPerToken: 1 });
 }
 
 const REFUSALS = {
