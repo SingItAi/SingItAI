@@ -604,11 +604,16 @@ curl -s http://127.0.0.1:8130/mcp \
 
 Limits:
 
+- No key at all is allowed for the catalogue: `initialize`, `ping`, `tools/list` and the three free
+  tools (`get_price`, `list_price_symbols`, `list_models`) answer without one, so MCP directories and
+  people can see what the server offers. A paid tool called without a key returns a tool error asking
+  for one; nothing is billed. A request that sends a key must send a valid one: a wrong or revoked key
+  is a 401, never a fall back to keyless.
 - Keys made before this change were signed for `answers search` only; they lack the `tools` scope, so
   the paid data tools above refuse them with a message to make a new key. `get_price`,
   `list_price_symbols`, `list_models`, `web_search` and `read_page` work with any still-live key, per
   its own scopes (`web_search` and `read_page` need `search`).
-- MCP has its own rate limit, separate from `/v1`'s: 60 requests a minute per key by default (set
+- MCP has its own rate limit, separate from `/v1`'s: 60 requests a minute per key (or per client address, without a key) by default (set
   `SINGIT_MCP_REQUESTS_PER_MINUTE` to change it), so heavy use of one never starves the other. It is
   charged once per request that carries an id (`initialize`, `ping`, `tools/list`, `tools/call`);
   notifications are free. Over the limit gets a JSON-RPC error with a `Retry-After` header (seconds).
@@ -618,14 +623,14 @@ Limits:
   server's own origin (`SIGN402_WEB_URI`) or one of a small allowlist of known MCP inspectors and
   scanners (`https://glama.ai`, `https://www.glama.ai`,
   `https://x402scan.com`, `https://www.x402scan.com`), overridable with the comma-separated
-  `SINGIT_MCP_ALLOWED_ORIGINS` env var (replaces the defaults, not additive). A trusted origin still
-  needs a valid key for everything past the CORS preflight; an untrusted one is refused before the key
+  `SINGIT_MCP_ALLOWED_ORIGINS` env var (replaces the defaults, not additive). A trusted origin gets
+  the same answers as a request without an Origin (keyless catalogue, key for paid tools); an untrusted one is refused before the key
   is even checked. `OPTIONS /mcp` answers the CORS preflight the same way.
 - Repeated failed authentication (a wrong or revoked key) from one client address gets 429s instead of
   401s after 30 failures in 10 minutes, to blunt key guessing.
 - `GET /mcp` answers 405: there is no server-to-client SSE stream.
 - Each `tools/call` writes one `mcp_call` analytics event (tool, status, error class, latency, whether it was
-  charged and how much, a salted reference to the key) and nothing else: no key, address, account id or tool
+  charged and how much, a salted reference to the key, or `keyless`) and nothing else: no key, address, account id or tool
   argument. `initialize` and `tools/list` are not recorded, and a failing analytics write never affects the
   call. See [analytics](../docs/analytics.md#mcp_call).
 

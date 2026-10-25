@@ -15,10 +15,15 @@ openWorldHint): paid tools debit the key's SingIt limits but never touch externa
 readOnlyHint/not destructive like the free ones, but not idempotent (each call bills again) and, except
 the three free lookups that only read SingIt's own data, openWorldHint (they reach third-party data).
 
-Every call needs a valid key (Authorization: Bearer sk_singit_…, or x-api-key) before anything else,
-including initialize; MCP has its own per-key rate limit, separate from the /v1 one in ApiKeys._rate:
-heavy use of one must not starve the other. The default is 60 requests a minute, overridden by
-SINGIT_MCP_REQUESTS_PER_MINUTE; it is charged once per authenticated JSON-RPC request that carries an id
+A request with no credentials at all is served keyless: initialize, ping, tools/list and the three free
+tools work, so catalogues and people can see what the server offers before they make a key. A paid tool
+called keyless gets a tool error asking for a key; nothing is billed and no account is touched. A request
+that does send a key (Authorization: Bearer sk_singit_…, or x-api-key) must send a valid one: a wrong or
+revoked key is a 401, never a quiet fall back to keyless, so a typo in a key is noticed.
+
+MCP has its own rate limit, separate from the /v1 one in ApiKeys._rate: heavy use of one must not starve
+the other. It is per key, or per client address for keyless requests, 60 requests a minute by default,
+overridden by SINGIT_MCP_REQUESTS_PER_MINUTE; it is charged once per JSON-RPC request that carries an id
 (initialize, ping, tools/list, tools/call) - notifications (202) are not rated. web_search and read_page
 still go through ApiKeys._search, but with rate=False: this module already rated the request, and billing
 it a second time against /v1 would make the two buckets interfere.
@@ -62,11 +67,13 @@ SUPPORTED_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 OUR_VERSION = SUPPORTED_VERSIONS[0]
 SERVER_INFO = {"name": "singit", "title": "SingIt", "version": "0.1.0"}
 INSTRUCTIONS = (
-    "Look up prices, models, web pages and market data. Paid tools are charged per call to this API key's SingIt "
-    "limits (Base USDC). get_price, list_price_symbols and list_models are free. web_search and "
-    "read_page need the key's \"search\" scope; the other tools need its \"tools\" scope. Keys made "
-    "before paid data tools existed need a new key for those."
+    "Look up prices, models, web pages and market data. get_price, list_price_symbols and list_models are "
+    "free and work without a key. Paid tools need a SingIt API key and are charged per call to that key's "
+    "SingIt limits (Base USDC). web_search and read_page need the key's \"search\" scope; the other tools "
+    "need its \"tools\" scope. Keys made before paid data tools existed need a new key for those."
 )
+KEYLESS_PAID_MESSAGE = ("This tool is paid. Create a SingIt API key at https://app.singitai.app/app/ and send it "
+                        "as \"Authorization: Bearer sk_singit_...\" or \"x-api-key: sk_singit_...\".")
 READ_CAP = 2 * 1024 * 1024
 USER_AGENT = "SingIt-MCP/0.1 (+https://singitai.app)"
 SYMBOL_RE = re.compile(r"[A-Za-z0-9]{1,12}")
@@ -254,8 +261,9 @@ DOCS_URL = ("https://github.com/bubon-ik/SingItAI/blob/main/sign402-gateway/READ
             "#mcp-server-remote-for-claude-code-cursor-codex")
 SERVER_CARD_DESCRIPTION = ("Free price, model and symbol lookups, plus paid web search, page reading and "
                            "market data tools, billed in Base USDC inside the API key's own SingIt limits.")
-AUTH_INSTRUCTIONS = ("Create a SingIt API key in the app at https://app.singitai.app/app/, then send it as "
-                     "\"Authorization: Bearer sk_singit_...\" or \"x-api-key: sk_singit_...\".")
+AUTH_INSTRUCTIONS = ("Free tools work without a key. For paid tools, create a SingIt API key in the app at "
+                     "https://app.singitai.app/app/, then send it as \"Authorization: Bearer sk_singit_...\" or "
+                     "\"x-api-key: sk_singit_...\".")
 
 
 def server_card(public_origin: str, mcp_path: str = "/mcp") -> dict[str, Any]:
@@ -271,7 +279,7 @@ def server_card(public_origin: str, mcp_path: str = "/mcp") -> dict[str, Any]:
         "documentationUrl": DOCS_URL,
         "transport": {"type": "streamable-http", "url": f"{public_origin}{mcp_path}"},
         "capabilities": {"tools": {"listChanged": False}},
-        "authentication": {"required": True, "schemes": ["bearer"], "headers": ["Authorization", "x-api-key"],
+        "authentication": {"required": False, "schemes": ["bearer"], "headers": ["Authorization", "x-api-key"],
                            "instructions": AUTH_INSTRUCTIONS},
         "instructions": INSTRUCTIONS,
         "tools": tools(),
@@ -376,16 +384,20 @@ class McpServer:
 
     def _authenticated(self, authorization: str | None, api_key: str | None, protocol_version: str | None,
                         body: bytes | dict[str, Any], client_ip: str | None = None) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
-        try:
-            row = self.keys._key(authorization, api_key)
-        except ApiError:
-            # Checked only after the key failed, so a valid key behind a shared NAT or proxy is never locked
-            # out by someone else's bad requests from the same address (Codex review).
-            if client_ip is not None and self._failed_auth(client_ip):
-                return (429, rpc_error(None, -32029, "Too many failed sign-ins from this address. Try again in a "
-                                       "few minutes."), {"Retry-After": str(AUTH_FAILURE_WINDOW_SECONDS)})
-            return (401, rpc_error(None, -32001, "Invalid or revoked API key. Create one in the SingIt app."),
-                   {"WWW-Authenticate": 'Bearer realm="singit", error="invalid_token"'})
+        if not str(authorization or "").strip() and not str(api_key or "").strip():
+            row, bucket = None, f"keyless:{client_ip or '-'}"
+        else:
+            try:
+                row = self.keys._key(authorization, api_key)
+            except ApiError:
+                # Checked only after the key failed, so a valid key behind a shared NAT or proxy is never locked
+                # out by someone else's bad requests from the same address (Codex review).
+                if client_ip is not None and self._failed_auth(client_ip):
+                    return (429, rpc_error(None, -32029, "Too many failed sign-ins from this address. Try again in "
+                                           "a few minutes."), {"Retry-After": str(AUTH_FAILURE_WINDOW_SECONDS)})
+                return (401, rpc_error(None, -32001, "Invalid or revoked API key. Create one in the SingIt app."),
+                       {"WWW-Authenticate": 'Bearer realm="singit", error="invalid_token"'})
+            bucket = row["key_id"]
         if isinstance(body, (bytes, bytearray)):
             try:
                 parsed = json.loads(body) if body else {}
@@ -401,9 +413,10 @@ class McpServer:
         if not has_id or method.startswith("notifications/"):
             return 202, None, {}
         try:
-            self._rate(row["key_id"])
+            self._rate(bucket)
         except _RateLimited as exc:
-            return (429, rpc_error(msg_id, -32029, f"This key sends up to {exc.limit} requests a minute to MCP. "
+            who = "This key sends" if row is not None else "Without a key, one address sends"
+            return (429, rpc_error(msg_id, -32029, f"{who} up to {exc.limit} requests a minute to MCP. "
                                    "Slow down."), {"Retry-After": str(exc.retry_after)})
         params = parsed.get("params") if isinstance(parsed.get("params"), dict) else {}
         try:
@@ -414,16 +427,16 @@ class McpServer:
             return 200, rpc_error(msg_id, -32602, str(exc)), {}
         return 200, _result(msg_id, result), {}
 
-    def _rate(self, key_id: str) -> None:
-        """MCP's own per-key bucket: independent of ApiKeys._rate (the /v1 one), so heavy use of one
-        endpoint never starves the other."""
+    def _rate(self, bucket: str) -> None:
+        """MCP's own bucket, per key id or "keyless:<address>": independent of ApiKeys._rate (the /v1 one),
+        so heavy use of one endpoint never starves the other."""
         now = self.keys.now()
         with self._lock:
-            recent = [t for t in self._calls[key_id] if t > now - 60]
+            recent = [t for t in self._calls[bucket] if t > now - 60]
             if len(recent) >= self.requests_per_minute:
                 raise _RateLimited(self.requests_per_minute, max(1, round(60 - (now - recent[0]))))
             recent.append(now)
-            self._calls[key_id] = recent
+            self._calls[bucket] = recent
 
     def _failed_auth(self, client_ip: str) -> bool:
         """Records one failed authentication from `client_ip`; True once it is over the limit for the window.
@@ -484,14 +497,18 @@ class McpServer:
             # `cost_usd` is only set when the result reports an actual charge.
             props: dict[str, Any] = {"tool": tool, "status": status,
                                      "latency_ms": int((time.monotonic() - started) * 1000),
-                                     "paid": tool in paid_names, "key_ref": analytics.key_ref(row["key_id"])}
+                                     "paid": tool in paid_names}
+            if row is not None:
+                props["key_ref"] = analytics.key_ref(row["key_id"])
+            else:
+                props["keyless"] = True
             if error_kind:
                 props["error_kind"] = error_kind
             billing = (result or {}).get("structuredContent", {}).get("billing") if status == "ok" else None
             charged = billing.get("chargedAtomic") if isinstance(billing, dict) else None
             if type(charged) is int and charged > 0:
                 props["cost_usd"] = analytics.usdc_to_usd_precise(charged)
-            analytics.emit("mcp_call", row["account_id"], **props)
+            analytics.emit("mcp_call", row["account_id"] if row is not None else None, **props)
         except Exception as exc:  # noqa: BLE001 - analytics must never break a tool call
             logger.warning("mcp_call analytics failed: %s", exc)
 
@@ -512,6 +529,10 @@ class McpServer:
         return _tool_success(data)
 
     def _call_tool(self, row, name: str, args: dict[str, Any]) -> Any:
+        if row is None and name not in FREE_TOOL_NAMES:
+            if name in SEARCH_TOOLS or name in _paid_tools()[0]:
+                raise ApiError(401, KEYLESS_PAID_MESSAGE, type_="authentication_error", code="api_key_required")
+            raise _BadArgs(f"Unknown tool '{name}'.")
         if name == "get_price":
             return self._get_price(args)
         if name == "list_price_symbols":
@@ -544,6 +565,8 @@ class McpServer:
             raise _BadArgs("kind must be chat, images or audio.")
         if kind != "chat":
             return self.fetch_json(f"{ASK_URL}/v1/{kind}/models")
+        if row is None:  # keyless: SingIt Ask's public list, the models any caller can pay for over x402
+            return {"object": "list", "data": list(self.fetch_json(f"{ASK_URL}/v1/models").get("data") or [])}
         status, reply = self.keys._shop("api-models", row["account_id"], {})
         if status != 200:
             raise ApiError(502, "The model list is unavailable right now.", type_="api_error")

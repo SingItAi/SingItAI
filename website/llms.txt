@@ -10,7 +10,7 @@ SingIt lets you connect the wallet you already use, set a daily and a per-purcha
 
 - Web app at https://app.singitai.app/app/ — connect a wallet, set limits, let an agent spend inside them.
 - SingIt Ask, an x402 API at https://ask.singitai.app — language-model chat completions, Anthropic's Messages and OpenAI's Responses formats, images, speech and web search, each paid per call in USDC on Base or Solana, no account or API key. Its own llms.txt: https://ask.singitai.app/llms.txt
-- A remote MCP server at https://app.singitai.app/mcp (SingIt API key required).
+- A remote MCP server at https://app.singitai.app/mcp (free tools without a key; a SingIt API key for paid tools).
 
 ## For developers
 
