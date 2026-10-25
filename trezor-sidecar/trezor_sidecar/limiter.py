@@ -8,7 +8,8 @@ screen would look the same.
 
 So this machine checks first, from the chain, with nothing from the server taken
 on trust: the spender's runtime code is the AgentAllowance the tests and the
-mutation check ran against (immutables masked, against `agent_allowance.json`,
+mutation check ran against (immutable copies checked for consistency before
+masking, against `agent_allowance.json`,
 kept identical to the gateway's copy by a test), its owner is this Trezor's
 address, its token is USDC, it is not paused and not expired. Only then is the
 device asked. Revoking checks nothing: setting an allowance to zero must work
@@ -123,6 +124,8 @@ class LimiterArtifact:
         data = json.loads(path.read_text())
         self.deployed_bytecode = data["deployedBytecode"]
         self.ranges = [(int(start), int(length)) for start, length in data["immutableRanges"]]
+        self.groups = [[(int(start), int(length)) for start, length in group]
+                       for group in data["immutableGroups"]]
 
     def _masked(self, code_hex: str) -> bytes:
         code = bytearray(bytes.fromhex(code_hex.removeprefix("0x")))
@@ -132,6 +135,14 @@ class LimiterArtifact:
 
     def runs(self, code_hex: str) -> bool:
         try:
+            code = bytes.fromhex(code_hex.removeprefix("0x"))
+            if len(code) != len(bytes.fromhex(self.deployed_bytecode.removeprefix("0x"))):
+                return False
+            # All copies must agree before masking: honest getters alone cannot
+            # prove that spend() embeds those same keys, caps and token address.
+            for group in self.groups:
+                if len({code[start:start + length] for start, length in group}) != 1:
+                    return False
             return self._masked(code_hex) == self._masked(self.deployed_bytecode)
         except ValueError:
             return False

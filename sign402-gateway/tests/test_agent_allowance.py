@@ -176,15 +176,34 @@ class ArtifactTests(unittest.TestCase):
         self.assertEqual(tail[:64], aa.USDC.lower()[2:].rjust(64, "0"))
         self.assertEqual(int(tail[-64:], 16), NOW)
 
-    def test_code_check_ignores_immutables_and_nothing_else(self):
+    def test_code_check_accepts_consistent_immutables_and_nothing_else(self):
         code = bytearray(bytes.fromhex(self.artifact.deployed_bytecode[2:]))
-        start, length = self.artifact.immutable_ranges[0]
-        code[start:start + length] = b"\x42" * length
+        for index, group in enumerate(self.artifact.immutable_groups, 1):
+            for start, length in group:
+                code[start:start + length] = index.to_bytes(length, "big")
         self.assertTrue(self.artifact.runs("0x" + code.hex()))
 
         outside = next(i for i in range(len(code)) if all(not s <= i < s + n for s, n in self.artifact.immutable_ranges))
         code[outside] ^= 0xFF
         self.assertFalse(self.artifact.runs("0x" + code.hex()))
+
+    def test_code_check_rejects_every_inconsistent_immutable_copy(self):
+        self.assertEqual(sorted(ref for group in self.artifact.immutable_groups for ref in group),
+                         list(self.artifact.immutable_ranges))
+        self.assertEqual(len(self.artifact.immutable_groups), 7)
+        for group in self.artifact.immutable_groups:
+            self.assertGreater(len(group), 1)
+            for start, length in group:
+                with self.subTest(start=start):
+                    code = bytearray.fromhex(self.artifact.deployed_bytecode[2:])
+                    code[start:start + length] = (123).to_bytes(length, "big")
+                    self.assertFalse(self.artifact.runs("0x" + code.hex()))
+
+    def test_code_check_rejects_missing_extra_or_malformed_bytes(self):
+        for code in ("0x", self.artifact.deployed_bytecode[:-2],
+                     self.artifact.deployed_bytecode + "00", "0xnothex"):
+            with self.subTest(code_length=len(code)):
+                self.assertFalse(self.artifact.runs(code))
 
 
 class FakeEvm:
@@ -384,6 +403,18 @@ class AllowanceServiceTests(unittest.TestCase):
                 with self.assertRaises(aa.AllowanceError):
                     self.service.setup(USER, "100", "10", "30")
                 self.assertIsNone(self.service.store.active_limiter(USER))
+
+    def test_consistent_getters_do_not_hide_a_changed_execution_constant(self):
+        # FakeEvm getters still report precisely the expected constructor values.
+        # One changed copy must nevertheless reject the runtime before use.
+        code = bytearray.fromhex(self.artifact.deployed_bytecode[2:])
+        start, length = self.artifact.immutable_groups[0][0]
+        code[start:start + length] = (123).to_bytes(length, "big")
+        self.evm.code_override = "0x" + code.hex()
+        with self.assertRaises(aa.AllowanceError):
+            self.service.setup(USER, "100", "10", "30")
+        self.assertIsNone(self.service.store.active_limiter(USER))
+        self.assertEqual(self.published, [])
 
     def test_a_failed_publication_does_not_undo_a_verified_deployment(self):
         def fail(*args):

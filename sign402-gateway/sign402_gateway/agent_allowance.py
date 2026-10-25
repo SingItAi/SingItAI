@@ -12,7 +12,8 @@ the owner's computer, and pausing through the guardian. Spending comes later.
 
 Nothing is trusted that can be checked. After a deployment, every immutable is
 read back from the chain and the runtime code is compared with the artifact the
-tests ran against (immutables masked); a limiter that fails either is recorded
+tests ran against (all copies of each immutable must agree before masking);
+a limiter that fails either is recorded
 as rejected and never offered for a grant.
 
 Off unless SIGN402_ALLOWANCE_ENABLED=1. While the lane is rolled out to its
@@ -317,6 +318,7 @@ class Artifact:
     bytecode: str
     deployed_bytecode: str
     immutable_ranges: tuple[tuple[int, int], ...]
+    immutable_groups: tuple[tuple[tuple[int, int], ...], ...]
     compiler_version: str
     standard_json_input: dict
     source_sha256: str
@@ -328,6 +330,8 @@ class Artifact:
             bytecode=data["bytecode"],
             deployed_bytecode=data["deployedBytecode"],
             immutable_ranges=tuple((int(s), int(n)) for s, n in data["immutableRanges"]),
+            immutable_groups=tuple(tuple((int(s), int(n)) for s, n in group)
+                                   for group in data["immutableGroups"]),
             compiler_version=data["compilerVersion"],
             standard_json_input=data["standardJsonInput"],
             source_sha256=data["sourceSha256"],
@@ -343,7 +347,19 @@ class Artifact:
         return bytes(code)
 
     def runs(self, code_hex: str) -> bool:
-        return self.masked(code_hex) == self.masked(self.deployed_bytecode)
+        try:
+            code = bytes.fromhex(code_hex.removeprefix("0x"))
+            if len(code) != len(bytes.fromhex(self.deployed_bytecode.removeprefix("0x"))):
+                return False
+            # A getter and spend() can reference different copies of an immutable.
+            # Masking alone would accept a forged runtime whose getter reports
+            # the expected key/cap while spend() uses another value.
+            for group in self.immutable_groups:
+                if len({code[start:start + length] for start, length in group}) != 1:
+                    return False
+            return self.masked(code_hex) == self.masked(self.deployed_bytecode)
+        except ValueError:
+            return False
 
 
 # --- storage ---------------------------------------------------------------------------

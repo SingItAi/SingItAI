@@ -8,8 +8,8 @@ The gateway deploys limiters from this file, not from the Solidity source: it
 has no compiler. So the file must be exactly what `forge build` produces from
 `src/AgentAllowance.sol` — the code the tests and the mutation check ran against.
 `--check` rebuilds and compares. `--onchain` also compares a deployed limiter's
-runtime code with the artifact, immutables masked: the deployment is the
-audited code, not merely the same name.
+runtime code with the artifact. Immutable values may vary by deployment, but
+every compiled occurrence of the same immutable must contain the same value.
 
 The standard JSON input rides along so the gateway can publish each deployment's
 source to Sourcify without a compiler either.
@@ -53,6 +53,10 @@ def build() -> dict:
         "immutableRanges": sorted(
             [ref["start"], ref["length"]] for refs in references.values() for ref in refs
         ),
+        "immutableGroups": sorted(
+            sorted([ref["start"], ref["length"]] for ref in refs)
+            for refs in references.values()
+        ),
         "standardJsonInput": json.loads(std_input),
     }
 
@@ -62,6 +66,21 @@ def masked(code_hex: str, ranges: list[list[int]]) -> bytes:
     for start, length in ranges:
         code[start:start + length] = b"\x00" * length
     return bytes(code)
+
+
+def matches_runtime(code_hex: str, artifact: dict) -> bool:
+    try:
+        code = bytes.fromhex(code_hex.removeprefix("0x"))
+        expected = bytes.fromhex(artifact["deployedBytecode"].removeprefix("0x"))
+        if len(code) != len(expected):
+            return False
+        for group in artifact["immutableGroups"]:
+            if len({code[start:start + length] for start, length in group}) != 1:
+                return False
+        return masked(code_hex, artifact["immutableRanges"]) == masked(
+            artifact["deployedBytecode"], artifact["immutableRanges"])
+    except ValueError:
+        return False
 
 
 def onchain_code(address: str, rpc: str) -> str:
@@ -88,7 +107,7 @@ def main() -> int:
 
     for target in (TARGET, SIDECAR_TARGET):
         committed = json.loads(target.read_text())
-        for field in ("sourceSha256", "compilerVersion", "bytecode", "deployedBytecode", "immutableRanges"):
+        for field in ("sourceSha256", "compilerVersion", "bytecode", "deployedBytecode", "immutableRanges", "immutableGroups"):
             if committed.get(field) != fresh[field]:
                 print(f"STALE: {target.relative_to(HERE.parent)} {field} differs from a fresh build of {fresh['sourcePath']}")
                 return 1
@@ -96,10 +115,11 @@ def main() -> int:
 
     if args.onchain:
         live = onchain_code(args.onchain, args.rpc)
-        if masked(live, fresh["immutableRanges"]) != masked(fresh["deployedBytecode"], fresh["immutableRanges"]):
+        if not matches_runtime(live, fresh):
             print(f"MISMATCH: {args.onchain} does not run this code")
             return 1
-        print(f"{args.onchain} runs exactly this code (immutables masked)")
+        print(f"{args.onchain} matches the runtime template with consistent immutable values; "
+              "owner, keys and policy still need comparison with the user's chosen values")
     return 0
 
 
