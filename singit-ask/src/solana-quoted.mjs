@@ -73,7 +73,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,readRequest,c
     try{store.create(requestId,owner,agent,hash,now());}catch{return res.status(409).json({error:'previous_quote_pending'});}
     try {
       chosen=await choose(input);
-    }catch(e){store.fail(requestId);return res.status(e.status===400?400:502).json({error:e.status===400?'unknown_model':'no_billable_answer',message:e.status===400?e.message:'No billable answer was prepared. Nothing was paid.'});}
+    }catch(e){store.fail(requestId);if(e.status!==400)res.set('Retry-After','30');return res.status(e.status===400?400:503).json({error:e.status===400?'unknown_model':'no_billable_answer',message:e.status===400?e.message:'No billable answer was prepared. Nothing was paid.'});}
     try {
       const supported=await facilitatorClient.getSupported();
       const kind=supported.kinds.find(x=>x.x402Version===2&&x.scheme==='exact'&&x.network===SOLANA);
@@ -99,7 +99,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,readRequest,c
         choices:[{index:0,message:{role:'assistant',content:answer.content},finish_reason:answer.finishReason??'stop'}],usage:answer.usage,billing};
       store.ready(requestId,quote,result,now());
       return res.json({quote});
-    }catch{store.fail(requestId);return res.status(502).json({error:'no_billable_answer',message:'No billable answer was prepared. Nothing was paid.'});}
+    }catch{store.fail(requestId);res.set('Retry-After','30');return res.status(503).json({error:'no_billable_answer',message:'No billable answer was prepared. Nothing was paid.'});}
   });
   app.post(`${QUOTED_ROUTE}/:id`,async(req,res)=>{
     const row=store.get(req.params.id);
@@ -119,7 +119,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,readRequest,c
     // Verification never submits anything: whatever it answers, this quote was not settled.
     let verified;
     try{verified=await facilitatorClient.verify(payload,required);}
-    catch{store.fail(row.id);return res.status(502).json({error:'verification_unavailable'});}
+    catch{store.fail(row.id);res.set('Retry-After','30');return res.status(503).json({error:'verification_unavailable'});}
     if(!verified.isValid||verified.payer!==row.agent){store.fail(row.id);return res.status(402).json({error:'verification_refused'});}
     try {
       const settling=Date.now();

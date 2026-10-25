@@ -92,7 +92,17 @@ export async function chooseModel(config, catalogue, input) {
   }
 }
 
-export class UpstreamError extends Error {}
+// `status` is the HTTP status Surplus answered (0 when it never did), `code` its error.code (never its message,
+// which is not for matching and may say more than a payer should see), or ours: no_text, max_tokens_spent_reasoning,
+// upstream_error, unreachable. The message is safe to log by construction.
+export class UpstreamError extends Error {
+  constructor(message, { status = 0, code = "upstream_error" } = {}) {
+    super(message);
+    this.name = "UpstreamError";
+    this.status = status;
+    this.code = code;
+  }
+}
 
 // One completion from Surplus Intelligence. Any failure is an UpstreamError: the payer is not charged.
 //
@@ -102,30 +112,49 @@ export class UpstreamError extends Error {}
 // is mandatory for this endpoint"), and Surplus gives up after two of them; such a refusal costs nothing, so the
 // question is asked once more with as little thinking as the seller allows. Surplus documents all three:
 // docs/reference/reasoning, docs/marketplace/routing-controls.
-export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount } = {}) {
+//
+// `params` is the model's supported_parameters from Surplus's list: Surplus forwards what it does not strip, so a
+// parameter the model does not list (temperature on kimi-k3 and others) reaches the provider and is refused, and
+// reasoning_effort, when stripped, leaves a thinking model spending the whole budget on thinking. Absent (a model
+// not on the list), everything is sent as before.
+//
+// A long non-streamed request can come back as HTTP 200 with an error body, so the body is read for every status.
+export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params } = {}) {
+  const sends = (name) => !params || params.includes(name);
   const ask = (reasoning) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature: 0.4,
-                           reasoning_effort: reasoning, si_route: { objective: "price" } }),
+    body: JSON.stringify({ model, messages, max_tokens: maxTokens, ...(sends("temperature") ? { temperature: 0.4 } : {}),
+                           ...(sends("reasoning_effort") ? { reasoning_effort: reasoning } : {}),
+                           si_route: { objective: "price" } }),
     signal: AbortSignal.timeout(LIMITS.timeoutMs),
   });
   let response;
   try {
     response = await ask("none");
-    if (response.status === 400) {
+    if (response.status === 400 && sends("reasoning_effort")) {
       const refusal = await response.clone().json().catch(() => null);
       if (refusal?.error?.code === "request_rejected" && /reasoning/i.test(refusal.error.message ?? "")) response = await ask("low");
     }
   } catch (error) {
-    throw new UpstreamError(`model unreachable (${error.name})`);
+    throw new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" });
   }
-  if (!response.ok) throw new UpstreamError(`model answered HTTP ${response.status}`);
   const data = await response.json().catch(() => null);
-  const content = data?.choices?.[0]?.message?.content;
-  if (typeof content !== "string" || !content.trim()) throw new UpstreamError("model returned no text");
-  return { content, finishReason: data.choices[0].finish_reason ?? "stop", usage: data.usage ?? null };
+  const choice = data?.choices?.[0];
+  if (!response.ok || data?.error || !choice) {
+    const code = typeof data?.error?.code === "string" ? data.error.code : "upstream_error";
+    throw new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code });
+  }
+  const content = choice.message?.content;
+  if (typeof content !== "string" || !content.trim()) {
+    const code = choice.finish_reason === "length" ? "max_tokens_spent_reasoning" : "no_text";
+    throw new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code });
+  }
+  // The cost is in the body, and in a header too (docs: x-si-buyer-cost-micro); billUsage reads the body's field.
+  const header = response.headers?.get?.("x-si-buyer-cost-micro");
+  const usage = data.usage?.buyer_cost_micro == null && header != null ? { ...data.usage, buyer_cost_micro: header } : data.usage ?? null;
+  return { content, finishReason: choice.finish_reason ?? "stop", usage };
 }
 
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
@@ -268,11 +297,17 @@ const TOO_LARGE = "The JSON body is over 128 kB; nothing was charged";
 const UNAVAILABLE = "The model list or a seller could not be reached; try again shortly. Nothing was charged";
 const DUPLICATE = "This payment signature was already used; nothing was charged again";
 // Shared by every paid POST: express.json runs first and refuses what it cannot read.
-const paidErrors = ({ notFound, duplicate, upstream502, schema } = {}) => ({
+// A paid request that produced nothing billable is a 503 with Retry-After, never a 502: Cloudflare replaces an
+// origin 502/504 with its own HTML page, so the JSON saying "not charged" would never reach the payer.
+const RETRY_AFTER = { "Retry-After": { description: "Seconds to wait before trying again", schema: { type: "integer" } } };
+export const MAX_TOKENS_TOO_SMALL = "max_tokens too small: a reasoning model spent it all thinking and wrote no answer; "
+  + "raise max_tokens. Nothing was charged";
+const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, schema } = {}) => ({
   400: errorBody(BAD_REQUEST, schema), 402: PAYMENT_REQUIRED, 413: errorBody(TOO_LARGE, schema),
   ...(notFound ? { 404: errorBody(notFound, schema) } : {}),
   ...(duplicate ? { 409: errorBody(DUPLICATE, schema) } : {}),
-  502: errorBody(upstream502, schema), 503: errorBody(UNAVAILABLE, schema),
+  ...(reasoning ? { 422: errorBody(MAX_TOKENS_TOO_SMALL, schema) } : {}),
+  503: { ...errorBody(unavailable ?? `${UNAVAILABLE}. Also: ${noAnswer}`, schema), headers: RETRY_AFTER },
 });
 
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
@@ -425,7 +460,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           responses: {
             200: { description: "The answer, with what it was charged",
                    content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
-            ...paidErrors({ upstream502: "No billable answer came back; nothing was charged" }),
+            ...paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }),
             429: { ...errorBody("Free answers (model free/…) used up for today, or busy; nothing was charged"),
                    headers: { "Retry-After": { description: "Seconds until the next free answer", schema: { type: "string" } } } },
           },
@@ -440,8 +475,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.0023", max: "0.067" }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
           responses: { 200: { description: "Exa's answer, with billing" },
-                       ...Object.fromEntries(Object.entries(paidErrors({ duplicate: true, upstream502: "Exa did not answer, or refused the request; nothing charged" }))
-                         .filter(([code]) => code !== "503")) },
+                       ...paidErrors({ duplicate: true, unavailable: "Exa did not answer; nothing charged. Retry after Retry-After" }) },
           security: [{ x402: [] }],
         } }])) : {}),
         // Per-model routes (#66) answer the same errors as /v1/chat/completions minus the free tier's 429, plus 404
@@ -450,7 +484,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price })).map(([route, item]) => [route,
           { post: { ...item.post, responses: { 200: item.post.responses[200],
             ...paidErrors({ notFound: "This model is not available; nothing was charged",
-                            upstream502: "No billable answer came back; nothing was charged" }) } } }])) : {}),
+                            noAnswer: "No billable answer came back; nothing was charged", reasoning: true }) } } }])) : {}),
         ...(catalogue ? Object.fromEntries(Object.keys(FORMAT_ROUTES).map((route) => [route, { post: {
           operationId: route === "/v1/messages" ? "createMessage" : "createResponse",
           summary: route === "/v1/messages" ? "Anthropic's Messages API, any listed model" : "OpenAI's Responses API, any listed model",
@@ -460,7 +494,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model"] } } } },
           responses: { 200: { description: "The answer in that API's format, with billing" },
-                       ...paidErrors({ notFound: "No such model; nothing was charged", upstream502: "No billable answer; nothing charged",
+                       ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged",
                                        schema: route === "/v1/messages" ? ANTHROPIC_ERROR_SCHEMA : ERROR_SCHEMA }) },
           security: [{ x402: [] }],
         } }])) : {}),
@@ -474,7 +508,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             properties: { model: { type: "string" }, prompt: { type: "string" }, n: { type: "integer", minimum: 1, maximum: 4 },
                           size: { type: "string", examples: ["1024x1024"] }, response_format: { type: "string", enum: ["b64_json", "url"] } } } } } },
           responses: { 200: { description: "The images, with billing" },
-                       ...paidErrors({ notFound: "No such image model; nothing was charged", duplicate: true, upstream502: "No image; nothing charged" }) },
+                       ...paidErrors({ notFound: "No such image model; nothing was charged", duplicate: true, noAnswer: "No image; nothing charged" }) },
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "Image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
@@ -489,7 +523,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                             response_format: { type: "string", enum: ["mp3", "opus", "aac", "flac", "wav", "pcm"] },
                             speed: { type: "number" } } } } } },
             responses: { 200: { description: "The audio", content: { "audio/mpeg": {} } },
-                         ...paidErrors({ notFound: "No such voice model; nothing was charged", duplicate: true, upstream502: "No audio; nothing charged" }) },
+                         ...paidErrors({ notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "Voice models and their prices",
@@ -505,14 +539,14 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               properties: { model: { type: "string" }, prompt: { type: "string", maxLength: 2000 }, duration_seconds: { type: "integer" },
                             resolution: { type: "string" }, aspect_ratio: { type: "string" }, audio: { type: "boolean" } } } } } },
             responses: { 200: { description: "The accepted job, its token and billing" },
-                         ...paidErrors({ notFound: "No such video model; nothing was charged", duplicate: true, upstream502: "Not started; nothing charged" }) },
+                         ...paidErrors({ notFound: "No such video model; nothing was charged", duplicate: true, noAnswer: "Not started; nothing charged" }) },
             security: [{ x402: [] }],
           } },
           [`${VIDEO_ROUTE}/{id}`]: { get: { operationId: "getVideo", security: [],
             summary: "Free: a video job's status and files (header X-Job-Token, or ?token=)",
             responses: { 200: { description: "Finished" }, 202: { description: "Still running" },
                          400: errorBody("No job id or no token"), 403: errorBody("Wrong token"), 404: errorBody("No such job"),
-                         502: errorBody("Surplus answered something unreadable"), 503: errorBody(UNAVAILABLE) } } },
+                         503: errorBody(`${UNAVAILABLE}, or Surplus answered something unreadable`) } } },
           "/v1/video/models": { get: { operationId: "listVideoModels", summary: "Video models and their prices",
             responses: { 200: { description: "Model list" } }, security: [] } } } : {}),
         ...(priceBook ? {

@@ -141,12 +141,12 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
       audio = Buffer.from(await response.arrayBuffer());
     } catch (error) {
       log(`singit-ask: voice model unreachable (${error.name})`);
-      return res.status(502).json({ error: { type: "upstream_error", message: "No audio was made. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "No audio was made. You were not charged." } });
     }
     const type = response.headers.get("content-type") ?? "";
     if (!response.ok || !audio.length || !/^audio\//.test(type)) {
       log(`singit-ask: voice model ${request.model} answered HTTP ${response.status} (${type}, ${audio.length} bytes)`);
-      return res.status(502).json({ error: { type: "upstream_error", message: "No audio was made. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "No audio was made. You were not charged." } });
     }
     const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);

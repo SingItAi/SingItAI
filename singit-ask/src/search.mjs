@@ -200,13 +200,14 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
           body: JSON.stringify(req.body), signal: AbortSignal.timeout(60000) });
       } catch (error) {
         log(`singit-ask: Exa ${exaPath} unreachable (${error.name})`);
-        return res.status(502).json({ error: { type: "upstream_error", message: "Exa did not answer. You were not charged." } });
+        return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "Exa did not answer. You were not charged." } });
       }
       const data = await answer.json().catch(() => null);
       if (answer.status !== 200 || !data || typeof data !== "object") {
         // 401/402 from Exa means SingIt's own key or Exa credit: not the payer's fault, and not charged.
         log(`singit-ask: Exa ${exaPath} answered HTTP ${answer.status}`);
-        return res.status(answer.status === 400 ? 400 : 502).json({ error: { type: answer.status === 400
+        if (answer.status !== 400) res.set("Retry-After", "30");
+        return res.status(answer.status === 400 ? 400 : 503).json({ error: { type: answer.status === 400
           ? "invalid_request_error" : "upstream_error", message: answer.status === 400
           ? "Exa refused the request. You were not charged." : "Exa did not answer. You were not charged." } });
       }

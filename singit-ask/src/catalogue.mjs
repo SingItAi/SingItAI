@@ -39,7 +39,7 @@ function parseModels(data) {
     if (!entry.supported_parameters?.includes("max_tokens")) continue;
     models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""),
       contextLength: Number(entry.context_length) || 0, promptUsdPerToken: prompt, completionUsdPerToken: completion,
-      tags: capabilities(entry, inputs) });
+      tags: capabilities(entry, inputs), params: entry.supported_parameters.map(String) });
   }
   return models;
 }

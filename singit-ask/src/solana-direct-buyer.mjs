@@ -10,7 +10,7 @@ const ceilingOf=(quote,maxCap)=>{const c=quote?.billing?.maxChargeAtomic;
 const decode=s=>JSON.parse(Buffer.from(s,'base64').toString());
 // Merchant answers that end a request before it asks for settlement: nothing was or will be charged.
 const REFUSED=new Set(['400:invalid_payment','400:terms_changed','401:unauthorized','402:verification_refused',
-  '404:not_found','409:quote_unavailable','502:verification_unavailable']);
+  '404:not_found','409:quote_unavailable','503:verification_unavailable']);
 export class PaymentRefused extends Error {}
 export function validateDirectQuote(quote,{requestId,owner,agent,maxCap=DIRECT_TERMS.maxChargeAtomic}) {
   const terms=ceilingOf(quote,maxCap);

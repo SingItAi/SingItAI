@@ -122,7 +122,7 @@ test("Anthropic's Messages: a failed upstream request paid with exact is not set
   const { url, facilitator } = await serve(t, { surplus: fakeSurplus({ status: 500 }) });
   const required = decode((await post(`${url}/v1/messages`, MESSAGE)).headers.get("payment-required"));
   const paid = await post(`${url}/v1/messages`, MESSAGE, pay(required, BASE, "exact"));
-  assert.equal(paid.status, 502);
+  assert.equal(paid.status, 503);
   assert.deepEqual(facilitator.calls.settle, []);
 });
 
@@ -131,7 +131,7 @@ test("no billable answer, no charge", async (t) => {
     const { url, facilitator } = await serve(t, { surplus });
     const required = decode((await post(`${url}/v1/messages`, MESSAGE)).headers.get("payment-required"));
     const paid = await post(`${url}/v1/messages`, MESSAGE, pay(required, BASE));
-    assert.equal(paid.status, 502);
+    assert.equal(paid.status, 503);
     assert.equal((await paid.json()).type, "error", "Anthropic's error shape");
     assert.deepEqual(facilitator.calls.settle, []);
   }

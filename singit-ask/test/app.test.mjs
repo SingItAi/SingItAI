@@ -152,7 +152,7 @@ test("a failed upstream request paid with exact is not settled", async (t) => {
   const { url, facilitator } = await serve(t, { upstream: async () => { throw new UpstreamError("model answered HTTP 503"); } });
   const required = await offer(url);
   const response = await post(url, QUESTION, { "PAYMENT-SIGNATURE": exactSignature(required) });
-  assert.equal(response.status, 502);
+  assert.equal(response.status, 503);
   assert.deepEqual(facilitator.calls.settle, []);
 });
 
@@ -194,7 +194,7 @@ for (const [name, upstream] of [
   test(`${name} costs the payer nothing`, async (t) => {
     const { url, facilitator } = await serve(t, { upstream });
     const response = await post(url, QUESTION, { "PAYMENT-SIGNATURE": baseSignature(await offer(url)) });
-    assert.equal(response.status, 502);
+    assert.equal(response.status, 503);
     assert.match((await response.json()).error.message, /not charged/);
     assert.deepEqual(facilitator.calls.settle, []);
   });
@@ -582,7 +582,7 @@ test("an answer dearer than the ceiling of its own model is still not charged", 
   const { url, facilitator } = await serve(t, { upstream: async () => ({ content: "ok", usage: { buyer_cost_micro: 10_000_000 } }) });
   const required = decode((await post(url, { ...QUESTION, model: "pro-model" })).headers.get("payment-required"));
   const paid = await post(url, { ...QUESTION, model: "pro-model" }, { "PAYMENT-SIGNATURE": baseSignature(required) });
-  assert.equal(paid.status, 502);
+  assert.equal(paid.status, 503);
   assert.deepEqual(facilitator.calls.settle, []);
 });
 

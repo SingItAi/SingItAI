@@ -42,17 +42,18 @@ async function serve(t) {
 
 // The codes each paid route answers with, read from its handlers (app.mjs, formats.mjs, images.mjs, speech.mjs,
 // search.mjs, video.mjs, metered.mjs). 413/400 also cover the body parser.
-const COMMON = [400, 402, 413, 502, 503];
+const COMMON = [400, 402, 413, 503];
 const EXPECTED = {
-  [ROUTE]: [...COMMON, 429],
+  [ROUTE]: [...COMMON, 422, 429],
   "/v1/messages": [...COMMON, 404],
   "/v1/responses": [...COMMON, 404],
   [IMAGE_ROUTE]: [...COMMON, 404, 409],
   [SPEECH_ROUTE]: [...COMMON, 404, 409],
   [VIDEO_ROUTE]: [...COMMON, 404, 409],
-  ...Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [route, [400, 402, 409, 413, 502]])),
-  // model-routes.mjs chooseModelRoute: 400 model mismatch, 404 unknown model, 503 no trusted seller; 502 no answer.
-  ...Object.fromEntries(modelRoutePaths().map((route) => [route, [...COMMON, 404]])),
+  ...Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [route, [400, 402, 409, 413, 503]])),
+  // model-routes.mjs chooseModelRoute: 400 model mismatch, 404 unknown model, 503 no trusted seller or no answer,
+  // 422 max_tokens spent reasoning (metered.mjs).
+  ...Object.fromEntries(modelRoutePaths().map((route) => [route, [...COMMON, 404, 422]])),
 };
 
 test("every paid path documents 402 and exactly the error codes its handlers send", async (t) => {

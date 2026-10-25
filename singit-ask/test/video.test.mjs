@@ -114,7 +114,7 @@ test("a paid clip starts one job, the payer is settled once it is accepted, and 
 test("a job Surplus does not accept costs nothing", async (t) => {
   const { url, facilitator } = await serve(t, { surplus: fakeSurplus({ submitStatus: 402 }) });
   const required = decode((await post(`${url}${VIDEO_ROUTE}`, VIDEO)).headers.get("payment-required"));
-  assert.equal((await post(`${url}${VIDEO_ROUTE}`, VIDEO, pay(required, SOLANA))).status, 502);
+  assert.equal((await post(`${url}${VIDEO_ROUTE}`, VIDEO, pay(required, SOLANA))).status, 503);
   assert.deepEqual(facilitator.calls.settle, []);
 });
 

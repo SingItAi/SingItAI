@@ -190,7 +190,7 @@ export function addFreeRoute(app, route, { config, terms, allowance = new FreeAl
     } catch (error) {
       allowance.giveBack(visitor);
       log(`singit-ask: no free answer after ${Date.now() - started} ms (${error.name})`);
-      res.status(502).json({ error: { message: "No answer came back. Try again.", type: "upstream_error" } });
+      res.set("Retry-After", "30").status(503).json({ error: { message: "No answer came back. Try again.", type: "upstream_error" } });
     } finally {
       allowance.done();
     }

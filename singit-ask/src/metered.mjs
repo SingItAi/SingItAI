@@ -12,7 +12,7 @@ import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic,
+import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic, minDiscountFor,
   DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 
 // Actual model cost + 30% + the network's settlement fee. Solana's upto escrows the ceiling, then
@@ -204,7 +204,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       if (!paid) throw new Error("payment on an unknown network");
       const exact = paid.scheme === "exact";
       const answer = await upstream(config, req.askInput.messages, req.askInput.maxTokens, fetchImpl, req.askInput.model,
-        { minDiscount: req.askInput.minDiscount });
+        { minDiscount: minDiscountFor(req.askInput, paid.terms), params: req.askInput.info?.params });
       const usage = billUsage(answer.usage, paid.terms, { allowOverrun: exact });
       // `exact` already settled the full ceiling it was offered: there is no lower amount to settle to, and no
       // way to refund the unused part, so the override below is only ever for `upto`. Its actual cost may run
@@ -218,10 +218,15 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         model: "singit-ask", choices: [{ index: 0, message: { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing });
     } catch (error) {
-      // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
-      log(`singit-ask: no billable answer after ${Date.now() - started} ms (${error.name})`);
-      res.status(502).json({ error: { message: "No billable answer was produced. You were not charged; try again.",
-        type: "upstream_error" } });
+      // Not settled (status >= 400): on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
+      // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
+      log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
+      if (error.code === "max_tokens_spent_reasoning") {
+        return res.status(422).json({ error: { type: "invalid_request_error", code: "max_tokens_too_small",
+          message: "This model spent the whole max_tokens budget reasoning and wrote no answer. Raise max_tokens. You were not charged." } });
+      }
+      res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer",
+        message: "No billable answer was produced. You were not charged; try again." } });
     }
   });
 }

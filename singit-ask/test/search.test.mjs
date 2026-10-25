@@ -105,7 +105,7 @@ test("no answer from Exa, no charge to the payer", async (t) => {
     const { url, facilitator, logs } = await serve(t, { exa: fakeExa({ status }) });
     const required = decode((await post(`${url}/v1/exa/search`, SEARCH)).headers.get("payment-required"));
     const paid = await post(`${url}/v1/exa/search`, SEARCH, pay(required, SOLANA));
-    assert.equal(paid.status, 502);
+    assert.equal(paid.status, 503);
     assert.deepEqual(facilitator.calls.settle, []);
     assert.ok(logs.some((l) => l.includes(`HTTP ${status}`)));
   }

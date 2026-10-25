@@ -54,7 +54,7 @@ test('private preparation needs authentication and withholds answer until paymen
  assert.equal((await s.send('/prepare',{...question,messages:[{role:'user',content:'Changed'}]})).status,409);
 });
 test('model failure sends no payment',async t=>{
- const s=await serve(t,{failModel:true});assert.equal((await s.send('/prepare',question)).status,502);
+ const s=await serve(t,{failModel:true});assert.equal((await s.send('/prepare',question)).status,503);
  assert.deepEqual(s.counts,{model:1,verify:0,settle:0});assert.equal(s.store.get(requestId).status,'failed');
 });
 test('single durable claim prevents concurrent settlement and response replay',async t=>{
@@ -77,7 +77,7 @@ test('settlement uncertainty survives a reopened DB and is never settled again',
 test('a facilitator that cannot verify leaves the quote unpaid and the account free',async t=>{
  const s=await serve(t,{failVerify:true}),q=await prepare(s);
  const r=await s.send('/'+requestId,{},payment(q));
- assert.equal(r.status,502);assert.equal((await r.json()).error,'verification_unavailable');
+ assert.equal(r.status,503);assert.equal((await r.json()).error,'verification_unavailable');
  assert.equal(s.counts.settle,0);assert.equal(s.store.get(requestId).status,'failed');
  assert.equal((await s.send('/prepare',{...question,requestId:'2'.repeat(32)})).status,200);
 });
@@ -124,7 +124,7 @@ test('lost paid response is submitted only once and leaves checkpoint',async t=>
 });
 
 test('over-ceiling model usage is never offered or settled',async t=>{
- const s=await serve(t,{cost:2000});assert.equal((await s.send('/prepare',question)).status,502);
+ const s=await serve(t,{cost:2000});assert.equal((await s.send('/prepare',question)).status,503);
  assert.equal(s.counts.verify,0);assert.equal(s.counts.settle,0);
 });
 test('expired unpaid quotes cannot be claimed; a settlement in flight holds the account',()=>{
@@ -147,7 +147,7 @@ async function paidThrough(s,reply){
 }
 test('only the merchant\'s own refusals before settlement count as unpaid',async t=>{
  const s=await serve(t);
- for(const [status,error] of [[402,'verification_refused'],[502,'verification_unavailable'],[409,'quote_unavailable'],[400,'terms_changed']]){
+ for(const [status,error] of [[402,'verification_refused'],[503,'verification_unavailable'],[409,'quote_unavailable'],[400,'terms_changed']]){
   await assert.rejects(paidThrough(s,async()=>Response.json({error},{status})),PaymentRefused);
  }
  // A second submission of a quote already being settled is not a refusal.
