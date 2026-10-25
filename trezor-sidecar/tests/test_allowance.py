@@ -195,6 +195,29 @@ class AllowanceTests(TestCase):
         self.assertIn("not the tested AgentAllowance", raised.exception.message)
         self.assertEqual(self.trezor.signed, [])
 
+    def test_grant_rejects_inconsistent_constants_even_when_getters_are_honest(self):
+        artifact = LimiterArtifact()
+        for group in artifact.groups:
+            for start, length in group:
+                with self.subTest(start=start):
+                    code = bytearray.fromhex(artifact.deployed_bytecode[2:])
+                    code[start:start + length] = (123).to_bytes(length, "big")
+                    self.rpc.code_override = "0x" + code.hex()
+                    with self.assertRaises(SafeError) as raised:
+                        allowance.grant(LIMITER, "1.00", **self.deps())
+                    self.assertEqual(raised.exception.code, "limiter_invalid")
+                    self.assertEqual(self.trezor.signed, [])
+
+    def test_artifact_allows_consistent_values_but_rejects_length_changes(self):
+        artifact = LimiterArtifact()
+        code = bytearray.fromhex(artifact.deployed_bytecode[2:])
+        for index, group in enumerate(artifact.groups, 1):
+            for start, length in group:
+                code[start:start + length] = index.to_bytes(length, "big")
+        self.assertTrue(artifact.runs("0x" + code.hex()))
+        for malformed in ("0x", "0xnothex", "0x" + code[:-1].hex(), "0x" + code.hex() + "00"):
+            self.assertFalse(artifact.runs(malformed))
+
     def test_grant_refuses_bad_amounts_before_the_device(self):
         for text in ("0", "0.0", "-1", "1.0000001", "abc", "1e2", "1.01", "", " 1"):
             with self.subTest(text=text):
