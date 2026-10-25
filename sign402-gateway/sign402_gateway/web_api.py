@@ -25,6 +25,11 @@ Environment:
     SIGN402_WEB_SURPLUS_API_KEY          a Surplus buyer key (inf_…): turns on the universal /v1 paid from the
                                          account's balance (web_api_proxy.py); without it /v1 pays per answer
     SIGN402_WEB_SURPLUS_URL              Surplus's API (https://api.surplusintelligence.ai)
+    SIGN402_WEB_FREE_MODELS              chat models answered free as "free/<id>" on /v1, comma-separated; needs the
+                                         Surplus key. Empty (default): OFF (web_free.py)
+    SIGN402_WEB_FREE_PER_ACCOUNT_PER_DAY, SIGN402_WEB_FREE_PER_NETWORK_PER_DAY, SIGN402_WEB_FREE_PER_DAY,
+    SIGN402_WEB_FREE_MAX_TOKENS          the free limits: 20, 40, 1000 and 400 by default
+    SINGIT_RECONCILIATION_PER_MINUTE     per client IP, the free public GET /v1/wallet/{address}/reconciliation (30)
 plus everything SIGN402_ALLOWANCE_* the lane itself needs.
 """
 
@@ -40,6 +45,7 @@ import time
 import urllib.error
 import urllib.request
 from collections import defaultdict, deque
+from datetime import datetime, timezone
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
@@ -54,18 +60,27 @@ from .web_accounts import (
 )
 from .web_api_keys import ApiError, ApiKeys, Stream
 from .web_api_proxy import Relay
-from .web_mcp import McpServer, rpc_error
+from .wallet_reconciliation import DEFAULT_DAYS, MAX_DAYS, Reconciliation
+from .web_mcp import McpServer, allowed_origins_from_env, glama_json, rpc_error, server_card
+from .web_mcp import tools as mcp_tools
 
 logger = logging.getLogger(__name__)
 
 PREFIX = "/web/v1"
+NUMBERS_PATH = "/brand/numbers.json"  # public, unauthenticated: live counts for the marketing site
+NUMBERS_CACHE_SECONDS = 300
 COOKIE = "singit_session"
 CSRF_HEADER = "X-SingIt-CSRF"
 ACCOUNT_HEADER = "X-SingIt-Account"
 MAX_BODY = 16 * 1024
+RECONCILIATION_PATH = re.compile(r"/v1/wallet/([^/]{1,100})/reconciliation")  # public, before the API-key /v1
 API_PREFIX = "/v1"            # the OpenAI-compatible API that API keys open (web_api_keys.py)
 API_MAX_BODY = 160 * 1024     # a question may be 24,000 characters, several bytes each
 MCP_PATH = "/mcp"              # SingIt's remote MCP server (web_mcp.py), on the same API keys
+MCP_CORS_HEADERS = "Authorization, Content-Type, x-api-key, MCP-Protocol-Version, Mcp-Session-Id"
+MCP_CORS_EXPOSE = "WWW-Authenticate, Mcp-Session-Id"
+WELL_KNOWN_SERVER_CARD = "/.well-known/mcp/server-card.json"  # SEP-1649, read by catalogs and scanners
+WELL_KNOWN_GLAMA = "/.well-known/glama.json"                  # Glama's claim-by-well-known-file check
 PROXY_MAX_BODY = 16 * 1024 * 1024  # relayed requests: a coding agent's whole context, images included
 MAX_UPLOAD = 25 * 1024 * 1024      # an audio file to transcribe, OpenAI's own limit
 REQUEST_READ_SECONDS = 15
@@ -99,6 +114,13 @@ class RateLimit:
             if len(events) >= self.limit:
                 raise WebError(429, "rate_limited", "Too many requests. Wait a minute and try again.")
             events.append(now)
+
+
+def per_minute_from_env(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(name, "") or default))
+    except ValueError:
+        return default
 
 
 class GatewayShop:
@@ -169,6 +191,8 @@ class WebApi:
         max_deploys_per_day: int = 50,
         shop: Callable[[str, str, Mapping[str, Any] | None], tuple[int, dict[str, Any]]] | None = None,
         now: Callable[[], float] = time.time,
+        public_origin: str = "",
+        mcp_allowed_origins: frozenset[str] | None = None,
     ):
         self.auth = auth
         self.allowance = allowance
@@ -191,7 +215,59 @@ class WebApi:
         self.push_by_account = RateLimit(20, 3600)
         self.keys_by_account = RateLimit(20, 3600)
         self.keys = ApiKeys(self, now=now)
-        self.mcp = McpServer(self.keys)
+        self.mcp = McpServer(self.keys, public_origin=public_origin, allowed_origins=mcp_allowed_origins)
+        self.reconciliation_by_ip = RateLimit(per_minute_from_env("SINGIT_RECONCILIATION_PER_MINUTE", 30), 60)
+        self._reconciliation: Reconciliation | None = None
+        self.numbers_by_ip = RateLimit(60, 60)  # generous: almost every hit is served from _numbers_cache
+        self._numbers_cache: dict[str, Any] | None = None
+        self._numbers_cache_at: float = 0.0
+
+    def wallet_reconciliation(self, address: str, query: Mapping[str, str], client: str) -> dict[str, Any]:
+        """The free public report (wallet_reconciliation.py). Needs no session or key; only the per-IP limit."""
+        self.reconciliation_by_ip.hit(client)
+        raw_days = query.get("days", str(DEFAULT_DAYS))
+        if not re.fullmatch(r"[0-9]{1,3}", raw_days) or not 1 <= int(raw_days) <= MAX_DAYS:
+            raise WebError(400, "bad_days", f"days must be a whole number from 1 to {MAX_DAYS}.")
+        if self._reconciliation is None:
+            self._reconciliation = Reconciliation(self.allowance.store, getattr(self.solana, "store", None), self.now)
+        try:
+            return self._reconciliation.report(address, int(raw_days))
+        except WebAuthError:
+            raise WebError(400, "bad_address", "Send a Base address (0x and 40 hex digits) or a Solana address.") from None
+
+    def brand_numbers(self) -> dict[str, Any]:
+        """GET /brand/numbers.json: live, aggregate-only counts for the marketing site — no wallet address or
+        account id leaves this method. Settled payments and USDC volume mirror scripts/daily-metrics.py's own
+        categories (resource NOT LIKE '%/v1/credit' on Base, pull_tx IS NOT NULL on Solana: a credit top-up is
+        never counted as a purchase here either). Cached for NUMBERS_CACHE_SECONDS: every miss re-reads three
+        SQLite stores, which a page refreshing per visitor must not do."""
+        now = self.now()
+        if self._numbers_cache is not None and now - self._numbers_cache_at < NUMBERS_CACHE_SECONDS:
+            return self._numbers_cache
+        since = int(now) - 30 * 86400
+        empty = {"total": {"count": 0, "wallets": 0, "usdAtomic": 0}, "last30d": {"count": 0, "wallets": 0, "usdAtomic": 0}}
+        base = self.allowance.store.settlement_totals(since)
+        solana = self.solana.store.settlement_totals(since) if self.solana else empty
+        combine = lambda bucket, field: base[bucket][field] + solana[bucket][field]  # noqa: E731
+        numbers = {
+            "version": 1,
+            "measuredAt": datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+            "scope": "Counts payments made through the SingIt app and its agents' Base and Solana allowance "
+                     "lanes (settlements and spends), excluding credit top-ups. Direct x402 calls to "
+                     "ask.singitai.app settle on-chain and are not counted here.",
+            "chains": ["base", "solana"],
+            "payments": {
+                "settled": {"total": combine("total", "count"), "last30d": combine("last30d", "count")},
+                "payingWallets": {"total": combine("total", "wallets"), "last30d": combine("last30d", "wallets")},
+                "usdcVolume": {"total": round(combine("total", "usdAtomic") / 1_000_000, 2),
+                               "last30d": round(combine("last30d", "usdAtomic") / 1_000_000, 2)},
+            },
+            "accounts": self.auth.store.count(),
+            "mcpTools": len(mcp_tools()),
+            "models": None,
+        }
+        self._numbers_cache, self._numbers_cache_at = numbers, now
+        return numbers
 
     def handle(self, method: str, path: str, *, token: str, csrf: str | None, body: dict[str, Any],
                client: str, expected_account: str | None = None,
@@ -566,7 +642,9 @@ class WebHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         origin = self.headers.get("Origin")
-        if origin and origin == self.server.cors_origin:
+        # /mcp sets its own Access-Control-Allow-Origin (bearer-key auth, no cookies, so no Allow-Credentials);
+        # skip the cookie-session CORS below so the two don't both fire when the origins happen to coincide.
+        if origin and origin == self.server.cors_origin and "Access-Control-Allow-Origin" not in (headers or {}):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Access-Control-Allow-Credentials", "true")
             self.send_header("Vary", "Origin")
@@ -581,6 +659,55 @@ class WebHandler(BaseHTTPRequestHandler):
             # The page closed or reloaded before its answer came: no one is left to tell, and nothing failed here.
             self.close_connection = True
             logger.info("web api: %s: the page left before its answer", self.path.partition("?")[0])
+
+    def _send_public(self, status: int, body: dict[str, Any], max_age: int | None = None) -> None:
+        """A document with nothing account-specific in it (GET /brand/numbers.json): open to every origin,
+        never the credentialed, single-origin CORS `_send` uses for the signed-in page's own API."""
+        data = json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", f"public, max-age={max_age}" if max_age else "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(data)))
+        try:
+            self.end_headers()
+            if not self.head_only:
+                self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+            logger.info("web api: %s: the page left before its answer", self.path.partition("?")[0])
+
+    def _wallet_reconciliation(self) -> None:
+        """GET/HEAD /v1/wallet/{address}/reconciliation: public read, any origin, no cookies, cached a minute."""
+        path, _, query = self.path.partition("?")
+        found = RECONCILIATION_PATH.fullmatch(path)
+        status, headers, out = 200, {"Cache-Control": "public, max-age=60"}, {}
+        try:
+            out = self.server.api.wallet_reconciliation(found.group(1), dict(parse_qsl(query)), self._client())
+        except WebError as error:
+            status, headers = error.status, {"Cache-Control": "no-store"}
+            out = {"ok": False, "error": error.code, "message": error.message}
+            if error.status == 429:
+                headers["Retry-After"] = "60"
+        except Exception:
+            logger.exception("web api: wallet reconciliation failed")
+            status, headers = 500, {"Cache-Control": "no-store"}
+            out = {"ok": False, "error": "internal", "message": "Something went wrong on our side."}
+        data = json.dumps(out).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        for key, value in headers.items():
+            self.send_header(key, value)
+        self.send_header("Content-Length", str(len(data)))
+        try:
+            self.end_headers()
+            if not self.head_only:
+                self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
 
     def _send_relay(self, relay: Relay) -> None:
         """An upstream answer as it comes (web_api_proxy.Relay). It is read to the end even when the client left,
@@ -628,6 +755,9 @@ class WebHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:
         origin = self.headers.get("Origin")
+        if self.path.split("?", 1)[0] == MCP_PATH:
+            self._mcp_options(origin)
+            return
         if origin != self.server.cors_origin:
             self.send_response(403)
             self.send_header("Content-Length", "0")
@@ -643,10 +773,53 @@ class WebHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _brand_numbers(self) -> None:
+        """GET /brand/numbers.json: public, no account, no session — rate-limited by IP and cached in
+        WebApi.brand_numbers() so this almost never touches SQLite."""
+        try:
+            self.server.api.numbers_by_ip.hit(self._client())
+            self._send_public(200, self.server.api.brand_numbers(), max_age=NUMBERS_CACHE_SECONDS)
+        except WebError as error:
+            self._send_public(error.status, {"ok": False, "error": error.code, "message": error.message})
+        except Exception:
+            logger.exception("web api: GET %s failed", NUMBERS_PATH)
+            self._send_public(500, {"ok": False, "error": "internal", "message": "Something went wrong on our side."})
+
+    def _mcp_options(self, origin: str | None) -> None:
+        """CORS preflight for POST /mcp: trusted origins only (McpServer.is_trusted_origin), same rule
+        the actual POST enforces. No Allow-Credentials: /mcp is bearer-key auth, not cookies."""
+        if not self.server.api.mcp.is_trusted_origin(origin):
+            self.send_response(403)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", MCP_CORS_HEADERS)
+        self.send_header("Access-Control-Expose-Headers", MCP_CORS_EXPOSE)
+        self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self) -> None:
-        if self.path.split("?", 1)[0] == MCP_PATH:
+        path = self.path.split("?", 1)[0]
+        if path == NUMBERS_PATH:
+            self._brand_numbers()
+            return
+        if path == MCP_PATH:
             self._send(405, {"ok": False, "error": "method_not_allowed",
                              "message": "This endpoint offers no SSE stream. Send POST."}, {"Allow": "POST"})
+            return
+        if RECONCILIATION_PATH.fullmatch(self.path.partition("?")[0]):
+            self._wallet_reconciliation()
+            return
+        if path == WELL_KNOWN_SERVER_CARD:
+            self._well_known(server_card(self.server.api.mcp.public_origin or self.server.cors_origin, MCP_PATH))
+            return
+        if path == WELL_KNOWN_GLAMA:
+            self._well_known(glama_json())
             return
         if self.path.startswith(API_PREFIX + "/"):
             self._public("GET")
@@ -655,6 +828,18 @@ class WebHandler(BaseHTTPRequestHandler):
             self._static()
             return
         self._dispatch("GET")
+
+    def _well_known(self, data: dict[str, Any]) -> None:
+        """Public, keyless catalog metadata: no CSRF or session concerns, so a plain * origin is fine."""
+        body = json.dumps(data).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "public, max-age=3600")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if not self.head_only:
+            self.wfile.write(body)
 
     def do_DELETE(self) -> None:
         if self.path.split("?", 1)[0] == MCP_PATH:
@@ -670,6 +855,16 @@ class WebHandler(BaseHTTPRequestHandler):
         Without this the standard library answered 501, once per check, into the console.
         """
         self.head_only = True
+        if RECONCILIATION_PATH.fullmatch(self.path.partition("?")[0]):
+            self._wallet_reconciliation()
+            return
+        path = self.path.split("?", 1)[0]
+        if path == WELL_KNOWN_SERVER_CARD:
+            self._well_known(server_card(self.server.api.mcp.public_origin or self.server.cors_origin, MCP_PATH))
+            return
+        if path == WELL_KNOWN_GLAMA:
+            self._well_known(glama_json())
+            return
         if not self.path.startswith(PREFIX + "/") and self.server.static_root is not None:
             self._static()
             return
@@ -729,7 +924,7 @@ class WebHandler(BaseHTTPRequestHandler):
             status, out, headers = self.server.api.mcp.handle(
                 authorization=self.headers.get("Authorization"), api_key=self.headers.get("x-api-key"),
                 origin=self.headers.get("Origin"), protocol_version=self.headers.get("MCP-Protocol-Version"),
-                body=raw)
+                body=raw, client_ip=self._client())
             if out is None:
                 self.send_response(status)
                 for key, value in headers.items():
@@ -774,7 +969,8 @@ class WebHandler(BaseHTTPRequestHandler):
                     raise error_ from None
             status, out, headers = self.server.api.keys.public(
                 method, path[len(API_PREFIX):], authorization=self.headers.get("Authorization"),
-                origin=self.headers.get("Origin"), body=body, headers=self.headers, query=dict(parse_qsl(query)), raw=raw)
+                origin=self.headers.get("Origin"), body=body, headers=self.headers, query=dict(parse_qsl(query)), raw=raw,
+                client=self._client())
             if isinstance(out, Relay):
                 self._send_relay(out)
             elif isinstance(out, Stream):
@@ -783,7 +979,8 @@ class WebHandler(BaseHTTPRequestHandler):
                 self._send(status, out, headers)
         except ApiError as error:
             self.close_connection = True
-            self._send(error.status, error.body())
+            self._send(error.status, error.body(),
+                       {"Retry-After": str(error.retry_after)} if error.retry_after else None)
         except WebError as error:
             self._send(error.status, ApiError(error.status, error.message, type_="api_error", code=error.code).body())
         except Exception:
@@ -861,6 +1058,8 @@ def build_web_api_from_env(allowance: AllowanceService, env: Mapping[str, str] |
         max_limiters_per_30_days=int(values.get("SIGN402_WEB_MAX_LIMITERS_PER_30_DAYS", "3")),
         max_deploys_per_day=int(values.get("SIGN402_WEB_MAX_DEPLOYS_PER_DAY", "50")),
         shop=shop,
+        public_origin=uri,  # the MCP host's own origin: trusted for /mcp's Origin check and its server-card
+        mcp_allowed_origins=allowed_origins_from_env(values),  # the same env mapping, not os.environ (Codex review)
     )
     api.solana = solana
     surplus_key = str(values.get("SIGN402_WEB_SURPLUS_API_KEY", "")).strip()
@@ -870,6 +1069,27 @@ def build_web_api_from_env(allowance: AllowanceService, env: Mapping[str, str] |
 
         api.keys.proxy = Proxy(api.keys, Upstream(surplus_key, str(values.get("SIGN402_WEB_SURPLUS_URL", "")
                                                                    or SURPLUS_URL)), Balances(store.path))
+        free_models = [m.strip() for m in str(values.get("SIGN402_WEB_FREE_MODELS", "")).split(",") if m.strip()]
+        if free_models:  # OFF unless configured
+            from . import web_free
+
+            def free_limit(name: str, default: int) -> int:
+                raw = str(values.get(name, "") or "").strip()
+                if not raw:
+                    return default
+                if not raw.isdigit() or int(raw) < 1:
+                    raise ValueError(f"{name} must be a whole number above zero.")
+                return int(raw)
+
+            api.keys.free = web_free.FreeModels(
+                free_models, api.keys.proxy.upstream,
+                per_account=free_limit("SIGN402_WEB_FREE_PER_ACCOUNT_PER_DAY", web_free.DEFAULT_PER_ACCOUNT),
+                per_network=free_limit("SIGN402_WEB_FREE_PER_NETWORK_PER_DAY", web_free.DEFAULT_PER_NETWORK),
+                per_day=free_limit("SIGN402_WEB_FREE_PER_DAY", web_free.DEFAULT_PER_DAY),
+                max_tokens=free_limit("SIGN402_WEB_FREE_MAX_TOKENS", web_free.DEFAULT_MAX_TOKENS))
+    elif str(values.get("SIGN402_WEB_FREE_MODELS", "")).strip():
+        logger.warning("web api: SIGN402_WEB_FREE_MODELS is ignored: free answers need SIGN402_WEB_SURPLUS_API_KEY "
+                       "and SIGN402_WEB_INTERNAL_TOKEN")
     from .web_push import from_env as push_from_env
 
     try:

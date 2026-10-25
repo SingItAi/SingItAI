@@ -23,6 +23,26 @@ what it actually cost; nothing is charged without an answer.
   verb ever verifies or settles, even if the request carries a payment header.
   `/v1/chat/completions/metered` and `/v1/video/generations` are paid routes that are
   not listed for discovery, so `GET`/`HEAD` on them still 404.
+- **Listing metadata:** every discoverable route's 402 resource description stays under
+  300 characters and says only what the route does and when to call it; Coinbase's Bazaar
+  ranks listings by metadata completeness, and billing talk crowds that out, so it stays in
+  `openapi.json` and `/.well-known/x402`'s instructions instead. Each resource also carries
+  `serviceName` ("SingIt Ask") and a PNG `iconUrl`, and its `accepts` always leads with
+  `exact` on Base, the simplest offer for a buyer that only inspects `accepts[0]`.
+- **Per-model routes:** when a catalogue is configured, `POST /v1/chat/{model}` is a
+  separate x402 resource for each of 14 popular models (`claude-opus-5.5`,
+  `claude-sonnet-5.5`, `claude-haiku-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.5`,
+  `gemini-3.1-pro-preview`, `gemini-3.8-flash`, `grok-4.7`, `kimi-k3`, `deepseek-v4-pro`,
+  `deepseek-v4.1-flash`, `qwen3.8-max-0902`, `glm-5.3`; list in `src/model-routes.mjs`), so
+  a directory search for a model name finds its own listing, description and price. Each
+  behaves like `/v1/chat/completions` (same offers, billing and request body) with the
+  model fixed by the path: a body `model` that differs is refused 400 before payment, an
+  absent one uses the path model, and a model the catalogue cannot answer right now is
+  refused 404/503 before payment. `free/` models are not available there. The 402 probe
+  is priced at that model's own ceiling.
+- **`GET /` and `GET /llms.txt`:** a small JSON service index and an
+  [llms.txt](https://llmstxt.org) document, generated from the same enabled-route list as
+  discovery so neither can drift from it.
 - **Web agent, Base:** `POST /v1/chat/completions/metered`, the same Base `upto` offer
   at an address the gateway's buyer pins. Its limiter funding path is unchanged;
   that separate funding leg still uses the existing gas policy.
@@ -37,6 +57,13 @@ what it actually cost; nothing is charged without an answer.
 - **Model:** `deepseek-v4.1-flash` via the merchant's private Surplus API key.
 - **Settlement fee:** charged consistently, also while CDP's free allowance lasts;
   it does not assert that CDP invoices every individual transaction during that allowance.
+- **Pricing transparency:** free `GET /pricing.json` lists, for every chat model `GET /v1/models`
+  offers, what a single reference question (one short message, the `max_tokens` a request gets when
+  it omits the field) is offered over `upto` and `exact` on Base and Solana — computed by the exact
+  `chooseModel`/`ceilings` functions the 402 challenge itself calls, never a separate estimate. No
+  payment, no model call. 503 with `Retry-After` while the model catalogue has never loaded, instead
+  of an empty or invented list. Linked from `openapi.json` as a free path. CORS is open (`*`), same as
+  `/v1/models`, so `singitai.app/pricing/` can fetch it straight from the browser.
 
 ## Automatic web-agent payments
 
@@ -132,8 +159,12 @@ node --env-file=.env src/server.mjs
 | `SINGIT_ASK_QUOTE_DB` | Private writable SQLite path for prepared answers and settlement claims. |
 | `SINGIT_ASK_MODEL` | Upstream model. Default: `deepseek-v4.1-flash`. |
 | `SINGIT_ASK_PORT` | Loopback port. Default: `8140`. |
+| `SINGIT_ASK_WALLET_REPORT_ORIGIN` | Public origin of the sign402 gateway's web API, named in `/openapi.json` for the free `GET /v1/wallet/{address}/reconciliation` (served by the gateway, not here). Default: `https://app.singitai.app`. |
 | `SINGIT_ASK_FREE_MODELS` | Models answered free as `free/<id>` on the public route, comma-separated. Unset: the default model. Empty: free answers off. |
-| `SINGIT_ASK_FREE_PER_VISITOR`, `SINGIT_ASK_FREE_PER_DAY` | Free answers a day per visitor (Cloudflare client address) and for everyone together. Defaults: 20 and 1000. Free answers are capped at 400 tokens and 4000 characters of question. |
+| `SINGIT_ASK_FREE_PER_VISITOR`, `SINGIT_ASK_FREE_PER_DAY` | Free answers a day per visitor and for everyone together. Defaults: 20 and 1000. A visitor is a network, not an address: the Cloudflare client address's IPv4 /24 or IPv6 /64 (an IPv4-mapped IPv6 address counts as its IPv4 network), so rotating addresses in one subnet does not multiply the allowance. Free answers are capped at 400 tokens and 4000 characters of question. |
+| `SINGIT_ASK_FREE_BUDGET_USD_PER_DAY` | Optional daily dollar budget for free answers. Unset (default): no budget is checked. When set, each free answer is counted at the model cost Surplus reports for it (`usage.buyer_cost_micro`, validated like a paid answer's, with no markup or fee); with no usable report it counts at the model's list price for its worst case (400 output tokens, input at 4 characters per token). Once the day's spend reaches the budget, free answers are refused with `429` and `Retry-After` until midnight UTC. While a budget is set, a model whose price is not known is not answered free (`503`). Counters are in memory and restart with the service. |
+
+Free answers have no wallet, so there is no per-wallet limit here: the network above is the only identity they carry. Free models are listed in `GET /v1/models` as `free/<id>` entries (`free: true`, with their `limits`) next to the paid ones, and in `/openapi.json` under the chat route's `x-free-models`. Wallet-based limits belong to the gateway's free models (`sign402-gateway/README.md`).
 
 The service listens on 127.0.0.1 only. Configure a Cloudflare tunnel hostname to publish it. Only loopback proxies are trusted for the forwarded HTTPS scheme.
 

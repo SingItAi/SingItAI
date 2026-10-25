@@ -68,3 +68,46 @@ hermes gateway restart
 
 See `hermes-plugins/sign402-wallet/README.md` for the secure configuration,
 allowlist-first test flow, and diagnostics.
+
+## Health Alerts
+
+Probes the public endpoints and Base RPC, and alerts an operator (Telegram, a webhook, or stdout -
+whichever is configured) when one is down. Read-only; no deploy, no channel chosen by default.
+
+```bash
+python3 scripts/singit-health-alert.py --dry-run
+python3 scripts/singit-health-alert.py --rpc-url "$SIGN402_BASE_RPC_URL" --journal-unit sign402-web
+```
+
+See the script's own docstring for every check, env var, and a sample systemd user timer /
+crontab line (every 5 minutes). Tests: `python3 -m unittest discover -s scripts/tests`.
+
+## BlockRun Prices Snapshot
+
+The website's `/pricing/` page (SingIt vs BlockRun) compares SingIt's live `GET
+https://ask.singitai.app/pricing.json` against BlockRun's prices in the browser. BlockRun has no
+CORS promise for the page to call it directly, so its side is a committed, static snapshot that
+this script refreshes:
+
+```bash
+node scripts/blockrun-prices-snapshot.mjs
+```
+
+Fetches `https://blockrun.ai/api/v1/models`, keeps only paid chat models (`id`, `name`, input/output
+USD per million tokens), adds BlockRun's published flat per-request fee for chat ($0.001, pinned in
+the script since no endpoint in `/api/v1/models` exposes it), and writes
+`website/data/blockrun-prices.json`. Re-run it and commit the result whenever BlockRun's prices
+move; `--out`, `--models-url`, `--fetched-at` and `--input <file>` (read a previously fetched
+response instead of the network) override the defaults.
+
+## Free model cost
+
+`scripts/free-model-cost.py` reads a saved `/v1/models` JSON file and prints, per model, the worst-case cost
+of one free answer (4000 characters of question at 4 characters per token, 400 answer tokens) at the list and
+the expected price, and the month's cost at daily caps of 100, 300 and 1000 answers. It is offline and
+read-only. See [free models](../docs/free-models.md).
+
+```bash
+python scripts/free-model-cost.py docs/data/singit-models-2026-10-24.json
+python scripts/free-model-cost.py MODELS.json --models deepseek-v4.1-flash --caps 100,300 --json
+```

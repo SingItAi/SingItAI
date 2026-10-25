@@ -16,7 +16,8 @@
 //   SINGIT_ASK_FREE_MODELS     models answered free as "free/<id>" (comma-separated); unset means the default model,
 //                              empty turns free answers off
 //   SINGIT_ASK_FREE_PER_VISITOR, SINGIT_ASK_FREE_PER_DAY  free answers a day per visitor and for everyone together
-//                              (defaults in src/free.mjs)
+//                              (defaults in src/free.mjs); visitors are counted by network (IPv4 /24, IPv6 /64)
+//   SINGIT_ASK_FREE_BUDGET_USD_PER_DAY  optional daily dollar budget for free answers; unset means none
 //   SINGIT_ASK_EXA_API_KEY     SingIt's Exa API key: turns on /v1/exa/search, /contents and /answer, resold over x402
 //                              at Exa's list price + 30% (src/search.mjs)
 //   SINGIT_ASK_BASE_RPC        the Base RPC free prices read Chainlink from (https://mainnet.base.org)
@@ -51,6 +52,8 @@ const config = {
   surplusKey: required("SURPLUS_API_KEY"),
   surplusUrl: (process.env.SURPLUS_API_URL || "https://api.surplusintelligence.ai").replace(/\/$/, ""),
   model: process.env.SINGIT_ASK_MODEL || "deepseek-v4.1-flash",
+  // Where the gateway's free wallet report lives (listed in /openapi.json only; this service does not serve it).
+  walletReportOrigin: (process.env.SINGIT_ASK_WALLET_REPORT_ORIGIN || "https://app.singitai.app").replace(/\/$/, ""),
   blockedProviders: String(process.env.SINGIT_ASK_BLOCKED_PROVIDERS || "").split(",").map((p) => p.trim()).filter(Boolean),
   observedFile: process.env.SINGIT_ASK_OBSERVED_PRICES
     || `${process.env.HOME}/.config/singit-ask/observed-prices.json`,
@@ -68,6 +71,11 @@ const positive = (name) => { const n = Number(process.env[name]); return Number.
 config.freeLimits = Object.fromEntries(Object.entries({
   perVisitorPerDay: positive("SINGIT_ASK_FREE_PER_VISITOR"), perDay: positive("SINGIT_ASK_FREE_PER_DAY"),
 }).filter(([, v]) => v !== undefined));
+// Unset: no dollar budget is checked on free answers, as before.
+{
+  const budget = Number(process.env.SINGIT_ASK_FREE_BUDGET_USD_PER_DAY);
+  if (process.env.SINGIT_ASK_FREE_BUDGET_USD_PER_DAY && Number.isFinite(budget) && budget > 0) config.freeBudgetUsdPerDay = budget;
+}
 const port = Number(process.env.SINGIT_ASK_PORT || 8140);
 
 required("CDP_API_KEY_ID"); required("CDP_API_KEY_SECRET");
