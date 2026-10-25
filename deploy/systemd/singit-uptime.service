@@ -4,7 +4,7 @@
 # It is a USER unit: copy it to ~/.config/systemd/user/ only after that OK, adjust ExecStart to
 # the real checkout path, then `systemctl --user daemon-reload`.
 #
-# One run sends six unpaid GET requests, records them in ~/.sign402/uptime.db (or
+# One run sends seven unpaid GET requests, records them in ~/.sign402/uptime.db (or
 # $SINGIT_UPTIME_DB) and exits 0 even when an endpoint is down: it is a recorder, not an alerter.
 # No secrets are used or needed.
 
