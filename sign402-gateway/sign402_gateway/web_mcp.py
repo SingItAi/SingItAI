@@ -278,9 +278,9 @@ def server_card(public_origin: str, mcp_path: str = "/mcp") -> dict[str, Any]:
     }
 
 
-# The support address already published in the website footer (mailto:Exkalibur1919@proton.me), reused
+# The support address already published in the website footer (mailto:contact@singitai.app), reused
 # here so Glama's claim can verify we control this domain.
-GLAMA_MAINTAINER_EMAIL = "Exkalibur1919@proton.me"
+GLAMA_MAINTAINER_EMAIL = "contact@singitai.app"
 
 
 def glama_json() -> dict[str, Any]:
