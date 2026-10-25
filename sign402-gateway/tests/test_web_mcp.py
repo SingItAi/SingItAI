@@ -18,10 +18,13 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 
 from sign402_gateway import web_api as wa
+from sign402_gateway import web_mcp as wm
 from sign402_gateway.agent_allowance import AllowanceStore
 from sign402_gateway.server import PAID_TOOLS
 from sign402_gateway.web_accounts import WebAccountStore, WebAuth, account_id_for
-from sign402_gateway.web_mcp import ASK_URL
+from sign402_gateway.web_mcp import (
+    ASK_URL, DEFAULT_ALLOWED_ORIGINS, FREE_TOOL_NAMES, OWN_TOOLS, allowed_origins_from_env, glama_json, server_card,
+)
 from tests.test_gateway_server import DummyServer
 from tests.test_web_shop import ACCOUNT, OWNER, PAID, REQUIREMENTS, TOKEN, raw_request
 
@@ -54,7 +57,7 @@ class Fixture(unittest.TestCase):
         self.store = WebAccountStore(Path(self.tmp.name) / "web.db")
         self.auth = WebAuth(self.store, domain=DOMAIN, uri=URI, allowed=None, now=lambda: self.clock[0])
         self.shop = Shop()
-        self.api = wa.WebApi(self.auth, Mock(), shop=self.shop, now=lambda: self.clock[0])
+        self.api = wa.WebApi(self.auth, Mock(), shop=self.shop, now=lambda: self.clock[0], public_origin=URI)
         issued = self.auth.nonce(self.user.address)
         self.session = self.auth.verify(issued["message"], sign(self.user, issued["message"]))
         self.account = account_id_for(self.user.address)
@@ -69,14 +72,14 @@ class Fixture(unittest.TestCase):
                                                    "signature": sign(self.user, prepared["message"])})
         return made
 
-    def rpc(self, key, method, params=None, *, id_=1, origin=None):
+    def rpc(self, key, method, params=None, *, id_=1, origin=None, client_ip=None):
         body = {"jsonrpc": "2.0", "method": method}
         if id_ is not None:
             body["id"] = id_
         if params is not None:
             body["params"] = params
         return self.api.mcp.handle(authorization=f"Bearer {key}" if key else None, api_key=None, origin=origin,
-                                   protocol_version="2025-06-18", body=body)
+                                   protocol_version="2025-06-18", body=body, client_ip=client_ip)
 
     def call_tool(self, key, name, arguments=None, **kw):
         return self.rpc(key, "tools/call", {"name": name, "arguments": arguments or {}}, **kw)
@@ -111,6 +114,27 @@ class InitializeAndListTests(Fixture):
         status, out, _ = self.rpc(key, "ping")
         self.assertEqual((status, out["result"]), (200, {}))
 
+    def test_every_tool_has_a_title_and_boolean_annotations_and_there_are_exactly_fourteen(self):
+        key = self.make_key()["key"]
+        status, out, _ = self.rpc(key, "tools/list")
+        listed = out["result"]["tools"]
+        self.assertEqual(len(listed), len(OWN_TOOLS) + len(PAID_TOOLS))
+        self.assertEqual(len(listed), 14)
+        for tool in listed:
+            self.assertTrue(tool.get("title"), tool["name"])
+            annotations = tool["annotations"]
+            self.assertEqual(annotations["title"], tool["title"])
+            for hint in ("readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"):
+                self.assertIsInstance(annotations[hint], bool, f"{tool['name']}.{hint}")
+            self.assertTrue(annotations["readOnlyHint"])
+            self.assertFalse(annotations["destructiveHint"])
+            if tool["name"] in FREE_TOOL_NAMES:
+                self.assertTrue(annotations["idempotentHint"], tool["name"])
+                self.assertFalse(annotations["openWorldHint"], tool["name"])
+            else:
+                self.assertFalse(annotations["idempotentHint"], tool["name"])
+                self.assertTrue(annotations["openWorldHint"], tool["name"])
+
 
 class AuthTests(Fixture):
     def test_no_key_is_refused_before_anything_else(self):
@@ -131,11 +155,110 @@ class AuthTests(Fixture):
         self.assertEqual(status, 401)
         self.assertEqual(self.shop.calls, [])
 
-    def test_a_browser_origin_is_refused(self):
+    def test_an_untrusted_browser_origin_is_refused_before_auth(self):
         made = self.make_key()
         status, out, _ = self.rpc(made["key"], "initialize", origin="https://evil.test")
         self.assertEqual(status, 403)
         self.assertEqual(self.shop.calls, [])
+
+    def test_no_key_is_still_401_when_a_client_ip_is_given(self):
+        status, out, headers = self.rpc(None, "initialize", client_ip="203.0.113.5")
+        self.assertEqual(status, 401)
+        self.assertEqual(out["error"]["code"], -32001)
+
+
+class FailedAuthIpLimitTests(Fixture):
+    def test_too_many_failed_auths_from_one_address_get_429_instead_of_401(self):
+        for _ in range(wm.AUTH_FAILURES_PER_WINDOW):
+            status, _, _ = self.rpc(None, "initialize", client_ip="198.51.100.9")
+            self.assertEqual(status, 401)
+        status, out, headers = self.rpc(None, "initialize", client_ip="198.51.100.9")
+        self.assertEqual(status, 429)
+        self.assertEqual(out["error"]["code"], -32029)
+        self.assertEqual(int(headers["Retry-After"]), wm.AUTH_FAILURE_WINDOW_SECONDS)
+
+    def test_a_different_address_is_unaffected(self):
+        for _ in range(wm.AUTH_FAILURES_PER_WINDOW):
+            self.rpc(None, "initialize", client_ip="198.51.100.9")
+        status, _, _ = self.rpc(None, "initialize", client_ip="198.51.100.10")
+        self.assertEqual(status, 401)
+
+    def test_a_successful_auth_does_not_count_as_a_failure(self):
+        made = self.make_key()
+        for _ in range(wm.AUTH_FAILURES_PER_WINDOW):
+            status, _, _ = self.rpc(made["key"], "ping", client_ip="198.51.100.9")
+            self.assertEqual(status, 200)
+        status, _, _ = self.rpc(made["key"], "ping", client_ip="198.51.100.9")
+        self.assertEqual(status, 200)
+
+    def test_a_valid_key_is_served_even_from_a_throttled_address(self):
+        made = self.make_key()
+        for _ in range(wm.AUTH_FAILURES_PER_WINDOW + 1):
+            self.rpc(None, "initialize", client_ip="198.51.100.9")
+        status, _, _ = self.rpc(None, "initialize", client_ip="198.51.100.9")
+        self.assertEqual(status, 429)
+        status, _, _ = self.rpc(made["key"], "ping", client_ip="198.51.100.9")
+        self.assertEqual(status, 200)
+
+    def test_no_client_ip_means_no_limiting(self):
+        for _ in range(wm.AUTH_FAILURES_PER_WINDOW + 5):
+            status, _, _ = self.rpc(None, "initialize")
+            self.assertEqual(status, 401)
+
+
+class TrustedOriginTests(Fixture):
+    def test_the_literal_null_origin_is_never_trusted(self):
+        made = self.make_key()
+        status, out, _ = self.rpc(made["key"], "initialize", origin="null")
+        self.assertEqual(status, 403)
+
+    def test_a_trusted_scanner_origin_without_a_key_is_401_not_403(self):
+        status, out, _ = self.rpc(None, "initialize", origin="https://glama.ai")
+        self.assertEqual(status, 401)
+        self.assertEqual(out["error"]["code"], -32001)
+
+    def test_a_trusted_scanner_origin_with_a_valid_key_gets_cors_headers_back(self):
+        made = self.make_key()
+        status, out, headers = self.rpc(made["key"], "initialize", origin="https://glama.ai")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Access-Control-Allow-Origin"], "https://glama.ai")
+        self.assertEqual(headers["Vary"], "Origin")
+
+    def test_a_trusted_origin_can_read_www_authenticate_on_a_401(self):
+        status, _, headers = self.rpc(None, "initialize", origin="https://glama.ai")
+        self.assertEqual(status, 401)
+        self.assertIn("WWW-Authenticate", headers["Access-Control-Expose-Headers"])
+
+    def test_the_mcp_hosts_own_origin_is_trusted(self):
+        made = self.make_key()
+        status, out, headers = self.rpc(made["key"], "initialize", origin=URI)
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Access-Control-Allow-Origin"], URI)
+
+    def test_no_origin_still_needs_a_key_for_initialize_and_tools_list(self):
+        status, out, _ = self.rpc(None, "initialize")
+        self.assertEqual(status, 401)
+        status, out, _ = self.rpc(None, "tools/list")
+        self.assertEqual(status, 401)
+
+
+class AllowedOriginsEnvTests(unittest.TestCase):
+    def test_the_default_allowlist_covers_the_known_mcp_scanners(self):
+        self.assertEqual(allowed_origins_from_env({}), DEFAULT_ALLOWED_ORIGINS)
+        self.assertIn("https://glama.ai", DEFAULT_ALLOWED_ORIGINS)
+        self.assertIn("https://x402scan.com", DEFAULT_ALLOWED_ORIGINS)
+
+    def test_the_env_override_replaces_the_defaults_rather_than_extending_them(self):
+        origins = allowed_origins_from_env({"SINGIT_MCP_ALLOWED_ORIGINS": "https://only.example, https://also.example/"})
+        self.assertEqual(origins, {"https://only.example", "https://also.example"})
+        self.assertNotIn("https://glama.ai", origins)
+
+    def test_web_api_passes_its_allowlist_to_the_mcp_server(self):
+        from sign402_gateway.web_mcp import McpServer
+        server = McpServer(Mock(), allowed_origins=allowed_origins_from_env(
+            {"SINGIT_MCP_ALLOWED_ORIGINS": "https://only.example"}))
+        self.assertTrue(server.is_trusted_origin("https://only.example"))
+        self.assertFalse(server.is_trusted_origin("https://glama.ai"))
 
 
 class FreeToolTests(Fixture):
@@ -270,20 +393,83 @@ class ProtocolTests(Fixture):
                                              protocol_version=None, body=b"{not json")
         self.assertEqual((status, out["error"]["code"]), (400, -32700))
 
-    def test_a_key_sends_at_most_sixty_tool_calls_a_minute(self):
+    def test_a_key_sends_at_most_sixty_mcp_requests_a_minute(self):
         made = self.make_key(dailyUsd=1)
         self.api.mcp.fetch_json = Mock(return_value={})
         for _ in range(60):
             status, out, _ = self.call_tool(made["key"], "list_price_symbols")
             self.assertEqual(status, 200)
-        status, out, _ = self.call_tool(made["key"], "list_price_symbols")
-        self.assertEqual(status, 200)  # a JSON-RPC success envelope carrying a tool-level error
-        self.assertTrue(out["result"]["isError"])
-        self.assertIn("sends up to 60 requests a minute", out["result"]["content"][0]["text"])
+        status, out, headers = self.call_tool(made["key"], "list_price_symbols")
+        self.assertEqual(status, 429)
+        self.assertEqual(out["error"]["code"], -32029)
+        self.assertIn("60 requests a minute", out["error"]["message"])
+        self.assertTrue(int(headers["Retry-After"]) > 0)
+
+    def test_the_mcp_bucket_is_separate_from_v1s(self):
+        """Exhausting /v1's own bucket must not touch MCP's, and the other way round."""
+        made = self.make_key(dailyUsd=1)
+        self.shop.reply = (200, {"ok": True, "data": {}, "costAtomic": 0})
+        with patch("sign402_gateway.web_api_keys.REQUESTS_PER_MINUTE", 2):
+            for _ in range(2):
+                self.api.keys.public("POST", "/exa/search", authorization=f"Bearer {made['key']}",
+                                     origin=None, body={"query": "x"})
+            with self.assertRaises(wa.ApiError) as caught:
+                self.api.keys.public("POST", "/exa/search", authorization=f"Bearer {made['key']}",
+                                     origin=None, body={"query": "x"})
+            self.assertEqual(caught.exception.status, 429)
+            # /v1's bucket is now empty, but MCP's own bucket is untouched.
+            status, out, _ = self.rpc(made["key"], "ping")
+            self.assertEqual(status, 200)
+
+        # The ping above already used one of this key's two MCP slots.
+        self.api.mcp.requests_per_minute = 2
+        status, _, _ = self.rpc(made["key"], "ping")
+        self.assertEqual(status, 200)
+        status, out, headers = self.rpc(made["key"], "ping")
+        self.assertEqual(status, 429)
+        self.assertEqual(out["error"]["code"], -32029)
+        # /v1 still has its own, unrelated bucket (REQUESTS_PER_MINUTE is back to 60 outside the patch).
+        status, _, _ = self.api.keys.public("POST", "/exa/search", authorization=f"Bearer {made['key']}",
+                                            origin=None, body={"query": "x"})
+        self.assertEqual(status, 200)
+
+    def test_mcp_requests_per_minute_env_override(self):
+        with patch.dict(os.environ, {"SINGIT_MCP_REQUESTS_PER_MINUTE": "2"}):
+            mcp = wa.McpServer(self.api.keys, fetch_json=Mock(return_value={}))
+        self.assertEqual(mcp.requests_per_minute, 2)
+        made = self.make_key(dailyUsd=1)
+        for _ in range(2):
+            status, _, _ = mcp.handle(authorization=f"Bearer {made['key']}", api_key=None, origin=None,
+                                      protocol_version=None, body={"jsonrpc": "2.0", "id": 1, "method": "ping"})
+            self.assertEqual(status, 200)
+        status, out, headers = mcp.handle(authorization=f"Bearer {made['key']}", api_key=None, origin=None,
+                                          protocol_version=None, body={"jsonrpc": "2.0", "id": 1, "method": "ping"})
+        self.assertEqual(status, 429)
+        self.assertEqual(headers["Retry-After"], str(60))
+
+    def test_an_invalid_env_override_falls_back_to_the_default(self):
+        with patch.dict(os.environ, {"SINGIT_MCP_REQUESTS_PER_MINUTE": "not-a-number"}):
+            mcp = wa.McpServer(self.api.keys)
+        self.assertEqual(mcp.requests_per_minute, 60)
+        with patch.dict(os.environ, {"SINGIT_MCP_REQUESTS_PER_MINUTE": "0"}):
+            mcp = wa.McpServer(self.api.keys)
+        self.assertEqual(mcp.requests_per_minute, 60)
+
+    def test_search_tools_bill_only_the_mcp_bucket_not_v1s(self):
+        made = self.make_key(dailyUsd=1)
+        self.shop.reply = (200, {"ok": True, "data": {"results": []}, "costAtomic": 0})
+        self.call_tool(made["key"], "web_search", {"query": "x"})
+        with patch("sign402_gateway.web_api_keys.REQUESTS_PER_MINUTE", 1):
+            # /v1's own bucket is still empty: web_search did not touch it.
+            status, _, _ = self.api.keys.public("POST", "/exa/search", authorization=f"Bearer {made['key']}",
+                                                origin=None, body={"query": "x"})
+            self.assertEqual(status, 200)
 
 
 class HttpTests(Fixture):
-    """Over HTTP, the way an MCP client (Claude Code, Cursor, Codex) calls it."""
+    """Over HTTP, the way an MCP client (Claude Code, Cursor, Codex) calls it. One server for the whole
+    class (not one per test) so the suite doesn't pile up unclosed sqlite stores for the GC to warn about
+    mid-test, as tearDownModule below already has to account for."""
 
     def setUp(self):
         super().setUp()
@@ -292,7 +478,18 @@ class HttpTests(Fixture):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
         self.base = f"http://127.0.0.1:{self.server.server_address[1]}/mcp"
+        self.root = self.base[: -len("/mcp")]
         self.key = self.make_key()["key"]
+
+    def _options(self, origin):
+        request = urllib.request.Request(self.base, method="OPTIONS", headers={"Origin": origin} if origin else {})
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status, dict(response.headers)
+        except urllib.error.HTTPError as error:
+            headers = dict(error.headers)
+            error.close()
+            return error.code, headers
 
     def test_post_initialize_then_no_key_then_get(self):
         request = urllib.request.Request(self.base, data=json.dumps(
@@ -316,6 +513,67 @@ class HttpTests(Fixture):
         self.assertEqual(caught.exception.code, 405)
         self.assertEqual(caught.exception.headers.get("Allow"), "POST")
         caught.exception.close()
+
+    def test_too_many_failed_auths_from_the_same_peer_eventually_429s(self):
+        no_key = urllib.request.Request(self.base, data=json.dumps(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize"}).encode(),
+            headers={"Content-Type": "application/json"})
+        for _ in range(wm.AUTH_FAILURES_PER_WINDOW):
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(no_key, timeout=10)
+            self.assertEqual(caught.exception.code, 401)
+            caught.exception.close()
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            urllib.request.urlopen(no_key, timeout=10)
+        self.assertEqual(caught.exception.code, 429)
+        self.assertTrue(caught.exception.headers.get("Retry-After"))
+        caught.exception.close()
+
+    def test_preflight_from_a_trusted_scanner_origin(self):
+        status, headers = self._options("https://glama.ai")
+        self.assertEqual(status, 204)
+        self.assertEqual(headers.get("Access-Control-Allow-Origin"), "https://glama.ai")
+        self.assertIn("POST", headers.get("Access-Control-Allow-Methods", ""))
+        self.assertIn("OPTIONS", headers.get("Access-Control-Allow-Methods", ""))
+        self.assertIn("Authorization", headers.get("Access-Control-Allow-Headers", ""))
+        self.assertNotIn("Access-Control-Allow-Credentials", headers)
+
+    def test_preflight_from_an_untrusted_origin_is_403_without_cors_headers(self):
+        status, headers = self._options("https://evil.example")
+        self.assertEqual(status, 403)
+        self.assertNotIn("Access-Control-Allow-Origin", headers)
+
+    def test_preflight_from_the_mcp_hosts_own_origin(self):
+        status, headers = self._options(URI)
+        self.assertEqual(status, 204)
+        self.assertEqual(headers.get("Access-Control-Allow-Origin"), URI)
+
+    def test_server_card(self):
+        with urllib.request.urlopen(self.root + "/.well-known/mcp/server-card.json", timeout=10) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "*")
+            self.assertIn("max-age=3600", response.headers.get("Cache-Control", ""))
+            card = json.loads(response.read())
+        self.assertEqual(card["transport"], {"type": "streamable-http", "url": URI + "/mcp"})
+        self.assertTrue(card["authentication"]["required"])
+        self.assertEqual(card["authentication"]["schemes"], ["bearer"])
+        self.assertEqual(len(card["tools"]), 14)
+        self.assertLessEqual(len(card["description"]), 200)
+        self.assertEqual(card, server_card(URI))
+
+    def test_glama_json(self):
+        with urllib.request.urlopen(self.root + "/.well-known/glama.json", timeout=10) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "*")
+            data = json.loads(response.read())
+        self.assertEqual(data["maintainers"], [{"email": "Exkalibur1919@proton.me"}])
+        self.assertEqual(data, glama_json())
+
+    def test_head_on_server_card_has_no_body(self):
+        request = urllib.request.Request(self.root + "/.well-known/mcp/server-card.json", method="HEAD")
+        with urllib.request.urlopen(request, timeout=10) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), b"")
 
 
 class GatewayApiToolTests(unittest.TestCase):

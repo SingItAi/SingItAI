@@ -10,21 +10,45 @@ Tools:
     ApiKeys._search, exactly as /v1/exa/… is billed).
   * Paid from the key's own limits, needing the "tools" scope: every entry of server.PAID_TOOLS, under
     its mcpStyleName (get_weather, resolve_ens, …), through ApiKeys.tool.
+Every tools/list entry carries a title and MCP annotations (readOnlyHint, destructiveHint, idempotentHint,
+openWorldHint): paid tools debit the key's SingIt limits but never touch external state, so they are
+readOnlyHint/not destructive like the free ones, but not idempotent (each call bills again) and, except
+the three free lookups that only read SingIt's own data, openWorldHint (they reach third-party data).
 
 Every call needs a valid key (Authorization: Bearer sk_singit_…, or x-api-key) before anything else,
-including initialize; a browser Origin is refused for the same reason /v1 refuses one. The key's own
-60-requests-a-minute rate applies once per tools/call, whether the tool is free or paid, except the two
-Exa tools: they already rate inside ApiKeys._search.
+including initialize; MCP has its own per-key rate limit, separate from the /v1 one in ApiKeys._rate:
+heavy use of one must not starve the other. The default is 60 requests a minute, overridden by
+SINGIT_MCP_REQUESTS_PER_MINUTE; it is charged once per authenticated JSON-RPC request that carries an id
+(initialize, ping, tools/list, tools/call) - notifications (202) are not rated. web_search and read_page
+still go through ApiKeys._search, but with rate=False: this module already rated the request, and billing
+it a second time against /v1 would make the two buckets interfere.
+
+A client address, when the caller has one, is also limited on failed authentication (a wrong or revoked
+key): too many in a short window gets 429s instead of 401s, to blunt key guessing against this endpoint.
+A valid key is always served, whatever its address has been doing.
+
+Browser Origin: refused with 403 unless it is trusted, same as /v1 refuses one. Trusted means either the
+same origin as the MCP host itself (McpServer's public_origin, normally SIGN402_WEB_URI) or one of
+DEFAULT_ALLOWED_ORIGINS / SINGIT_MCP_ALLOWED_ORIGINS below — known MCP inspectors and scanners that need to
+read tools/list without a key before a human adds one. A trusted origin still needs a valid key for
+anything beyond the CORS preflight; an untrusted one is refused before authentication is even checked.
+
+Catalog metadata that other files or endpoints read from here: server_card() for
+GET /.well-known/mcp/server-card.json (SEP-1649) and glama_json() for GET /.well-known/glama.json
+(both served by web_api.py, public, no key).
 """
 
 from __future__ import annotations
 
 import functools
 import json
+import os
 import re
+import threading
 import urllib.error
 import urllib.request
-from typing import Any, Callable
+from collections import defaultdict
+from typing import Any, Callable, Mapping
 from urllib.parse import quote
 
 from .web_api_keys import ASK_URL, ApiError, ApiKeys
@@ -44,8 +68,79 @@ SYMBOL_RE = re.compile(r"[A-Za-z0-9]{1,12}")
 PRICE_KINDS = ("crypto", "metal", "fx")
 MODEL_KINDS = ("chat", "images", "audio")
 SEARCH_TYPES = ("auto", "fast", "neural", "keyword")
+MCP_REQUESTS_PER_MINUTE_ENV = "SINGIT_MCP_REQUESTS_PER_MINUTE"
+DEFAULT_MCP_REQUESTS_PER_MINUTE = 60
+AUTH_FAILURES_PER_WINDOW = 30       # per client address, to blunt key guessing against this endpoint
+AUTH_FAILURE_WINDOW_SECONDS = 600
+AUTH_FAILURE_TABLE_MAX = 10_000     # addresses kept before stale ones are pruned
+
+
+def _env_requests_per_minute() -> int:
+    raw = os.environ.get(MCP_REQUESTS_PER_MINUTE_ENV)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_MCP_REQUESTS_PER_MINUTE
+    return value if value > 0 else DEFAULT_MCP_REQUESTS_PER_MINUTE
+
+
 # Tools billed through ApiKeys._search: it rates the key itself, so McpServer must not rate it again.
 SEARCH_TOOLS = frozenset({"web_search", "read_page"})
+# The only tools that read SingIt's own data for free; every other tool bills the key per call and, except
+# for these three, reaches third-party data.
+FREE_TOOL_NAMES = frozenset({"get_price", "list_price_symbols", "list_models"})
+TOOL_TITLES: dict[str, str] = {
+    "get_price": "Get price",
+    "list_price_symbols": "List price symbols",
+    "list_models": "List models",
+    "web_search": "Web search",
+    "read_page": "Read page",
+    "get_weather": "Get weather",
+    "get_sign402_report": "Get Sign402 report",
+    "get_singit_risk_check": "SingIt risk check",
+    "get_x_profile": "Get X profile",
+    "get_crypto_news": "Get crypto news",
+    "get_hyperliquid_market": "Get Hyperliquid market",
+    "get_funding_rates": "Get funding rates",
+    "resolve_ens": "Resolve ENS name",
+    "get_token_price": "Get token price",
+}
+# Known MCP inspectors and scanners that need to read tools/list from a browser before a key is on hand;
+# an exact, lowercased, no-trailing-slash match against Origin, same as the public_origin same-origin check.
+DEFAULT_ALLOWED_ORIGINS = frozenset({
+    "https://glama.ai",             # Glama's connector health-check and claim verification (SI-40 catalog listing)
+    "https://www.glama.ai",
+    "https://x402scan.com",         # x402scan's resource crawler (indexes the x402 API, may probe /mcp too)
+    "https://www.x402scan.com",
+})
+ALLOWED_ORIGINS_ENV = "SINGIT_MCP_ALLOWED_ORIGINS"
+
+
+def _normalize_origin(origin: str) -> str:
+    return origin.strip().lower().rstrip("/")
+
+
+def allowed_origins_from_env(env: Mapping[str, str] | None = None) -> frozenset[str]:
+    """SINGIT_MCP_ALLOWED_ORIGINS, comma-separated exact origins (scheme+host[+port], no wildcards); unset
+    keeps DEFAULT_ALLOWED_ORIGINS, set replaces it entirely rather than extending it."""
+    values = os.environ if env is None else env
+    raw = str(values.get(ALLOWED_ORIGINS_ENV, "")).strip()
+    if not raw:
+        return DEFAULT_ALLOWED_ORIGINS
+    return frozenset(_normalize_origin(origin) for origin in raw.split(",") if origin.strip())
+
+
+def _annotated(entry: dict[str, Any]) -> dict[str, Any]:
+    """Title + MCP tool annotations (SEP: title, readOnlyHint, destructiveHint, idempotentHint, openWorldHint).
+    Every tool here is read-only and non-destructive: paid ones debit the key's limits but never change
+    external state. Free lookups are idempotent and read SingIt's own data; paid ones bill again on every
+    call (not idempotent) and, except the three free ones, reach third-party data (open world)."""
+    name = entry["name"]
+    free = name in FREE_TOOL_NAMES
+    title = TOOL_TITLES.get(name) or name.replace("_", " ").capitalize()
+    annotations = {"title": title, "readOnlyHint": True, "destructiveHint": False,
+                   "idempotentHint": free, "openWorldHint": not free}
+    return {**entry, "title": title, "annotations": annotations}
 
 
 @functools.lru_cache(maxsize=1)
@@ -54,8 +149,9 @@ def _paid_tools() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
     starts: the gateway module is large and this process ran without it until now."""
     from . import server as gw  # noqa: PLC0415
     ids = {tool["mcpStyleName"]: tool_id for tool_id, tool in gw.PAID_TOOLS.items()}
-    listed = tuple({"name": tool["mcpStyleName"], "description": tool["description"] + " Paid per call from your "
-                    "SingIt limits (Base USDC).", "inputSchema": tool["inputSchema"]} for tool in gw.PAID_TOOLS.values())
+    listed = tuple(_annotated({"name": tool["mcpStyleName"], "description": tool["description"] + " Paid per call "
+                    "from your SingIt limits (Base USDC).", "inputSchema": tool["inputSchema"]})
+                   for tool in gw.PAID_TOOLS.values())
     return ids, listed
 
 
@@ -65,6 +161,13 @@ class _BadArgs(Exception):
 
 class _MethodNotFound(Exception):
     """An unsupported JSON-RPC method (-32601)."""
+
+
+class _RateLimited(Exception):
+    """The key's MCP bucket is empty for this minute (-32029), with how long until it is not."""
+
+    def __init__(self, limit: int, retry_after: int):
+        self.limit, self.retry_after = limit, retry_after
 
 
 def _default_fetch_json(url: str) -> dict[str, Any]:
@@ -123,7 +226,7 @@ READ_PAGE_SCHEMA = {
     "required": ["url"],
 }
 
-OWN_TOOLS: list[dict[str, Any]] = [
+OWN_TOOLS: list[dict[str, Any]] = [_annotated(entry) for entry in (
     {"name": "get_price", "description": "A crypto, metal or fx price. Free.", "inputSchema": GET_PRICE_SCHEMA},
     {"name": "list_price_symbols", "description": "Every symbol get_price knows. Free.",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -133,11 +236,52 @@ OWN_TOOLS: list[dict[str, Any]] = [
      "(Base USDC); needs the key's \"search\" scope.", "inputSchema": WEB_SEARCH_SCHEMA},
     {"name": "read_page", "description": "Read a web page's text (Exa). Paid per call from your SingIt limits "
      "(Base USDC); needs the key's \"search\" scope.", "inputSchema": READ_PAGE_SCHEMA},
-]
+)]
 
 
 def tools() -> list[dict[str, Any]]:
     return OWN_TOOLS + list(_paid_tools()[1])
+
+
+# Catalog metadata served by web_api.py's GET dispatch, public and keyless.
+ICON_URL = "https://singitai.app/assets/icons/icon-512.png"
+DOCS_URL = ("https://github.com/bubon-ik/SingItAI/blob/main/sign402-gateway/README.md"
+            "#mcp-server-remote-for-claude-code-cursor-codex")
+SERVER_CARD_DESCRIPTION = ("Free price, model and symbol lookups, plus paid web search, page reading and "
+                           "market data tools, billed in Base USDC inside the API key's own SingIt limits.")
+AUTH_INSTRUCTIONS = ("Create a SingIt API key in the app at https://app.singitai.app/app/, then send it as "
+                     "\"Authorization: Bearer sk_singit_...\" or \"x-api-key: sk_singit_...\".")
+
+
+def server_card(public_origin: str, mcp_path: str = "/mcp") -> dict[str, Any]:
+    """GET /.well-known/mcp/server-card.json (SEP-1649 draft shape). public_origin is the MCP host's own
+    origin (e.g. https://app.singitai.app), never a reflected request Host header."""
+    return {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/mcp-server-card/v1.json",
+        "version": "1.0",
+        "protocolVersion": OUR_VERSION,
+        "serverInfo": dict(SERVER_INFO),
+        "description": SERVER_CARD_DESCRIPTION,
+        "iconUrl": ICON_URL,
+        "documentationUrl": DOCS_URL,
+        "transport": {"type": "streamable-http", "url": f"{public_origin}{mcp_path}"},
+        "capabilities": {"tools": {"listChanged": False}},
+        "authentication": {"required": True, "schemes": ["bearer"], "headers": ["Authorization", "x-api-key"],
+                           "instructions": AUTH_INSTRUCTIONS},
+        "instructions": INSTRUCTIONS,
+        "tools": tools(),
+    }
+
+
+# The support address already published in the website footer (mailto:Exkalibur1919@proton.me), reused
+# here so Glama's claim can verify we control this domain.
+GLAMA_MAINTAINER_EMAIL = "Exkalibur1919@proton.me"
+
+
+def glama_json() -> dict[str, Any]:
+    """GET /.well-known/glama.json: Glama's claim-by-well-known-file verification."""
+    return {"$schema": "https://glama.ai/mcp/schemas/connector.json",
+            "maintainers": [{"email": GLAMA_MAINTAINER_EMAIL}]}
 
 
 def _result(id_: Any, result: Any) -> dict[str, Any]:
@@ -160,21 +304,63 @@ def _tool_error(message: str) -> dict[str, Any]:
 
 
 class McpServer:
-    """One request, one answer: no session, no SSE. Construct with the web app's ApiKeys."""
+    """One request, one answer: no session, no SSE. Construct with the web app's ApiKeys.
 
-    def __init__(self, keys: ApiKeys, *, fetch_json: Callable[[str], dict[str, Any]] | None = None):
+    `requests_per_minute` fixes the MCP bucket's size, overriding SINGIT_MCP_REQUESTS_PER_MINUTE; tests
+    pass it directly instead of setting the environment. The env is otherwise read once here, at
+    construction, not at import time (the web API builds one of these for the life of the process).
+
+    public_origin is this MCP server's own origin (normally SIGN402_WEB_URI); together with
+    allowed_origins (default: allowed_origins_from_env()) it decides which browser Origins are trusted
+    enough to even reach the auth check, below. A key is still required for anything beyond that: trust
+    here only buys an untrusted scanner a 401 instead of a 403, plus the CORS headers to read it.
+    """
+
+    def __init__(self, keys: ApiKeys, *, fetch_json: Callable[[str], dict[str, Any]] | None = None,
+                 requests_per_minute: int | None = None, public_origin: str = "",
+                 allowed_origins: frozenset[str] | None = None):
         self.keys = keys
         self.fetch_json = fetch_json or _default_fetch_json
+        self.requests_per_minute = requests_per_minute if requests_per_minute is not None else _env_requests_per_minute()
+        self._lock = threading.Lock()
+        self._calls: dict[str, list[float]] = defaultdict(list)
+        self._auth_failures: dict[str, list[float]] = defaultdict(list)
+        self.public_origin = _normalize_origin(public_origin) if public_origin else ""
+        self.allowed_origins = allowed_origins_from_env() if allowed_origins is None else allowed_origins
+
+    def is_trusted_origin(self, origin: str | None) -> bool:
+        if not origin:
+            return False
+        normalized = _normalize_origin(origin)
+        if normalized == "null":  # the sandboxed-origin literal, never a real site
+            return False
+        return normalized == self.public_origin or normalized in self.allowed_origins
 
     def handle(self, *, authorization: str | None, api_key: str | None, origin: str | None,
-               protocol_version: str | None, body: bytes | dict[str, Any]) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
-        if origin:
+               protocol_version: str | None, body: bytes | dict[str, Any],
+               client_ip: str | None = None) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
+        if origin and not self.is_trusted_origin(origin):
             # A key is for server code; the page never holds one. Also satisfies the spec's DNS-rebinding check.
             return 403, rpc_error(None, -32600, "API keys are for server code, not browsers. Keep the key out of "
                                   "web pages."), {}
+        status, result, headers = self._authenticated(authorization, api_key, protocol_version, body, client_ip)
+        if origin:  # trusted, checked above: let the caller read the answer across origins
+            # Expose-Headers on the real answer too, not only the preflight: a 401's WWW-Authenticate is
+            # otherwise unreadable to the page (Codex review).
+            headers = {**headers, "Access-Control-Allow-Origin": origin, "Vary": "Origin",
+                       "Access-Control-Expose-Headers": "WWW-Authenticate, Mcp-Session-Id"}
+        return status, result, headers
+
+    def _authenticated(self, authorization: str | None, api_key: str | None, protocol_version: str | None,
+                        body: bytes | dict[str, Any], client_ip: str | None = None) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
         try:
             row = self.keys._key(authorization, api_key)
         except ApiError:
+            # Checked only after the key failed, so a valid key behind a shared NAT or proxy is never locked
+            # out by someone else's bad requests from the same address (Codex review).
+            if client_ip is not None and self._failed_auth(client_ip):
+                return (429, rpc_error(None, -32029, "Too many failed sign-ins from this address. Try again in a "
+                                       "few minutes."), {"Retry-After": str(AUTH_FAILURE_WINDOW_SECONDS)})
             return (401, rpc_error(None, -32001, "Invalid or revoked API key. Create one in the SingIt app."),
                    {"WWW-Authenticate": 'Bearer realm="singit", error="invalid_token"'})
         if isinstance(body, (bytes, bytearray)):
@@ -191,6 +377,11 @@ class McpServer:
         method, msg_id, has_id = parsed["method"], parsed.get("id"), "id" in parsed
         if not has_id or method.startswith("notifications/"):
             return 202, None, {}
+        try:
+            self._rate(row["key_id"])
+        except _RateLimited as exc:
+            return (429, rpc_error(msg_id, -32029, f"This key sends up to {exc.limit} requests a minute to MCP. "
+                                   "Slow down."), {"Retry-After": str(exc.retry_after)})
         params = parsed.get("params") if isinstance(parsed.get("params"), dict) else {}
         try:
             result = self._dispatch(row, method, params, protocol_version)
@@ -199,6 +390,33 @@ class McpServer:
         except _BadArgs as exc:
             return 200, rpc_error(msg_id, -32602, str(exc)), {}
         return 200, _result(msg_id, result), {}
+
+    def _rate(self, key_id: str) -> None:
+        """MCP's own per-key bucket: independent of ApiKeys._rate (the /v1 one), so heavy use of one
+        endpoint never starves the other."""
+        now = self.keys.now()
+        with self._lock:
+            recent = [t for t in self._calls[key_id] if t > now - 60]
+            if len(recent) >= self.requests_per_minute:
+                raise _RateLimited(self.requests_per_minute, max(1, round(60 - (now - recent[0]))))
+            recent.append(now)
+            self._calls[key_id] = recent
+
+    def _failed_auth(self, client_ip: str) -> bool:
+        """Records one failed authentication from `client_ip`; True once it is over the limit for the window.
+        Stale addresses are dropped whenever the table grows large, so it cannot grow without bound."""
+        now = self.keys.now()
+        cutoff = now - AUTH_FAILURE_WINDOW_SECONDS
+        with self._lock:
+            if len(self._auth_failures) > AUTH_FAILURE_TABLE_MAX:
+                for ip in [ip for ip, times in self._auth_failures.items() if not times or times[-1] <= cutoff]:
+                    del self._auth_failures[ip]
+            recent = [t for t in self._auth_failures[client_ip] if t > cutoff]
+            over = len(recent) >= AUTH_FAILURES_PER_WINDOW
+            if not over:
+                recent.append(now)
+            self._auth_failures[client_ip] = recent
+            return over
 
     def _dispatch(self, row, method: str, params: dict[str, Any], protocol_version: str | None) -> Any:
         if method == "initialize":
@@ -218,14 +436,14 @@ class McpServer:
                 "serverInfo": dict(SERVER_INFO), "instructions": INSTRUCTIONS}
 
     def _tools_call(self, row, params: dict[str, Any]) -> dict[str, Any]:
+        # handle() already rated this call once in the MCP bucket; web_search and read_page must not
+        # also be rated in ApiKeys._search (the /v1 bucket) - see their rate=False below.
         name = params.get("name")
         if not isinstance(name, str) or not name:
             raise _BadArgs("name is required.")
         args = params.get("arguments")
         args = args if isinstance(args, dict) else {}
         try:
-            if name not in SEARCH_TOOLS:  # /exa/… tools already rate inside ApiKeys._search
-                self.keys._rate(row["key_id"])
             data = self._call_tool(row, name, args)
         except ApiError as exc:
             return _tool_error(exc.message)
@@ -285,7 +503,7 @@ class McpServer:
             if type_ not in SEARCH_TYPES:
                 raise _BadArgs("type must be auto, fast, neural or keyword.")
             body["type"] = type_
-        _status, data, _headers = self.keys._search(row, "/exa/search", body)
+        _status, data, _headers = self.keys._search(row, "/exa/search", body, rate=False)
         return data
 
     def _read_page(self, row, args: dict[str, Any]) -> Any:
@@ -293,5 +511,5 @@ class McpServer:
         if not url.startswith(("http://", "https://")):
             raise _BadArgs("url must be an http or https page.")
         _status, data, _headers = self.keys._search(row, "/exa/contents", {
-            "urls": [url], "text": {"maxCharacters": 8000}})
+            "urls": [url], "text": {"maxCharacters": 8000}}, rate=False)
         return data
