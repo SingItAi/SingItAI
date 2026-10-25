@@ -67,6 +67,7 @@ def healthy_routes(up):
         "https://ask.singitai.app/v1/chat/completions": GOOD_402,
         "https://ask.singitai.app/openapi.json": (200, {}, json.dumps({"openapi": "3.1.0"}).encode()),
         "https://ask.singitai.app/health": (200, {}, json.dumps({"ok": True, "service": "singit-ask"}).encode()),
+        "https://app.singitai.app/health": (200, {}, json.dumps({"ok": True, "service": "sign402-web-api"}).encode()),
         "https://app.singitai.app/app/": (200, {}, b"<html></html>"),
         "https://app.singitai.app/mcp": (405, {"allow": "GET, POST"}, b"{}"),
     }
@@ -131,7 +132,7 @@ class ProbeTests(unittest.TestCase):
     def test_default_endpoints_match_the_spec(self):
         self.assertEqual([(n, e["expect"]) for n, e in self.eps.items()],
                          [("ask-responses", 402), ("ask-chat", 402), ("ask-openapi", 200),
-                          ("ask-health", 200), ("app-page", 200), ("app-mcp", 405)])
+                          ("ask-health", 200), ("app-health", 200), ("app-page", 200), ("app-mcp", 405)])
 
     def test_402_with_challenge_is_up(self):
         result = self.probe("ask-responses", GOOD_402)
@@ -181,7 +182,7 @@ class ProbeTests(unittest.TestCase):
         opener = FakeOpener(routes=healthy_routes(True))
         results = self.up.probe_round(self.up.load_endpoints(None), opener)
         self.assertTrue(all(r["ok"] for r in results))
-        self.assertEqual(len(opener.seen), 6)
+        self.assertEqual(len(opener.seen), 7)
         for request, _timeout in opener.seen:
             self.assertEqual(request.get_method(), "GET")
             self.assertIsNone(request.data)
@@ -395,7 +396,7 @@ class StoreTests(unittest.TestCase):
             code = self.up.main(["--db", str(path), "--prune-days", "30"], env={}, opener=opener, now=NOW)
         self.assertEqual(code, 0)
         rows = self.query(path, "SELECT ts, endpoint, ok, status, error FROM probes")
-        self.assertEqual(len(rows), 6)
+        self.assertEqual(len(rows), 7)
         self.assertTrue(all(row[0] == NOW and row[2] == 1 and row[4] is None for row in rows))
 
 
@@ -416,7 +417,7 @@ class CliTests(unittest.TestCase):
             code = self.up.main(["--db", str(path)], env={}, opener=opener, now=NOW)
         self.assertEqual(code, 0)
         rows = self.query(path, "SELECT ok, status, error FROM probes")
-        self.assertEqual(rows, [(0, None, "timeout")] * 6)
+        self.assertEqual(rows, [(0, None, "timeout")] * 7)
         self.assertNotIn("secret", out.getvalue())
 
     def test_db_path_from_env_and_flag_and_default(self):
@@ -438,7 +439,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertFalse(path.exists())
         report = json.loads(out.getvalue())
-        self.assertEqual(len(report["endpoints"]), 6)
+        self.assertEqual(len(report["endpoints"]), 7)
         self.assertIsNone(report["endpoints"][0]["windows"]["30d"]["availability_pct"])
         self.assertEqual(report["overall"]["status"], "no_data")
 

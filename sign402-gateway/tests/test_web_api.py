@@ -360,7 +360,7 @@ class WebHttpTests(unittest.TestCase):
                 payload = json.loads(body)
                 self.assertEqual((got, payload["error"]), (status, code))
                 self.assertNotIn("secret detail", body.decode())
-        got, _, _ = self.request("GET", "/health")
+        got, _, _ = self.request("GET", "/no-such-endpoint")  # /health is a real route now (test_health_status.py)
         self.assertEqual(got, 404)
 
     def raw_post(self, headers, body=b"", *, eof=False):

@@ -30,6 +30,8 @@ Environment:
     SIGN402_WEB_FREE_PER_ACCOUNT_PER_DAY, SIGN402_WEB_FREE_PER_NETWORK_PER_DAY, SIGN402_WEB_FREE_PER_DAY,
     SIGN402_WEB_FREE_MAX_TOKENS          the free limits: 20, 40, 1000 and 400 by default
     SINGIT_RECONCILIATION_PER_MINUTE     per client IP, the free public GET /v1/wallet/{address}/reconciliation (30)
+    SINGIT_STATUS_DIR                    where scripts/singit-uptime.py writes status.json and status.html, served
+                                         as GET /status.json and /status (~/.sign402/status)
 plus everything SIGN402_ALLOWANCE_* the lane itself needs.
 """
 
@@ -67,6 +69,11 @@ from .web_mcp import tools as mcp_tools
 logger = logging.getLogger(__name__)
 
 PREFIX = "/web/v1"
+HEALTH_PATH = "/health"                # public liveness: this process answers; touches no database or upstream
+STATUS_PATH, STATUS_JSON_PATH = "/status", "/status.json"  # the uptime recorder's public-safe files, as written
+STATUS_FILES = {STATUS_PATH: ("status.html", "text/html; charset=utf-8"),
+                STATUS_JSON_PATH: ("status.json", "application/json")}
+STATUS_CACHE_SECONDS = 60
 NUMBERS_PATH = "/brand/numbers.json"  # public, unauthenticated: live counts for the marketing site
 NUMBERS_CACHE_SECONDS = 300
 COOKIE = "singit_session"
@@ -773,6 +780,35 @@ class WebHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _health(self) -> None:
+        """GET/HEAD /health: 200 while this process serves requests. Deliberately shallow (no SQLite, no RPC,
+        no gateway call) so an uptime probe measures this service, not its dependencies."""
+        self._send_public(200, {"ok": True, "service": "sign402-web-api"})
+
+    def _status_file(self, path: str) -> None:
+        """GET/HEAD /status and /status.json: the files scripts/singit-uptime.py --html/--status-json writes
+        (public-safe by construction: no IPs, no error bodies). 503 until the first report exists."""
+        name, content_type = STATUS_FILES[path]
+        folder = Path(os.environ.get("SINGIT_STATUS_DIR") or Path.home() / ".sign402" / "status").expanduser()
+        try:
+            data = (folder / name).read_bytes()
+        except OSError:
+            self._send_public(503, {"ok": False, "error": "no_status",
+                                    "message": "No uptime report has been written yet."})
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", f"public, max-age={STATUS_CACHE_SECONDS}")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(data)))
+        try:
+            self.end_headers()
+            if not self.head_only:
+                self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
     def _brand_numbers(self) -> None:
         """GET /brand/numbers.json: public, no account, no session — rate-limited by IP and cached in
         WebApi.brand_numbers() so this almost never touches SQLite."""
@@ -805,6 +841,12 @@ class WebHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
+        if path == HEALTH_PATH:
+            self._health()
+            return
+        if path in STATUS_FILES:
+            self._status_file(path)
+            return
         if path == NUMBERS_PATH:
             self._brand_numbers()
             return
@@ -859,6 +901,12 @@ class WebHandler(BaseHTTPRequestHandler):
             self._wallet_reconciliation()
             return
         path = self.path.split("?", 1)[0]
+        if path == HEALTH_PATH:
+            self._health()
+            return
+        if path in STATUS_FILES:
+            self._status_file(path)
+            return
         if path == WELL_KNOWN_SERVER_CARD:
             self._well_known(server_card(self.server.api.mcp.public_origin or self.server.cors_origin, MCP_PATH))
             return

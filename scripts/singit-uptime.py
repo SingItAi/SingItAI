@@ -71,10 +71,10 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 KINDS = ("plain", "x402", "json")
 ENDPOINT_KEYS = {"name", "url", "expect", "kind", "json_key", "json_ok"}
 
-# The web API (sign402-gateway/sign402_gateway/web_api.py) has no /health route. The page it
-# serves from its static root, /app/, is the cheapest public URL that only answers 200 when the
-# process is up AND its static root is configured, so that is what app-page probes. /mcp answers a
-# plain GET with 405 (POST-only Streamable HTTP), which proves the MCP route is mounted without
+# The web API (sign402-gateway/sign402_gateway/web_api.py) answers GET /health with {"ok": true} while
+# the process serves requests (app-health). The page it serves from its static root, /app/, only answers
+# 200 when the process is up AND its static root is configured, so app-page still probes that. /mcp
+# answers a plain GET with 405 (POST-only Streamable HTTP), which proves the MCP route is mounted without
 # calling a tool. ask-health matches singit-ask/src/app.mjs: GET /health -> {"ok": true, ...}.
 DEFAULT_ENDPOINTS: list[dict[str, Any]] = [
     {"name": "ask-responses", "url": "https://ask.singitai.app/v1/responses", "expect": 402, "kind": "x402"},
@@ -82,6 +82,8 @@ DEFAULT_ENDPOINTS: list[dict[str, Any]] = [
     {"name": "ask-openapi", "url": "https://ask.singitai.app/openapi.json", "expect": 200,
      "kind": "json", "json_key": "openapi"},
     {"name": "ask-health", "url": "https://ask.singitai.app/health", "expect": 200,
+     "kind": "json", "json_ok": True},
+    {"name": "app-health", "url": "https://app.singitai.app/health", "expect": 200,
      "kind": "json", "json_ok": True},
     {"name": "app-page", "url": "https://app.singitai.app/app/", "expect": 200, "kind": "plain"},
     {"name": "app-mcp", "url": "https://app.singitai.app/mcp", "expect": 405, "kind": "plain"},
