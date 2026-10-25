@@ -27,8 +27,8 @@ def _post_json(url: str, body: bytes, headers: dict, timeout: float = 90.0):
         return error.code, error.headers, error.read()
 
 
-def _get_json(url: str, timeout: float = 30.0):
-    request = urllib.request.Request(url, method="GET")
+def _get_json(url: str, timeout: float = 30.0, headers: dict | None = None):
+    request = urllib.request.Request(url, method="GET", headers=headers or {})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
             return response.status, response.read()
@@ -220,11 +220,17 @@ class SingIt:
             payment_info["txHash"] = receipt["transaction"]
         return {**result, "payment": payment_info}
 
-    def wallet_report(self, address: str, *, days: int | None = None) -> dict:
-        """GET /v1/wallet/{address}/reconciliation on app_base_url (SI-67; may not be deployed yet)."""
+    def wallet_report(self, address: str, *, days: int | None = None, api_key: str | None = None) -> dict:
+        """GET /v1/wallet/{address}/reconciliation on app_base_url (SI-67). The report is private: pass an
+        API key (sk_singit_...) of the SingIt account that signs in with `address`."""
         qs = f"?days={days}" if days is not None else ""
         url = f"{self.app_base_url}/v1/wallet/{urllib.parse.quote(address)}/reconciliation{qs}"
-        status, raw = _get_json(url)
+        status, raw = _get_json(url, headers={"Authorization": f"Bearer {api_key}"} if api_key else None)
+        if status in (401, 403):
+            raise SingItPaymentError(
+                f"The wallet report is private (HTTP {status}): pass api_key, a SingIt API key of the account "
+                "that signs in with this wallet."
+            )
         if status >= 400:
             raise SingItPaymentError(
                 f"Wallet reconciliation is not available (HTTP {status}). This endpoint (SI-67) may not be deployed yet; see the SDK README."

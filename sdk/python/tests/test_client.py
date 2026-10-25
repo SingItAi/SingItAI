@@ -129,8 +129,16 @@ def test_wallet_report_and_allowance_parse_the_mock_response(account, start):
     report = {"address": address, "allowance": {"limitAtomic": "5000000", "spentTodayAtomic": "2000"}, "calls": []}
     merchant = start([exact()], routes={f"/v1/wallet/{address}/reconciliation?days=7": (200, report)})
     singit = client(account, merchant)
-    assert singit.wallet_report(address, days=7) == report
-    assert singit.allowance(address, days=7) == report["allowance"]
+    assert singit.wallet_report(address, days=7, api_key="sk_singit_test") == report
+    assert merchant.last_get_headers.get("Authorization") == "Bearer sk_singit_test"
+    assert singit.allowance(address, days=7, api_key="sk_singit_test") == report["allowance"]
+
+
+def test_wallet_report_says_it_is_private_on_401(account, start):
+    address = account.address
+    merchant = start([exact()], routes={f"/v1/wallet/{address}/reconciliation": (401, {"error": "api_key_required"})})
+    with pytest.raises(SingItPaymentError, match=r"private \(HTTP 401\).*api_key"):
+        client(account, merchant).wallet_report(address)
 
 
 def test_wallet_report_raises_a_clear_error_on_404(account, start):

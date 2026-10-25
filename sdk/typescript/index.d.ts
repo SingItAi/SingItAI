@@ -65,9 +65,10 @@ export declare class SingIt {
   constructor(options: SingItOptions);
   chat(options: ChatOptions): Promise<ChatResult>;
   /** GET /v1/wallet/{address}/reconciliation on appBaseUrl (SI-67; may not be deployed yet). */
-  walletReport(address: string, options?: { days?: number }): Promise<any>;
+  /** Private: options.apiKey must be a SingIt API key of the account that signs in with `address`. */
+  walletReport(address: string, options?: { days?: number; apiKey?: string }): Promise<any>;
   /** GET /pricing.json on baseUrl (SI-68; may not be deployed yet). */
   pricing(): Promise<any>;
   /** walletReport(address, options).allowance */
-  allowance(address: string, options?: { days?: number }): Promise<any>;
+  allowance(address: string, options?: { days?: number; apiKey?: string }): Promise<any>;
 }

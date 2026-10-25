@@ -91,9 +91,9 @@ caller to check independently if needed.
   scheme supported on Solana (see below). `route="completions"` (default) calls
   `POST /v1/chat/completions`, live today. `route="per-model"` calls `POST /v1/chat/{model}`
   (SI-62) — **may not be deployed yet**; `model` is then required.
-- `wallet_report(address, days=None)` — `GET {app_base_url}/v1/wallet/{address}/reconciliation`
-  (SI-67). **May not be deployed yet**; this SDK does not fabricate a response, it surfaces the
-  HTTP status.
+- `wallet_report(address, days=None, api_key=None)` — `GET {app_base_url}/v1/wallet/{address}/reconciliation`
+  (SI-67). The report is private: `api_key` must be a SingIt API key of the account that signs in
+  with `address`; without one the server answers 401, and the SDK says so.
 - `pricing()` — `GET {base_url}/pricing.json` (SI-68). **May not be deployed yet**, same caveat.
 - `allowance(address, **kwargs)` — `wallet_report(address, **kwargs)["allowance"]`: the on-chain
   spending limit set in the SingIt app, with what has been spent/remains today.

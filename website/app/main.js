@@ -19,7 +19,7 @@ const state = {
   wallet: null,        // the connected wallet (needed to sign)
   session: null,       // {account, address, telegramLinked}
   allowance: null,     // GET /allowance
-  spend30: null,       // GET /v1/wallet/{address}/reconciliation, its `spent`
+  spend30: null,       // GET /web/v1/wallet/report (the signed-in wallet's own report), its `spent`
   tab: "allowance",
   modal: null,         // {type: "busy" | "wallets" | "quote" | "pause" | "delete-chat" | "models", …}
   preset: 0,           // index into PRESETS
@@ -336,7 +336,7 @@ async function loadAllowance() {
   // A line of context under the allowance card; it never blocks or fails the card.
   // Dropped if the wallet changed while it was on its way (Codex review): never show another wallet's spend.
   const address = state.session.address;
-  api.walletReport(address).then((r) => {
+  api.walletReport().then((r) => {
     if (state.session?.address !== address) return;
     state.spend30 = r.spent; render();
   }).catch(() => {});

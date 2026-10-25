@@ -56,7 +56,7 @@ error on 404 instead of inventing a response.
 - Per-model route `POST /v1/chat/{model}` (SI-62), enabled with `route: "per-model"`. The default
   `POST /v1/chat/completions` works today.
 - Wallet reconciliation `GET https://app.singitai.app/v1/wallet/{address}/reconciliation` (SI-67),
-  behind `walletReport()` and `allowance()`.
+  behind `walletReport()` and `allowance()`. Private: needs an API key of the wallet's own account.
 - `GET /pricing.json` (SI-68), behind `pricing()`.
 
 ## Tests
