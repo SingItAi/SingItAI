@@ -267,6 +267,25 @@ module), as did all 79 Solana and 24 website tests. The release is staged, not d
 sudo is unavailable. Commit/PR: not yet created. [Installation, verification and
 limitations](docs/security-audit/2026-10-11-release.md).
 
+### October 24: free models with network, account and budget limits (local verification, SI-69)
+
+Local working-tree changes in the merged SingItAI project, based on
+[`535001b`](https://github.com/bubon-ik/SingItAI/commit/535001b). Commit/PR: not yet created. This entry records
+verification, not a deployment.
+
+SingIt Ask's free answers (`free/<id>`) are now counted per client network (IPv4 /24, IPv6 /64) instead of per
+address, can be held to an optional daily dollar budget (`SINGIT_ASK_FREE_BUDGET_USD_PER_DAY`, unset = no check),
+and are listed as `free: true` models in `/v1/models`, `/openapi.json` (`x-free-models`) and the Bazaar input
+schema. The gateway gains free models for signed-in wallets on the API-key `/v1`, limited per account, per
+network and per day, separate from the paid limits, and **off** unless `SIGN402_WEB_FREE_MODELS` is set. Free
+answers on SingIt Ask carry no wallet, so there is no wallet limit there. `scripts/free-model-cost.py` and
+[`docs/free-models.md`](docs/free-models.md) give the worst-case cost per free answer for five candidate models
+from a saved `/v1/models` snapshot, with the real usage (10 free answers in 30 days) and the owner decisions
+needed.
+
+Limits: nothing is deployed and no free model was changed; the gateway part and the budget stay off until the
+owner sets them. The Bazaar input-schema change has not been checked against Coinbase's real facilitator.
+
 ## Pending work — not claimed as completed
 
 - Manually verify the deployed wallet commands and refreshed navigation in Telegram.

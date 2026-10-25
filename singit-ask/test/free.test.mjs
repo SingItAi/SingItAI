@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, ROUTE, createApp } from "../src/app.mjs";
-import { FreeAllowance, freeTerms } from "../src/free.mjs";
+import { FreeAllowance, freeAnswerCost, freeTerms, networkOf } from "../src/free.mjs";
 import { UnknownModel } from "../src/catalogue.mjs";
 
 const CONFIG = {
@@ -82,8 +82,8 @@ test("each visitor gets a few free answers a day, and everyone together a ceilin
   assert.equal(third.status, 429);
   assert.match((await third.json()).error.message, /drop the free\/ prefix/);
   assert.ok(Number(third.headers.get("retry-after")) > 0);
-  assert.equal((await ask(url, FREE_Q, "198.51.100.2")).status, 200, "another visitor still has answers");
-  const fourth = await ask(url, FREE_Q, "198.51.100.3");
+  assert.equal((await ask(url, FREE_Q, "198.51.101.2")).status, 200, "another network still has answers");
+  const fourth = await ask(url, FREE_Q, "198.51.102.3");
   assert.equal(fourth.status, 429, "today's ceiling for everyone is reached");
   assert.match((await fourth.json()).error.message, /used up/);
 });
@@ -132,7 +132,10 @@ test("the model list shows our price, the saving against list price, the fees an
   assert.equal(pro.savingsVsListPct, 74);
   const plain = list.data.find((m) => m.id === "deepseek-v4.1-flash");
   assert.equal(plain.singitUsdPerMillionTokens, undefined, "no price is claimed before one is known");
-  assert.ok(!list.data.some((m) => String(m.id).startsWith("free/")), "free models stay out of the paid picker");
+  const listedFree = list.data.filter((m) => String(m.id).startsWith("free/"));
+  assert.deepEqual(listedFree, [{ id: "free/deepseek-v4.1-flash", object: "model", owned_by: "singit", free: true,
+    limits: { perVisitorPerDay: 2, maxTokens: 400, maxChars: 4000 } }]);
+  assert.ok(!list.data.some((m) => m.free && !String(m.id).startsWith("free/")), "paid models are not marked free");
 });
 
 test("the discovery documents mention the free offer and are readable from a browser", async (t) => {
@@ -156,4 +159,89 @@ test("FreeAllowance starts each UTC day afresh and never counts below zero", () 
   allowance.done();
   allowance.giveBack("b");
   assert.equal(allowance.total, 0);
+});
+
+test("networkOf counts an IPv4 /24 and an IPv6 /64 as one visitor, and an IPv4-mapped address as its IPv4 network", () => {
+  assert.equal(networkOf("203.0.113.7"), "203.0.113.0/24");
+  assert.equal(networkOf("203.0.113.250"), "203.0.113.0/24");
+  assert.notEqual(networkOf("203.0.114.7"), networkOf("203.0.113.7"));
+  assert.equal(networkOf("2001:db8:1:2:aaaa:bbbb:cccc:dddd"), "2001:db8:1:2::/64");
+  assert.equal(networkOf("2001:db8:1:2::1"), networkOf("2001:DB8:1:2:ffff::9"));
+  assert.notEqual(networkOf("2001:db8:1:3::1"), networkOf("2001:db8:1:2::1"));
+  assert.equal(networkOf("2001:db8::1"), "2001:db8:0:0::/64");
+  assert.equal(networkOf("::ffff:203.0.113.7"), "203.0.113.0/24");
+  assert.equal(networkOf("::ffff:cb00:7107"), "203.0.113.0/24");
+  assert.equal(networkOf("[2001:db8:1:2::5]"), "2001:db8:1:2::/64");
+  assert.equal(networkOf("fe80::1%eth0"), "fe80:0:0:0::/64");
+  assert.equal(networkOf(undefined), "unknown");
+  assert.equal(networkOf("not-an-ip"), "not-an-ip");
+});
+
+test("rotating addresses inside one network does not multiply the free allowance", async (t) => {
+  const { url } = await serve(t, { config: { ...CONFIG, freeLimits: { perVisitorPerDay: 2, perDay: 50 } } });
+  assert.equal((await ask(url, FREE_Q, "198.51.100.1")).status, 200);
+  assert.equal((await ask(url, FREE_Q, "198.51.100.200")).status, 200);
+  assert.equal((await ask(url, FREE_Q, "198.51.100.77")).status, 429);
+  assert.equal((await ask(url, FREE_Q, "::ffff:198.51.100.9")).status, 429, "an IPv4-mapped address is the same network");
+  assert.equal((await ask(url, FREE_Q, "198.51.101.1")).status, 200, "the next /24 is another network");
+  assert.equal((await ask(url, FREE_Q, "2001:db8:5:5::1")).status, 200);
+  assert.equal((await ask(url, FREE_Q, "2001:db8:5:5::2")).status, 200);
+  assert.equal((await ask(url, FREE_Q, "2001:db8:5:5:9::2")).status, 429, "same /64, third answer");
+  assert.equal((await ask(url, FREE_Q, "2001:db8:5:6::1")).status, 200, "the next /64 is another network");
+});
+
+const BUDGET_CONFIG = { ...CONFIG, freeLimits: { perVisitorPerDay: 50, perDay: 50 }, freeBudgetUsdPerDay: 0.000003 };
+
+test("with no budget configured, nothing about spending is checked", async (t) => {
+  assert.equal(freeTerms(CONFIG).budgetUsdPerDay, undefined);
+  const { url } = await serve(t, { upstream: async () => ({ content: "x", finishReason: "stop", usage: null }) });
+  assert.equal((await ask(url, FREE_Q)).status, 200, "an answer with no usage is fine without a budget");
+});
+
+test("a daily budget counts each answer's reported cost and refuses with Retry-After once it is spent", async (t) => {
+  const { url, asked } = await serve(t, { config: BUDGET_CONFIG, upstream: async () =>
+    ({ content: "x", finishReason: "stop", usage: { buyer_cost_micro: 2 } }) });
+  assert.equal((await ask(url, FREE_Q, "198.51.100.1")).status, 200);
+  assert.equal((await ask(url, FREE_Q, "192.0.2.1")).status, 200, "4 micro-USDC spent of 3: the budget was reached by this answer");
+  const refused = await ask(url, FREE_Q, "203.0.113.1");
+  assert.equal(refused.status, 429);
+  assert.ok(Number(refused.headers.get("retry-after")) > 0);
+  assert.match((await refused.json()).error.message, /used up/);
+  assert.equal(asked.length, 0);
+});
+
+test("without a reported cost, an answer counts at the model's list price for its worst case", () => {
+  const input = { chars: 400, messages: [{}] };
+  // One token per character (the loosest bound): (400 + 4) input tokens at 0.3e-6 and 400 output tokens at 1.2e-6
+  // = 0.0006012 USD, rounded up to micro-units.
+  assert.equal(freeAnswerCost(null, DEFAULT, input, 400), 602);
+  assert.equal(freeAnswerCost({ buyer_cost_micro: 7 }, DEFAULT, input, 400), 7, "a reported cost wins");
+  assert.equal(freeAnswerCost({ buyer_cost_micro: -1 }, DEFAULT, input, 400), 602, "an invalid report is not trusted");
+  assert.equal(freeAnswerCost(null, null, input, 400), null, "no price at all");
+});
+
+test("with a budget and a model whose price is unknown, nothing is answered or spent", async (t) => {
+  const unpriced = { ...catalogue, async resolve() { throw new UnknownModel("no"); } };
+  const fac = facilitator();
+  let called = 0;
+  const app = createApp(BUDGET_CONFIG, { facilitatorClient: fac, upstream: async () => { called += 1; return { content: "x", usage: null }; },
+    log: () => {}, catalogue: unpriced, observed: { share: () => null, record() {} } });
+  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
+  t.after(() => listener.close());
+  const response = await ask(`http://127.0.0.1:${listener.address().port}`, FREE_Q);
+  assert.equal(response.status, 503);
+  assert.equal(called, 0);
+});
+
+test("the OpenAPI document and the discovery listing say the free/ prefix is accepted", async (t) => {
+  const { url } = await serve(t);
+  const doc = await (await fetch(`${url}/openapi.json`)).json();
+  const post = doc.paths[ROUTE].post;
+  assert.match(post.description, /free\/deepseek-v4\.1-flash/);
+  assert.deepEqual(post["x-free-models"], [{ id: "free/deepseek-v4.1-flash", object: "model", owned_by: "singit", free: true,
+    limits: { perVisitorPerDay: 2, maxTokens: 400, maxChars: 4000 } }]);
+  assert.match(post.requestBody.content["application/json"].schema.properties.model.description, /free\/deepseek-v4\.1-flash/);
+  const off = await (await fetch(`${(await serve(t, { config: { ...CONFIG, freeModels: [] } })).url}/openapi.json`)).json();
+  assert.equal(off.paths[ROUTE].post["x-free-models"], undefined);
+  assert.doesNotMatch(off.paths[ROUTE].post.requestBody.content["application/json"].schema.properties.model.description, /Free/);
 });

@@ -264,6 +264,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const free = freeTerms(config);
   const freeOffer = free.models.length ? { models: free.models.map((m) => FREE_PREFIX + m), endpoint: ROUTE,
     perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars } : null;
+  const freeLimits = { perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars };
+  const freeListed = free.models.map((m) => ({ id: FREE_PREFIX + m, object: "model", owned_by: "singit", free: true,
+    limits: freeLimits }));
+  // The question's shape; where free answers are on, the model field says so (Bazaar and OpenAPI read it).
+  const inputSchema = freeOffer ? { ...INPUT_SCHEMA, properties: { ...INPUT_SCHEMA.properties,
+    model: { ...INPUT_SCHEMA.properties.model, description: `${INPUT_SCHEMA.properties.model.description} `
+      + `Free to try, no payment: ${freeOffer.models.join(", ")}.` } } } : INPUT_SCHEMA;
   // What a payer pays on top of the model's own cost: the markup, and one settlement fee per answer.
   const fees = { markupPct: TERMS.markupBps / 100,
     perAnswerUsd: { [BASE]: Number(usd(TERMS.settlementFeeAtomic)), [SOLANA]: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) } };
@@ -294,6 +301,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
+        ...freeListed,
         ...models.map(m => {
           // The price an answer is expected to cost: what this service's own answers from the model cost, or,
           // before the first, the share of list price Surplus's trusted sellers ask. Never the best offer.
@@ -371,10 +379,14 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       servers: [{ url: origin(req) }],
       paths: {
         [ROUTE]: { post: {
-          operationId: "createChatCompletion", summary: "One answer from a language model", description: DESCRIPTION,
+          operationId: "createChatCompletion", summary: "One answer from a language model",
+          description: DESCRIPTION + (freeOffer ? ` Models prefixed ${FREE_PREFIX} (${freeOffer.models.join(", ")}) answer `
+            + `with no payment, within ${freeOffer.perVisitorPerDay} answers a day per network, ${freeOffer.maxTokens} tokens `
+            + `and ${freeOffer.maxChars} characters each.` : ""),
+          ...(freeOffer ? { "x-free-models": freeListed } : {}),
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": {
-            schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE.input } } },
+            schema: { type: "object", ...inputSchema }, example: EXAMPLE.input } } },
           responses: {
             200: { description: "The answer, with what it was charged",
                    content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
@@ -598,7 +610,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
   if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
-  addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
+  addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, catalogue, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage with `upto`, or the same ceiling flat with
   // `exact` for buyers that sign only that scheme. Listed for discovery. `exact` on Base leads `accepts`: it is the
   // simplest offer for a buyer that only inspects the first one, and the one this service is paid in most often.
@@ -614,7 +626,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       ...declareDiscoveryExtension({
         bodyType: "json",
         input: EXAMPLE.input,
-        inputSchema: INPUT_SCHEMA,
+        inputSchema,
         output: { example: EXAMPLE.output, schema: OUTPUT_SCHEMA },
       }),
     },

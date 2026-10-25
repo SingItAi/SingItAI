@@ -485,7 +485,8 @@ class McpServer:
         status, reply = self.keys._shop("api-models", row["account_id"], {})
         if status != 200:
             raise ApiError(502, "The model list is unavailable right now.", type_="api_error")
-        return {"object": "list", "data": reply.get("data") or []}
+        free = self.keys.free.listing() if self.keys.free is not None else []
+        return {"object": "list", "data": [*free, *(reply.get("data") or [])]}
 
     def _web_search(self, row, args: dict[str, Any]) -> Any:
         query = str(args.get("query") or "").strip()

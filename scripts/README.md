@@ -99,3 +99,15 @@ the script since no endpoint in `/api/v1/models` exposes it), and writes
 `website/data/blockrun-prices.json`. Re-run it and commit the result whenever BlockRun's prices
 move; `--out`, `--models-url`, `--fetched-at` and `--input <file>` (read a previously fetched
 response instead of the network) override the defaults.
+
+## Free model cost
+
+`scripts/free-model-cost.py` reads a saved `/v1/models` JSON file and prints, per model, the worst-case cost
+of one free answer (4000 characters of question at 4 characters per token, 400 answer tokens) at the list and
+the expected price, and the month's cost at daily caps of 100, 300 and 1000 answers. It is offline and
+read-only. See [free models](../docs/free-models.md).
+
+```bash
+python scripts/free-model-cost.py docs/data/singit-models-2026-10-24.json
+python scripts/free-model-cost.py MODELS.json --models deepseek-v4.1-flash --caps 100,300 --json
+```

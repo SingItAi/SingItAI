@@ -704,6 +704,44 @@ Example (the seeded test data in tests/test_brand_numbers.py, not production num
 never fetches `ask.singitai.app` to compute this). Direct x402 calls to `ask.singitai.app` (agents
 paying per answer, no SingIt account) settle on-chain and are not included — see `scope`.
 
+## Free models on the API-key `/v1`
+
+A signed-in wallet's API key can ask `POST /v1/chat/completions` for `free/<id>` (for example
+`free/deepseek-v4.1-flash`) and get the answer at no charge, for a first try. **Off by default**: nothing
+is free unless `SIGN402_WEB_FREE_MODELS` names models. It needs the same upstream as the paid `/v1`
+(`SIGN402_WEB_SURPLUS_API_KEY` and `SIGN402_WEB_INTERNAL_TOKEN`); without them the setting is ignored and a
+warning is logged. The module is `sign402_gateway/web_free.py`.
+
+| Variable | Meaning |
+|----------|---------|
+| `SIGN402_WEB_FREE_MODELS` | Models answered free as `free/<id>`, comma-separated. Empty or unset (default): off. |
+| `SIGN402_WEB_FREE_PER_ACCOUNT_PER_DAY` | Free answers a day per account (wallet), across all its keys. Default 20. |
+| `SIGN402_WEB_FREE_PER_NETWORK_PER_DAY` | Free answers a day per client network. Default 40. |
+| `SIGN402_WEB_FREE_PER_DAY` | Free answers a day for everyone together. Default 1000. |
+| `SIGN402_WEB_FREE_MAX_TOKENS` | Cap on the answer length. Default 400. |
+
+A value that is not a positive whole number stops the web API from starting.
+
+- **Limits:** per account, per network and for everyone, whichever is reached first; then `429` with
+  `Retry-After` (seconds to midnight UTC). A network is the IPv4 /24 or IPv6 /64 of the client address
+  (an IPv4-mapped IPv6 address counts as its IPv4 /24), so rotating addresses in one subnet does not
+  multiply the allowance. The client address is the one the web API already trusts: `Cf-Connecting-Ip` or
+  `X-Forwarded-For` from a loopback proxy, else the peer.
+- **Separate from the paid limits:** a free answer is never counted in the key's 60 requests a minute, its
+  daily or per-request caps, or its balance, and spends nothing. Paid requests are counted exactly as before.
+- **Same upstream, smaller answers:** the question goes to the same Surplus upstream as the paid `/v1`, with
+  `max_tokens` clamped to `SIGN402_WEB_FREE_MAX_TOKENS`, at most 4000 characters of question, and no tools.
+  A refusal, or an answer that does not come back, is not counted.
+- **Listed:** `GET /v1/models` (and the MCP `list_models`) show them first as `free/<id>` entries with
+  `free: true` and their `limits`, only when the feature is on.
+- **MCP:** the MCP server has no chat tool, so free answers are only on `/v1`; the MCP rate limit is untouched.
+- **Restarts:** the counters are in memory. A restart starts the day's counts again, so a restart can give out
+  one more day's allowance; the daily ceiling bounds that. The free answers also count only in this process.
+- **Wallet identity:** the account is the one the API key was signed by, so the limit follows the wallet, not
+  the key. Making more wallets is limited only by the network limit.
+
+The proposal, costs per model and what needs the owner's decision are in `docs/free-models.md`.
+
 ## Safety
 
 - The gateway reads the Algorand private key from the local `payment-executor/.env`.
