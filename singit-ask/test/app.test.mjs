@@ -267,13 +267,15 @@ test("the web agent's metered route still refuses an empty request before any of
   assert.equal(response.headers.get("payment-required"), null);
 });
 
-test("the OpenAPI document lists the gateway's free wallet report with its own server and no payment", async (t) => {
+test("the OpenAPI document lists the gateway's owner-only wallet report with its own server, an API key and no payment", async (t) => {
   const { url } = await serve(t);
   const doc = await (await fetch(`${url}/openapi.json`)).json();
   const item = doc.paths["/v1/wallet/{address}/reconciliation"];
   assert.deepEqual(item.servers, [{ url: "https://app.singitai.app" }]);
   assert.equal(item.get.operationId, "walletReconciliation");
-  assert.deepEqual(item.get.security, []);
+  assert.deepEqual(item.get.security, [{ singitApiKey: [] }]);
+  assert.match(item.get.description, /401/);
+  assert.equal(doc.components.securitySchemes.singitApiKey.scheme, "bearer");
   assert.equal(item.get["x-payment-info"], undefined);
   assert.equal(item.get.responses[402], undefined);
   assert.ok(item.get.responses[200].content["application/json"].schema.properties.allowance);

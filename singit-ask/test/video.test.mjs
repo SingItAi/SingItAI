@@ -89,7 +89,7 @@ test("a clip is offered at its list price + 30% + the fee; nothing is started be
   const unpaid = await post(`${url}${VIDEO_ROUTE}`, VIDEO);
   assert.equal(unpaid.status, 402);
   const required = decode(unpaid.headers.get("payment-required"));
-  assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[SOLANA, "106000"], [BASE, "105000"]]);
+  assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[BASE, "105000"], [SOLANA, "106000"]]);
   assert.ok(required.extensions?.bazaar);
   assert.deepEqual(surplus.calls, []);
 });
@@ -151,15 +151,27 @@ test("what is not sold is refused before any payment is asked", async (t) => {
   assert.deepEqual(surplus.calls, []);
 });
 
-test("an empty unpaid probe is not offered, so x402scan does not index video while the seller refuses jobs", async (t) => {
+test("an empty unpaid probe gets the standing offer, so x402scan and Bazaar can index video", async (t) => {
   const { url, surplus } = await serve(t);
-  for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }]) {
+  for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+                      { method: "GET" }]) {
     const probe = await fetch(`${url}${VIDEO_ROUTE}`, init);
-    assert.notEqual(probe.status, 402);
-    assert.equal(probe.status, 404, "empty body still fails the model lookup before any offer");
-    assert.equal(probe.headers.get("payment-required"), null);
+    assert.equal(probe.status, 402, `${init.method} ${init.body ?? ""}`);
+    const required = JSON.parse(Buffer.from(probe.headers.get("payment-required"), "base64").toString());
+    assert.deepEqual(required.accepts.map((a) => a.network), [BASE, SOLANA], "exact on Base first");
+    assert.ok(required.extensions?.bazaar);
   }
+  assert.deepEqual(surplus.calls, [], "a probe never starts a job");
+});
+
+test("paying with no question is refused before any job, and before the payment is verified", async (t) => {
+  const { url, surplus, facilitator } = await serve(t);
+  const probe = await fetch(`${url}${VIDEO_ROUTE}`, { method: "POST" });
+  const required = JSON.parse(Buffer.from(probe.headers.get("payment-required"), "base64").toString());
+  const refused = await post(`${url}${VIDEO_ROUTE}`, {}, pay(required, BASE));
+  assert.equal(refused.status, 404);
   assert.deepEqual(surplus.calls, []);
+  assert.deepEqual(facilitator.calls.settle, []);
 });
 
 test("prices, the request and the free model list", async (t) => {

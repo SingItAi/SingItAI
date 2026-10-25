@@ -47,9 +47,9 @@ Known, deliberate differences:
 
 - `/v1/audio/speech` returns audio, so its challenge carries no JSON output
   example; the lint allows that when `mimeType` is not JSON.
-- `/v1/video/generations`, `/v1/chat/completions/metered` and `/v1/credit` are
-  paid but not listed. A 402 on `GET /v1/video/generations` would let a directory
-  index a route that cannot complete a clip, so it stays a 404.
+- `/v1/chat/completions/metered` and `/v1/credit` are paid but not listed.
+  `/v1/video/generations` was hidden too while Surplus refused video jobs; it is
+  listed again since 25 October 2026, when a test clip went through.
 - Per-model `/v1/chat/{model}` routes (PR #66) are not covered; add them to the
   lint and to `bazaar-resources.json` when that PR lands.
 
