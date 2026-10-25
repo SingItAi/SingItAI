@@ -14,7 +14,7 @@ cookies, no third-party script, no address/email/tx-hash/prompt content ever lea
   snake_case word in it is sensitive (`address`, `owner`, `email`, `tx`, `hash`, `prompt`,
   `code`, `key`, `secret`, `token`, `signature`, `invoice`, `recipient`, `phone`), with a small
   explicit allow-list for safe-but-similar-looking keys (`tokens_in`, `tokens_out`, `cost_usd`,
-  `amount_usd`, `daily_cap_usd`, `per_purchase_cap_usd`). A string value is also dropped if it is
+  `amount_usd`, `daily_cap_usd`, `per_purchase_cap_usd`, `key_ref`). A string value is also dropped if it is
   shaped like an EVM address, a tx hash, an email, or a base58 Solana address, regardless of its
   key.
 - Amounts are sent as USD decimal strings (USDC atomic / 1e6), never raw atomic integers tied to
@@ -43,6 +43,7 @@ cookies, no third-party script, no address/email/tx-hash/prompt content ever lea
 | `funds_added` | Server | `web_balance.py` `credit_topup()`, once its ledger row is committed |
 | `api_key_created` | Server | `web_api_keys.py`, after the key is created |
 | `allowance_setup_view`, `limits_saved`, `limits_failed`, `grant_prepared`, `grant_prepare_failed`, `wallet_sign_rejected`, `grant_result` | Client | `main.js` `renderAllowance()`, `createLimiter()`, `walletOperation()` — the setup funnel, both chains (SI-45) |
+| `mcp_call` | Server | `web_mcp.py` `McpServer._tools_call_observed()`, once per MCP `tools/call` after it finishes |
 
 Setup funnel order: `allowance_setup_view` (once per page load per chain) → `limits_saved` (or `limits_failed` `reason=validation|server`) → `grant_prepared` (or `grant_prepare_failed` `reason=no_sol|other`) → `wallet_sign_rejected` (`reason=rejected|error`, `kind=grant|revoke|fund_gas`) → `grant_result` (`state` = final op state). All carry `chain`; the wallet/result events also carry `kind`. Server-side, a stale or superseded `PREPARED` Solana op now emits `approval_signed`/`revoke` with `state=EXPIRED`, and a refusal for lack of SOL emits them with `state=NO_SOL`.
 
@@ -50,6 +51,29 @@ Setup funnel order: `allowance_setup_view` (once per page load per chain) → `l
 `purchase_completed` is not emitted for a settlement of `https://ask.singitai.app/v1/credit` (a
 balance top-up — `funds_added` covers it) or of a non-metered `.../v1/chat/completions` (would
 double-count with `chat_answer_paid`); see `_settlement_category()` in `agent_allowance.py`.
+
+### `mcp_call`
+
+One event per MCP `tools/call` on `POST /mcp`, emitted after the call has finished, whether it
+succeeded or not. `initialize`, `tools/list` and `ping` are not recorded. A failure anywhere in
+building or storing the event is logged and swallowed: it never reaches the request.
+
+| Prop | Value |
+|---|---|
+| `tool` | The tool's name if it is one of ours (`get_price`, `web_search`, `get_token_price`, …), otherwise `"unknown"`: a caller-chosen name is never stored. |
+| `status` | `ok`, `error`, `refused` (a scope, spend-limit or allowance refusal) or `rate_limited`. |
+| `error_kind` | Only when `status` is not `ok`. A short class, never a message: `auth`, `scope`, `limit`, `upstream`, `bad_args` (an unknown tool or invalid arguments), `internal`. |
+| `latency_ms` | Integer milliseconds from the start of the call to its result. |
+| `paid` | `true` when the tool is a paid one (`web_search`, `read_page`, or a `tools`-scope tool), whether or not this call was charged. |
+| `cost_usd` | USD decimal string of what the key was charged (at least 2 places, sub-cent kept: `"0.003"`). Present only when the result reports an actual charge; otherwise omitted, never `0`. |
+| `key_ref` | The first 12 hex characters of `sha256(ANALYTICS_SALT + key_id)`, where `key_id` is the key's public id (`key_…`) — never the secret, its prefix or its hash. It lets one key's calls be grouped without naming it. |
+| `client` | **Never set today.** The server is stateless, and a client's name only travels in `initialize`, which is not recorded. The prop is reserved (40 characters at most, dropped if it looks like an address or an email) for the day a session exists. |
+
+The user is the usual `uid`, from the key's `account_id`. Tool arguments (queries, URLs, symbols,
+prompts) are never read into the event, and neither are the API key, a wallet address, an account
+id or a transaction hash. `rate_limited` is a `rate_limit_exceeded` from the paid-tool path behind
+the call. A request over MCP's own per-key limit (`SINGIT_MCP_REQUESTS_PER_MINUTE`) is refused in
+`handle()` before `tools/call` is dispatched, so it is not recorded as an `mcp_call` at all.
 
 ## Environment variables
 
@@ -76,7 +100,8 @@ these; only request handlers that already have them (e.g. `POST /auth/verify`) d
 .venv/bin/python scripts/daily-metrics.py --text                        # short text summary
 ```
 
-Read-only: every database is opened as `file:PATH?mode=ro` (same pattern as
+The report also carries an `mcp` section, built from the `events` table (`null` when that table
+is missing), and a `revenue` section; both are described below. Read-only: every database is opened as `file:PATH?mode=ro` (same pattern as
 `scripts/sign402-operator.py`'s `_connect_readonly`), and never written to. A missing database,
 or a table an older deploy does not have yet, is reported as `null` for the fields it would have
 answered rather than crashing the run. Output is aggregate counts and sums only — it never prints
@@ -129,6 +154,89 @@ Suggested cron (00:10 Europe/Prague, from the repo root):
 
 ```
 10 0 * * * cd /path/to/SingItAI && .venv/bin/python scripts/daily-metrics.py --out ~/.sign402/metrics >/dev/null
+```
+
+### The `mcp` section
+
+Counted from `mcp_call` events in the day's window:
+
+```json
+{
+  "calls_total": 6,
+  "by_tool": {"get_price": 1, "get_token_price": 1, "list_models": 1, "unknown": 1, "web_search": 2},
+  "by_status": {"error": 2, "ok": 4},
+  "distinct_uids": 3,
+  "distinct_keys": 3,
+  "latency_ms": {"p50": 300, "p95": 1000},
+  "paid_calls": 2,
+  "cost_usd": "0.010"
+}
+```
+
+`p50`/`p95` are nearest-rank percentiles of `latency_ms` (`null` on a day with no calls).
+`cost_usd` sums the events' own `cost_usd`. A day with no calls is zeros with `null` latencies;
+a missing `events` table is `mcp: null`.
+
+### Excluding your own accounts
+
+Test and operator accounts distort the counts. Name their `uid` hashes (the 16-hex `uid`, never an
+address) in `SIGN402_METRICS_EXCLUDE_UIDS` (comma-separated), and/or in a file passed as
+`--exclude-uids-file PATH` (one uid per line; blank lines and `#` comments are allowed). The
+two are merged. Keep the file out of git. Events from those uids are removed from every
+count that comes from the `events` table (`signed_in_today`, `pauses`, `events`, `mcp`), and the
+report says how many were excluded as `excluded_uids_count`. The settlement and allowance
+tables are keyed by account, not by `uid`, and are not filtered. An unreadable file is an error,
+not a silent no-filter.
+
+### `api_keys` and `revenue`
+
+- **`api_keys.active`** is the number of API keys with a billed call that UTC day, from
+  `api_key_spend`. It does not count a key that only used free tools (those never write a usage
+  row), so it is a floor, and it is `null` when the table is missing. The store's day is UTC, not
+  Europe/Prague: it is offset from the other figures by one or two hours. `api_keys.created` is the
+  keys created in the window.
+- **`revenue.usdc_volume`, `chat_answers`, `credit_topups_usd`** repeat the figures above in one place.
+- **`revenue.margin` is `null`, on purpose.** Gross is known everywhere; what it cost us is
+  recorded in one lane only, so a total margin would be a guess. `revenue.margin_note` names the
+  tables that lack a cost: `allowance.db` `settlements` (amount and resource only),
+  `web.db` `chat_usage` (`cost_atomic` is what the user paid), `solana-allowance.db` `spends`
+  (amount only). Paid-tool settlements are pass-through and carry no markup.
+- **`revenue.balance_lane`** is the exception: `web.db` `balance_ledger` stores `cost_atomic`
+  ("what the model cost, before the markup") beside each charge. It reports `charges`,
+  `gross_usd`, `refunds_usd`, `provider_cost_usd`, `margin_usd`, and `charges_without_cost` (charges
+  with no recorded cost, counted and left out of the margin rather than guessed).
+
+To make margin real everywhere, a payment-path change is needed (not done here): record
+`provider_cost_atomic` and `markup_atomic` next to the amount in `count_settlement()`
+(`allowance.db` `settlements`), in `chat_usage`, and in the Solana `spends`, taking them from
+`ask_metered`'s `cost` and `markup` when it validates the result; and have the paid-tool path
+(`web_data.search` and the `PAID_TOOLS` calls) record its base price.
+
+## The dashboard (`metrics-dashboard.py`)
+
+```sh
+.venv/bin/python scripts/metrics-dashboard.py                  # ~/.sign402/metrics -> ~/.sign402/metrics/dashboard.html
+.venv/bin/python scripts/metrics-dashboard.py --dir DIR --days 14 --out /tmp/dashboard.html
+```
+
+It reads the `DIR/YYYY-MM-DD.json` files that `daily-metrics.py --out DIR` writes (the last
+`--days`, default 30, ending at the newest file) and writes one self-contained HTML file: inline
+CSS and inline SVG sparklines, no script, font or image from anywhere, and no JavaScript. Sections:
+wallets (new, signed in, active spenders), transactions and purchases, revenue (USDC volume, chat
+answers, credit top-ups, margin where it is known), active API keys, and MCP calls (total, by
+tool, by status, latency). A figure that was not recorded, or a day with no file, is shown as
+"—" and is a gap in the sparkline; it is never drawn as `0`. A real recorded zero is a `0`. The
+file is written mode 0600.
+
+**It is operator-only.** The dashboard is a local file: copy it with `scp` or open it over `ssh`.
+It must never be served on a public route, and it is not wired into the web app or the landing
+page. Serving it, behind auth, is a later decision for the owner. It holds only the aggregates
+`daily-metrics.py` already prints, and every value is scrubbed of `0x` addresses on the way out.
+
+Suggested cron (not installed; a few minutes after `daily-metrics.py`):
+
+```
+# 15 0 * * *  cd /path/to/SingItAI && .venv/bin/python scripts/metrics-dashboard.py >/dev/null
 ```
 
 ## What is deferred to server-side ops

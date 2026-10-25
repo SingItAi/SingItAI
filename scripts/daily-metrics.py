@@ -11,6 +11,12 @@ counts and sums only — no wallet address or account id is ever printed.
     python scripts/daily-metrics.py --out ~/.sign402/metrics          # writes DIR/YYYY-MM-DD.json
     python scripts/daily-metrics.py --text                           # a ~10-line summary too
 
+Own and test accounts can be left out of every events-based count (sign-ins, pauses, the `mcp` section):
+list their uid hashes (the `uid` column of `events`, never an address) in `$SIGN402_METRICS_EXCLUDE_UIDS`
+(comma-separated) and/or `--exclude-uids-file PATH` (one per line, `#` comments; keep that file out of git).
+Only the number excluded is reported. Stores keyed by a raw account id (chat_usage, balance_ledger,
+api_key_spend, allowance settlements) cannot be filtered by a uid hash and are not.
+
 The day defaults to yesterday in Europe/Prague (the cron runs at 00:10 there); `--day` overrides
 it. DB paths default to `$SIGN402_STATE_DIR/<file>` (falling back to `~/.sign402/<file>`), each
 overridable by the same environment variable the gateway itself reads, or by a CLI flag. The
@@ -23,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import decimal
 import json
 import os
 import sqlite3
@@ -50,6 +57,7 @@ USER_WALLET_DB_FILENAME = "user-wallets.db"
 # No filename/default here on purpose: this database lives outside the state dir (a separate
 # demo-dashboard host path on deployments that have it at all) and must be named explicitly.
 BITREFILL_ORDERS_DB_ENV = "SIGN402_BITREFILL_COMMERCE_STORE_PATH"
+EXCLUDE_UIDS_ENV = "SIGN402_METRICS_EXCLUDE_UIDS"
 
 # Known Telegram Bitrefill order states, grouped the way an operator reads them; anything not
 # listed here (a future state, or a typo) lands in "other" rather than being dropped or crashing.
@@ -123,6 +131,102 @@ def _usd(atomic: Any) -> str | None:
     return f"{int(atomic) / 1_000_000:.2f}"
 
 
+def _usd_precise(atomic: Any) -> str | None:
+    """Exact USDC atomic as a USD string with at least 2 places (a $0.003 tool call stays "0.003")."""
+    if atomic is None:
+        return None
+    text = f"{int(atomic) / 1_000_000:.6f}".rstrip("0")
+    whole, _, frac = text.partition(".")
+    return f"{whole}.{frac.ljust(2, '0')}"
+
+
+def parse_uid_list(text: str) -> set[str]:
+    """uid hashes from a comma- or newline-separated list; `#` starts a comment."""
+    uids: set[str] = set()
+    for line in text.splitlines():
+        for token in line.split("#", 1)[0].split(","):
+            token = token.strip()
+            if token:
+                uids.add(token)
+    return uids
+
+
+def load_exclude_uids(env_value: str | None, file_path: str | Path | None) -> frozenset[str]:
+    uids = parse_uid_list(env_value or "")
+    if file_path:
+        uids |= parse_uid_list(Path(file_path).expanduser().read_text())
+    return frozenset(uids)
+
+
+def _not_excluded(exclude: frozenset[str]) -> tuple[str, tuple]:
+    """An SQL fragment keeping rows whose uid is not excluded (one JSON parameter, so no variable limit)."""
+    if not exclude:
+        return "", ()
+    return " AND (uid IS NULL OR uid NOT IN (SELECT value FROM json_each(?)))", (json.dumps(sorted(exclude)),)
+
+
+def _percentile(sorted_values: list[int], pct: int) -> int | None:
+    """Nearest-rank percentile (pct in 1..100) of an ascending list."""
+    if not sorted_values:
+        return None
+    rank = max(1, -(-pct * len(sorted_values) // 100))  # integer ceil
+    return sorted_values[min(rank, len(sorted_values)) - 1]
+
+
+def mcp_metrics(db: sqlite3.Connection, s: int, e: int, exclude: frozenset[str]) -> dict[str, Any] | None:
+    """The `mcp_call` events of the window; None when the events table is not there yet."""
+    skip, skip_params = _not_excluded(exclude)
+    rows = _rows(db, "SELECT uid, props_json FROM events WHERE name = 'mcp_call' AND at >= ? AND at < ?" + skip,
+                 (s, e) + skip_params)
+    if rows is None:
+        return None
+    by_tool: dict[str, int] = {}
+    by_status: dict[str, int] = {}
+    latencies: list[int] = []
+    uids: set[str] = set()
+    keys: set[str] = set()
+    paid = 0
+    cost = decimal.Decimal(0)
+    for row in rows:
+        try:
+            props = json.loads(row["props_json"])
+        except (ValueError, TypeError):
+            props = {}
+        if not isinstance(props, dict):
+            props = {}
+        tool, status = str(props.get("tool") or "unknown"), str(props.get("status") or "unknown")
+        by_tool[tool] = by_tool.get(tool, 0) + 1
+        by_status[status] = by_status.get(status, 0) + 1
+        if row["uid"]:
+            uids.add(row["uid"])
+        if isinstance(props.get("key_ref"), str):
+            keys.add(props["key_ref"])
+        latency = props.get("latency_ms")
+        if type(latency) is int and latency >= 0:
+            latencies.append(latency)
+        if props.get("paid") is True:
+            paid += 1
+        if props.get("cost_usd") is not None:
+            try:
+                cost += decimal.Decimal(str(props["cost_usd"]))
+            except decimal.InvalidOperation:
+                pass
+    latencies.sort()
+    cost_text = f"{cost:f}"
+    if "." not in cost_text:
+        cost_text += ".00"
+    return {
+        "calls_total": len(rows),
+        "by_tool": dict(sorted(by_tool.items())),
+        "by_status": dict(sorted(by_status.items())),
+        "distinct_uids": len(uids),
+        "distinct_keys": len(keys),
+        "latency_ms": {"p50": _percentile(latencies, 50), "p95": _percentile(latencies, 95)},
+        "paid_calls": paid,
+        "cost_usd": cost_text,
+    }
+
+
 def _merge_counts(a: dict[str, int] | None, b: dict[str, int] | None) -> dict[str, int] | None:
     if a is None and b is None:
         return None
@@ -149,7 +253,7 @@ _SETTLEMENT_CATEGORY_SQL = """
 """
 
 
-def web_metrics(path: Path, s: int, e: int) -> dict[str, Any] | None:
+def web_metrics(path: Path, s: int, e: int, exclude: frozenset[str] = frozenset()) -> dict[str, Any] | None:
     with _connect_readonly(path) as db:
         if db is None:
             return None
@@ -165,8 +269,10 @@ def web_metrics(path: Path, s: int, e: int) -> dict[str, Any] | None:
         out["total_accounts"] = _scalar(db, "SELECT COUNT(*) FROM accounts")
         # `sessions` rows are deleted once they expire, so counting them is only ever a lower
         # bound for "today", not a reliable daily figure — prefer the durable `events` table.
+        skip, skip_params = _not_excluded(exclude)
         signed_in_from_events = _scalar(
-            db, "SELECT COUNT(DISTINCT uid) FROM events WHERE name = 'sign_in' AND at >= ? AND at < ?", (s, e))
+            db, "SELECT COUNT(DISTINCT uid) FROM events WHERE name = 'sign_in' AND at >= ? AND at < ?" + skip,
+            (s, e) + skip_params)
         out["signed_in_today"] = signed_in_from_events
         out["signed_in_today_source"] = "events" if signed_in_from_events is not None else "unavailable"
         out["sessions_rows_today_unreliable"] = _scalar(
@@ -191,10 +297,12 @@ def web_metrics(path: Path, s: int, e: int) -> dict[str, Any] | None:
         out["api_keys_created"] = _scalar(
             db, "SELECT COUNT(*) FROM api_keys WHERE created_at >= ? AND created_at < ?", (s, e))
         event_rows = _rows(
-            db, "SELECT name, COUNT(*) n FROM events WHERE at >= ? AND at < ? GROUP BY name", (s, e))
+            db, "SELECT name, COUNT(*) n FROM events WHERE at >= ? AND at < ?" + skip + " GROUP BY name",
+            (s, e) + skip_params)
         out["events"] = {row["name"]: row["n"] for row in event_rows} if event_rows is not None else None
         pause_props = _rows(
-            db, "SELECT props_json FROM events WHERE name = 'pause' AND at >= ? AND at < ?", (s, e))
+            db, "SELECT props_json FROM events WHERE name = 'pause' AND at >= ? AND at < ?" + skip,
+            (s, e) + skip_params)
         if pause_props is None:
             out["_pause_triggers"] = None
         else:
@@ -206,7 +314,47 @@ def web_metrics(path: Path, s: int, e: int) -> dict[str, Any] | None:
                     trigger = "unknown"
                 triggers[trigger] = triggers.get(trigger, 0) + 1
             out["_pause_triggers"] = triggers
+        out["_mcp"] = mcp_metrics(db, s, e, exclude)
+        # api_key_spend is keyed by UTC day (ts // 86400) and only holds billed calls (record_key_spend):
+        # this is "keys that paid for a call on that date's UTC day", not every key that called, and
+        # the UTC day is offset 1-2h from the Europe/Prague day of the rest of the report.
+        utc_day = (day_of(s) - datetime.date(1970, 1, 1)).days
+        out["api_keys_active"] = _scalar(
+            db, "SELECT COUNT(DISTINCT key_id) FROM api_key_spend WHERE day = ? AND calls > 0", (utc_day,))
+        out["_balance_lane"] = _balance_lane(db, s, e)
         return out
+
+
+def day_of(start: int) -> datetime.date:
+    """The Europe/Prague calendar date a window starts on."""
+    return datetime.datetime.fromtimestamp(start, ZoneInfo(TZ_NAME)).date()
+
+
+def _balance_lane(db: sqlite3.Connection, s: int, e: int) -> dict[str, Any] | None:
+    """The API-key balance lane, the one store that records the provider cost beside the amount charged
+    (balance_ledger.cost_atomic: "what the model cost, before the markup"). Charges without a cost are
+    counted, not guessed at, and are left out of the margin."""
+    rows = _rows(db, "SELECT kind, COUNT(*) n, SUM(amount_atomic) amount, SUM(cost_atomic) cost,"
+                     " SUM(CASE WHEN cost_atomic IS NULL THEN 1 ELSE 0 END) no_cost,"
+                     " SUM(CASE WHEN cost_atomic IS NULL THEN 0 ELSE -amount_atomic END) priced_amount"
+                     " FROM balance_ledger WHERE at >= ? AND at < ? GROUP BY kind", (s, e))
+    if rows is None:
+        return None
+    by_kind = {row["kind"]: row for row in rows}
+    charge = by_kind.get("charge")
+    refund = by_kind.get("refund")
+    out: dict[str, Any] = {
+        "charges": charge["n"] if charge else 0,
+        "gross_usd": _usd_precise(-charge["amount"]) if charge else "0.00",
+        "refunds_usd": _usd_precise(refund["amount"]) if refund else "0.00",
+        "charges_without_cost": charge["no_cost"] if charge else 0,
+        "provider_cost_usd": None,
+        "margin_usd": None,
+    }
+    if charge and charge["cost"] is not None:
+        out["provider_cost_usd"] = _usd_precise(charge["cost"])
+        out["margin_usd"] = _usd_precise(charge["priced_amount"] - charge["cost"])
+    return out
 
 
 def base_allowance_metrics(path: Path, s: int, e: int) -> dict[str, Any] | None:
@@ -388,10 +536,21 @@ BASE_OP_KINDS = ("GRANT", "REVOKE", "PAUSE")
 SOLANA_OP_KINDS = ("GRANT", "REVOKE", "FUND_GAS")
 
 
+MARGIN_NOTE = (
+    "No overall margin: the stores do not record what a settlement cost us, except the API-key balance lane "
+    "(revenue.balance_lane, from balance_ledger.cost_atomic). Missing cost: allowance.db settlements "
+    "(x402 data tools and metered answers, Bitrefill), web.db chat_usage, solana-allowance.db spends."
+)
+
+
 def build_report(day: datetime.date, *, web_db: Path, allowance_db: Path, solana_db: Path,
-                 user_wallet_db: Path, bitrefill_orders_db: Path | None) -> dict[str, Any]:
+                 user_wallet_db: Path, bitrefill_orders_db: Path | None,
+                 exclude_uids: frozenset[str] = frozenset()) -> dict[str, Any]:
     s, e = day_window(day)
-    web = web_metrics(web_db, s, e)
+    web = web_metrics(web_db, s, e, exclude_uids)
+    mcp = web.pop("_mcp", None) if web is not None else None
+    balance_lane = web.pop("_balance_lane", None) if web is not None else None
+    api_keys_active = web.get("api_keys_active") if web is not None else None
     base = base_allowance_metrics(allowance_db, s, e)
     solana = solana_allowance_metrics(solana_db, s, e)
     telegram = telegram_metrics(user_wallet_db, s, e)
@@ -478,6 +637,21 @@ def build_report(day: datetime.date, *, web_db: Path, allowance_db: Path, solana
             "bitrefill_refunded": (bitrefill_orders or {}).get("by_state", {}).get("REFUNDED") if bitrefill_orders else None,
             "stuck_reservations": (solana or {}).get("stuck_reservations") if solana else None,
         },
+        "api_keys": {"active": api_keys_active, "created": (web or {}).get("api_keys_created")},
+        "mcp": mcp,
+        "revenue": {
+            "usdc_volume": {
+                "base": (base or {}).get("usdc_volume_base") if base else None,
+                "solana": (solana or {}).get("usdc_volume_solana") if solana else None,
+            },
+            "chat_answers": (web or {}).get("chat_answers"),
+            "credit_topups_usd": (web or {}).get("topups_credited_usd"),
+            "balance_lane": balance_lane,
+            # Gross is known everywhere; the provider cost behind it is stored in one lane only.
+            "margin": None,
+            "margin_note": MARGIN_NOTE,
+        },
+        "excluded_uids_count": len(exclude_uids),
         "alarms": ((base or {}).get("alerts") or {}).get("ALARM") if base else None,
         "telegram_new_wallets": (telegram or {}).get("new_wallets") if telegram else None,
         "bitrefill_orders": bitrefill_orders,
@@ -488,6 +662,14 @@ def build_report(day: datetime.date, *, web_db: Path, allowance_db: Path, solana
         },
     }
     return report
+
+
+def _mcp_line(mcp: dict[str, Any] | None) -> str:
+    if mcp is None:
+        return "—"
+    latency = mcp["latency_ms"]
+    return (f"{mcp['calls_total']} (by status {mcp['by_status']}; p50 {latency['p50'] if latency['p50'] is not None else '—'} ms,"
+            f" p95 {latency['p95'] if latency['p95'] is not None else '—'} ms; paid {mcp['paid_calls']}, ${mcp['cost_usd']})")
 
 
 def text_summary(report: dict[str, Any]) -> str:
@@ -512,6 +694,7 @@ def text_summary(report: dict[str, Any]) -> str:
         f"Solana setups: {solana.get('accounts_with_limits', '—')} with limits,"
         f" {solana.get('accounts_granted', '—')} granted, abandoned {report['abandoned_solana_setups']},"
         f" retries {solana.get('grant_retries', '—')}",
+        f"MCP calls: {_mcp_line(report.get('mcp'))}",
         f"Errors: {errors}",
         f"Alarms: {report['alarms']}; Telegram new wallets: {report['telegram_new_wallets']}",
     ]
@@ -534,6 +717,9 @@ def _build_parser() -> argparse.ArgumentParser:
                         help=f"default: ${USER_WALLET_DB_ENV} or <state-dir>/{USER_WALLET_DB_FILENAME}")
     parser.add_argument("--bitrefill-orders-db", default=None,
                         help=f"no default; only read if given or ${BITREFILL_ORDERS_DB_ENV} is set")
+    parser.add_argument("--exclude-uids-file", default=None,
+                        help=f"one uid hash per line (# comments) to leave out of events-based counts; adds to "
+                             f"${EXCLUDE_UIDS_ENV} (comma-separated). Keep the file out of git.")
     return parser
 
 
@@ -555,6 +741,10 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     args = _build_parser().parse_args(argv)
     day = datetime.date.fromisoformat(args.day) if args.day else yesterday()
     state_dir = _state_dir(args.state_dir, values)
+    try:
+        exclude_uids = load_exclude_uids(values.get(EXCLUDE_UIDS_ENV), args.exclude_uids_file)
+    except OSError as exc:
+        raise SystemExit(f"daily-metrics: cannot read --exclude-uids-file: {exc.strerror or 'error'}")
 
     report = build_report(
         day,
@@ -563,6 +753,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         solana_db=_db_path(args.solana_db, values, SOLANA_ALLOWANCE_DB_ENV, state_dir, SOLANA_ALLOWANCE_DB_FILENAME),
         user_wallet_db=_db_path(args.user_wallet_db, values, USER_WALLET_DB_ENV, state_dir, USER_WALLET_DB_FILENAME),
         bitrefill_orders_db=_optional_db_path(args.bitrefill_orders_db, values, BITREFILL_ORDERS_DB_ENV),
+        exclude_uids=exclude_uids,
     )
 
     text = json.dumps(report, indent=2, sort_keys=True)

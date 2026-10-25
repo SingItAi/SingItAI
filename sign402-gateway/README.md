@@ -624,6 +624,10 @@ Limits:
 - Repeated failed authentication (a wrong or revoked key) from one client address gets 429s instead of
   401s after 30 failures in 10 minutes, to blunt key guessing.
 - `GET /mcp` answers 405: there is no server-to-client SSE stream.
+- Each `tools/call` writes one `mcp_call` analytics event (tool, status, error class, latency, whether it was
+  charged and how much, a salted reference to the key) and nothing else: no key, address, account id or tool
+  argument. `initialize` and `tools/list` are not recorded, and a failing analytics write never affects the
+  call. See [analytics](../docs/analytics.md#mcp_call).
 
 ## Free wallet spend report
 
