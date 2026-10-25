@@ -72,6 +72,33 @@ const DESCRIPTION = "Video clips from 30+ text-to-video models (LongCat, Grok Im
   + "list at GET /v1/video/models), no API key needed. Call it when an agent needs a short video from a text prompt: "
   + "it answers with a job to poll.";
 
+const INPUT_SCHEMA = { properties: {
+  model: { type: "string", examples: ["longcat-distilled-text-to-video"], description: "A video model id from GET /v1/video/models." },
+  prompt: { type: "string", minLength: 1, maxLength: VIDEO_TERMS.maxPromptChars, description: "What the clip should show." },
+  duration_seconds: { type: "integer", minimum: 1, maximum: 30, examples: [5],
+    description: "Clip length; the lengths each model takes are listed at GET /v1/video/models." },
+  resolution: { type: "string", maxLength: 10, examples: ["480p"], description: "Only for models that list resolutions." },
+  aspect_ratio: { type: "string", pattern: "^[0-9]{1,2}:[0-9]{1,2}$", examples: ["16:9"], description: "Only for models that list them." },
+  audio: { type: "boolean", description: "Only for models that make audio." },
+}, required: ["model", "prompt"] };
+// Shape and charge of a real answer: an accepted job (poll it for free with job_token), 90000 micro-USD list price,
+// 27000 markup, 1000 settlement fee (Base).
+const OUTPUT_EXAMPLE = { id: "01M5STJCFTVSC5588N9YGQCPQW", object: "video.generation", status: "queued",
+  model: "longcat-distilled-text-to-video", results: [], job_token: "jt_…", poll: "/v1/video/generations/01M5STJCFTVSC5588N9YGQCPQW",
+  billing: { listAtomic: "90000", markupAtomic: "27000", feeAtomic: "1000", totalAtomic: "118000", currency: "USDC" } };
+const OUTPUT_SCHEMA = { type: "object", required: ["id", "status", "job_token", "billing"], properties: {
+  id: { type: "string", description: "The job id" }, object: { type: "string", const: "video.generation" },
+  status: { type: "string", description: "queued, running, succeeded or failed" }, model: { type: "string" },
+  results: { type: "array", description: "The clips, once the job has succeeded", items: { type: "object", properties: {
+    index: { type: "integer" }, url: { type: "string", description: "Download it with the job token" },
+    content_type: { type: "string" } } } },
+  job_token: { type: "string", description: "Send as X-Job-Token to poll and download, for free" },
+  poll: { type: "string", description: "GET this path for the job's status and files" },
+  billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
+    listAtomic: { type: "string" }, markupAtomic: { type: "string" }, feeAtomic: { type: "string" },
+    totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } },
+} };
+
 export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
@@ -170,7 +197,8 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     mimeType: "application/json", description: `SingIt Video: ${DESCRIPTION}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
     tags: ["video", "video-generation", "text-to-video", "pay-per-use", "solana", "base", "singit"],
     extensions: declareDiscoveryExtension({ bodyType: "json",
-      input: { model: "longcat-distilled-text-to-video", prompt: "a small green robot waves hello", duration_seconds: 5 } }),
+      input: { model: "longcat-distilled-text-to-video", prompt: "a small green robot waves hello", duration_seconds: 5 },
+      inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
   } }, server);
   app.post(VIDEO_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
