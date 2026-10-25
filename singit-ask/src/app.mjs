@@ -529,7 +529,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "Voice models and their prices",
             responses: { 200: { description: "Model list" } }, security: [] } },
           [VIDEO_ROUTE]: { post: {
-            operationId: "createVideo", summary: "A video clip from any of 36 text-to-video models, as a job",
+            operationId: "createVideo", summary: "A video clip from any of 30+ text-to-video models, as a job",
             description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio. Paid per clip "
               + "over x402: the model's list price + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), charged "
               + "once the job is accepted. Answers with the job id and job_token; poll GET /v1/video/generations/{id} "
@@ -570,11 +570,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         // Free, and served by the sign402 gateway's web API, not by this service: hence its own server.
         "/v1/wallet/{address}/reconciliation": { servers: [{ url: config.walletReportOrigin || "https://app.singitai.app" }],
           get: {
-            operationId: "walletReconciliation", security: [],
-            summary: "Free: a wallet's SingIt spend over the last 1 to 90 days, and its on-chain allowance (Base or Solana)",
-            description: "Public, no key, no payment. Settled spend by category (chat_answer, data_tool, gift_card, other), "
-              + "by day, credit top-ups apart, and the owner's daily and per-purchase limits with what is left today. "
-              + "Categories only: no purchase details. 30 requests a minute per IP.",
+            operationId: "walletReconciliation", security: [{ singitApiKey: [] }],
+            summary: "Free, owner only: a wallet's SingIt spend over the last 1 to 90 days, and its allowance (Base or Solana)",
+            description: "No payment, but private: send a SingIt API key (Authorization: Bearer sk_singit_...) of the account "
+              + "that signs in with this wallet; no key or a wrong key is 401, another account's key is 403. Settled spend "
+              + "by category (chat_answer, data_tool, gift_card, other), by day, credit top-ups apart, and the owner's daily "
+              + "and per-purchase limits with what is left today. Categories only: no purchase details. 30 requests a minute per IP.",
             parameters: [
               { name: "address", in: "path", required: true, schema: { type: "string" },
                 description: "A Base address (0x + 40 hex) or a Solana address (base58)" },
@@ -601,7 +602,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       components: { securitySchemes: { x402: { type: "apiKey", in: "header", name: "PAYMENT-SIGNATURE",
         description: "x402 v2 payment. Call without it, read the PAYMENT-REQUIRED header of the 402 response, sign the "
           + "`upto` or `exact` USDC authorization it offers on Base or Solana for the amount or ceiling it names, and "
-          + "retry with the signature here." } } },
+          + "retry with the signature here." },
+        singitApiKey: { type: "http", scheme: "bearer", description: "A SingIt API key (sk_singit_...) from "
+          + "https://app.singitai.app/app/. Only the wallet spend report on app.singitai.app uses it." } } },
     });
   });
   app.get("/.well-known/x402", open, (req, res) => {
@@ -616,7 +619,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
   // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
   // list below and llms.txt can never list a route this instance did not add.
-  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, ...modelRoutePaths()] : []),
+  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, VIDEO_ROUTE,
+    ...modelRoutePaths()] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
   // Free: a human or agent landing on the bare origin gets a small service index instead of Express's 404.
   // Express answers HEAD the same way automatically. Open CORS, like the other public documents.

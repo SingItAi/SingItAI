@@ -6,12 +6,13 @@
 // only that token, which Surplus itself checks; nothing is kept here. A job that fails after it was accepted is not
 // refunded over x402 (there is no way back for an exact payment), which the description says.
 import crypto from "node:crypto";
-import { paymentMiddleware, x402ResourceServer } from "@x402/express";
+import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS } from "./pricing.mjs";
+import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
+import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
 
 export const VIDEO_ROUTE = "/v1/video/generations";
 export const VIDEO_MODELS_ROUTE = "/v1/video/models";
@@ -65,10 +66,11 @@ export function publicJob(job, origin) {
     ...(job.created_at ? { created_at: job.created_at } : {}), ...(job.completed_at ? { completed_at: job.completed_at } : {}) };
 }
 
-const DESCRIPTION = "A video clip from 36 text-to-video models (Seedance, Veo, Kling, Wan, LTX, Runway and more; list at "
-  + "GET /v1/video/models), as a job: pay the model's list price per clip + 30% + a settlement fee (0.001 USDC on Base, "
-  + "0.002 on Solana), get a job id and token, then poll GET /v1/video/generations/{id} for free. From about 0.105 USDC. "
-  + "Charged once the job is accepted; a job that then fails is not refunded.";
+// <=300 characters with the "SingIt Video: " prefix and no billing talk (see app.mjs's DISCOVERY_DESCRIPTION for why);
+// prices, the job flow and the no-refund rule are in openapi.json and on GET /v1/video/models.
+const DESCRIPTION = "Video clips from 30+ text-to-video models (LongCat, Grok Imagine, Wan, PixVerse, Seedance and more; "
+  + "list at GET /v1/video/models), no API key needed. Call it when an agent needs a short video from a text prompt: "
+  + "it answers with a job to poll.";
 
 export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
@@ -142,8 +144,10 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(VIDEO_ROUTE, async (req, res, next) => {
-    // The video seller still refuses jobs, so an unpaid discovery probe keeps the model-lookup 404.
-    // A 402 here would let x402scan index a route that cannot complete a clip.
+    // x402scan's empty, unpaid probe gets the standing offer (the model-list ceiling), not a model-lookup 404, as
+    // images do. Surplus accepts video jobs again (checked 25.10.2026: a LongCat clip, 0.045 USDC). Paying with no
+    // question is still refused: a payment header makes this no probe, and the model lookup below answers 404.
+    if (isDiscoveryProbe(req)) return next();
     try {
       const model = await catalogue.resolveVideo(req.body?.model);
       const request = readVideoRequest(req.body, model);
@@ -157,15 +161,17 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
         code: status === 404 ? "model_not_found" : undefined, message: status === 503 ? "Try again shortly." : error.message } });
     }
   });
-  app.use(paymentMiddleware({ [`POST ${VIDEO_ROUTE}`]: {
+  addPaymentRoute(app, { [`POST ${VIDEO_ROUTE}`]: {
+    // exact on Base first: the simplest offer for a buyer that only inspects accepts[0].
     accepts: [
-      { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
       { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120, price: price(BASE) },
+      { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
     ],
-    mimeType: "application/json", description: `SingIt Video: ${DESCRIPTION}`,
+    mimeType: "application/json", description: `SingIt Video: ${DESCRIPTION}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
+    tags: ["video", "video-generation", "text-to-video", "pay-per-use", "solana", "base", "singit"],
     extensions: declareDiscoveryExtension({ bodyType: "json",
-      input: { model: "venice-seedance-2-fast-t2v", prompt: "a small green robot waves hello", resolution: "480p", aspect_ratio: "16:9" } }),
-  } }, server));
+      input: { model: "longcat-distilled-text-to-video", prompt: "a small green robot waves hello", duration_seconds: 5 } }),
+  } }, server);
   app.post(VIDEO_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;

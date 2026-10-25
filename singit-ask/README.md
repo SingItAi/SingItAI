@@ -16,13 +16,14 @@ what it actually cost; nothing is charged without an answer.
   CDP settles the actual amount and refunds the rest. Listed for discovery (Bazaar).
 - **Discovery probes:** `GET` and `HEAD` on every route listed for discovery
   (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/images/generations`,
-  `/v1/audio/speech`, `/v1/exa/search`, `/v1/exa/contents`, `/v1/exa/answer`) answer
+  `/v1/audio/speech`, `/v1/video/generations`, `/v1/exa/search`, `/v1/exa/contents`, `/v1/exa/answer`) answer
   with the same 402 challenge an empty, unpaid `POST` gets — same offers, same Bazaar
   extension, same resource URL — instead of Express's default 404, which is how
   x402scan, Coinbase's Bazaar and 402 Index find a route in the first place. Neither
   verb ever verifies or settles, even if the request carries a payment header.
-  `/v1/chat/completions/metered` and `/v1/video/generations` are paid routes that are
-  not listed for discovery, so `GET`/`HEAD` on them still 404.
+  `/v1/chat/completions/metered` is a paid route that is not listed for discovery, so `GET`/`HEAD`
+  on it still 404. Video was hidden the same way until Surplus accepted video jobs again
+  (checked 25 October 2026).
 - **Listing metadata:** every discoverable route's 402 resource description stays under
   300 characters and says only what the route does and when to call it; Coinbase's Bazaar
   ranks listings by metadata completeness, and billing talk crowds that out, so it stays in
