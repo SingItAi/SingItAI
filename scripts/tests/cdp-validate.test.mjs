@@ -130,7 +130,7 @@ test("main returns the exit code, prints a report, and never calls out on a bad 
 test("the committed config lists live https resources with a supported method", () => {
   const config = readConfig();
   assert.equal(config.endpoint, DEFAULT_ENDPOINT);
-  assert.equal(config.resources.length, 8);
+  assert.equal(config.resources.length, 9);
   for (const resource of config.resources) {
     assert.match(resource.url, /^https:\/\/[^/]+\/v1\//);
     assert.ok(["GET", "POST"].includes(resource.method));
