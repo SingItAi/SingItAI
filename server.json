@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "app.singitai/singit",
+  "title": "SingIt",
+  "description": "Prices, web search, page reading and market data for agents, paid in Base USDC within key limits.",
+  "version": "0.1.0",
+  "websiteUrl": "https://singitai.app/developers/",
+  "repository": {
+    "url": "https://github.com/bubon-ik/SingItAI",
+    "source": "github",
+    "subfolder": "sign402-gateway"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://app.singitai.app/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer followed by your SingIt API key, from https://app.singitai.app/app/",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
