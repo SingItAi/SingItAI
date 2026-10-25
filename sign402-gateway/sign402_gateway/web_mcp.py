@@ -5,7 +5,8 @@ JSON responses only, no SSE stream and no sessions, so one request is one answer
 between calls. Built on plain JSON-RPC 2.0 dicts, since this process is http.server, not ASGI.
 
 Tools:
-  * Free: get_price, list_price_symbols, list_models.
+  * Free: get_price, list_price_symbols, list_models (no key needed), and get_balance (the key's own balance,
+    so it needs the key).
   * Paid from the key's own limits, needing the "search" scope: web_search, read_page (Exa, through
     ApiKeys._search, exactly as /v1/exa/… is billed).
   * Paid from the key's own limits, needing the "tools" scope: every entry of server.PAID_TOOLS, under
@@ -13,7 +14,8 @@ Tools:
 Every tools/list entry carries a title and MCP annotations (readOnlyHint, destructiveHint, idempotentHint,
 openWorldHint): paid tools debit the key's SingIt limits but never touch external state, so they are
 readOnlyHint/not destructive like the free ones, but not idempotent (each call bills again) and, except
-the three free lookups that only read SingIt's own data, openWorldHint (they reach third-party data).
+the four free lookups that only read SingIt's own data, openWorldHint (they reach third-party data).
+get_sign402_report (server.PAID_TOOLS) is not offered over MCP: its demo upstream is not running in production.
 
 A request with no credentials at all is served keyless: initialize, ping, tools/list and the three free
 tools work, so catalogues and people can see what the server offers before they make a key. A paid tool
@@ -100,7 +102,33 @@ def _env_requests_per_minute() -> int:
 SEARCH_TOOLS = frozenset({"web_search", "read_page"})
 # The only tools that read SingIt's own data for free; every other tool bills the key per call and, except
 # for these three, reaches third-party data.
-FREE_TOOL_NAMES = frozenset({"get_price", "list_price_symbols", "list_models"})
+FREE_TOOL_NAMES = frozenset({"get_price", "list_price_symbols", "list_models", "get_balance"})
+# Free, but about the caller's own account, so it needs a key even though it bills nothing.
+KEYED_FREE_TOOLS = frozenset({"get_balance"})
+# server.PAID_TOOLS entries kept out of MCP: get_sign402_report's upstream is a local demo service
+# (SIGN402_BASE_REPORT_URL, 127.0.0.1:4021) that is not running in production, so it could only fail.
+MCP_HIDDEN_TOOLS = frozenset({"get_sign402_report"})
+# MCP-facing descriptions for server.PAID_TOOLS, by mcpStyleName: what it returns, when to use it, and how it
+# differs from its neighbours (MCP directories score exactly that). The gateway's own descriptions stay as they are.
+PAID_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "get_weather": "A sample weather forecast from GoPlausible's x402 demo service on Algorand. Takes no location "
+                   "and returns a fixed example, so it is mainly useful to try a paid call end to end.",
+    "get_singit_risk_check": "SingIt's risk check on Bankr x402 Cloud, run on a fixed sample payment request "
+                             "(no input). Mainly useful to try a paid call end to end.",
+    "get_x_profile": "Public profile data for an X (Twitter) account by username, from twit.sh's x402 API. Use to "
+                     "check who is behind a handle.",
+    "get_crypto_news": "Latest crypto market headlines with sentiment, from Otto AI. Use to see what is moving the "
+                       "market today; takes no input.",
+    "get_hyperliquid_market": "One Hyperliquid perpetual market (e.g. BTC): price, funding, open interest, max "
+                              "leverage and size rules, from Otto AI. Use for Hyperliquid's own contract details; "
+                              "use get_funding_rates to compare venues.",
+    "get_funding_rates": "Funding rates for one symbol across exchanges, with open interest, long/short ratio, large "
+                         "positions and liquidations, from Otto AI. Use to compare venues or gauge positioning; use "
+                         "get_hyperliquid_market for one Hyperliquid contract.",
+    "resolve_ens": "Turns an ENS name (e.g. vitalik.eth) into its address, or an address into its primary ENS name.",
+    "get_token_price": "USD price of a major token by symbol from a paid x402 price API. get_price is free and "
+                       "covers the same majors, so prefer it; use this as a second source.",
+}
 TOOL_TITLES: dict[str, str] = {
     "get_price": "Get price",
     "list_price_symbols": "List price symbols",
@@ -108,7 +136,7 @@ TOOL_TITLES: dict[str, str] = {
     "web_search": "Web search",
     "read_page": "Read page",
     "get_weather": "Get weather",
-    "get_sign402_report": "Get Sign402 report",
+    "get_balance": "Get balance",
     "get_singit_risk_check": "SingIt risk check",
     "get_x_profile": "Get X profile",
     "get_crypto_news": "Get crypto news",
@@ -161,9 +189,12 @@ def _paid_tools() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
     starts: the gateway module is large and this process ran without it until now."""
     from . import server as gw  # noqa: PLC0415
     ids = {tool["mcpStyleName"]: tool_id for tool_id, tool in gw.PAID_TOOLS.items()}
-    listed = tuple(_annotated({"name": tool["mcpStyleName"], "description": tool["description"] + " Paid per call "
-                    "from your SingIt limits (Base USDC).", "inputSchema": tool["inputSchema"]})
-                   for tool in gw.PAID_TOOLS.values())
+    ids = {name: tool_id for name, tool_id in ids.items() if name not in MCP_HIDDEN_TOOLS}
+    listed = tuple(_annotated({"name": tool["mcpStyleName"],
+                               "description": PAID_TOOL_DESCRIPTIONS.get(tool["mcpStyleName"], tool["description"])
+                               + " Paid per call from your key's SingIt limits (Base USDC).",
+                               "inputSchema": tool["inputSchema"]})
+                   for tool in gw.PAID_TOOLS.values() if tool["mcpStyleName"] not in MCP_HIDDEN_TOOLS)
     return ids, listed
 
 
@@ -239,15 +270,25 @@ READ_PAGE_SCHEMA = {
 }
 
 OWN_TOOLS: list[dict[str, Any]] = [_annotated(entry) for entry in (
-    {"name": "get_price", "description": "A crypto, metal or fx price. Free.", "inputSchema": GET_PRICE_SCHEMA},
-    {"name": "list_price_symbols", "description": "Every symbol get_price knows. Free.",
+    {"name": "get_price", "description": "Current price of a major cryptocurrency, gold or silver (Chainlink on "
+     "Base), or an exchange rate between two currencies. Use for quick quotes of well-known assets; call "
+     "list_price_symbols when unsure a symbol is covered. Free, no key needed.", "inputSchema": GET_PRICE_SCHEMA},
+    {"name": "list_price_symbols", "description": "Every crypto, metal and currency symbol get_price supports. "
+     "Call it before get_price when unsure a symbol is covered. Free, no key needed.",
      "inputSchema": {"type": "object", "properties": {}}},
-    {"name": "list_models", "description": "Models this key can ask for chat, images or audio, with their "
-     "SingIt prices. Free.", "inputSchema": LIST_MODELS_SCHEMA},
-    {"name": "web_search", "description": "Search the web (Exa). Paid per call from your SingIt limits "
-     "(Base USDC); needs the key's \"search\" scope.", "inputSchema": WEB_SEARCH_SCHEMA},
-    {"name": "read_page", "description": "Read a web page's text (Exa). Paid per call from your SingIt limits "
-     "(Base USDC); needs the key's \"search\" scope.", "inputSchema": READ_PAGE_SCHEMA},
+    {"name": "list_models", "description": "The AI models (chat, images or audio) available through SingIt, with "
+     "their prices. They are called through SingIt's OpenAI-compatible API at https://app.singitai.app/v1 (or "
+     "https://ask.singitai.app over x402), not through these MCP tools. Free, no key needed.",
+     "inputSchema": LIST_MODELS_SCHEMA},
+    {"name": "get_balance", "description": "Your SingIt API balance: available and held USDC, auto top-up and "
+     "pending top-ups. Use to check funds before paid calls. Free, but needs your API key.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "web_search", "description": "Searches the web through Exa and returns titles, URLs and snippets of "
+     "matching pages. Use for current or niche information, then read_page for a full page. Paid per call from "
+     "your key's SingIt limits (Base USDC); needs the key's \"search\" scope.", "inputSchema": WEB_SEARCH_SCHEMA},
+    {"name": "read_page", "description": "The readable text of one web page (up to 8000 characters), through Exa. "
+     "Use after web_search, or when you already have a URL. Paid per call from your key's SingIt limits (Base "
+     "USDC); needs the key's \"search\" scope.", "inputSchema": READ_PAGE_SCHEMA},
 )]
 
 
@@ -529,6 +570,10 @@ class McpServer:
         return _tool_success(data)
 
     def _call_tool(self, row, name: str, args: dict[str, Any]) -> Any:
+        if row is None and name in KEYED_FREE_TOOLS:
+            raise ApiError(401, "This tool reads your own SingIt account, so it needs your API key (it costs "
+                           "nothing). Send it as \"Authorization: Bearer sk_singit_...\".",
+                           type_="authentication_error", code="api_key_required")
         if row is None and name not in FREE_TOOL_NAMES:
             if name in SEARCH_TOOLS or name in _paid_tools()[0]:
                 raise ApiError(401, KEYLESS_PAID_MESSAGE, type_="authentication_error", code="api_key_required")
@@ -539,6 +584,10 @@ class McpServer:
             return self.fetch_json(f"{ASK_URL}/v1/prices")
         if name == "list_models":
             return self._list_models(row, args)
+        if name == "get_balance":
+            if getattr(self.keys, "proxy", None) is None:
+                raise ApiError(503, "Balances are not available on this server.", type_="api_error", code="unavailable")
+            return self.keys._balance(row["account_id"])
         if name == "web_search":
             return self._web_search(row, args)
         if name == "read_page":
