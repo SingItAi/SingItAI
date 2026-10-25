@@ -22,17 +22,29 @@ test("walletReport() parses a reconciliation document and allowance() reads its 
   const address = addr("f00d");
   const app = await startJsonServer((req, res) => {
     assert.equal(req.url, `/v1/wallet/${address}/reconciliation?days=7`);
+    assert.equal(req.headers.authorization, "Bearer sk_singit_test");
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ address, allowance: { limitUsd: 5, spentTodayUsd: 1.2, remainingUsd: 3.8 }, entries: [] }));
   });
   try {
     const singit = new SingIt({ evmPrivateKey: privateKey, network: "base", payTo: PAY_TO,
       appBaseUrl: app.url, maxPerCallUsd: 0.01, maxPerDayUsd: 1 });
-    const report = await singit.walletReport(address, { days: 7 });
+    const report = await singit.walletReport(address, { days: 7, apiKey: "sk_singit_test" });
     assert.equal(report.address, address);
-    const allowance = await singit.allowance(address, { days: 7 });
+    const allowance = await singit.allowance(address, { days: 7, apiKey: "sk_singit_test" });
     assert.equal(allowance.limitUsd, 5);
     assert.equal(allowance.remainingUsd, 3.8);
+  } finally {
+    await app.close();
+  }
+});
+
+test("walletReport() says the report is private on a 401", async () => {
+  const app = await startJsonServer((req, res) => { res.writeHead(401).end(); });
+  try {
+    const singit = new SingIt({ evmPrivateKey: privateKey, network: "base", payTo: PAY_TO,
+      appBaseUrl: app.url, maxPerCallUsd: 0.01, maxPerDayUsd: 1 });
+    await assert.rejects(singit.walletReport(addr("f00d")), /private \(HTTP 401\).*apiKey/);
   } finally {
     await app.close();
   }

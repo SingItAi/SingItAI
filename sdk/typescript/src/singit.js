@@ -168,10 +168,17 @@ export class SingIt {
     };
   }
 
-  /** GET /v1/wallet/{address}/reconciliation on app.singitai.app (SI-67; may not be deployed yet). */
-  async walletReport(address, { days } = {}) {
+  /** GET /v1/wallet/{address}/reconciliation on app.singitai.app (SI-67). The report is private: pass
+   *  apiKey, a SingIt API key (sk_singit_...) of the account that signs in with `address`. */
+  async walletReport(address, { days, apiKey } = {}) {
     const qs = days != null ? `?days=${encodeURIComponent(days)}` : "";
-    const response = await this.fetchImpl(`${this.appBaseUrl}/v1/wallet/${encodeURIComponent(address)}/reconciliation${qs}`);
+    const response = await this.fetchImpl(`${this.appBaseUrl}/v1/wallet/${encodeURIComponent(address)}/reconciliation${qs}`,
+      apiKey ? { headers: { Authorization: `Bearer ${apiKey}` } } : undefined);
+    if (response.status === 401 || response.status === 403) {
+      throw new SingItPaymentError(
+        `The wallet report is private (HTTP ${response.status}): pass apiKey, a SingIt API key of the account that signs in with this wallet.`
+      );
+    }
     if (!response.ok) {
       throw new SingItPaymentError(
         `Wallet reconciliation is not available (HTTP ${response.status}). This endpoint (SI-67) may not be deployed yet; see the SDK README.`

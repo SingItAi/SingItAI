@@ -636,10 +636,11 @@ Limits:
 
 ## Free wallet spend report
 
-`GET /v1/wallet/{address}/reconciliation` (and `HEAD`) on the web API (`app.singitai.app`): a free, public report of what a wallet spent through SingIt and what is left of its limit. No API key, no session. It is served before the API-key `/v1` handler. Optional query `days`, 1 to 90 (default 30). Any origin may call it (`Access-Control-Allow-Origin: *`, no cookies); `Cache-Control: public, max-age=60`.
+`GET /v1/wallet/{address}/reconciliation` (and `HEAD`) on the web API (`app.singitai.app`): a free report of what a wallet spent through SingIt and what is left of its limit, **for that wallet's owner only**. Send an API key (`Authorization: Bearer sk_singit_…` or `x-api-key`) of the account that signs in with this very address: no key or a wrong key is `401` (`api_key_required`, with `WWW-Authenticate`), another account's key is `403` (`not_your_wallet`). Without that, anyone could learn that an address uses SingIt and what it spends on, which the chain alone does not label. It is served before the API-key `/v1` handler. Optional query `days`, 1 to 90 (default 30). `Access-Control-Allow-Origin: *` and no cookies, but keys are for server code; `Cache-Control: private, no-store`.
 
 ```bash
-curl -s https://app.singitai.app/v1/wallet/0xAbC.../reconciliation?days=30
+curl -s https://app.singitai.app/v1/wallet/0xAbC.../reconciliation?days=30 \
+  -H "Authorization: Bearer $SINGIT_API_KEY"
 ```
 
 ```json

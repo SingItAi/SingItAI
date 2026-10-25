@@ -29,7 +29,7 @@ Environment:
                                          Surplus key. Empty (default): OFF (web_free.py)
     SIGN402_WEB_FREE_PER_ACCOUNT_PER_DAY, SIGN402_WEB_FREE_PER_NETWORK_PER_DAY, SIGN402_WEB_FREE_PER_DAY,
     SIGN402_WEB_FREE_MAX_TOKENS          the free limits: 20, 40, 1000 and 400 by default
-    SINGIT_RECONCILIATION_PER_MINUTE     per client IP, the free public GET /v1/wallet/{address}/reconciliation (30)
+    SINGIT_RECONCILIATION_PER_MINUTE     per client IP, GET /v1/wallet/{address}/reconciliation, the owner's spend report (30)
     SINGIT_STATUS_DIR                    where scripts/singit-uptime.py writes status.json and status.html, served
                                          as GET /status.json and /status (~/.sign402/status)
 plus everything SIGN402_ALLOWANCE_* the lane itself needs.
@@ -58,7 +58,7 @@ from urllib.parse import parse_qsl
 from . import analytics
 from .agent_allowance import AllowanceError, AllowanceService, AllowanceUnavailable, _usdc_atomic
 from .web_accounts import (
-    DEFAULT_WEB_DB, SESSION_SECONDS, WEB_DB_ENV, WebAccountStore, WebAuth, WebAuthError, chain_of_account,
+    DEFAULT_WEB_DB, SESSION_SECONDS, WEB_DB_ENV, WebAccountStore, WebAuth, WebAuthError, account_id_for, chain_of_account,
 )
 from .web_api_keys import ApiError, ApiKeys, Stream
 from .web_api_proxy import Relay
@@ -80,7 +80,7 @@ COOKIE = "singit_session"
 CSRF_HEADER = "X-SingIt-CSRF"
 ACCOUNT_HEADER = "X-SingIt-Account"
 MAX_BODY = 16 * 1024
-RECONCILIATION_PATH = re.compile(r"/v1/wallet/([^/]{1,100})/reconciliation")  # public, before the API-key /v1
+RECONCILIATION_PATH = re.compile(r"/v1/wallet/([^/]{1,100})/reconciliation")  # owner's key only, before the API-key /v1
 API_PREFIX = "/v1"            # the OpenAI-compatible API that API keys open (web_api_keys.py)
 API_MAX_BODY = 160 * 1024     # a question may be 24,000 characters, several bytes each
 MCP_PATH = "/mcp"              # SingIt's remote MCP server (web_mcp.py), on the same API keys
@@ -229,16 +229,35 @@ class WebApi:
         self._numbers_cache: dict[str, Any] | None = None
         self._numbers_cache_at: float = 0.0
 
-    def wallet_reconciliation(self, address: str, query: Mapping[str, str], client: str) -> dict[str, Any]:
-        """The free public report (wallet_reconciliation.py). Needs no session or key; only the per-IP limit."""
+    def wallet_reconciliation(self, address: str, query: Mapping[str, str], client: str, *,
+                              authorization: str | None = None, api_key: str | None = None) -> dict[str, Any]:
+        """The wallet's spend report (wallet_reconciliation.py), free, for its owner only: the caller must send an
+        API key of the account that signs in with this very wallet. Anyone could otherwise learn that an address
+        uses SingIt and what it spends on, which the chain alone does not label. Per-IP limited first."""
         self.reconciliation_by_ip.hit(client)
         raw_days = query.get("days", str(DEFAULT_DAYS))
         if not re.fullmatch(r"[0-9]{1,3}", raw_days) or not 1 <= int(raw_days) <= MAX_DAYS:
             raise WebError(400, "bad_days", f"days must be a whole number from 1 to {MAX_DAYS}.")
+        try:
+            owner = account_id_for(address)
+        except (WebAuthError, ValueError):
+            raise WebError(400, "bad_address", "Send a Base address (0x and 40 hex digits) or a Solana address.") from None
+        try:
+            row = self.keys._key(authorization, api_key)
+        except ApiError:
+            raise WebError(401, "api_key_required", "This report is private. Send an API key of the account that "
+                           "signs in with this wallet (Authorization: Bearer sk_singit_...).") from None
+        if row["account_id"] != owner:
+            raise WebError(403, "not_your_wallet", "This API key belongs to another wallet's account.")
+        return self._wallet_report(address, int(raw_days))
+
+    def _wallet_report(self, address: str, days: int) -> dict[str, Any]:
+        """The report itself, once the caller is known to own `address` (an API key above, or the
+        signed-in session's own wallet on GET /web/v1/wallet/report)."""
         if self._reconciliation is None:
             self._reconciliation = Reconciliation(self.allowance.store, getattr(self.solana, "store", None), self.now)
         try:
-            return self._reconciliation.report(address, int(raw_days))
+            return self._reconciliation.report(address, days)
         except WebAuthError:
             raise WebError(400, "bad_address", "Send a Base address (0x and 40 hex digits) or a Solana address.") from None
 
@@ -315,6 +334,8 @@ class WebApi:
         if method == "GET" and path == "/session":
             return 200, {"account": account, "address": owner, "chain": chain,
                          "telegramLinked": bool(self.auth.store.telegram_for(account))}, {}
+        if method == "GET" and path == "/wallet/report":  # the signed-in wallet's own last 30 days
+            return 200, self._wallet_report(owner, DEFAULT_DAYS), {}
         if chain == "solana" and path.startswith("/allowance"):
             if self.solana is None:  # the Solana lane is off on this server
                 if method == "GET" and path == "/allowance":
@@ -686,17 +707,22 @@ class WebHandler(BaseHTTPRequestHandler):
             logger.info("web api: %s: the page left before its answer", self.path.partition("?")[0])
 
     def _wallet_reconciliation(self) -> None:
-        """GET/HEAD /v1/wallet/{address}/reconciliation: public read, any origin, no cookies, cached a minute."""
+        """GET/HEAD /v1/wallet/{address}/reconciliation: the owner's API key only, no cookies, never cached by a
+        shared cache. Any origin may read it, but browsers never hold a key, so in practice it is server code."""
         path, _, query = self.path.partition("?")
         found = RECONCILIATION_PATH.fullmatch(path)
-        status, headers, out = 200, {"Cache-Control": "public, max-age=60"}, {}
+        status, headers, out = 200, {"Cache-Control": "private, no-store"}, {}
         try:
-            out = self.server.api.wallet_reconciliation(found.group(1), dict(parse_qsl(query)), self._client())
+            out = self.server.api.wallet_reconciliation(found.group(1), dict(parse_qsl(query)), self._client(),
+                                                        authorization=self.headers.get("Authorization"),
+                                                        api_key=self.headers.get("x-api-key"))
         except WebError as error:
             status, headers = error.status, {"Cache-Control": "no-store"}
             out = {"ok": False, "error": error.code, "message": error.message}
             if error.status == 429:
                 headers["Retry-After"] = "60"
+            if error.status == 401:
+                headers["WWW-Authenticate"] = 'Bearer realm="singit"'
         except Exception:
             logger.exception("web api: wallet reconciliation failed")
             status, headers = 500, {"Cache-Control": "no-store"}

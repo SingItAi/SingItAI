@@ -150,6 +150,10 @@ class SolanaReportTests(Base):
         self.assertEqual(solana_category(""), "other")
 
 
+OWNER_KEY = "sk_singit_owner"
+OTHER_KEY = "sk_singit_other"
+
+
 class HttpTests(Base):
     def setUp(self):
         super().setUp()
@@ -159,25 +163,34 @@ class HttpTests(Base):
         self.api = wa.WebApi(SimpleNamespace(), self.service, now=lambda: NOW)
         self.api.solana = SimpleNamespace(store=self.sol)
         self.api.reconciliation_by_ip = wa.RateLimit(50, 60)
+        keys = {OWNER_KEY: {"account_id": self.account}, OTHER_KEY: {"account_id": account_id_for(Account.create().address)}}
+
+        def _key(authorization, api_key=None):
+            token = str(authorization or "").removeprefix("Bearer ").strip() or str(api_key or "").strip()
+            if token not in keys:
+                raise wa.ApiError(401, "Invalid or revoked API key.", type_="authentication_error")
+            return keys[token]
+        self.api.keys._key = _key  # only the key check is stubbed; the rest of /v1 keeps its real handler
         self.server = wa.WebServer(("127.0.0.1", 0), self.api, "https://app.test")
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
 
-    def get(self, path, method="GET"):
-        req = urllib.request.Request(self.url + path, method=method)
+    def get(self, path, method="GET", key=OWNER_KEY, header="Authorization"):
+        headers = {} if key is None else {header: f"Bearer {key}" if header == "Authorization" else key}
+        req = urllib.request.Request(self.url + path, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=5) as r:
                 return r.status, dict(r.headers), r.read()
         except urllib.error.HTTPError as e:
             return e.code, dict(e.headers), e.read()
 
-    def test_served_without_an_api_key_with_public_headers(self):
+    def test_served_to_the_owners_key_and_never_cached_by_a_shared_cache(self):
         status, headers, body = self.get(f"/v1/wallet/{self.user}/reconciliation?days=7")
         self.assertEqual(status, 200)
         self.assertEqual(headers["Access-Control-Allow-Origin"], "*")
-        self.assertEqual(headers["Cache-Control"], "public, max-age=60")
+        self.assertEqual(headers["Cache-Control"], "private, no-store")
         self.assertNotIn("Access-Control-Allow-Credentials", headers)
         out = json.loads(body)
         self.assertEqual((out["known"], out["window"]["days"], out["spent"]["count"]), (True, 7, 1))
@@ -185,7 +198,25 @@ class HttpTests(Base):
     def test_head_has_headers_and_no_body(self):
         status, headers, body = self.get(f"/v1/wallet/{self.user}/reconciliation", "HEAD")
         self.assertEqual((status, body), (200, b""))
-        self.assertEqual(headers["Cache-Control"], "public, max-age=60")
+        self.assertEqual(headers["Cache-Control"], "private, no-store")
+
+    def test_x_api_key_header_works_too(self):
+        self.assertEqual(self.get(f"/v1/wallet/{self.user}/reconciliation", key=OWNER_KEY, header="x-api-key")[0], 200)
+
+    def test_without_a_key_it_is_401_and_reveals_nothing(self):
+        for key in (None, "sk_singit_" + "x" * 43):
+            with self.subTest(key=key):
+                status, headers, body = self.get(f"/v1/wallet/{self.user}/reconciliation", key=key)
+                self.assertEqual(status, 401)
+                self.assertIn("Bearer", headers["WWW-Authenticate"])
+                out = json.loads(body)
+                self.assertEqual((out["ok"], out["error"]), (False, "api_key_required"))
+                self.assertNotIn("spent", out)
+
+    def test_another_accounts_key_is_403(self):
+        status, _, body = self.get(f"/v1/wallet/{self.user}/reconciliation", key=OTHER_KEY)
+        self.assertEqual(status, 403)
+        self.assertEqual(json.loads(body)["error"], "not_your_wallet")
 
     def test_bad_input_is_400_json(self):
         for path in ("/v1/wallet/0x123/reconciliation", "/v1/wallet/not-an-address!/reconciliation",
@@ -195,6 +226,18 @@ class HttpTests(Base):
                 status, _, body = self.get(path)
                 self.assertEqual(status, 400)
                 self.assertFalse(json.loads(body)["ok"])
+
+    def test_the_app_reads_its_own_wallets_report_through_its_session(self):
+        seen = []
+
+        def session(token, csrf):
+            seen.append((token, csrf))
+            return {"account_id": self.account, "address": self.user}
+        self.api.auth = SimpleNamespace(session=session)
+        status, out, _ = self.api.handle("GET", "/wallet/report", token="tok", csrf=None, body={}, client="203.0.113.7")
+        self.assertEqual(status, 200)
+        self.assertEqual((out["address"], out["window"]["days"], out["spent"]["count"]), (self.user, 30, 1))
+        self.assertEqual(seen, [("tok", None)])  # a GET: the session only, no CSRF token
 
     def test_other_v1_paths_still_need_a_key(self):
         status, _, _ = self.get("/v1/wallet/" + self.user + "/other")

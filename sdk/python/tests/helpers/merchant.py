@@ -152,6 +152,7 @@ class Merchant:
                 pass
 
             def do_GET(self):
+                outer.last_get_headers = dict(self.headers)
                 status, body = outer.routes.get(self.path, (404, {"error": "Not found."}))
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
