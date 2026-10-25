@@ -316,7 +316,7 @@ test("the OpenAPI document guides agents and names a contact, for x402scan", asy
   assert.match(doc.info["x-guidance"], /402/);
   assert.match(doc.info["x-guidance"], /PAYMENT-SIGNATURE/);
   assert.match(doc.info["x-guidance"], /\/v1\/models/);
-  assert.deepEqual(doc.info.contact, { name: "SingIt", email: "Exkalibur1919@proton.me", url: "https://singitai.app" });
+  assert.deepEqual(doc.info.contact, { name: "SingIt", email: "contact@singitai.app", url: "https://singitai.app" });
 });
 
 test("/.well-known/x402 points to the paid route at its public URL", async (t) => {
