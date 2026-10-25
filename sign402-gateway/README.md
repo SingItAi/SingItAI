@@ -608,7 +608,11 @@ Limits:
   the paid data tools above refuse them with a message to make a new key. `get_price`,
   `list_price_symbols`, `list_models`, `web_search` and `read_page` work with any still-live key, per
   its own scopes (`web_search` and `read_page` need `search`).
-- The key's own rate limit (60 requests a minute) applies to `tools/call` as it does to `/v1`.
+- MCP has its own rate limit, separate from `/v1`'s: 60 requests a minute per key by default (set
+  `SINGIT_MCP_REQUESTS_PER_MINUTE` to change it), so heavy use of one never starves the other. It is
+  charged once per request that carries an id (`initialize`, `ping`, `tools/list`, `tools/call`);
+  notifications are free. Over the limit gets a JSON-RPC error with a `Retry-After` header (seconds).
+  `web_search` and `read_page` are billed only here, not a second time against `/v1`.
 - The paid data tools are sold on Base only; a Solana account's key gets a clear refusal for them.
 - A request with a browser `Origin` header is refused (403) unless that origin is trusted: either this
   server's own origin (`SIGN402_WEB_URI`) or one of a small allowlist of known MCP inspectors and
@@ -617,6 +621,8 @@ Limits:
   `SINGIT_MCP_ALLOWED_ORIGINS` env var (replaces the defaults, not additive). A trusted origin still
   needs a valid key for everything past the CORS preflight; an untrusted one is refused before the key
   is even checked. `OPTIONS /mcp` answers the CORS preflight the same way.
+- Repeated failed authentication (a wrong or revoked key) from one client address gets 429s instead of
+  401s after 30 failures in 10 minutes, to blunt key guessing.
 - `GET /mcp` answers 405: there is no server-to-client SSE stream.
 
 `GET /.well-known/mcp/server-card.json` (SEP-1649 draft) and `GET /.well-known/glama.json` are public,

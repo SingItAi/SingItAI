@@ -16,9 +16,16 @@ readOnlyHint/not destructive like the free ones, but not idempotent (each call b
 the three free lookups that only read SingIt's own data, openWorldHint (they reach third-party data).
 
 Every call needs a valid key (Authorization: Bearer sk_singit_…, or x-api-key) before anything else,
-including initialize; this is unchanged by the origin allowlist below. The key's own 60-requests-a-minute
-rate applies once per tools/call, whether the tool is free or paid, except the two Exa tools: they already
-rate inside ApiKeys._search.
+including initialize; MCP has its own per-key rate limit, separate from the /v1 one in ApiKeys._rate:
+heavy use of one must not starve the other. The default is 60 requests a minute, overridden by
+SINGIT_MCP_REQUESTS_PER_MINUTE; it is charged once per authenticated JSON-RPC request that carries an id
+(initialize, ping, tools/list, tools/call) - notifications (202) are not rated. web_search and read_page
+still go through ApiKeys._search, but with rate=False: this module already rated the request, and billing
+it a second time against /v1 would make the two buckets interfere.
+
+A client address, when the caller has one, is also limited on failed authentication (a wrong or revoked
+key): too many in a short window gets 429s instead of 401s, to blunt key guessing against this endpoint.
+A valid key is always served, whatever its address has been doing.
 
 Browser Origin: refused with 403 unless it is trusted, same as /v1 refuses one. Trusted means either the
 same origin as the MCP host itself (McpServer's public_origin, normally SIGN402_WEB_URI) or one of
@@ -37,8 +44,10 @@ import functools
 import json
 import os
 import re
+import threading
 import urllib.error
 import urllib.request
+from collections import defaultdict
 from typing import Any, Callable, Mapping
 from urllib.parse import quote
 
@@ -59,6 +68,22 @@ SYMBOL_RE = re.compile(r"[A-Za-z0-9]{1,12}")
 PRICE_KINDS = ("crypto", "metal", "fx")
 MODEL_KINDS = ("chat", "images", "audio")
 SEARCH_TYPES = ("auto", "fast", "neural", "keyword")
+MCP_REQUESTS_PER_MINUTE_ENV = "SINGIT_MCP_REQUESTS_PER_MINUTE"
+DEFAULT_MCP_REQUESTS_PER_MINUTE = 60
+AUTH_FAILURES_PER_WINDOW = 30       # per client address, to blunt key guessing against this endpoint
+AUTH_FAILURE_WINDOW_SECONDS = 600
+AUTH_FAILURE_TABLE_MAX = 10_000     # addresses kept before stale ones are pruned
+
+
+def _env_requests_per_minute() -> int:
+    raw = os.environ.get(MCP_REQUESTS_PER_MINUTE_ENV)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_MCP_REQUESTS_PER_MINUTE
+    return value if value > 0 else DEFAULT_MCP_REQUESTS_PER_MINUTE
+
+
 # Tools billed through ApiKeys._search: it rates the key itself, so McpServer must not rate it again.
 SEARCH_TOOLS = frozenset({"web_search", "read_page"})
 # The only tools that read SingIt's own data for free; every other tool bills the key per call and, except
@@ -136,6 +161,13 @@ class _BadArgs(Exception):
 
 class _MethodNotFound(Exception):
     """An unsupported JSON-RPC method (-32601)."""
+
+
+class _RateLimited(Exception):
+    """The key's MCP bucket is empty for this minute (-32029), with how long until it is not."""
+
+    def __init__(self, limit: int, retry_after: int):
+        self.limit, self.retry_after = limit, retry_after
 
 
 def _default_fetch_json(url: str) -> dict[str, Any]:
@@ -274,6 +306,10 @@ def _tool_error(message: str) -> dict[str, Any]:
 class McpServer:
     """One request, one answer: no session, no SSE. Construct with the web app's ApiKeys.
 
+    `requests_per_minute` fixes the MCP bucket's size, overriding SINGIT_MCP_REQUESTS_PER_MINUTE; tests
+    pass it directly instead of setting the environment. The env is otherwise read once here, at
+    construction, not at import time (the web API builds one of these for the life of the process).
+
     public_origin is this MCP server's own origin (normally SIGN402_WEB_URI); together with
     allowed_origins (default: allowed_origins_from_env()) it decides which browser Origins are trusted
     enough to even reach the auth check, below. A key is still required for anything beyond that: trust
@@ -281,9 +317,14 @@ class McpServer:
     """
 
     def __init__(self, keys: ApiKeys, *, fetch_json: Callable[[str], dict[str, Any]] | None = None,
-                 public_origin: str = "", allowed_origins: frozenset[str] | None = None):
+                 requests_per_minute: int | None = None, public_origin: str = "",
+                 allowed_origins: frozenset[str] | None = None):
         self.keys = keys
         self.fetch_json = fetch_json or _default_fetch_json
+        self.requests_per_minute = requests_per_minute if requests_per_minute is not None else _env_requests_per_minute()
+        self._lock = threading.Lock()
+        self._calls: dict[str, list[float]] = defaultdict(list)
+        self._auth_failures: dict[str, list[float]] = defaultdict(list)
         self.public_origin = _normalize_origin(public_origin) if public_origin else ""
         self.allowed_origins = allowed_origins_from_env() if allowed_origins is None else allowed_origins
 
@@ -296,12 +337,13 @@ class McpServer:
         return normalized == self.public_origin or normalized in self.allowed_origins
 
     def handle(self, *, authorization: str | None, api_key: str | None, origin: str | None,
-               protocol_version: str | None, body: bytes | dict[str, Any]) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
+               protocol_version: str | None, body: bytes | dict[str, Any],
+               client_ip: str | None = None) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
         if origin and not self.is_trusted_origin(origin):
             # A key is for server code; the page never holds one. Also satisfies the spec's DNS-rebinding check.
             return 403, rpc_error(None, -32600, "API keys are for server code, not browsers. Keep the key out of "
                                   "web pages."), {}
-        status, result, headers = self._authenticated(authorization, api_key, protocol_version, body)
+        status, result, headers = self._authenticated(authorization, api_key, protocol_version, body, client_ip)
         if origin:  # trusted, checked above: let the caller read the answer across origins
             # Expose-Headers on the real answer too, not only the preflight: a 401's WWW-Authenticate is
             # otherwise unreadable to the page (Codex review).
@@ -310,10 +352,15 @@ class McpServer:
         return status, result, headers
 
     def _authenticated(self, authorization: str | None, api_key: str | None, protocol_version: str | None,
-                        body: bytes | dict[str, Any]) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
+                        body: bytes | dict[str, Any], client_ip: str | None = None) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
         try:
             row = self.keys._key(authorization, api_key)
         except ApiError:
+            # Checked only after the key failed, so a valid key behind a shared NAT or proxy is never locked
+            # out by someone else's bad requests from the same address (Codex review).
+            if client_ip is not None and self._failed_auth(client_ip):
+                return (429, rpc_error(None, -32029, "Too many failed sign-ins from this address. Try again in a "
+                                       "few minutes."), {"Retry-After": str(AUTH_FAILURE_WINDOW_SECONDS)})
             return (401, rpc_error(None, -32001, "Invalid or revoked API key. Create one in the SingIt app."),
                    {"WWW-Authenticate": 'Bearer realm="singit", error="invalid_token"'})
         if isinstance(body, (bytes, bytearray)):
@@ -330,6 +377,11 @@ class McpServer:
         method, msg_id, has_id = parsed["method"], parsed.get("id"), "id" in parsed
         if not has_id or method.startswith("notifications/"):
             return 202, None, {}
+        try:
+            self._rate(row["key_id"])
+        except _RateLimited as exc:
+            return (429, rpc_error(msg_id, -32029, f"This key sends up to {exc.limit} requests a minute to MCP. "
+                                   "Slow down."), {"Retry-After": str(exc.retry_after)})
         params = parsed.get("params") if isinstance(parsed.get("params"), dict) else {}
         try:
             result = self._dispatch(row, method, params, protocol_version)
@@ -338,6 +390,33 @@ class McpServer:
         except _BadArgs as exc:
             return 200, rpc_error(msg_id, -32602, str(exc)), {}
         return 200, _result(msg_id, result), {}
+
+    def _rate(self, key_id: str) -> None:
+        """MCP's own per-key bucket: independent of ApiKeys._rate (the /v1 one), so heavy use of one
+        endpoint never starves the other."""
+        now = self.keys.now()
+        with self._lock:
+            recent = [t for t in self._calls[key_id] if t > now - 60]
+            if len(recent) >= self.requests_per_minute:
+                raise _RateLimited(self.requests_per_minute, max(1, round(60 - (now - recent[0]))))
+            recent.append(now)
+            self._calls[key_id] = recent
+
+    def _failed_auth(self, client_ip: str) -> bool:
+        """Records one failed authentication from `client_ip`; True once it is over the limit for the window.
+        Stale addresses are dropped whenever the table grows large, so it cannot grow without bound."""
+        now = self.keys.now()
+        cutoff = now - AUTH_FAILURE_WINDOW_SECONDS
+        with self._lock:
+            if len(self._auth_failures) > AUTH_FAILURE_TABLE_MAX:
+                for ip in [ip for ip, times in self._auth_failures.items() if not times or times[-1] <= cutoff]:
+                    del self._auth_failures[ip]
+            recent = [t for t in self._auth_failures[client_ip] if t > cutoff]
+            over = len(recent) >= AUTH_FAILURES_PER_WINDOW
+            if not over:
+                recent.append(now)
+            self._auth_failures[client_ip] = recent
+            return over
 
     def _dispatch(self, row, method: str, params: dict[str, Any], protocol_version: str | None) -> Any:
         if method == "initialize":
@@ -357,14 +436,14 @@ class McpServer:
                 "serverInfo": dict(SERVER_INFO), "instructions": INSTRUCTIONS}
 
     def _tools_call(self, row, params: dict[str, Any]) -> dict[str, Any]:
+        # handle() already rated this call once in the MCP bucket; web_search and read_page must not
+        # also be rated in ApiKeys._search (the /v1 bucket) - see their rate=False below.
         name = params.get("name")
         if not isinstance(name, str) or not name:
             raise _BadArgs("name is required.")
         args = params.get("arguments")
         args = args if isinstance(args, dict) else {}
         try:
-            if name not in SEARCH_TOOLS:  # /exa/… tools already rate inside ApiKeys._search
-                self.keys._rate(row["key_id"])
             data = self._call_tool(row, name, args)
         except ApiError as exc:
             return _tool_error(exc.message)
@@ -423,7 +502,7 @@ class McpServer:
             if type_ not in SEARCH_TYPES:
                 raise _BadArgs("type must be auto, fast, neural or keyword.")
             body["type"] = type_
-        _status, data, _headers = self.keys._search(row, "/exa/search", body)
+        _status, data, _headers = self.keys._search(row, "/exa/search", body, rate=False)
         return data
 
     def _read_page(self, row, args: dict[str, Any]) -> Any:
@@ -431,5 +510,5 @@ class McpServer:
         if not url.startswith(("http://", "https://")):
             raise _BadArgs("url must be an http or https page.")
         _status, data, _headers = self.keys._search(row, "/exa/contents", {
-            "urls": [url], "text": {"maxCharacters": 8000}})
+            "urls": [url], "text": {"maxCharacters": 8000}}, rate=False)
         return data
