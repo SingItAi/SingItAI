@@ -81,3 +81,21 @@ python3 scripts/singit-health-alert.py --rpc-url "$SIGN402_BASE_RPC_URL" --journ
 
 See the script's own docstring for every check, env var, and a sample systemd user timer /
 crontab line (every 5 minutes). Tests: `python3 -m unittest discover -s scripts/tests`.
+
+## BlockRun Prices Snapshot
+
+The website's `/pricing/` page (SingIt vs BlockRun) compares SingIt's live `GET
+https://ask.singitai.app/pricing.json` against BlockRun's prices in the browser. BlockRun has no
+CORS promise for the page to call it directly, so its side is a committed, static snapshot that
+this script refreshes:
+
+```bash
+node scripts/blockrun-prices-snapshot.mjs
+```
+
+Fetches `https://blockrun.ai/api/v1/models`, keeps only paid chat models (`id`, `name`, input/output
+USD per million tokens), adds BlockRun's published flat per-request fee for chat ($0.001, pinned in
+the script since no endpoint in `/api/v1/models` exposes it), and writes
+`website/data/blockrun-prices.json`. Re-run it and commit the result whenever BlockRun's prices
+move; `--out`, `--models-url`, `--fetched-at` and `--input <file>` (read a previously fetched
+response instead of the network) override the defaults.

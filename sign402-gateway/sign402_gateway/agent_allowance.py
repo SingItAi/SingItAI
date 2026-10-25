@@ -651,6 +651,17 @@ class AllowanceStore:
             return db.execute("SELECT * FROM settlements WHERE user_id = ? AND resource = ?",
                               (user_id, resource)).fetchone()
 
+    def settlement_totals(self, since: int) -> dict[str, dict[str, int]]:
+        """Settled payments, excluding credit top-ups (same filter as count_settlement/daily-metrics.py's
+        active_spenders), overall and since `since`: for GET /brand/numbers.json (web_api.py)."""
+        with self._db() as db:
+            def row(extra: str, params: tuple) -> dict[str, int]:
+                found = db.execute(
+                    "SELECT COUNT(*) n, COUNT(DISTINCT user_id) buyers, COALESCE(SUM(amount), 0) usd"
+                    f" FROM settlements WHERE resource NOT LIKE '%/v1/credit'{extra}", params).fetchone()
+                return {"count": found["n"], "wallets": found["buyers"], "usdAtomic": found["usd"]}
+            return {"total": row("", ()), "last30d": row(" AND created_at >= ?", (since,))}
+
     def transfer_claim(self, user_id: str, resource: str) -> sqlite3.Row | None:
         with self._db() as db:
             return db.execute("SELECT * FROM transfer_claims WHERE user_id = ? AND resource = ?",

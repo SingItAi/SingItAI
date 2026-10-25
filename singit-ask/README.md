@@ -57,6 +57,13 @@ what it actually cost; nothing is charged without an answer.
 - **Model:** `deepseek-v4.1-flash` via the merchant's private Surplus API key.
 - **Settlement fee:** charged consistently, also while CDP's free allowance lasts;
   it does not assert that CDP invoices every individual transaction during that allowance.
+- **Pricing transparency:** free `GET /pricing.json` lists, for every chat model `GET /v1/models`
+  offers, what a single reference question (one short message, the `max_tokens` a request gets when
+  it omits the field) is offered over `upto` and `exact` on Base and Solana — computed by the exact
+  `chooseModel`/`ceilings` functions the 402 challenge itself calls, never a separate estimate. No
+  payment, no model call. 503 with `Retry-After` while the model catalogue has never loaded, instead
+  of an empty or invented list. Linked from `openapi.json` as a free path. CORS is open (`*`), same as
+  `/v1/models`, so `singitai.app/pricing/` can fetch it straight from the browser.
 
 ## Automatic web-agent payments
 

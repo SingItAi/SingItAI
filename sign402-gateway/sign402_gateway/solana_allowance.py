@@ -327,6 +327,17 @@ class SolanaAllowanceStore:
         with self._db() as db:
             db.execute("DELETE FROM spends WHERE id = ?", (spend_id,))
 
+    def settlement_totals(self, since: int) -> dict[str, dict[str, int]]:
+        """Settled spends (pull_tx IS NOT NULL, same filter daily-metrics.py's solana_allowance_metrics uses),
+        overall and since `since`: for GET /brand/numbers.json (web_api.py)."""
+        with self._db() as db:
+            def row(extra: str, params: tuple) -> dict[str, int]:
+                found = db.execute(
+                    "SELECT COUNT(*) n, COUNT(DISTINCT account) buyers, COALESCE(SUM(amount), 0) usd"
+                    f" FROM spends WHERE pull_tx IS NOT NULL{extra}", params).fetchone()
+                return {"count": found["n"], "wallets": found["buyers"], "usdAtomic": found["usd"]}
+            return {"total": row("", ()), "last30d": row(" AND created_at >= ?", (since,))}
+
 
 class SolanaAllowanceService:
     """Limits, the wallet's approval and revoke, and funding a purchase, for `solana:` accounts."""

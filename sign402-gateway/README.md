@@ -671,6 +671,39 @@ curl -s https://app.singitai.app/v1/wallet/0xAbC.../reconciliation?days=30
 keyless catalog metadata on the same host, for MCP directories and scanners that read tools/list without
 an API key: `server_card()` and `glama_json()` in `web_mcp.py`.
 
+## Public brand numbers
+
+`GET https://app.singitai.app/brand/numbers.json` (`sign402_gateway/web_api.py`) is a free,
+unauthenticated endpoint for the marketing site: aggregate, read-only counts from the gateway's own
+settlement, spend and account stores — never a wallet address or account id. It mirrors
+`scripts/daily-metrics.py`'s own categories: settled payments exclude credit top-ups (Base
+`settlements.resource NOT LIKE '%/v1/credit'`, Solana `spends.pull_tx IS NOT NULL`). CORS is open
+(`*`), `Cache-Control: public, max-age=300`, cached in process for 5 minutes (so a page refreshing per
+visitor does not hit SQLite each time), and rate-limited per IP.
+
+Example (the seeded test data in tests/test_brand_numbers.py, not production numbers):
+
+```json
+{
+  "version": 1,
+  "measuredAt": "…",
+  "scope": "Counts payments made through the SingIt app and its agents' Base and Solana allowance lanes (settlements and spends), excluding credit top-ups. Direct x402 calls to ask.singitai.app settle on-chain and are not counted here.",
+  "chains": ["base", "solana"],
+  "payments": {
+    "settled": { "total": 3, "last30d": 2 },
+    "payingWallets": { "total": 3, "last30d": 2 },
+    "usdcVolume": { "total": 10.7, "last30d": 8.2 }
+  },
+  "accounts": 2,
+  "mcpTools": 14,
+  "models": null
+}
+```
+
+`models` is `null` unless the gateway already tracks the singit-ask catalogue's model count (it
+never fetches `ask.singitai.app` to compute this). Direct x402 calls to `ask.singitai.app` (agents
+paying per answer, no SingIt account) settle on-chain and are not included — see `scope`.
+
 ## Safety
 
 - The gateway reads the Algorand private key from the local `payment-executor/.env`.

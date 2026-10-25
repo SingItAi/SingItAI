@@ -1,0 +1,499 @@
+{
+  "source": "https://blockrun.ai/api/v1/models",
+  "fetchedAt": "2026-10-24T15:07:00Z",
+  "transactionFeeUsd": 0.001,
+  "models": [
+    {
+      "id": "anthropic/claude-fable-5",
+      "name": "Claude Fable 5",
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50
+    },
+    {
+      "id": "anthropic/claude-fable-5.1",
+      "name": "Claude Fable 5.1",
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50
+    },
+    {
+      "id": "anthropic/claude-haiku-4.5",
+      "name": "Claude Haiku 4.5",
+      "inputUsdPerMillion": 1,
+      "outputUsdPerMillion": 5
+    },
+    {
+      "id": "anthropic/claude-opus-4.5",
+      "name": "Claude Opus 4.5",
+      "inputUsdPerMillion": 5,
+      "outputUsdPerMillion": 25
+    },
+    {
+      "id": "anthropic/claude-opus-4.7",
+      "name": "Claude Opus 4.7",
+      "inputUsdPerMillion": 5,
+      "outputUsdPerMillion": 25
+    },
+    {
+      "id": "anthropic/claude-opus-4.8",
+      "name": "Claude Opus 4.8",
+      "inputUsdPerMillion": 5,
+      "outputUsdPerMillion": 25
+    },
+    {
+      "id": "anthropic/claude-opus-5",
+      "name": "Claude Opus 5",
+      "inputUsdPerMillion": 5,
+      "outputUsdPerMillion": 25
+    },
+    {
+      "id": "anthropic/claude-opus-5.5",
+      "name": "Claude Opus 5.5",
+      "inputUsdPerMillion": 4,
+      "outputUsdPerMillion": 20
+    },
+    {
+      "id": "anthropic/claude-sonnet-4.5",
+      "name": "Claude Sonnet 4.5",
+      "inputUsdPerMillion": 3,
+      "outputUsdPerMillion": 15
+    },
+    {
+      "id": "anthropic/claude-sonnet-4.6",
+      "name": "Claude Sonnet 4.6",
+      "inputUsdPerMillion": 3,
+      "outputUsdPerMillion": 15
+    },
+    {
+      "id": "anthropic/claude-sonnet-5",
+      "name": "Claude Sonnet 5",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10
+    },
+    {
+      "id": "anthropic/claude-sonnet-5.5",
+      "name": "Claude Sonnet 5.5",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10
+    },
+    {
+      "id": "deepseek/deepseek-chat",
+      "name": "DeepSeek Chat (V4.1 Flash)",
+      "inputUsdPerMillion": 0.14,
+      "outputUsdPerMillion": 0.28
+    },
+    {
+      "id": "deepseek/deepseek-reasoner",
+      "name": "DeepSeek Reasoner (V4.1 Flash)",
+      "inputUsdPerMillion": 0.14,
+      "outputUsdPerMillion": 0.28
+    },
+    {
+      "id": "deepseek/deepseek-v4-flash-vision-exp",
+      "name": "DeepSeek V4 Flash Vision",
+      "inputUsdPerMillion": 0.3,
+      "outputUsdPerMillion": 1.2
+    },
+    {
+      "id": "deepseek/deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "inputUsdPerMillion": 1.32,
+      "outputUsdPerMillion": 3.96
+    },
+    {
+      "id": "deepseek/deepseek-v4.1-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "inputUsdPerMillion": 0.14,
+      "outputUsdPerMillion": 0.28
+    },
+    {
+      "id": "google/gemini-2.5-flash",
+      "name": "Gemini 2.5 Flash",
+      "inputUsdPerMillion": 0.3,
+      "outputUsdPerMillion": 2.5
+    },
+    {
+      "id": "google/gemini-2.5-flash-lite",
+      "name": "Gemini 2.5 Flash Lite",
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.4
+    },
+    {
+      "id": "google/gemini-2.5-pro",
+      "name": "Gemini 2.5 Pro",
+      "inputUsdPerMillion": 1.25,
+      "outputUsdPerMillion": 10
+    },
+    {
+      "id": "google/gemini-3-flash-preview",
+      "name": "Gemini 3 Flash Preview",
+      "inputUsdPerMillion": 0.5,
+      "outputUsdPerMillion": 3
+    },
+    {
+      "id": "google/gemini-3.1-flash-lite",
+      "name": "Gemini 3.1 Flash Lite",
+      "inputUsdPerMillion": 0.25,
+      "outputUsdPerMillion": 1.5
+    },
+    {
+      "id": "google/gemini-3.1-pro",
+      "name": "Gemini 3.1 Pro",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 12
+    },
+    {
+      "id": "google/gemini-3.5-flash",
+      "name": "Gemini 3.5 Flash",
+      "inputUsdPerMillion": 1.5,
+      "outputUsdPerMillion": 9
+    },
+    {
+      "id": "google/gemini-3.5-flash-lite",
+      "name": "Gemini 3.5 Flash Lite",
+      "inputUsdPerMillion": 0.3,
+      "outputUsdPerMillion": 2.5
+    },
+    {
+      "id": "google/gemini-3.6-flash",
+      "name": "Gemini 3.6 Flash",
+      "inputUsdPerMillion": 0.75,
+      "outputUsdPerMillion": 3.75
+    },
+    {
+      "id": "google/gemini-3.8-flash",
+      "name": "Gemini 3.8 Flash",
+      "inputUsdPerMillion": 0.75,
+      "outputUsdPerMillion": 3.75
+    },
+    {
+      "id": "google/gemini-4-argon",
+      "name": "Gemini 4 Argon",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10
+    },
+    {
+      "id": "minimax/minimax-m2.7",
+      "name": "MiniMax M2.7",
+      "inputUsdPerMillion": 0.3,
+      "outputUsdPerMillion": 1.2
+    },
+    {
+      "id": "minimax/minimax-m3",
+      "name": "MiniMax M3",
+      "inputUsdPerMillion": 0.3,
+      "outputUsdPerMillion": 1.2
+    },
+    {
+      "id": "mistral/mistral-large-4",
+      "name": "Mistral Large 4",
+      "inputUsdPerMillion": 1.36,
+      "outputUsdPerMillion": 4.18
+    },
+    {
+      "id": "moonshot/kimi-k3",
+      "name": "Kimi K3",
+      "inputUsdPerMillion": 3,
+      "outputUsdPerMillion": 15
+    },
+    {
+      "id": "openai/chat-latest",
+      "name": "ChatGPT Instant (GPT-5.5)",
+      "inputUsdPerMillion": 5,
+      "outputUsdPerMillion": 30
+    },
+    {
+      "id": "openai/gpt-4.1",
+      "name": "GPT-4.1",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 8
+    },
+    {
+      "id": "openai/gpt-4.1-mini",
+      "name": "GPT-4.1 Mini",
+      "inputUsdPerMillion": 0.4,
+      "outputUsdPerMillion": 1.6
+    },
+    {
+      "id": "openai/gpt-4.1-nano",
+      "name": "GPT-4.1 Nano",
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.4
+    },
+    {
+      "id": "openai/gpt-4o",
+      "name": "GPT-4o",
+      "inputUsdPerMillion": 2.5,
+      "outputUsdPerMillion": 10
+    },
+    {
+      "id": "openai/gpt-4o-mini",
+      "name": "GPT-4o Mini",
+      "inputUsdPerMillion": 0.15,
+      "outputUsdPerMillion": 0.6
+    },
+    {
+      "id": "openai/gpt-5-mini",
+      "name": "GPT-5 Mini",
+      "inputUsdPerMillion": 0.25,
+      "outputUsdPerMillion": 2
+    },
+    {
+      "id": "openai/gpt-5.1",
+      "name": "GPT-5.1",
+      "inputUsdPerMillion": 1.25,
+      "outputUsdPerMillion": 10
+    },
+    {
+      "id": "openai/gpt-5.2",
+      "name": "GPT-5.2",
+      "inputUsdPerMillion": 1.75,
+      "outputUsdPerMillion": 14
+    },
+    {
+      "id": "openai/gpt-5.2-pro",
+      "name": "GPT-5.2 Pro",
+      "inputUsdPerMillion": 21,
+      "outputUsdPerMillion": 168
+    },
+    {
+      "id": "openai/gpt-5.3-codex",
+      "name": "GPT-5.3 Codex",
+      "inputUsdPerMillion": 1.75,
+      "outputUsdPerMillion": 14
+    },
+    {
+      "id": "openai/gpt-5.4",
+      "name": "GPT-5.4",
+      "inputUsdPerMillion": 2.5,
+      "outputUsdPerMillion": 15
+    },
+    {
+      "id": "openai/gpt-5.4-mini",
+      "name": "GPT-5.4 Mini",
+      "inputUsdPerMillion": 0.75,
+      "outputUsdPerMillion": 4.5
+    },
+    {
+      "id": "openai/gpt-5.4-nano",
+      "name": "GPT-5.4 Nano",
+      "inputUsdPerMillion": 0.2,
+      "outputUsdPerMillion": 1.25
+    },
+    {
+      "id": "openai/gpt-5.4-pro",
+      "name": "GPT-5.4 Pro",
+      "inputUsdPerMillion": 30,
+      "outputUsdPerMillion": 180
+    },
+    {
+      "id": "openai/gpt-5.5",
+      "name": "GPT-5.5",
+      "inputUsdPerMillion": 5,
+      "outputUsdPerMillion": 30
+    },
+    {
+      "id": "openai/gpt-5.5-pro",
+      "name": "GPT-5.5 Pro",
+      "inputUsdPerMillion": 30,
+      "outputUsdPerMillion": 180
+    },
+    {
+      "id": "openai/gpt-5.6-luna",
+      "name": "GPT-5.6 Luna",
+      "inputUsdPerMillion": 0.2,
+      "outputUsdPerMillion": 1.2
+    },
+    {
+      "id": "openai/gpt-5.6-luna-pro",
+      "name": "GPT-5.6 Luna Pro",
+      "inputUsdPerMillion": 0.2,
+      "outputUsdPerMillion": 1.2
+    },
+    {
+      "id": "openai/gpt-5.6-sol",
+      "name": "GPT-5.6 Sol",
+      "inputUsdPerMillion": 4,
+      "outputUsdPerMillion": 20
+    },
+    {
+      "id": "openai/gpt-5.6-sol-pro",
+      "name": "GPT-5.6 Sol Pro",
+      "inputUsdPerMillion": 4,
+      "outputUsdPerMillion": 20
+    },
+    {
+      "id": "openai/gpt-5.6-terra",
+      "name": "GPT-5.6 Terra",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 12
+    },
+    {
+      "id": "openai/gpt-5.6-terra-pro",
+      "name": "GPT-5.6 Terra Pro",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 12
+    },
+    {
+      "id": "openai/gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "inputUsdPerMillion": 10,
+      "outputUsdPerMillion": 50
+    },
+    {
+      "id": "openai/gpt-6-luna",
+      "name": "GPT-6 Luna",
+      "inputUsdPerMillion": 0.1,
+      "outputUsdPerMillion": 0.5
+    },
+    {
+      "id": "openai/gpt-6-sol",
+      "name": "GPT-6 Sol",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10
+    },
+    {
+      "id": "openai/gpt-6.1-sol",
+      "name": "GPT-6.1 Sol",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 10
+    },
+    {
+      "id": "openai/o1",
+      "name": "o1",
+      "inputUsdPerMillion": 15,
+      "outputUsdPerMillion": 60
+    },
+    {
+      "id": "openai/o3",
+      "name": "o3",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 8
+    },
+    {
+      "id": "openai/o3-mini",
+      "name": "o3-mini",
+      "inputUsdPerMillion": 1.1,
+      "outputUsdPerMillion": 4.4
+    },
+    {
+      "id": "poolside/laguna-s-2.1",
+      "name": "Laguna S 2.1",
+      "inputUsdPerMillion": 0.09,
+      "outputUsdPerMillion": 0.18
+    },
+    {
+      "id": "qwen/qwen3.7-flash",
+      "name": "Qwen3.7 Flash",
+      "inputUsdPerMillion": 0.03,
+      "outputUsdPerMillion": 0.13
+    },
+    {
+      "id": "qwen/qwen3.7-max",
+      "name": "Qwen3.7 Max",
+      "inputUsdPerMillion": 1.475,
+      "outputUsdPerMillion": 4.425
+    },
+    {
+      "id": "qwen/qwen3.7-plus",
+      "name": "Qwen3.7 Plus",
+      "inputUsdPerMillion": 0.32,
+      "outputUsdPerMillion": 1.28
+    },
+    {
+      "id": "qwen/qwen3.8-flash",
+      "name": "Qwen3.8 Flash",
+      "inputUsdPerMillion": 0.15,
+      "outputUsdPerMillion": 0.47
+    },
+    {
+      "id": "qwen/qwen3.8-max",
+      "name": "Qwen3.8 Max",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 6
+    },
+    {
+      "id": "tencent/hy4-preview",
+      "name": "Tencent Hy4 Preview",
+      "inputUsdPerMillion": 0.834,
+      "outputUsdPerMillion": 2.501
+    },
+    {
+      "id": "xai/grok-4.3",
+      "name": "Grok 4.3",
+      "inputUsdPerMillion": 1.25,
+      "outputUsdPerMillion": 2.5
+    },
+    {
+      "id": "xai/grok-4.5",
+      "name": "Grok 4.5",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 6
+    },
+    {
+      "id": "xai/grok-4.6",
+      "name": "Grok 4.6",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 6
+    },
+    {
+      "id": "xai/grok-4.7",
+      "name": "Grok 4.7",
+      "inputUsdPerMillion": 2,
+      "outputUsdPerMillion": 6
+    },
+    {
+      "id": "xai/grok-build-0.1",
+      "name": "Grok Build 0.1",
+      "inputUsdPerMillion": 1,
+      "outputUsdPerMillion": 2
+    },
+    {
+      "id": "xiaomi/mimo-v2.5",
+      "name": "MiMo V2.5",
+      "inputUsdPerMillion": 0.14,
+      "outputUsdPerMillion": 0.28
+    },
+    {
+      "id": "xiaomi/mimo-v2.5-pro",
+      "name": "Xiaomi MiMo-V2.5 Pro",
+      "inputUsdPerMillion": 0.435,
+      "outputUsdPerMillion": 0.87
+    },
+    {
+      "id": "zai/glm-5",
+      "name": "GLM-5",
+      "inputUsdPerMillion": 1,
+      "outputUsdPerMillion": 3.2
+    },
+    {
+      "id": "zai/glm-5-turbo",
+      "name": "GLM-5 Turbo",
+      "inputUsdPerMillion": 1.2,
+      "outputUsdPerMillion": 4
+    },
+    {
+      "id": "zai/glm-5.1",
+      "name": "GLM-5.1",
+      "inputUsdPerMillion": 1.4,
+      "outputUsdPerMillion": 4.4
+    },
+    {
+      "id": "zai/glm-5.2",
+      "name": "GLM-5.2",
+      "inputUsdPerMillion": 1.4,
+      "outputUsdPerMillion": 4.4
+    },
+    {
+      "id": "zai/glm-5.3",
+      "name": "GLM-5.3",
+      "inputUsdPerMillion": 1.4,
+      "outputUsdPerMillion": 4.4
+    },
+    {
+      "id": "zai/glm-5.3-flash",
+      "name": "GLM-5.3 Flash",
+      "inputUsdPerMillion": 0.15,
+      "outputUsdPerMillion": 0.5
+    }
+  ]
+}
