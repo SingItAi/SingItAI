@@ -67,12 +67,12 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 OUR_VERSION = SUPPORTED_VERSIONS[0]
-SERVER_INFO = {"name": "singit", "title": "SingIt", "version": "0.1.0"}
+SERVER_INFO = {"name": "singit", "title": "SingIt x402", "version": "0.1.1"}
 INSTRUCTIONS = (
     "Look up prices, models, web pages and market data. get_price, list_price_symbols and list_models are "
     "free and work without a key. Paid tools need a SingIt API key and are charged per call to that key's "
-    "SingIt limits (Base USDC). web_search and read_page need the key's \"search\" scope; the other tools "
-    "need its \"tools\" scope. Keys made before paid data tools existed need a new key for those."
+    "SingIt limits, in USDC on Base or Solana. web_search and read_page need the key's \"search\" scope; the "
+    "market data tools need its \"tools\" scope and a Base account for now. Keys made before paid data tools existed need a new key for those."
 )
 KEYLESS_PAID_MESSAGE = ("This tool is paid. Create a SingIt API key at https://app.singitai.app/app/ and send it "
                         "as \"Authorization: Bearer sk_singit_...\" or \"x-api-key: sk_singit_...\".")
@@ -192,7 +192,7 @@ def _paid_tools() -> tuple[dict[str, str], tuple[dict[str, Any], ...]]:
     ids = {name: tool_id for name, tool_id in ids.items() if name not in MCP_HIDDEN_TOOLS}
     listed = tuple(_annotated({"name": tool["mcpStyleName"],
                                "description": PAID_TOOL_DESCRIPTIONS.get(tool["mcpStyleName"], tool["description"])
-                               + " Paid per call from your key's SingIt limits (Base USDC).",
+                               + " Paid per call from your key's SingIt limits in USDC; Base accounts only for now.",
                                "inputSchema": tool["inputSchema"]})
                    for tool in gw.PAID_TOOLS.values() if tool["mcpStyleName"] not in MCP_HIDDEN_TOOLS)
     return ids, listed
@@ -285,10 +285,11 @@ OWN_TOOLS: list[dict[str, Any]] = [_annotated(entry) for entry in (
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "web_search", "description": "Searches the web through Exa and returns titles, URLs and snippets of "
      "matching pages. Use for current or niche information, then read_page for a full page. Paid per call from "
-     "your key's SingIt limits (Base USDC); needs the key's \"search\" scope.", "inputSchema": WEB_SEARCH_SCHEMA},
+     "your key's SingIt limits in USDC on Base or Solana; needs the key's \"search\" scope.",
+     "inputSchema": WEB_SEARCH_SCHEMA},
     {"name": "read_page", "description": "The readable text of one web page (up to 8000 characters), through Exa. "
-     "Use after web_search, or when you already have a URL. Paid per call from your key's SingIt limits (Base "
-     "USDC); needs the key's \"search\" scope.", "inputSchema": READ_PAGE_SCHEMA},
+     "Use after web_search, or when you already have a URL. Paid per call from your key's SingIt limits in USDC "
+     "on Base or Solana; needs the key's \"search\" scope.", "inputSchema": READ_PAGE_SCHEMA},
 )]
 
 
@@ -300,8 +301,8 @@ def tools() -> list[dict[str, Any]]:
 ICON_URL = "https://singitai.app/assets/icons/icon-512.png"
 DOCS_URL = ("https://github.com/bubon-ik/SingItAI/blob/main/sign402-gateway/README.md"
             "#mcp-server-remote-for-claude-code-cursor-codex")
-SERVER_CARD_DESCRIPTION = ("Free price, model and symbol lookups, plus paid web search, page reading and "
-                           "market data tools, billed in Base USDC inside the API key's own SingIt limits.")
+SERVER_CARD_DESCRIPTION = ("Free price, model and symbol lookups, plus paid web search, page reading and x402 "
+                           "market data, in USDC on Base or Solana within your API key's SingIt limits.")
 AUTH_INSTRUCTIONS = ("Free tools work without a key. For paid tools, create a SingIt API key in the app at "
                      "https://app.singitai.app/app/, then send it as \"Authorization: Bearer sk_singit_...\" or "
                      "\"x-api-key: sk_singit_...\".")

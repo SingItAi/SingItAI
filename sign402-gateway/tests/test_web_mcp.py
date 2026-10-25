@@ -149,6 +149,15 @@ class ToolCatalogueTests(Fixture):
         paid = {t["name"] for t in listed} - FREE_TOOL_NAMES - {"web_search", "read_page"}
         self.assertEqual(paid - set(wm.PAID_TOOL_DESCRIPTIONS), set())  # every paid tool has an MCP description
 
+    def test_networks_are_named_as_they_really_work(self):
+        # Search and page reading are paid on Base or Solana; the market data tools refuse Solana (base_only).
+        listed = {t["name"]: t["description"] for t in self.rpc(None, "tools/list")[1]["result"]["tools"]}
+        for name in ("web_search", "read_page"):
+            self.assertIn("Base or Solana", listed[name])
+        for name in PAID_TOOL_NAMES:
+            self.assertIn("Base accounts only", listed[name], name)
+        self.assertNotIn("(Base USDC)", " ".join(listed.values()) + wm.INSTRUCTIONS + wm.SERVER_CARD_DESCRIPTION)
+
     def test_the_broken_demo_report_is_neither_listed_nor_callable(self):
         names = {t["name"] for t in self.rpc(None, "tools/list")[1]["result"]["tools"]}
         self.assertNotIn("get_sign402_report", names)

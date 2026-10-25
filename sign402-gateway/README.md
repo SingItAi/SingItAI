@@ -556,7 +556,8 @@ Tools:
 running in production. MCP descriptions of the paid tools live in `web_mcp.PAID_TOOL_DESCRIPTIONS`.
 
 Every paid call is billed exactly like `/v1`: from the key's own daily and per-request caps, out of
-its account's own SingIt limits (Base USDC). Nothing here can move funds, change limits, or buy goods
+its account's own SingIt limits, in USDC on Base or Solana. The market data tools (`tools` scope) are
+Base-only for now: a Solana account's key gets a clear refusal. Nothing here can move funds, change limits, or buy goods
 (no Bitrefill, no wallet/allowance tools — that stays out of MCP for now, v2 at the earliest).
 
 Every `tools/list` entry carries a `title` and MCP annotations (`readOnlyHint`, `destructiveHint`,
