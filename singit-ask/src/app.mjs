@@ -445,7 +445,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                 + "\"upto\" USDC authorization on Base or Solana and retry the same request with a PAYMENT-SIGNATURE "
                 + "header. List callable models at GET /v1/models and free (unpaid) prices at GET /v1/prices. Nothing "
                 + "is charged unless an answer comes back.",
-              contact: { name: "SingIt", email: "Exkalibur1919@proton.me", url: "https://singitai.app" } },
+              contact: { name: "SingIt", email: "contact@singitai.app", url: "https://singitai.app" } },
       servers: [{ url: origin(req) }],
       paths: {
         [ROUTE]: { post: {

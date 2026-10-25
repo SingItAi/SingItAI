@@ -566,7 +566,7 @@ class HttpTests(Fixture):
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "*")
             data = json.loads(response.read())
-        self.assertEqual(data["maintainers"], [{"email": "Exkalibur1919@proton.me"}])
+        self.assertEqual(data["maintainers"], [{"email": "contact@singitai.app"}])
         self.assertEqual(data, glama_json())
 
     def test_head_on_server_card_has_no_body(self):
