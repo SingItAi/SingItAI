@@ -89,6 +89,8 @@ export function ceilingAtomic(model, size, terms, share = 1) {
 // answer to the cheapest seller (priceGuard: cheapest qualifying offer + 1pp), and Surplus answers 404
 // minimum_discount_not_met when that seller is gone. When the model's worst case at list price still fits what the
 // payer authorized (`terms.maxChargeAtomic`), any seller is affordable and nothing can overrun, so none is sent.
+// Safe for both schemes: `upto` still refuses an answer over its ceiling (billUsage), and `exact` was paid the
+// flat ceiling, which the list-price worst case already fits, so no seller can cost more than was authorized.
 export function minDiscountFor(input, terms) {
   if (input.minDiscount == null) return null;
   if (!input.info) return input.minDiscount;
