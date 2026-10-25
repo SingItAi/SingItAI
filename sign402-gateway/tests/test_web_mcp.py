@@ -30,7 +30,7 @@ from tests.test_web_shop import ACCOUNT, OWNER, PAID, REQUIREMENTS, TOKEN, raw_r
 
 NOW = 1_800_000_000
 DOMAIN, URI = "app.singit.test", "https://app.singit.test"
-PAID_TOOL_NAMES = {t["mcpStyleName"] for t in PAID_TOOLS.values()}
+PAID_TOOL_NAMES = {t["mcpStyleName"] for t in PAID_TOOLS.values()} - wm.MCP_HIDDEN_TOOLS
 
 
 def sign(account, message):
@@ -103,7 +103,7 @@ class InitializeAndListTests(Fixture):
         self.assertEqual(status, 200)
         tools = out["result"]["tools"]
         names = {t["name"] for t in tools}
-        expected = {"get_price", "list_price_symbols", "list_models", "web_search", "read_page"} | PAID_TOOL_NAMES
+        expected = {"get_price", "list_price_symbols", "list_models", "get_balance", "web_search", "read_page"} | PAID_TOOL_NAMES
         self.assertEqual(names, expected)
         for tool in tools:
             self.assertEqual(tool["inputSchema"]["type"], "object")
@@ -118,7 +118,7 @@ class InitializeAndListTests(Fixture):
         key = self.make_key()["key"]
         status, out, _ = self.rpc(key, "tools/list")
         listed = out["result"]["tools"]
-        self.assertEqual(len(listed), len(OWN_TOOLS) + len(PAID_TOOLS))
+        self.assertEqual(len(listed), len(OWN_TOOLS) + len(PAID_TOOL_NAMES))
         self.assertEqual(len(listed), 14)
         for tool in listed:
             self.assertTrue(tool.get("title"), tool["name"])
@@ -137,6 +137,44 @@ class InitializeAndListTests(Fixture):
 
 
 BAD_KEY = "sk_singit_" + "x" * 43
+
+
+class ToolCatalogueTests(Fixture):
+    def test_every_description_says_when_to_use_and_never_the_old_brand(self):
+        listed = self.rpc(None, "tools/list")[1]["result"]["tools"]
+        for tool in listed:
+            with self.subTest(tool=tool["name"]):
+                self.assertNotIn("sign402", tool["description"].lower())
+                self.assertGreater(len(tool["description"]), 60)
+        paid = {t["name"] for t in listed} - FREE_TOOL_NAMES - {"web_search", "read_page"}
+        self.assertEqual(paid - set(wm.PAID_TOOL_DESCRIPTIONS), set())  # every paid tool has an MCP description
+
+    def test_the_broken_demo_report_is_neither_listed_nor_callable(self):
+        names = {t["name"] for t in self.rpc(None, "tools/list")[1]["result"]["tools"]}
+        self.assertNotIn("get_sign402_report", names)
+        key = self.make_key()["key"]
+        status, out, _ = self.call_tool(key, "get_sign402_report")
+        self.assertEqual(out["error"]["code"], -32602)
+        self.assertEqual(self.shop.calls, [])
+
+    def test_get_balance_needs_a_key_and_reads_only_that_keys_account(self):
+        status, out, _ = self.call_tool(None, "get_balance")
+        self.assertTrue(out["result"]["isError"])
+        self.assertIn("needs your API key", out["result"]["content"][0]["text"])
+        made = self.make_key()
+        seen = []
+        self.api.keys.proxy = Mock()
+        self.api.keys._balance = lambda account: seen.append(account) or {"object": "balance", "availableUsd": 1.5}
+        status, out, _ = self.call_tool(made["key"], "get_balance")
+        self.assertFalse(out["result"].get("isError"))
+        self.assertEqual(out["result"]["structuredContent"]["availableUsd"], 1.5)
+        self.assertEqual(seen, [self.account])
+
+    def test_get_balance_says_so_when_balances_are_off(self):
+        self.api.keys.proxy = None
+        status, out, _ = self.call_tool(self.make_key()["key"], "get_balance")
+        self.assertTrue(out["result"]["isError"])
+        self.assertIn("not available", out["result"]["content"][0]["text"])
 
 
 class KeylessTests(Fixture):
