@@ -56,7 +56,7 @@ from .web_accounts import (
 from .web_api_keys import ApiError, ApiKeys, Stream
 from .web_api_proxy import Relay
 from .wallet_reconciliation import DEFAULT_DAYS, MAX_DAYS, Reconciliation
-from .web_mcp import McpServer, rpc_error
+from .web_mcp import McpServer, allowed_origins_from_env, glama_json, rpc_error, server_card
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +69,10 @@ RECONCILIATION_PATH = re.compile(r"/v1/wallet/([^/]{1,100})/reconciliation")  # 
 API_PREFIX = "/v1"            # the OpenAI-compatible API that API keys open (web_api_keys.py)
 API_MAX_BODY = 160 * 1024     # a question may be 24,000 characters, several bytes each
 MCP_PATH = "/mcp"              # SingIt's remote MCP server (web_mcp.py), on the same API keys
+MCP_CORS_HEADERS = "Authorization, Content-Type, x-api-key, MCP-Protocol-Version, Mcp-Session-Id"
+MCP_CORS_EXPOSE = "WWW-Authenticate, Mcp-Session-Id"
+WELL_KNOWN_SERVER_CARD = "/.well-known/mcp/server-card.json"  # SEP-1649, read by catalogs and scanners
+WELL_KNOWN_GLAMA = "/.well-known/glama.json"                  # Glama's claim-by-well-known-file check
 PROXY_MAX_BODY = 16 * 1024 * 1024  # relayed requests: a coding agent's whole context, images included
 MAX_UPLOAD = 25 * 1024 * 1024      # an audio file to transcribe, OpenAI's own limit
 REQUEST_READ_SECONDS = 15
@@ -179,6 +183,8 @@ class WebApi:
         max_deploys_per_day: int = 50,
         shop: Callable[[str, str, Mapping[str, Any] | None], tuple[int, dict[str, Any]]] | None = None,
         now: Callable[[], float] = time.time,
+        public_origin: str = "",
+        mcp_allowed_origins: frozenset[str] | None = None,
     ):
         self.auth = auth
         self.allowance = allowance
@@ -201,7 +207,7 @@ class WebApi:
         self.push_by_account = RateLimit(20, 3600)
         self.keys_by_account = RateLimit(20, 3600)
         self.keys = ApiKeys(self, now=now)
-        self.mcp = McpServer(self.keys)
+        self.mcp = McpServer(self.keys, public_origin=public_origin, allowed_origins=mcp_allowed_origins)
         self.reconciliation_by_ip = RateLimit(per_minute_from_env("SINGIT_RECONCILIATION_PER_MINUTE", 30), 60)
         self._reconciliation: Reconciliation | None = None
 
@@ -591,7 +597,9 @@ class WebHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         origin = self.headers.get("Origin")
-        if origin and origin == self.server.cors_origin:
+        # /mcp sets its own Access-Control-Allow-Origin (bearer-key auth, no cookies, so no Allow-Credentials);
+        # skip the cookie-session CORS below so the two don't both fire when the origins happen to coincide.
+        if origin and origin == self.server.cors_origin and "Access-Control-Allow-Origin" not in (headers or {}):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Access-Control-Allow-Credentials", "true")
             self.send_header("Vary", "Origin")
@@ -684,6 +692,9 @@ class WebHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self) -> None:
         origin = self.headers.get("Origin")
+        if self.path.split("?", 1)[0] == MCP_PATH:
+            self._mcp_options(origin)
+            return
         if origin != self.server.cors_origin:
             self.send_response(403)
             self.send_header("Content-Length", "0")
@@ -699,13 +710,38 @@ class WebHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _mcp_options(self, origin: str | None) -> None:
+        """CORS preflight for POST /mcp: trusted origins only (McpServer.is_trusted_origin), same rule
+        the actual POST enforces. No Allow-Credentials: /mcp is bearer-key auth, not cookies."""
+        if not self.server.api.mcp.is_trusted_origin(origin):
+            self.send_response(403)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Vary", "Origin")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", MCP_CORS_HEADERS)
+        self.send_header("Access-Control-Expose-Headers", MCP_CORS_EXPOSE)
+        self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def do_GET(self) -> None:
-        if self.path.split("?", 1)[0] == MCP_PATH:
+        path = self.path.split("?", 1)[0]
+        if path == MCP_PATH:
             self._send(405, {"ok": False, "error": "method_not_allowed",
                              "message": "This endpoint offers no SSE stream. Send POST."}, {"Allow": "POST"})
             return
         if RECONCILIATION_PATH.fullmatch(self.path.partition("?")[0]):
             self._wallet_reconciliation()
+            return
+        if path == WELL_KNOWN_SERVER_CARD:
+            self._well_known(server_card(self.server.api.mcp.public_origin or self.server.cors_origin, MCP_PATH))
+            return
+        if path == WELL_KNOWN_GLAMA:
+            self._well_known(glama_json())
             return
         if self.path.startswith(API_PREFIX + "/"):
             self._public("GET")
@@ -714,6 +750,18 @@ class WebHandler(BaseHTTPRequestHandler):
             self._static()
             return
         self._dispatch("GET")
+
+    def _well_known(self, data: dict[str, Any]) -> None:
+        """Public, keyless catalog metadata: no CSRF or session concerns, so a plain * origin is fine."""
+        body = json.dumps(data).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "public, max-age=3600")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if not self.head_only:
+            self.wfile.write(body)
 
     def do_DELETE(self) -> None:
         if self.path.split("?", 1)[0] == MCP_PATH:
@@ -731,6 +779,13 @@ class WebHandler(BaseHTTPRequestHandler):
         self.head_only = True
         if RECONCILIATION_PATH.fullmatch(self.path.partition("?")[0]):
             self._wallet_reconciliation()
+            return
+        path = self.path.split("?", 1)[0]
+        if path == WELL_KNOWN_SERVER_CARD:
+            self._well_known(server_card(self.server.api.mcp.public_origin or self.server.cors_origin, MCP_PATH))
+            return
+        if path == WELL_KNOWN_GLAMA:
+            self._well_known(glama_json())
             return
         if not self.path.startswith(PREFIX + "/") and self.server.static_root is not None:
             self._static()
@@ -791,7 +846,7 @@ class WebHandler(BaseHTTPRequestHandler):
             status, out, headers = self.server.api.mcp.handle(
                 authorization=self.headers.get("Authorization"), api_key=self.headers.get("x-api-key"),
                 origin=self.headers.get("Origin"), protocol_version=self.headers.get("MCP-Protocol-Version"),
-                body=raw)
+                body=raw, client_ip=self._client())
             if out is None:
                 self.send_response(status)
                 for key, value in headers.items():
@@ -923,6 +978,8 @@ def build_web_api_from_env(allowance: AllowanceService, env: Mapping[str, str] |
         max_limiters_per_30_days=int(values.get("SIGN402_WEB_MAX_LIMITERS_PER_30_DAYS", "3")),
         max_deploys_per_day=int(values.get("SIGN402_WEB_MAX_DEPLOYS_PER_DAY", "50")),
         shop=shop,
+        public_origin=uri,  # the MCP host's own origin: trusted for /mcp's Origin check and its server-card
+        mcp_allowed_origins=allowed_origins_from_env(values),  # the same env mapping, not os.environ (Codex review)
     )
     api.solana = solana
     surplus_key = str(values.get("SIGN402_WEB_SURPLUS_API_KEY", "")).strip()
