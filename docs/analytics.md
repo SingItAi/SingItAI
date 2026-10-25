@@ -67,6 +67,7 @@ building or storing the event is logged and swallowed: it never reaches the requ
 | `paid` | `true` when the tool is a paid one (`web_search`, `read_page`, or a `tools`-scope tool), whether or not this call was charged. |
 | `cost_usd` | USD decimal string of what the key was charged (at least 2 places, sub-cent kept: `"0.003"`). Present only when the result reports an actual charge; otherwise omitted, never `0`. |
 | `key_ref` | The first 12 hex characters of `sha256(ANALYTICS_SALT + key_id)`, where `key_id` is the key's public id (`key_…`) — never the secret, its prefix or its hash. It lets one key's calls be grouped without naming it. |
+| `keyless` | `true` when the call came without an API key (only the free tools succeed then); `key_ref` is absent and the user is not set. |
 | `client` | **Never set today.** The server is stateless, and a client's name only travels in `initialize`, which is not recorded. The prop is reserved (40 characters at most, dropped if it looks like an address or an email) for the day a session exists. |
 
 The user is the usual `uid`, from the key's `account_id`. Tool arguments (queries, URLs, symbols,

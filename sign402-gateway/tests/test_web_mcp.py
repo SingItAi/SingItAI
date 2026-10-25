@@ -136,14 +136,77 @@ class InitializeAndListTests(Fixture):
                 self.assertTrue(annotations["openWorldHint"], tool["name"])
 
 
-class AuthTests(Fixture):
-    def test_no_key_is_refused_before_anything_else(self):
-        status, out, headers = self.rpc(None, "initialize")
-        self.assertEqual(status, 401)
-        self.assertIn("Bearer", headers["WWW-Authenticate"])
-        self.assertEqual(out["error"]["code"], -32001)
+BAD_KEY = "sk_singit_" + "x" * 43
+
+
+class KeylessTests(Fixture):
+    def test_initialize_ping_and_tools_list_work_without_a_key(self):
+        status, out, _ = self.rpc(None, "initialize", {"protocolVersion": "2025-06-18"})
+        self.assertEqual(status, 200)
+        self.assertEqual(out["result"]["serverInfo"]["name"], "singit")
+        self.assertEqual(self.rpc(None, "ping")[:2], (200, {"jsonrpc": "2.0", "id": 1, "result": {}}))
+        status, out, _ = self.rpc(None, "tools/list")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(out["result"]["tools"]), 14)  # the full catalogue, paid tools included
         self.assertEqual(self.shop.calls, [])
 
+    def test_free_tools_work_without_a_key_and_touch_no_account(self):
+        fetched = []
+        self.api.mcp.fetch_json = lambda url: fetched.append(url) or {"data": [{"id": "singit-ask"}], "ok": True}
+        status, out, _ = self.call_tool(None, "get_price", {"kind": "crypto", "symbol": "ETH"})
+        self.assertEqual(status, 200)
+        self.assertFalse(out["result"].get("isError"))
+        status, out, _ = self.call_tool(None, "list_price_symbols")
+        self.assertFalse(out["result"].get("isError"))
+        status, out, _ = self.call_tool(None, "list_models")
+        self.assertFalse(out["result"].get("isError"))
+        self.assertEqual(out["result"]["structuredContent"]["data"], [{"id": "singit-ask"}])
+        self.assertTrue(fetched[0].endswith("/v1/prices/crypto/ETH"))
+        self.assertTrue(fetched[-1].endswith("/v1/models"))
+        self.assertEqual(self.shop.calls, [])  # the keyed model list asks the account's shop; keyless never does
+
+    def test_a_paid_tool_without_a_key_asks_for_one_and_bills_nothing(self):
+        search = Mock()
+        self.api.keys._search = search
+        for name, args in (("web_search", {"query": "x402"}), ("read_page", {"url": "https://example.com"}),
+                           (sorted(PAID_TOOL_NAMES)[0], {})):
+            with self.subTest(name=name):
+                status, out, _ = self.call_tool(None, name, args)
+                self.assertEqual(status, 200)
+                self.assertTrue(out["result"]["isError"])
+                self.assertIn("API key", out["result"]["content"][0]["text"])
+        search.assert_not_called()
+        self.assertEqual(self.shop.calls, [])
+
+    def test_an_unknown_tool_without_a_key_is_invalid_params(self):
+        status, out, _ = self.call_tool(None, "withdraw_everything")
+        self.assertEqual(out["error"]["code"], -32602)
+
+    def test_keyless_requests_are_rate_limited_per_address(self):
+        self.api.mcp.requests_per_minute = 3
+        for _ in range(3):
+            self.assertEqual(self.rpc(None, "ping", client_ip="198.51.100.20")[0], 200)
+        status, out, headers = self.rpc(None, "ping", client_ip="198.51.100.20")
+        self.assertEqual(status, 429)
+        self.assertIn("Without a key", out["error"]["message"])
+        self.assertIn("Retry-After", headers)
+        self.assertEqual(self.rpc(None, "ping", client_ip="198.51.100.21")[0], 200)  # another address
+
+    def test_an_untrusted_browser_origin_is_refused_even_without_a_key(self):
+        status, _, _ = self.rpc(None, "tools/list", origin="https://evil.test")
+        self.assertEqual(status, 403)
+
+    def test_a_keyless_tool_call_is_recorded_without_an_account_or_key(self):
+        self.api.mcp.fetch_json = lambda url: {"ok": True}
+        with patch.object(wm.analytics, "emit") as emit:
+            self.call_tool(None, "list_price_symbols")
+        (name, account), props = emit.call_args[0], emit.call_args[1]
+        self.assertEqual((name, account), ("mcp_call", None))
+        self.assertTrue(props["keyless"])
+        self.assertNotIn("key_ref", props)
+
+
+class AuthTests(Fixture):
     def test_a_made_up_key_is_refused(self):
         status, out, _ = self.rpc("sk_singit_" + "x" * 43, "initialize")
         self.assertEqual(status, 401)
@@ -161,26 +224,39 @@ class AuthTests(Fixture):
         self.assertEqual(status, 403)
         self.assertEqual(self.shop.calls, [])
 
-    def test_no_key_is_still_401_when_a_client_ip_is_given(self):
-        status, out, headers = self.rpc(None, "initialize", client_ip="203.0.113.5")
+    def test_a_wrong_key_is_401_never_a_quiet_fall_back_to_keyless(self):
+        for kwargs in ({}, {"client_ip": "203.0.113.5"}):
+            status, out, headers = self.rpc(BAD_KEY, "tools/list", **kwargs)
+            self.assertEqual(status, 401)
+            self.assertIn("Bearer", headers["WWW-Authenticate"])
+            self.assertEqual(out["error"]["code"], -32001)
+        status, _, _ = self.api.mcp.handle(authorization=None, api_key=BAD_KEY, origin=None,
+                                           protocol_version="2025-06-18", body={"jsonrpc": "2.0", "id": 1,
+                                                                                "method": "ping"})
         self.assertEqual(status, 401)
-        self.assertEqual(out["error"]["code"], -32001)
+        self.assertEqual(self.shop.calls, [])
 
 
 class FailedAuthIpLimitTests(Fixture):
     def test_too_many_failed_auths_from_one_address_get_429_instead_of_401(self):
         for _ in range(wm.AUTH_FAILURES_PER_WINDOW):
-            status, _, _ = self.rpc(None, "initialize", client_ip="198.51.100.9")
+            status, _, _ = self.rpc(BAD_KEY, "initialize", client_ip="198.51.100.9")
             self.assertEqual(status, 401)
-        status, out, headers = self.rpc(None, "initialize", client_ip="198.51.100.9")
+        status, out, headers = self.rpc(BAD_KEY, "initialize", client_ip="198.51.100.9")
         self.assertEqual(status, 429)
         self.assertEqual(out["error"]["code"], -32029)
         self.assertEqual(int(headers["Retry-After"]), wm.AUTH_FAILURE_WINDOW_SECONDS)
 
     def test_a_different_address_is_unaffected(self):
         for _ in range(wm.AUTH_FAILURES_PER_WINDOW):
-            self.rpc(None, "initialize", client_ip="198.51.100.9")
-        status, _, _ = self.rpc(None, "initialize", client_ip="198.51.100.10")
+            self.rpc(BAD_KEY, "initialize", client_ip="198.51.100.9")
+        status, _, _ = self.rpc(BAD_KEY, "initialize", client_ip="198.51.100.10")
+        self.assertEqual(status, 401)
+
+    def test_keyless_requests_never_count_as_failed_sign_ins(self):
+        for _ in range(wm.AUTH_FAILURES_PER_WINDOW + 5):
+            self.rpc(None, "ping", client_ip="198.51.100.9", id_=None)  # notifications: not rated either
+        status, _, _ = self.rpc(BAD_KEY, "ping", client_ip="198.51.100.9")
         self.assertEqual(status, 401)
 
     def test_a_successful_auth_does_not_count_as_a_failure(self):
@@ -194,15 +270,15 @@ class FailedAuthIpLimitTests(Fixture):
     def test_a_valid_key_is_served_even_from_a_throttled_address(self):
         made = self.make_key()
         for _ in range(wm.AUTH_FAILURES_PER_WINDOW + 1):
-            self.rpc(None, "initialize", client_ip="198.51.100.9")
-        status, _, _ = self.rpc(None, "initialize", client_ip="198.51.100.9")
+            self.rpc(BAD_KEY, "initialize", client_ip="198.51.100.9")
+        status, _, _ = self.rpc(BAD_KEY, "initialize", client_ip="198.51.100.9")
         self.assertEqual(status, 429)
         status, _, _ = self.rpc(made["key"], "ping", client_ip="198.51.100.9")
         self.assertEqual(status, 200)
 
     def test_no_client_ip_means_no_limiting(self):
         for _ in range(wm.AUTH_FAILURES_PER_WINDOW + 5):
-            status, _, _ = self.rpc(None, "initialize")
+            status, _, _ = self.rpc(BAD_KEY, "initialize")
             self.assertEqual(status, 401)
 
 
@@ -212,10 +288,11 @@ class TrustedOriginTests(Fixture):
         status, out, _ = self.rpc(made["key"], "initialize", origin="null")
         self.assertEqual(status, 403)
 
-    def test_a_trusted_scanner_origin_without_a_key_is_401_not_403(self):
-        status, out, _ = self.rpc(None, "initialize", origin="https://glama.ai")
-        self.assertEqual(status, 401)
-        self.assertEqual(out["error"]["code"], -32001)
+    def test_a_trusted_scanner_origin_without_a_key_reads_the_catalogue(self):
+        status, out, headers = self.rpc(None, "tools/list", origin="https://glama.ai")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(out["result"]["tools"]), 14)
+        self.assertEqual(headers["Access-Control-Allow-Origin"], "https://glama.ai")
 
     def test_a_trusted_scanner_origin_with_a_valid_key_gets_cors_headers_back(self):
         made = self.make_key()
@@ -225,7 +302,7 @@ class TrustedOriginTests(Fixture):
         self.assertEqual(headers["Vary"], "Origin")
 
     def test_a_trusted_origin_can_read_www_authenticate_on_a_401(self):
-        status, _, headers = self.rpc(None, "initialize", origin="https://glama.ai")
+        status, _, headers = self.rpc(BAD_KEY, "initialize", origin="https://glama.ai")
         self.assertEqual(status, 401)
         self.assertIn("WWW-Authenticate", headers["Access-Control-Expose-Headers"])
 
@@ -235,11 +312,9 @@ class TrustedOriginTests(Fixture):
         self.assertEqual(status, 200)
         self.assertEqual(headers["Access-Control-Allow-Origin"], URI)
 
-    def test_no_origin_still_needs_a_key_for_initialize_and_tools_list(self):
-        status, out, _ = self.rpc(None, "initialize")
-        self.assertEqual(status, 401)
-        status, out, _ = self.rpc(None, "tools/list")
-        self.assertEqual(status, 401)
+    def test_no_origin_and_no_key_reads_the_catalogue_too(self):
+        self.assertEqual(self.rpc(None, "initialize")[0], 200)
+        self.assertEqual(self.rpc(None, "tools/list")[0], 200)
 
 
 class AllowedOriginsEnvTests(unittest.TestCase):
@@ -491,7 +566,7 @@ class HttpTests(Fixture):
             error.close()
             return error.code, headers
 
-    def test_post_initialize_then_no_key_then_get(self):
+    def test_post_initialize_with_a_key_without_one_with_a_bad_one_then_get(self):
         request = urllib.request.Request(self.base, data=json.dumps(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize"}).encode(),
             headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
@@ -501,7 +576,14 @@ class HttpTests(Fixture):
         self.assertEqual(out["result"]["serverInfo"]["name"], "singit")
 
         request = urllib.request.Request(self.base, data=json.dumps(
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize"}).encode(), headers={"Content-Type": "application/json"})
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode(), headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(len(json.loads(response.read())["result"]["tools"]), 14)
+
+        request = urllib.request.Request(self.base, data=json.dumps(
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize"}).encode(),
+            headers={"Authorization": f"Bearer {BAD_KEY}", "Content-Type": "application/json"})
         with self.assertRaises(urllib.error.HTTPError) as caught:
             urllib.request.urlopen(request, timeout=10)
         self.assertEqual(caught.exception.code, 401)
@@ -517,7 +599,7 @@ class HttpTests(Fixture):
     def test_too_many_failed_auths_from_the_same_peer_eventually_429s(self):
         no_key = urllib.request.Request(self.base, data=json.dumps(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize"}).encode(),
-            headers={"Content-Type": "application/json"})
+            headers={"Authorization": f"Bearer {BAD_KEY}", "Content-Type": "application/json"})
         for _ in range(wm.AUTH_FAILURES_PER_WINDOW):
             with self.assertRaises(urllib.error.HTTPError) as caught:
                 urllib.request.urlopen(no_key, timeout=10)
@@ -555,7 +637,7 @@ class HttpTests(Fixture):
             self.assertIn("max-age=3600", response.headers.get("Cache-Control", ""))
             card = json.loads(response.read())
         self.assertEqual(card["transport"], {"type": "streamable-http", "url": URI + "/mcp"})
-        self.assertTrue(card["authentication"]["required"])
+        self.assertFalse(card["authentication"]["required"])  # free tools work keyless; paid ones need a key
         self.assertEqual(card["authentication"]["schemes"], ["bearer"])
         self.assertEqual(len(card["tools"]), 14)
         self.assertLessEqual(len(card["description"]), 200)

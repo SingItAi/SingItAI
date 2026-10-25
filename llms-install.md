@@ -6,7 +6,7 @@ call to your SingIt API key's own daily and per-request caps (Base USDC). Detail
 
 ## 1. Get an API key
 
-Create one in the SingIt app at <https://app.singitai.app/app/> (API Keys). It looks like
+The free tools and the tool list work without a key; paid tools need one. Create one in the SingIt app at <https://app.singitai.app/app/> (API Keys). It looks like
 `sk_singit_…`. Put it in an environment variable, e.g. `SINGIT_API_KEY`.
 
 ## 2. Add the server to your MCP client

@@ -17,8 +17,8 @@
       "headers": [
         {
           "name": "Authorization",
-          "description": "Bearer followed by your SingIt API key, from https://app.singitai.app/app/",
-          "isRequired": true,
+          "description": "Bearer followed by your SingIt API key, from https://app.singitai.app/app/. Needed only for paid tools.",
+          "isRequired": false,
           "isSecret": true
         }
       ]
