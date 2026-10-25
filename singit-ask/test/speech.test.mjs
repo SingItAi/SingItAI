@@ -99,7 +99,7 @@ test("no audio, no charge", async (t) => {
   for (const surplus of [fakeSurplus({ status: 500 }), fakeSurplus({ type: "application/json", body: "{}" }), fakeSurplus({ body: "" })]) {
     const { url, facilitator } = await serve(t, { surplus });
     const required = decode((await post(`${url}${SPEECH_ROUTE}`, SPEECH)).headers.get("payment-required"));
-    assert.equal((await post(`${url}${SPEECH_ROUTE}`, SPEECH, pay(required, SOLANA))).status, 502);
+    assert.equal((await post(`${url}${SPEECH_ROUTE}`, SPEECH, pay(required, SOLANA))).status, 503);
     assert.deepEqual(facilitator.calls.settle, []);
   }
 });

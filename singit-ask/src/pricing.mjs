@@ -85,6 +85,19 @@ export function ceilingAtomic(model, size, terms, share = 1) {
   return (total > floor ? total : floor).toString();
 }
 
+// The X-Min-Discount to send for a paid question: the guard's floor only when it is needed. The floor pins the
+// answer to the cheapest seller (priceGuard: cheapest qualifying offer + 1pp), and Surplus answers 404
+// minimum_discount_not_met when that seller is gone. When the model's worst case at list price still fits what the
+// payer authorized (`terms.maxChargeAtomic`), any seller is affordable and nothing can overrun, so none is sent.
+// Safe for both schemes: `upto` still refuses an answer over its ceiling (billUsage), and `exact` was paid the
+// flat ceiling, which the list-price worst case already fits, so no seller can cost more than was authorized.
+export function minDiscountFor(input, terms) {
+  if (input.minDiscount == null) return null;
+  if (!input.info) return input.minDiscount;
+  const size = { chars: input.chars, maxTokens: input.maxTokens, messageCount: input.messageCount, charsPerToken: 1 };
+  return BigInt(ceilingAtomic(input.info, size, terms, 1)) <= BigInt(terms.maxChargeAtomic) ? null : input.minDiscount;
+}
+
 // Web Ask: measure privately, then settle once from the delegated owner account.
 export const QUOTED_ROUTE = "/v1/chat/completions/quoted/solana";
 export const QUOTED_URL = `https://ask.singitai.app${QUOTED_ROUTE}`;

@@ -77,7 +77,7 @@ for(const cost of [100,undefined,2000]) test(`merchant settles actual usage only
   const first=await send({});assert.equal(first.status,402);
   const q=decode(first.headers.get('payment-required'));assert.equal(q.accepts[0].amount,'3000');assert.equal(q.accepts[0].extra.billing.mode,'actual_usage');
   const paid=await send({'PAYMENT-SIGNATURE':encode({x402Version:2,resource:q.resource,accepted:q.accepts[0],payload:{signature:'0xsigned'},extensions:q.extensions})});
-  assert.equal(paid.status,cost===100?200:502);assert.deepEqual(settled,cost===100?['1130']:[]);
+  assert.equal(paid.status,cost===100?200:503);assert.deepEqual(settled,cost===100?['1130']:[]);
 });
 
 // vet402-style buyers sign only `exact`: it is offered alongside `upto` on the gateway's own Base route, at the
@@ -116,7 +116,7 @@ test('a failed upstream request paid with exact on the gateway route is not sett
   const q=decode((await send({})).headers.get('payment-required'));
   const exact=q.accepts.find(a=>a.scheme==='exact');
   const paid=await send({'PAYMENT-SIGNATURE':encode({x402Version:2,resource:q.resource,accepted:exact,payload:{signature:'0xsigned'},extensions:q.extensions})});
-  assert.equal(paid.status,502);assert.deepEqual(settled,[]);
+  assert.equal(paid.status,503);assert.deepEqual(settled,[]);
 });
 
 test('failed paid HTTP request reports a safe stage and status without retrying',async()=>{
@@ -238,6 +238,6 @@ test('upto still refuses an answer over its ceiling, even where exact would have
   const q=decode((await send({})).headers.get('payment-required'));
   const upto=q.accepts.find(a=>a.scheme==='upto');
   const paid=await send({'PAYMENT-SIGNATURE':encode({x402Version:2,resource:q.resource,accepted:upto,payload:{signature:'0xsigned'},extensions:q.extensions})});
-  assert.equal(paid.status,502);
+  assert.equal(paid.status,503);
   assert.deepEqual(settled,[]);
 });

@@ -109,7 +109,7 @@ test("no image, no charge; a cost above list price is logged", async (t) => {
   for (const surplus of [fakeSurplus({ status: 500 }), fakeSurplus({ images: 0 })]) {
     const { url, facilitator } = await serve(t, { surplus });
     const required = decode((await post(`${url}${IMAGE_ROUTE}`, IMAGE)).headers.get("payment-required"));
-    assert.equal((await post(`${url}${IMAGE_ROUTE}`, IMAGE, pay(required, SOLANA))).status, 502);
+    assert.equal((await post(`${url}${IMAGE_ROUTE}`, IMAGE, pay(required, SOLANA))).status, 503);
     assert.deepEqual(facilitator.calls.settle, []);
   }
   const { url, logs } = await serve(t, { surplus: fakeSurplus({ cost: "12000" }) });

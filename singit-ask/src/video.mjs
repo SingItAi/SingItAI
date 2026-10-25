@@ -103,7 +103,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     } catch { return res.status(503).json({ error: { type: "upstream_error", message: "Try again shortly." } }); }
     const job = await response.json().catch(() => null);
     if (!job || (response.status !== 200 && response.status !== 202)) {
-      return res.status(response.status === 404 ? 404 : response.status === 401 || response.status === 403 ? 403 : 502)
+      return res.status(response.status === 404 ? 404 : response.status === 401 || response.status === 403 ? 403 : 503)
         .json({ error: { type: "invalid_request_error", message: "No such job, or not with this token." } });
     }
     res.status(response.status).json(publicJob({ ...job, id: job.id ?? req.params.id }, origin(req)));
@@ -128,7 +128,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
       const own = url.origin === new URL(config.surplusUrl).origin;
       const download = await fetchImpl(url, { headers: own ? { "X-Job-Token": token } : {}, redirect: "follow",
         signal: AbortSignal.timeout(120_000) });
-      if (!download.ok) return res.status(502).json({ error: { type: "upstream_error", message: "The file could not be fetched." } });
+      if (!download.ok) return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "The file could not be fetched." } });
       res.set({ "Content-Type": download.headers.get("content-type") ?? "video/mp4", "Cache-Control": "no-store" });
       res.send(Buffer.from(await download.arrayBuffer()));
     } catch {
@@ -183,12 +183,12 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
       job = await response.json().catch(() => null);
     } catch (error) {
       log(`singit-ask: video submit unreachable (${error.name})`);
-      return res.status(502).json({ error: { type: "upstream_error", message: "The video was not started. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "The video was not started. You were not charged." } });
     }
     const token = job?.job_token ?? job?.token;
     if ((response.status !== 200 && response.status !== 202) || !job?.id || !token) {
       log(`singit-ask: video submit for ${request.model} answered HTTP ${response.status} (${job?.error?.code ?? "no job"})`);
-      return res.status(502).json({ error: { type: "upstream_error", message: "The video was not started. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "The video was not started. You were not charged." } });
     }
     const billing = { ...videoPrice(listAtomic, network), currency: "USDC" };
     log(`singit-ask: video job ${job.id} for ${request.model} accepted for ${billing.totalAtomic} micro-USDC`);

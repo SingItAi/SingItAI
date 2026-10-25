@@ -173,13 +173,13 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
         body: JSON.stringify(request), signal: AbortSignal.timeout(150_000) });
     } catch (error) {
       log(`singit-ask: image model unreachable (${error.name})`);
-      return res.status(502).json({ error: { type: "upstream_error", message: "No image was made. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "No image was made. You were not charged." } });
     }
     const data = await response.json().catch(() => null);
     const images = Array.isArray(data?.data) ? data.data.filter((d) => d && (d.b64_json || d.url)) : [];
     if (!response.ok || !images.length) {
       log(`singit-ask: image model ${request.model} answered HTTP ${response.status} with ${images.length} images`);
-      return res.status(502).json({ error: { type: "upstream_error", message: "No image was made. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "No image was made. You were not charged." } });
     }
     const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);

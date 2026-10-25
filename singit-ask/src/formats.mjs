@@ -206,7 +206,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       } catch (error) {
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
         log(`singit-ask: ${route} no billable answer after ${Date.now() - started} ms (${error.message})`);
-        res.status(502).json(refusal(route, 502, "No billable answer was produced. You were not charged; try again."));
+        res.set("Retry-After", "30").status(503).json(refusal(route, 503, "No billable answer was produced. You were not charged; try again."));
       }
     });
   }

@@ -94,7 +94,7 @@ test("a free answer that does not come back is not counted", async (t) => {
     if (fail) { fail = false; throw new Error("down"); }
     return { content: "ok", finishReason: "stop", usage: {} };
   } });
-  assert.equal((await ask(url, FREE_Q)).status, 502);
+  assert.equal((await ask(url, FREE_Q)).status, 503);
   const next = await ask(url, FREE_Q);
   assert.equal(next.status, 200);
   assert.equal(next.headers.get("x-singit-free-remaining"), "1");
