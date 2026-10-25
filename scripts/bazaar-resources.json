@@ -1,0 +1,14 @@
+{
+  "_comment": "Live, publicly discoverable paid routes of SingIt Ask. Read by scripts/cdp-validate.mjs (CDP's free validator) and cross-checked by scripts/bazaar-lint.mjs against the routes the code really advertises. /v1/video/generations, /v1/chat/completions/metered and /v1/credit are paid but deliberately not listed.",
+  "validateEndpoint": "https://api.cdp.coinbase.com/platform/v2/x402/validate",
+  "resources": [
+    { "url": "https://ask.singitai.app/v1/chat/completions", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/messages", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/responses", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/images/generations", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/audio/speech", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/exa/search", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/exa/contents", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/exa/answer", "method": "POST" }
+  ]
+}

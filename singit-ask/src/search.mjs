@@ -96,6 +96,55 @@ const EXAMPLES = {
   "/v1/exa/answer": { query: "What is x402?" },
 };
 
+const STRING_LIST = (description, max) => ({ type: "array", items: { type: "string" }, maxItems: max, description });
+const CONTENT_OPTION = (what) => ({ description: `${what} Each kind asked for adds Exa's per-page price.`, oneOf: [{ type: "boolean" }, { type: "object" }] });
+const QUERY = { type: "string", minLength: 1, maxLength: 2000 };
+const INPUT_SCHEMAS = {
+  "/v1/exa/search": { properties: {
+    query: { ...QUERY, description: "What to search the web for." },
+    numResults: { type: "integer", minimum: 1, maximum: 25, default: 10, description: "Results beyond 10 cost extra." },
+    type: { type: "string", enum: ["instant", "fast", "auto"], default: "auto",
+      description: "Search mode: instant is lowest latency, fast adds page excerpts, auto picks per query." },
+    category: { type: "string", description: "Exa's category filter, e.g. news or research paper." },
+    includeDomains: STRING_LIST("Only these domains.", 100), excludeDomains: STRING_LIST("Not these domains.", 100),
+    startPublishedDate: { type: "string", description: "Only pages published on or after this ISO 8601 date." },
+    endPublishedDate: { type: "string", description: "Only pages published on or before this ISO 8601 date." },
+    startCrawlDate: { type: "string", description: "Only pages Exa crawled on or after this ISO 8601 date." },
+    endCrawlDate: { type: "string", description: "Only pages Exa crawled on or before this ISO 8601 date." },
+    userLocation: { type: "string", description: "Two-letter country code." },
+    contents: { type: "object", description: "Page contents to return with each result (text, highlights, summary)." },
+  }, required: ["query"] },
+  "/v1/exa/contents": { properties: {
+    urls: { ...STRING_LIST("Pages to fetch (1 to 10). Send urls or ids, not both.", 10), minItems: 1 },
+    ids: { ...STRING_LIST("Exa result ids (1 to 10), instead of urls.", 10), minItems: 1 },
+    text: CONTENT_OPTION("Return the page text."), highlights: CONTENT_OPTION("Return highlights."),
+    summary: CONTENT_OPTION("Return a summary."),
+    maxAgeHours: { type: "integer", description: "Accept a cached copy no older than this." },
+  } },
+  "/v1/exa/answer": { properties: {
+    query: { ...QUERY, description: "The question to answer with citations." },
+    text: { type: "boolean", description: "Include the text of the cited pages." },
+    model: { type: "string", enum: ["exa", "exa-fast"] },
+    systemPrompt: { type: "string", description: "Guidance for the answer's style." },
+    userLocation: { type: "string", description: "Two-letter country code." },
+  }, required: ["query"] },
+};
+// A real answer's shape and charge (Base): Exa's list price, 30% markup, 1000 micro-USD settlement fee.
+const billing = (exa, markup) => ({ exaAtomic: String(exa), markupAtomic: String(markup), feeAtomic: "1000",
+  totalAtomic: String(exa + markup + 1000), currency: "USDC" });
+const OUTPUT_EXAMPLES = {
+  "/v1/exa/search": { requestId: "example", results: [{ id: "https://x402.org", url: "https://x402.org", title: "x402",
+    publishedDate: null, author: null }], billing: billing(7000, 2100) },
+  "/v1/exa/contents": { requestId: "example", results: [{ id: "https://x402.org", url: "https://x402.org", title: "x402",
+    text: "x402 is an open payment standard…" }], billing: billing(1000, 300) },
+  "/v1/exa/answer": { answer: "x402 is an open standard for paying for an API call with a stablecoin over HTTP 402.",
+    citations: [{ id: "https://x402.org", url: "https://x402.org", title: "x402" }], billing: billing(5000, 1500) },
+};
+const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
+  billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
+    exaAtomic: { type: "string" }, markupAtomic: { type: "string" }, feeAtomic: { type: "string" },
+    totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } } } };
+
 export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl = fetch, log = console.error }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
@@ -127,7 +176,9 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
   addPaymentRoute(app, Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [`POST ${route}`, {
     accepts: offers, mimeType: "application/json", description: `SingIt Search: ${DESCRIPTIONS[route]}`,
     serviceName: SERVICE_NAME, iconUrl: ICON_URL,
-    extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route] }),
+    tags: ["search", "web-search", "exa", "answers", "citations", "pay-per-use", "solana", "base", "singit"],
+    extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
+      output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }),
   }])), server);
   for (const [route, exaPath] of Object.entries(SEARCH_ROUTES)) {
     app.post(route, async (req, res) => {

@@ -43,6 +43,9 @@ what it actually cost; nothing is charged without an answer.
 - **`GET /` and `GET /llms.txt`:** a small JSON service index and an
   [llms.txt](https://llmstxt.org) document, generated from the same enabled-route list as
   discovery so neither can drift from it.
+- **Bazaar curation:** [docs/bazaar-curation.md](../docs/bazaar-curation.md) checks these routes against
+  Coinbase's curation rules. `node ../scripts/bazaar-lint.mjs` lints the advertised metadata offline (run in CI);
+  every paid path's error responses in `/openapi.json` are covered by `test/openapi-errors.test.mjs`.
 - **Web agent, Base:** `POST /v1/chat/completions/metered`, the same Base `upto` offer
   at an address the gateway's buyer pins. Its limiter funding path is unchanged;
   that separate funding leg still uses the existing gas policy.

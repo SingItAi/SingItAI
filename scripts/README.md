@@ -130,3 +130,78 @@ python3 scripts/metrics-dashboard.py            # -> ~/.sign402/metrics/dashboar
 The dashboard is operator-only: view it over `ssh`/`scp`, never serve it on a
 public route. See [analytics](../docs/analytics.md) for every field, the
 margin caveat and the suggested cron lines.
+
+## SingIt Uptime
+
+`scripts/singit-uptime.py` measures how often SingIt's public endpoints answer
+as expected. Each run sends plain, unpaid `GET` requests (never a payment
+header, never a body, 10 s timeout, redirects are not followed) to the
+`ask.singitai.app` routes `/v1/responses`, `/v1/chat/completions`,
+`/openapi.json` and `/health`, and to `app.singitai.app` `/app/` and `/mcp`.
+The two paid routes must answer `402` with a well-formed x402 challenge (a
+`402` without one counts as down). The web API has no `/health`, so `/app/`
+stands in for it. Every probe is one row in a local SQLite table
+`probes(ts, endpoint, ok, status, latency_ms, error)`; `error` is only a class
+(`timeout`, `connection`, `tls`, `http_status`, `bad_challenge`, `bad_body`),
+never a response body or message.
+
+```bash
+cd <APP_CHECKOUT>
+python3 scripts/singit-uptime.py                         # one probe round, recorded
+python3 scripts/singit-uptime.py --report                # JSON: 24h/7d/30d availability, p50/p95, failures
+python3 scripts/singit-uptime.py --report-file report.json
+python3 scripts/singit-uptime.py --status-json status.json   # small public-safe summary
+python3 scripts/singit-uptime.py --html status.html          # static status page
+python3 scripts/singit-uptime.py --prune-days 90         # optional, after a probe round
+```
+
+The database is `~/.sign402/uptime.db`, or `$SINGIT_UPTIME_DB`, or `--db PATH`.
+`--endpoints FILE` replaces the endpoint list with a JSON list of
+`{name, url, expect, kind}`. Probe mode is a recorder and exits 0 even when
+endpoints are down. Availability is `null` for a window with no probes, never
+100%, and each window carries a `covered` flag: it is false until the recorded
+history reaches back over the whole window, so a 30-day figure built from a
+few hours of data is visibly partial.
+
+`deploy/systemd/singit-uptime.service` and `singit-uptime.timer` are user-unit
+templates that run one round every minute. They are not installed or enabled.
+
+Installing the timer, publishing any status page or status JSON, and enabling
+any alert channel need the owner's OK and are not done by this change. Operator
+alerts are a separate script and are out of scope here.
+
+## Bazaar Metadata Lint and CDP Validator
+
+Both are Node 22 scripts; the checklist they serve is in
+[bazaar-curation](../docs/bazaar-curation.md).
+
+`scripts/bazaar-lint.mjs` is offline. It boots `singit-ask` in-process with a
+fake facilitator and catalogue (so `singit-ask/node_modules` must be installed),
+requests every route listed for discovery with `GET`, `HEAD` and an empty
+`POST`, and checks the 402 challenge: `x402Version`, offers with
+scheme/network/asset/payTo/amount, an https resource URL, a description of at
+most 500 characters, no instruction-like phrases, a Bazaar input schema and
+examples, and an `iconUrl` that is not SVG. It also cross-checks
+`bazaar-resources.json` against the routes the code advertises. It sends no
+payment and makes no network call. CI runs it in `security-gate.yml` (job
+`bazaar-lint`).
+
+```bash
+node scripts/bazaar-lint.mjs            # exit 1 on any FAIL; warnings (e.g. no iconUrl) exit 0
+node scripts/bazaar-lint.mjs --strict   # warnings fail too
+node scripts/bazaar-lint.mjs --json
+node --test scripts/tests/*.test.mjs    # lint and validator unit tests
+```
+
+`scripts/cdp-validate.mjs` sends `{resource, method}` for each entry of
+`scripts/bazaar-resources.json` to Coinbase's free validate endpoint (no API
+key, no payment header) and prints `valid`, `simulation.outcome`, preflight
+failures and recommendations. Exit 0: all valid and accepted; 1: a resource
+failed validation; 2: the check could not run (bad config, network error,
+timeout). It calls an external API, so it is not part of the offline gate: only
+`.github/workflows/bazaar-validate.yml` runs it, on manual dispatch and weekly.
+
+```bash
+node scripts/cdp-validate.mjs           # needs network access to api.cdp.coinbase.com
+node scripts/cdp-validate.mjs --json
+```

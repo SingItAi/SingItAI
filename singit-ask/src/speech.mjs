@@ -61,6 +61,14 @@ const DESCRIPTION = "Text read aloud by 11 voice models (Kokoro, ElevenLabs, Gem
   + "/v1/audio/models), no API key needed. Call it when an agent needs spoken audio made from text. OpenAI speech "
   + "request format, mp3 by default.";
 
+const INPUT_SCHEMA = { properties: {
+  model: { type: "string", examples: ["venice-kokoro-tts"], description: "A speech model id from GET /v1/audio/models." },
+  input: { type: "string", minLength: 1, maxLength: SPEECH_TERMS.maxChars, description: "The text to read aloud." },
+  voice: { type: "string", maxLength: 60, examples: ["af_heart"], description: "A voice of the model; they are listed at GET /v1/audio/models." },
+  response_format: { type: "string", enum: [...FORMATS], default: "mp3", description: "The audio format." },
+  speed: { type: "number", minimum: 0.25, maximum: 4, description: "Speaking speed." },
+}, required: ["model", "input"] };
+
 export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
@@ -110,8 +118,11 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
     ],
     mimeType: "audio/mpeg", description: `SingIt Speech: ${DESCRIPTION}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
+    tags: ["speech", "text-to-speech", "tts", "audio", "openai-compatible", "pay-per-use", "solana", "base", "singit"],
+    // The answer is audio bytes, not JSON, so there is no JSON output example to give.
     extensions: declareDiscoveryExtension({ bodyType: "json",
-      input: { model: "venice-kokoro-tts", input: "Hello from SingIt.", voice: "af_heart", response_format: "mp3" } }),
+      input: { model: "venice-kokoro-tts", input: "Hello from SingIt.", voice: "af_heart", response_format: "mp3" },
+      inputSchema: INPUT_SCHEMA }),
   } }, server);
   app.post(SPEECH_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");

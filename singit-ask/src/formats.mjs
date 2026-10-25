@@ -95,6 +95,50 @@ const EXAMPLES = {
   "/v1/messages": { model: "claude-sonnet-5.5", max_tokens: 300, messages: [{ role: "user", content: "What is x402?" }] },
   "/v1/responses": { model: "gpt-5.5", input: "What is x402?", max_output_tokens: 300 },
 };
+// What each field is, for the Bazaar listing: the fields readFormatRequest() checks, nothing it would refuse.
+const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "gpt-5.5", "gemini-3.1-pro"],
+  description: "Any model id from GET /v1/models; Anthropic's dashed names (claude-sonnet-5-5) work too." };
+const STREAM_FIELD = { type: "boolean", enum: [false], description: "Streaming is not offered: an answer is paid for whole." };
+const INPUT_SCHEMAS = {
+  "/v1/messages": { properties: {
+    model: MODEL_FIELD,
+    max_tokens: { type: "integer", minimum: 1, maximum: FORMAT_LIMITS.maxTokens,
+      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+    messages: { type: "array", minItems: 1, maxItems: 200, description: "The conversation, oldest first (Anthropic format).",
+      items: { type: "object", required: ["role", "content"], properties: {
+        role: { type: "string", enum: ["user", "assistant"] },
+        content: { description: "Text, or a list of Anthropic content blocks." } } } },
+    system: { description: "Optional system-level context for the model, as text or content blocks." },
+    tools: { type: "array", description: "Optional Anthropic tool definitions." },
+    stream: STREAM_FIELD,
+  }, required: ["model", "max_tokens", "messages"] },
+  "/v1/responses": { properties: {
+    model: MODEL_FIELD,
+    input: { description: "The question: text, or a non-empty list of input items (OpenAI Responses format).",
+      oneOf: [{ type: "string", minLength: 1 }, { type: "array", minItems: 1 }] },
+    max_output_tokens: { type: "integer", minimum: 1, maximum: FORMAT_LIMITS.maxTokens, default: FORMAT_LIMITS.defaultTokens,
+      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+    instructions: { type: "string", description: "Optional system instructions." },
+    tools: { type: "array", description: "Optional tool definitions." },
+    stream: STREAM_FIELD,
+  }, required: ["model", "input"] },
+};
+// A real answer's shape and charge (Base, `upto`): 6 micro-USD of tokens, 2 markup, 1000 settlement fee.
+const BILLING_EXAMPLE = { ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" };
+const OUTPUT_EXAMPLES = {
+  "/v1/messages": { id: "msg_01example", type: "message", role: "assistant", model: "claude-sonnet-5.5",
+    content: [{ type: "text", text: "x402 is an open standard for paying for an API call with a stablecoin over HTTP 402." }],
+    stop_reason: "end_turn", usage: { input_tokens: 12, output_tokens: 24 }, billing: BILLING_EXAMPLE },
+  "/v1/responses": { id: "resp_example", object: "response", status: "completed", model: "gpt-5.5",
+    output: [{ type: "message", role: "assistant", content: [{ type: "output_text",
+      text: "x402 is an open standard for paying for an API call with a stablecoin over HTTP 402." }] }],
+    usage: { input_tokens: 12, output_tokens: 24, total_tokens: 36 }, billing: BILLING_EXAMPLE },
+};
+const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
+  billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
+    providerCostAtomic: { type: "string" }, markupAtomic: { type: "string" },
+    totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } } } };
+const TAGS = ["llm", "chat", "inference", "claude", "gpt", "gemini", "deepseek", "pay-per-use", "solana", "base", "singit"];
 
 export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error }) {
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
@@ -129,8 +173,10 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       accepts: [exactBaseOffer(config, quotes), solanaOffer(config, quotes), baseOffer(config, quotes), exactSolanaOffer(config, quotes)],
       mimeType: "application/json",
       description: `SingIt Ask: ${DESCRIPTIONS[route]}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
+      tags: [...TAGS, route === "/v1/messages" ? "anthropic-compatible" : "openai-compatible"],
       extensions: { ...declareEip2612GasSponsoringExtension(),
-        ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route] }) },
+        ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
+          output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }) },
     } }, server);
     app.post(route, async (req, res) => {
       const started = Date.now();

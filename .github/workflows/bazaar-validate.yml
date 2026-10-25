@@ -1,0 +1,27 @@
+name: Bazaar validate
+
+# Asks Coinbase's free x402 validator whether our live resources are ready for the Bazaar
+# (docs/bazaar-curation.md). It calls an external API, so it runs only on manual dispatch and weekly,
+# never on pull_request or push: forks and PRs must not hit it. No secrets, no payment, no checkout of
+# anything but this repository.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Offline tests for the validator
+        run: node --test scripts/tests/cdp-validate.test.mjs
+      - name: CDP validate (unpaid, free endpoint)
+        run: node scripts/cdp-validate.mjs
