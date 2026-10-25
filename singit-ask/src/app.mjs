@@ -25,7 +25,8 @@ import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, addFormatRoutes } from "./formats.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, SERVICE_NAME, ICON_URL, usd, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
+import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 
 export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -166,8 +167,6 @@ const OUTPUT_SCHEMA = {
   },
 };
 
-const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
-
 // The one question /pricing.json prices every model against: a single short message, and the max_tokens a
 // request gets when it omits the field (LIMITS.defaultTokens), the same default readRequest applies.
 const PRICING_REFERENCE = Object.freeze({ content: "What is the capital of France?", maxTokens: LIMITS.defaultTokens });
@@ -215,6 +214,28 @@ export async function priceRange(catalogue) {
   return { min: usd(TERMS.settlementFeeAtomic), max: usd(most) };
 }
 
+const AMOUNT = { type: "object", properties: { count: { type: "integer" }, atomic: { type: "string" }, usd: { type: "string" } } };
+// The free wallet report, served by the gateway (sign402-gateway/README.md documents every field).
+const RECONCILIATION_SCHEMA = {
+  type: "object",
+  required: ["address", "chain", "known", "window", "spent", "creditTopUps", "allowance", "generatedAt"],
+  properties: {
+    address: { type: "string" }, chain: { type: "string", enum: ["base", "solana"] }, known: { type: "boolean" },
+    window: { type: "object", properties: { days: { type: "integer" }, since: { type: "integer" }, until: { type: "integer" } } },
+    spent: { type: "object", properties: {
+      totalAtomic: { type: "string" }, totalUsd: { type: "string" }, count: { type: "integer" },
+      byCategory: { type: "object", additionalProperties: AMOUNT },
+      byDay: { type: "array", items: { type: "object", properties: {
+        date: { type: "string" }, atomic: { type: "string" }, usd: { type: "string" }, count: { type: "integer" } } } } } },
+    creditTopUps: AMOUNT,
+    allowance: { type: ["object", "null"], properties: {
+      configured: { type: "boolean" }, state: { type: "string", enum: ["active", "paused", "expired", "none", "granted", "waiting_for_grant"] },
+      dailyCapAtomic: { type: "string" }, perPurchaseCapAtomic: { type: "string" }, spentTodayAtomic: { type: "string" },
+      remainingTodayAtomic: { type: "string" }, expiry: { type: "integer" }, limiter: { type: ["string", "null"] } } },
+    generatedAt: { type: "integer" },
+  },
+};
+
 const EXAMPLE = {
   input: { messages: [{ role: "user", content: "Where is good coffee near the Colosseum?" }], max_tokens: 400 },
   // A real answer's shape and charge (default model, Base): 6 micro-USD of tokens, 2 markup, 1000 settlement fee.
@@ -254,6 +275,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
     + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
     + "price; nothing is charged without an answer. Exact payers are instead charged that ceiling flat, with no metering.";
+  // <=300 characters with the "SingIt Ask: " prefix: Coinbase's Bazaar ranks listings by metadata completeness, and a
+  // description that is half about billing reads as incomplete on what the endpoint does. Billing stays in
+  // DESCRIPTION above (openapi.json, /.well-known/x402) for the humans/agents that read terms there.
+  const DISCOVERY_DESCRIPTION = "OpenAI-compatible chat completions from 100+ models (Claude, GPT, Gemini, Grok, "
+    + "DeepSeek, Qwen) with no API key or account. Call it when an agent needs an LLM answer, a second opinion from "
+    + "another model, or a model it has no key for. List models at GET /v1/models.";
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
@@ -334,7 +361,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       openapi: "3.1.0",
       info: { title: "SingIt Ask", version: "1.0.0",
               description: "Language-model answers paid per answer over x402 in USDC on Base or Solana. No accounts or API keys."
-                + (freeOffer ? ` Free to try: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day, no payment.` : "") },
+                + (freeOffer ? ` Free to try: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day, no payment.` : ""),
+              "x-guidance": "POST JSON in OpenAI chat-completions format to the paths below. A first request without "
+                + "payment returns 402 with the challenge in the PAYMENT-REQUIRED header; sign an x402 v2 \"exact\" or "
+                + "\"upto\" USDC authorization on Base or Solana and retry the same request with a PAYMENT-SIGNATURE "
+                + "header. List callable models at GET /v1/models and free (unpaid) prices at GET /v1/prices. Nothing "
+                + "is charged unless an answer comes back.",
+              contact: { name: "SingIt", email: "Exkalibur1919@proton.me", url: "https://singitai.app" } },
       servers: [{ url: origin(req) }],
       paths: {
         [ROUTE]: { post: {
@@ -365,6 +398,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                        503: { description: "Paused or Exa unavailable; nothing charged" } },
           security: [{ x402: [] }],
         } }])) : {}),
+        ...(catalogue ? await modelOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA,
+          exampleOutput: EXAMPLE.output, fallbackPrice: price }) : {}),
         ...(catalogue ? Object.fromEntries(Object.keys(FORMAT_ROUTES).map((route) => [route, { post: {
           operationId: route === "/v1/messages" ? "createMessage" : "createResponse",
           summary: route === "/v1/messages" ? "Anthropic's Messages API, any listed model" : "OpenAI's Responses API, any listed model",
@@ -448,6 +483,24 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                          { name: "quote", in: "path", required: true, schema: { type: "string", examples: ["USD"] } }],
             responses: { 200: { description: "The rate, its date and source" }, 404: { description: "Not offered" } } } },
         } : {}),
+        // Free, and served by the sign402 gateway's web API, not by this service: hence its own server.
+        "/v1/wallet/{address}/reconciliation": { servers: [{ url: config.walletReportOrigin || "https://app.singitai.app" }],
+          get: {
+            operationId: "walletReconciliation", security: [],
+            summary: "Free: a wallet's SingIt spend over the last 1 to 90 days, and its on-chain allowance (Base or Solana)",
+            description: "Public, no key, no payment. Settled spend by category (chat_answer, data_tool, gift_card, other), "
+              + "by day, credit top-ups apart, and the owner's daily and per-purchase limits with what is left today. "
+              + "Categories only: no purchase details. 30 requests a minute per IP.",
+            parameters: [
+              { name: "address", in: "path", required: true, schema: { type: "string" },
+                description: "A Base address (0x + 40 hex) or a Solana address (base58)" },
+              { name: "days", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 90, default: 30 } }],
+            responses: {
+              200: { description: "The report; known:false with zeros for an address SingIt has never seen",
+                     content: { "application/json": { schema: RECONCILIATION_SCHEMA } } },
+              400: { description: "Not an address, or days out of range" },
+              429: { description: "Too many requests; see Retry-After" } },
+          } },
         "/v1/models": { get: {
           operationId: "listModels", summary: "Models that can be asked for now, with their prices",
           responses: { 200: { description: "Model list" } }, security: [],
@@ -470,10 +523,52 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.get("/.well-known/x402", open, (req, res) => {
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
-                         `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, `${origin(req)}${VIDEO_ROUTE}`] : []),
+                         `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, `${origin(req)}${VIDEO_ROUTE}`,
+                         ...modelRoutePaths().map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
+  });
+  // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
+  // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
+  // list below and llms.txt can never list a route this instance did not add.
+  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, ...modelRoutePaths()] : []),
+    ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
+  // Free: a human or agent landing on the bare origin gets a small service index instead of Express's 404.
+  // Express answers HEAD the same way automatically. Open CORS, like the other public documents.
+  app.get("/", open, (req, res) => {
+    const base = origin(req);
+    res.json({ name: SERVICE_NAME, description: DISCOVERY_DESCRIPTION, icon: ICON_URL,
+      links: { openapi: `${base}/openapi.json`, x402: `${base}/.well-known/x402`, llmsTxt: `${base}/llms.txt`,
+        models: `${base}/v1/models`, docs: "https://singitai.app/developers/" } });
+  });
+  // Free: llmstxt.org format, generated from the same route list as discovery so it cannot drift from it.
+  app.get("/llms.txt", open, (req, res) => {
+    const base = origin(req);
+    const lines = [
+      "# SingIt Ask", "", `> ${DISCOVERY_DESCRIPTION}`, "",
+      "## What it is", "",
+      "An x402 seller: language-model chat completions, Anthropic's Messages and OpenAI's Responses formats, "
+        + "images, speech and (when enabled) Exa web search, each paid per call. No accounts or API keys.", "",
+      "## How to pay", "",
+      "x402 v2. Call a paid route below with no payment and read the 402 response's PAYMENT-REQUIRED header for its "
+        + "offers: `upto` (metered to actual cost) or `exact` (a flat ceiling), in USDC on Base or Solana. Sign one "
+        + "and retry with the signature in the PAYMENT-SIGNATURE header. Live prices and models: "
+        + `${base}/openapi.json and ${base}/v1/models.`, "",
+      "## Paid routes", "", ...discoverableRoutes().map((route) => `- POST ${base}${route}`), "",
+      "## Free", "",
+      `- GET ${base}/v1/models — models and their prices`,
+      ...(catalogue ? [`- GET ${base}/v1/images/models — image models and their prices`,
+        `- GET ${base}/v1/audio/models — voice models and their prices`] : []),
+      `- GET ${base}/health — service status`, "",
+      "## Links", "",
+      `- OpenAPI: ${base}/openapi.json`,
+      `- x402 discovery: ${base}/.well-known/x402`,
+      `- llms.txt: ${base}/llms.txt`,
+      `- Models: ${base}/v1/models`,
+      "- Docs: https://singitai.app/developers/",
+    ];
+    res.set("Content-Type", "text/plain; charset=utf-8").send(lines.join("\n") + "\n");
   });
 
   const choose = input => chooseModel(config, catalogue, input);
@@ -494,6 +589,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
   if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log });
+  // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
+  // instead of only the generic chat route where the model is a body field a search engine cannot see.
+  if (catalogue) addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest, upstream: learning, fetchImpl, log,
+    inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Video from Surplus's text-to-video models, as jobs.
   if (catalogue) addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
@@ -501,11 +600,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
   addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage with `upto`, or the same ceiling flat with
-  // `exact` for buyers that sign only that scheme. Listed for discovery.
-  addUsageRoute(app, ROUTE, quotes => [solanaOffer(config, quotes), baseOffer(config, quotes),
-    exactSolanaOffer(config, quotes), exactBaseOffer(config, quotes)], {
-    description: `SingIt Ask: ${DESCRIPTION}`,
-    serviceName: "SingIt Ask",
+  // `exact` for buyers that sign only that scheme. Listed for discovery. `exact` on Base leads `accepts`: it is the
+  // simplest offer for a buyer that only inspects the first one, and the one this service is paid in most often.
+  addUsageRoute(app, ROUTE, quotes => [exactBaseOffer(config, quotes), solanaOffer(config, quotes),
+    baseOffer(config, quotes), exactSolanaOffer(config, quotes)], {
+    description: `SingIt Ask: ${DISCOVERY_DESCRIPTION}`,
+    serviceName: SERVICE_NAME,
+    iconUrl: ICON_URL,
     tags: ["llm", "chat", "openai-compatible", "inference", "claude", "gpt", "gemini", "deepseek", "pay-per-use",
            "solana", "base", "singit"],
     extensions: {

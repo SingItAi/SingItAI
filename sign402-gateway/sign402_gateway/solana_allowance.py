@@ -242,6 +242,36 @@ class SolanaAllowanceStore:
             db.execute("UPDATE ops SET state='EXPIRED', updated_at=?, detail=? WHERE account=? AND op_id=? AND state='PREPARED'",
                        (now, "Too late for this transaction; prepare it again.", account, op_id))
 
+    def expire_stale_prepared(self, account: str, now: int, max_age: int) -> list[sqlite3.Row]:
+        """PREPARED ops old enough that their blockhash is dead (SI-45: they used to sit forever).
+
+        Lazy cleanup, called from status() and prepare_wallet() instead of a background job.
+        Returns the rows it expired, so the caller can emit their analytics event.
+        """
+        with self._db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            stale = db.execute("SELECT * FROM ops WHERE account=? AND state='PREPARED' AND created_at<?",
+                               (account, now - max_age)).fetchall()
+            if stale:
+                db.execute("UPDATE ops SET state='EXPIRED', detail=?, updated_at=? WHERE account=? AND state='PREPARED' AND created_at<?",
+                           ("Not signed in time.", now, account, now - max_age))
+            return stale
+
+    def supersede_prepared(self, account: str, kind: str, now: int) -> list[sqlite3.Row]:
+        """A fresh prepare() replaces this account's older PREPARED ops of the same kind (SI-45):
+
+        the owner can only ever sign the most recent wallet prompt, so an older one left PREPARED
+        would otherwise sit forever instead of being read as the retry it actually is.
+        """
+        with self._db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            stale = db.execute("SELECT * FROM ops WHERE account=? AND kind=? AND state='PREPARED'",
+                               (account, kind)).fetchall()
+            if stale:
+                db.execute("UPDATE ops SET state='EXPIRED', detail=?, updated_at=? WHERE account=? AND kind=? AND state='PREPARED'",
+                           ("Replaced by a newer request.", now, account, kind))
+            return stale
+
     def pending_gas_ops(self, account: str) -> list[sqlite3.Row]:
         with self._db() as db:
             return db.execute("SELECT * FROM ops WHERE account=? AND kind='FUND_GAS' "
@@ -277,6 +307,21 @@ class SolanaAllowanceStore:
         with self._db() as db:
             return int(db.execute("SELECT COUNT(*) FROM spends WHERE account = ? AND pull_tx IS NOT NULL",
                                   (account,)).fetchone()[0])
+
+    def settled_spends_between(self, account: str, since: int, until: int) -> list[tuple[int, str, int]]:
+        """(amount, purpose, created_at) of settled spends (pull_tx set) in [since, until]; for the public report."""
+        with self._db() as db:
+            rows = db.execute("SELECT amount, purpose, created_at FROM spends WHERE account = ? AND pull_tx IS NOT NULL "
+                              "AND created_at >= ? AND created_at <= ? ORDER BY created_at",
+                              (account, since, until)).fetchall()
+        return [(int(r["amount"]), str(r["purpose"]), int(r["created_at"])) for r in rows]
+
+    def last_approval(self, account: str) -> str | None:
+        """'GRANT' or 'REVOKE': the wallet's latest finished approval change, from our own records."""
+        with self._db() as db:
+            row = db.execute("SELECT kind FROM ops WHERE account = ? AND kind IN ('GRANT', 'REVOKE') AND state = 'DONE' "
+                             "ORDER BY updated_at DESC, created_at DESC LIMIT 1", (account,)).fetchone()
+        return row["kind"] if row else None
 
     def drop_spend(self, spend_id: int) -> None:
         with self._db() as db:
@@ -357,6 +402,8 @@ class SolanaAllowanceService:
         limits = self.store.limits(account)
         if limits is None:
             return {"configured": False, "chain": "solana", "owner": owner}
+        for stale in self.store.expire_stale_prepared(account, int(self.now()), PREPARE_SECONDS):
+            self._emit_op_event(stale, "EXPIRED")
         chain = self.chain_state(account, fresh=False)
         allowed = int(chain["owner"]["delegatedToAgent"])
         spent = self.store.spent_since(account, int(self.now()) // DAY * DAY)
@@ -424,12 +471,20 @@ class SolanaAllowanceService:
             raise AllowanceError("Grant or revoke only.")
         owner_sol = int(self.chain_state(account)["owner"].get("solLamports") or 0)
         if owner_sol < OWNER_FEE_LAMPORTS + (atomic if kind == "FUND_GAS" else 0):
+            logger.warning("solana allowance: %s refused %s prepare for lack of SOL",
+                           analytics.hash_account_id(account), kind)
+            if kind in ("GRANT", "REVOKE"):
+                analytics.emit("approval_signed" if kind == "GRANT" else "revoke", account, chain="solana", state="NO_SOL")
             raise AllowanceError("Your wallet needs SOL for this transfer and its network fee. SingIt does not sponsor it.")
         owner_pays = True
         prepared = self._call(account, "allowance-prepare", owner=owner, ownerPaysFee=True,
                               kind={"GRANT": "approve", "REVOKE": "revoke", "FUND_GAS": "fund-gas"}[kind], amount=str(atomic))
         op_id = "sop_" + secrets.token_urlsafe(12)
         now = int(self.now())
+        # A fresh prepare retires whatever this account left PREPARED: either too old to still be
+        # valid, or simply superseded by this newer request (SI-45 — these used to sit forever).
+        for stale in self.store.expire_stale_prepared(account, now, PREPARE_SECONDS) + self.store.supersede_prepared(account, kind, now):
+            self._emit_op_event(stale, "EXPIRED")
         self.store.add_op({"op_id": op_id, "account": account, "kind": kind, "amount": atomic, "owner_pays_fee": int(owner_pays),
                            "message_hash": prepared["messageHash"], "state": "PREPARED", "now": now})
         agent = self.agent_key(account)[0]
