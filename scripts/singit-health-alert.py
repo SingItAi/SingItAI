@@ -25,7 +25,10 @@ Any 5xx, timeout, connection error, non-200 status, or ok != true is a failure.
 
 Alert channel is chosen only by what is set in the environment - the operator picks this later:
   SINGIT_ALERT_TELEGRAM_BOT_TOKEN + SINGIT_ALERT_TELEGRAM_CHAT_ID -> a Telegram message
-  SINGIT_ALERT_WEBHOOK_URL (and no Telegram token)                -> POST {"text": ...} JSON
+  SINGIT_ALERT_NTFY_URL (and no Telegram token)                   -> a push through ntfy: the message as
+      plain text to that topic URL (e.g. https://ntfy.sh/<a long random topic>), with a title and
+      high priority for an alert; SINGIT_ALERT_NTFY_TOKEN, if set, is sent as a Bearer token
+  SINGIT_ALERT_WEBHOOK_URL (and neither of the above)             -> POST {"text": ...} JSON
   neither                                                         -> printed to stdout, exit 1
 --dry-run prints what would be sent and changes nothing: no message is sent, no state is saved.
 
@@ -88,6 +91,8 @@ JOURNAL_MINUTES_ENV, DEFAULT_JOURNAL_MINUTES = "SINGIT_ALERT_JOURNAL_MINUTES", 1
 TELEGRAM_TOKEN_ENV = "SINGIT_ALERT_TELEGRAM_BOT_TOKEN"
 TELEGRAM_CHAT_ENV = "SINGIT_ALERT_TELEGRAM_CHAT_ID"
 WEBHOOK_URL_ENV = "SINGIT_ALERT_WEBHOOK_URL"
+NTFY_URL_ENV = "SINGIT_ALERT_NTFY_URL"
+NTFY_TOKEN_ENV = "SINGIT_ALERT_NTFY_TOKEN"
 STATE_ENV, DEFAULT_STATE = "SINGIT_ALERT_STATE", "~/.sign402/health-alert-state.json"
 REPEAT_MINUTES_ENV, DEFAULT_REPEAT_MINUTES = "SINGIT_ALERT_REPEAT_MINUTES", 60
 
@@ -253,13 +258,30 @@ def send_webhook(url: str, text: str, *, timeout: float) -> None:
         response.read()
 
 
+def send_ntfy(url: str, text: str, *, token: str | None, timeout: float) -> None:
+    """One push through ntfy: plain text to the topic URL. A message that is only recoveries is sent at
+    normal priority; anything still failing is high priority, so the phone makes a sound."""
+    alerting = text.startswith("SingIt health alert:")
+    headers = {"Content-Type": "text/plain; charset=utf-8", "User-Agent": USER_AGENT,
+               "Title": "SingIt is down" if alerting else "SingIt recovered",
+               "Priority": "high" if alerting else "default",
+               "Tags": "warning" if alerting else "white_check_mark"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(url, data=text.encode(), method="POST", headers=headers)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        response.read()
+
+
 def deliver(message: str, *, env: dict[str, str], timeout: float) -> str | None:
     """Sends `message` over whichever channel is configured; returns a failure note, or None."""
     token, chat_id = env.get(TELEGRAM_TOKEN_ENV), env.get(TELEGRAM_CHAT_ENV)
-    webhook = env.get(WEBHOOK_URL_ENV)
+    webhook, ntfy = env.get(WEBHOOK_URL_ENV), env.get(NTFY_URL_ENV)
     try:
         if token and chat_id:
             send_telegram(token, chat_id, message, timeout=timeout)
+        elif ntfy:
+            send_ntfy(ntfy, message, token=env.get(NTFY_TOKEN_ENV), timeout=timeout)
         elif webhook:
             send_webhook(webhook, message, timeout=timeout)
         else:

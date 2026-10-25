@@ -255,6 +255,36 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(sent["url"], "https://hooks.test/x")
         self.assertEqual(sent["body"], {"text": "hello"})
 
+    def test_ntfy_gets_plain_text_with_a_title_and_priority(self):
+        sent = []
+
+        def _capture(request, timeout=None):
+            sent.append((request.full_url, request.data.decode(), dict(request.header_items())))
+            return FakeResponse(200, b"{}")
+        env = {self.ha.NTFY_URL_ENV: "https://ntfy.test/singit-abc", self.ha.WEBHOOK_URL_ENV: "https://hooks.test/x"}
+        with patch.object(self.ha.urllib.request, "urlopen", _capture):
+            self.assertIsNone(self.ha.deliver("SingIt health alert:\n- ask: HTTP 502", env=env, timeout=5))
+            self.assertIsNone(self.ha.deliver("Recovered:\n- ask: ok", env=env, timeout=5))
+        (url, body, headers), (_, _, recovered) = sent
+        self.assertEqual(url, "https://ntfy.test/singit-abc")  # ntfy wins over the generic webhook
+        self.assertEqual(body, "SingIt health alert:\n- ask: HTTP 502")
+        self.assertEqual((headers["Title"], headers["Priority"]), ("SingIt is down", "high"))
+        self.assertNotIn("Authorization", headers)
+        self.assertEqual((recovered["Title"], recovered["Priority"]), ("SingIt recovered", "default"))
+
+    def test_ntfy_token_is_sent_as_bearer_and_failures_do_not_leak_it(self):
+        seen = {}
+
+        def _capture(request, timeout=None):
+            seen.update(request.header_items())
+            raise urllib.error.URLError("down")
+        env = {self.ha.NTFY_URL_ENV: "https://ntfy.test/t", self.ha.NTFY_TOKEN_ENV: "tk_secret"}
+        with patch.object(self.ha.urllib.request, "urlopen", _capture):
+            note = self.ha.deliver("SingIt health alert:\n- x: y", env=env, timeout=5)
+        self.assertEqual(seen["Authorization"], "Bearer tk_secret")
+        self.assertNotIn("tk_secret", note)
+        self.assertNotIn("ntfy.test", note)
+
     def test_telegram_wins_when_both_are_set(self):
         def _capture(request, timeout=None):
             self.assertIn("api.telegram.org", request.full_url)
