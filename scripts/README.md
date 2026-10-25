@@ -69,6 +69,68 @@ hermes gateway restart
 See `hermes-plugins/sign402-wallet/README.md` for the secure configuration,
 allowlist-first test flow, and diagnostics.
 
+## Health Alerts
+
+Probes the public endpoints and Base RPC, and alerts an operator (Telegram, a webhook, or stdout -
+whichever is configured) when one is down. Read-only; no deploy, no channel chosen by default.
+
+```bash
+python3 scripts/singit-health-alert.py --dry-run
+python3 scripts/singit-health-alert.py --rpc-url "$SIGN402_BASE_RPC_URL" --journal-unit sign402-web
+```
+
+See the script's own docstring for every check, env var, and a sample systemd user timer /
+crontab line (every 5 minutes). Tests: `python3 -m unittest discover -s scripts/tests`.
+
+## BlockRun Prices Snapshot
+
+The website's `/pricing/` page (SingIt vs BlockRun) compares SingIt's live `GET
+https://ask.singitai.app/pricing.json` against BlockRun's prices in the browser. BlockRun has no
+CORS promise for the page to call it directly, so its side is a committed, static snapshot that
+this script refreshes:
+
+```bash
+node scripts/blockrun-prices-snapshot.mjs
+```
+
+Fetches `https://blockrun.ai/api/v1/models`, keeps only paid chat models (`id`, `name`, input/output
+USD per million tokens), adds BlockRun's published flat per-request fee for chat ($0.001, pinned in
+the script since no endpoint in `/api/v1/models` exposes it), and writes
+`website/data/blockrun-prices.json`. Re-run it and commit the result whenever BlockRun's prices
+move; `--out`, `--models-url`, `--fetched-at` and `--input <file>` (read a previously fetched
+response instead of the network) override the defaults.
+
+## Free model cost
+
+`scripts/free-model-cost.py` reads a saved `/v1/models` JSON file and prints, per model, the worst-case cost
+of one free answer (4000 characters of question at 4 characters per token, 400 answer tokens) at the list and
+the expected price, and the month's cost at daily caps of 100, 300 and 1000 answers. It is offline and
+read-only. See [free models](../docs/free-models.md).
+
+```bash
+python scripts/free-model-cost.py docs/data/singit-models-2026-10-24.json
+python scripts/free-model-cost.py MODELS.json --models deepseek-v4.1-flash --caps 100,300 --json
+```
+
+## Daily Metrics and Dashboard
+
+`daily-metrics.py` prints one day of aggregate counts as JSON (`--out DIR` also
+writes `DIR/YYYY-MM-DD.json`); `metrics-dashboard.py` turns the last N of those
+files into one static HTML page. Both are read-only and print no address,
+account id or key. `SIGN402_METRICS_EXCLUDE_UIDS` / `--exclude-uids-file PATH`
+drop your own test accounts (uid hashes, one per line in the file; keep the file
+out of git) from the events-based counts.
+
+```bash
+cd <APP_CHECKOUT>
+python3 scripts/daily-metrics.py --out ~/.sign402/metrics
+python3 scripts/metrics-dashboard.py            # -> ~/.sign402/metrics/dashboard.html
+```
+
+The dashboard is operator-only: view it over `ssh`/`scp`, never serve it on a
+public route. See [analytics](../docs/analytics.md) for every field, the
+margin caveat and the suggested cron lines.
+
 ## SingIt Uptime
 
 `scripts/singit-uptime.py` measures how often SingIt's public endpoints answer

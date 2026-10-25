@@ -11,6 +11,7 @@ import { IMAGE_ROUTE } from "../src/images.mjs";
 import { SPEECH_ROUTE } from "../src/speech.mjs";
 import { SEARCH_ROUTES } from "../src/search.mjs";
 import { VIDEO_ROUTE } from "../src/video.mjs";
+import { modelRoutePaths } from "../src/model-routes.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -50,6 +51,8 @@ const EXPECTED = {
   [SPEECH_ROUTE]: [...COMMON, 404, 409],
   [VIDEO_ROUTE]: [...COMMON, 404, 409],
   ...Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [route, [400, 402, 409, 413, 502]])),
+  // model-routes.mjs chooseModelRoute: 400 model mismatch, 404 unknown model, 503 no trusted seller; 502 no answer.
+  ...Object.fromEntries(modelRoutePaths().map((route) => [route, [...COMMON, 404]])),
 };
 
 test("every paid path documents 402 and exactly the error codes its handlers send", async (t) => {

@@ -556,6 +556,12 @@ Every paid call is billed exactly like `/v1`: from the key's own daily and per-r
 its account's own SingIt limits (Base USDC). Nothing here can move funds, change limits, or buy goods
 (no Bitrefill, no wallet/allowance tools — that stays out of MCP for now, v2 at the earliest).
 
+Every `tools/list` entry carries a `title` and MCP annotations (`readOnlyHint`, `destructiveHint`,
+`idempotentHint`, `openWorldHint`). All 14 tools are read-only and non-destructive: paid ones debit the
+key's limits but never touch external state. `get_price`, `list_price_symbols` and `list_models` read
+SingIt's own data, so they are idempotent and not open-world; every other tool bills again on each call
+(not idempotent) and reaches third-party data (open-world).
+
 Install:
 
 ```bash
@@ -602,10 +608,143 @@ Limits:
   the paid data tools above refuse them with a message to make a new key. `get_price`,
   `list_price_symbols`, `list_models`, `web_search` and `read_page` work with any still-live key, per
   its own scopes (`web_search` and `read_page` need `search`).
-- The key's own rate limit (60 requests a minute) applies to `tools/call` as it does to `/v1`.
+- MCP has its own rate limit, separate from `/v1`'s: 60 requests a minute per key by default (set
+  `SINGIT_MCP_REQUESTS_PER_MINUTE` to change it), so heavy use of one never starves the other. It is
+  charged once per request that carries an id (`initialize`, `ping`, `tools/list`, `tools/call`);
+  notifications are free. Over the limit gets a JSON-RPC error with a `Retry-After` header (seconds).
+  `web_search` and `read_page` are billed only here, not a second time against `/v1`.
 - The paid data tools are sold on Base only; a Solana account's key gets a clear refusal for them.
-- A request with a browser `Origin` header is refused (403), as on `/v1`: keys belong in server code.
+- A request with a browser `Origin` header is refused (403) unless that origin is trusted: either this
+  server's own origin (`SIGN402_WEB_URI`) or one of a small allowlist of known MCP inspectors and
+  scanners (`https://glama.ai`, `https://www.glama.ai`,
+  `https://x402scan.com`, `https://www.x402scan.com`), overridable with the comma-separated
+  `SINGIT_MCP_ALLOWED_ORIGINS` env var (replaces the defaults, not additive). A trusted origin still
+  needs a valid key for everything past the CORS preflight; an untrusted one is refused before the key
+  is even checked. `OPTIONS /mcp` answers the CORS preflight the same way.
+- Repeated failed authentication (a wrong or revoked key) from one client address gets 429s instead of
+  401s after 30 failures in 10 minutes, to blunt key guessing.
 - `GET /mcp` answers 405: there is no server-to-client SSE stream.
+- Each `tools/call` writes one `mcp_call` analytics event (tool, status, error class, latency, whether it was
+  charged and how much, a salted reference to the key) and nothing else: no key, address, account id or tool
+  argument. `initialize` and `tools/list` are not recorded, and a failing analytics write never affects the
+  call. See [analytics](../docs/analytics.md#mcp_call).
+
+## Free wallet spend report
+
+`GET /v1/wallet/{address}/reconciliation` (and `HEAD`) on the web API (`app.singitai.app`): a free, public report of what a wallet spent through SingIt and what is left of its limit. No API key, no session. It is served before the API-key `/v1` handler. Optional query `days`, 1 to 90 (default 30). Any origin may call it (`Access-Control-Allow-Origin: *`, no cookies); `Cache-Control: public, max-age=60`.
+
+```bash
+curl -s https://app.singitai.app/v1/wallet/0xAbC.../reconciliation?days=30
+```
+
+```json
+{
+  "address": "0x2222222222222222222222222222222222222222",
+  "chain": "base",
+  "known": true,
+  "window": {"days": 30, "since": 1797408000, "until": 1800000000},
+  "spent": {
+    "totalAtomic": "3300000", "totalUsd": "3.30", "count": 3,
+    "byCategory": {"chat_answer": {"count": 1, "atomic": "300000", "usd": "0.30"},
+                   "data_tool": {"count": 1, "atomic": "1000000", "usd": "1.00"},
+                   "gift_card": {"count": 1, "atomic": "2000000", "usd": "2.00"}},
+    "byDay": [{"date": "2027-01-14", "atomic": "1000000", "usd": "1.00", "count": 1}]
+  },
+  "creditTopUps": {"count": 1, "atomic": "4000000", "usd": "4.00"},
+  "allowance": {
+    "configured": true, "state": "active", "dailyCapAtomic": "5000000", "perPurchaseCapAtomic": "2000000",
+    "spentTodayAtomic": "300000", "remainingTodayAtomic": "4700000", "expiry": 1800864000,
+    "limiter": "0x1111111111111111111111111111111111111111"
+  },
+  "generatedAt": 1800000000
+}
+```
+
+- `address` is canonical: checksummed on Base, as given on Solana (base58 is case-sensitive). `chain` is `base` or `solana`, read from the address. An address that is not `0x` + 40 hex, nor base58 of 32 to 44 characters, gets `400` (`bad_address`); a bad `days` gets `400` (`bad_days`).
+- All amounts are USDC atomic units (6 decimals) as strings, with a `usd` string beside them. `window.since` and `until` are Unix seconds (UTC); `byDay` days are UTC.
+- Only settled spend counts: Base `settlements` rows, and Solana spends with a pull transaction. A Solana spend that was reserved but never confirmed is not in `spent`.
+- `creditTopUps` is the balance bought for the API (`/v1/credit`). It is reported apart and is not in `spent`.
+- Categories are `chat_answer`, `data_tool`, `gift_card` (Bitrefill) and `other`. Base uses the same mapping as `scripts/daily-metrics.py`; a Solana purpose that SingIt's own code did not write maps to `other`.
+- `allowance` is `null` for an address SingIt has never seen (`known: false`, zero totals, same shape otherwise). `state` is `active`, `paused`, `expired` or `none` on Base, and `granted`, `waiting_for_grant` or `expired` on Solana (or `none` when only an agent exists). `limiter` is the Base limiter contract, or the Solana delegate: both are public on chain.
+- No RPC call is made. `spentTodayAtomic` and `remainingTodayAtomic` are our own books since UTC midnight, credit top-ups included because they are paid through the limiter too (on Solana as the page's status computes it, which also counts amounts held for metered answers in flight). On Base the limiter's own `remainingToday()` on chain is authoritative. The Solana `granted` state is our record of the last finished grant or revoke, not a read of the token account.
+- Privacy: categories only. Never resource URLs, invoice ids, Solana purpose text, transaction hashes, chats, emails or Telegram ids.
+- Limit: `SINGIT_RECONCILIATION_PER_MINUTE` per client IP (default 30), then `429` with `Retry-After: 60`. Answers are cached in process for 60 seconds per address and `days`.
+- It is listed in singit-ask's `/openapi.json` (own `servers` entry, no payment). It is not in `/.well-known/x402`, which lists payable resources only, and that document has no field for free endpoints.
+
+`GET /.well-known/mcp/server-card.json` (SEP-1649 draft) and `GET /.well-known/glama.json` are public,
+keyless catalog metadata on the same host, for MCP directories and scanners that read tools/list without
+an API key: `server_card()` and `glama_json()` in `web_mcp.py`.
+
+## Public brand numbers
+
+`GET https://app.singitai.app/brand/numbers.json` (`sign402_gateway/web_api.py`) is a free,
+unauthenticated endpoint for the marketing site: aggregate, read-only counts from the gateway's own
+settlement, spend and account stores — never a wallet address or account id. It mirrors
+`scripts/daily-metrics.py`'s own categories: settled payments exclude credit top-ups (Base
+`settlements.resource NOT LIKE '%/v1/credit'`, Solana `spends.pull_tx IS NOT NULL`). CORS is open
+(`*`), `Cache-Control: public, max-age=300`, cached in process for 5 minutes (so a page refreshing per
+visitor does not hit SQLite each time), and rate-limited per IP.
+
+Example (the seeded test data in tests/test_brand_numbers.py, not production numbers):
+
+```json
+{
+  "version": 1,
+  "measuredAt": "…",
+  "scope": "Counts payments made through the SingIt app and its agents' Base and Solana allowance lanes (settlements and spends), excluding credit top-ups. Direct x402 calls to ask.singitai.app settle on-chain and are not counted here.",
+  "chains": ["base", "solana"],
+  "payments": {
+    "settled": { "total": 3, "last30d": 2 },
+    "payingWallets": { "total": 3, "last30d": 2 },
+    "usdcVolume": { "total": 10.7, "last30d": 8.2 }
+  },
+  "accounts": 2,
+  "mcpTools": 14,
+  "models": null
+}
+```
+
+`models` is `null` unless the gateway already tracks the singit-ask catalogue's model count (it
+never fetches `ask.singitai.app` to compute this). Direct x402 calls to `ask.singitai.app` (agents
+paying per answer, no SingIt account) settle on-chain and are not included — see `scope`.
+
+## Free models on the API-key `/v1`
+
+A signed-in wallet's API key can ask `POST /v1/chat/completions` for `free/<id>` (for example
+`free/deepseek-v4.1-flash`) and get the answer at no charge, for a first try. **Off by default**: nothing
+is free unless `SIGN402_WEB_FREE_MODELS` names models. It needs the same upstream as the paid `/v1`
+(`SIGN402_WEB_SURPLUS_API_KEY` and `SIGN402_WEB_INTERNAL_TOKEN`); without them the setting is ignored and a
+warning is logged. The module is `sign402_gateway/web_free.py`.
+
+| Variable | Meaning |
+|----------|---------|
+| `SIGN402_WEB_FREE_MODELS` | Models answered free as `free/<id>`, comma-separated. Empty or unset (default): off. |
+| `SIGN402_WEB_FREE_PER_ACCOUNT_PER_DAY` | Free answers a day per account (wallet), across all its keys. Default 20. |
+| `SIGN402_WEB_FREE_PER_NETWORK_PER_DAY` | Free answers a day per client network. Default 40. |
+| `SIGN402_WEB_FREE_PER_DAY` | Free answers a day for everyone together. Default 1000. |
+| `SIGN402_WEB_FREE_MAX_TOKENS` | Cap on the answer length. Default 400. |
+
+A value that is not a positive whole number stops the web API from starting.
+
+- **Limits:** per account, per network and for everyone, whichever is reached first; then `429` with
+  `Retry-After` (seconds to midnight UTC). A network is the IPv4 /24 or IPv6 /64 of the client address
+  (an IPv4-mapped IPv6 address counts as its IPv4 /24), so rotating addresses in one subnet does not
+  multiply the allowance. The client address is the one the web API already trusts: `Cf-Connecting-Ip` or
+  `X-Forwarded-For` from a loopback proxy, else the peer.
+- **Separate from the paid limits:** a free answer is never counted in the key's 60 requests a minute, its
+  daily or per-request caps, or its balance, and spends nothing. Paid requests are counted exactly as before.
+- **Same upstream, smaller answers:** the question goes to the same Surplus upstream as the paid `/v1`, with
+  `max_tokens` clamped to `SIGN402_WEB_FREE_MAX_TOKENS`, at most 4000 characters of question, and no tools.
+  A refusal, or an answer that does not come back, is not counted.
+- **Listed:** `GET /v1/models` (and the MCP `list_models`) show them first as `free/<id>` entries with
+  `free: true` and their `limits`, only when the feature is on.
+- **MCP:** the MCP server has no chat tool, so free answers are only on `/v1`; the MCP rate limit is untouched.
+- **Restarts:** the counters are in memory. A restart starts the day's counts again, so a restart can give out
+  one more day's allowance; the daily ceiling bounds that. The free answers also count only in this process.
+- **Wallet identity:** the account is the one the API key was signed by, so the limit follows the wallet, not
+  the key. Making more wallets is limited only by the network limit.
+
+The proposal, costs per model and what needs the owner's decision are in `docs/free-models.md`.
 
 ## Safety
 

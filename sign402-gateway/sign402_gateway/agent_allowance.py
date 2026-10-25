@@ -632,10 +632,35 @@ class AllowanceStore:
                            amount_usd=analytics.usdc_to_usd_string(amount),
                            first_purchase=before == 0, purchase_n=before + 1)
 
+    def settlements_between(self, user_id: str, since: int, until: int) -> list[tuple[int, str, int]]:
+        """(amount, resource, created_at) of this user's settlements in [since, until]; for the public report."""
+        with self._db() as db:
+            rows = db.execute("SELECT amount, resource, created_at FROM settlements "
+                              "WHERE user_id = ? AND created_at >= ? AND created_at <= ? ORDER BY created_at",
+                              (user_id, since, until)).fetchall()
+        return [(int(r["amount"]), str(r["resource"]), int(r["created_at"])) for r in rows]
+
+    def limiter_paused(self, limiter_address: str) -> bool:
+        """True once a guardian PAUSE of this limiter finished (pausing is permanent)."""
+        with self._db() as db:
+            return db.execute("SELECT 1 FROM operations WHERE lower(limiter_address) = lower(?) "
+                              "AND kind = 'PAUSE' AND state = 'DONE' LIMIT 1", (limiter_address,)).fetchone() is not None
+
     def settlement_for(self, user_id: str, resource: str) -> sqlite3.Row | None:
         with self._db() as db:
             return db.execute("SELECT * FROM settlements WHERE user_id = ? AND resource = ?",
                               (user_id, resource)).fetchone()
+
+    def settlement_totals(self, since: int) -> dict[str, dict[str, int]]:
+        """Settled payments, excluding credit top-ups (same filter as count_settlement/daily-metrics.py's
+        active_spenders), overall and since `since`: for GET /brand/numbers.json (web_api.py)."""
+        with self._db() as db:
+            def row(extra: str, params: tuple) -> dict[str, int]:
+                found = db.execute(
+                    "SELECT COUNT(*) n, COUNT(DISTINCT user_id) buyers, COALESCE(SUM(amount), 0) usd"
+                    f" FROM settlements WHERE resource NOT LIKE '%/v1/credit'{extra}", params).fetchone()
+                return {"count": found["n"], "wallets": found["buyers"], "usdAtomic": found["usd"]}
+            return {"total": row("", ()), "last30d": row(" AND created_at >= ?", (since,))}
 
     def transfer_claim(self, user_id: str, resource: str) -> sqlite3.Row | None:
         with self._db() as db:

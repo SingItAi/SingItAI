@@ -162,15 +162,26 @@ class DailyMetricsTests(unittest.TestCase):
                       (self.s + 3,))
             db.execute("INSERT INTO spends VALUES (2, 'solana:BBB', 100000, 'Exa web search', NULL, ?)",
                       (self.e - 10000,))  # unconfirmed, older than an hour before window end
-            # Abandoned: a GRANT prepared today but never signed, old enough to call abandoned.
+            # BBB did grant (sop1 DONE), so these PREPARED rows are retries (SI-45), not an
+            # abandoned setup: a closed/rejected wallet prompt or an expired blockhash, not
+            # someone who never came back.
             db.execute("INSERT INTO ops VALUES ('sop2', 'solana:BBB', 'GRANT', 200000, 'PREPARED', ?)",
-                      (self.e - 10000,))
-            # Abandoned, from an earlier day (counts toward total_outstanding, not "today").
+                      (self.e - 10000,))  # today
             db.execute("INSERT INTO ops VALUES ('sop3', 'solana:BBB', 'GRANT', 300000, 'PREPARED', ?)",
-                      (self.s - 100000,))
-            # Not abandoned: prepared recently (within the last hour before the window ends).
+                      (self.s - 100000,))  # an earlier day: counts toward "total", not "today"
             db.execute("INSERT INTO ops VALUES ('sop4', 'solana:BBB', 'GRANT', 400000, 'PREPARED', ?)",
-                      (self.e - 100,))
+                      (self.e - 100,))  # today
+            # CCC never granted at all: its limits are old enough (today) to call it abandoned.
+            db.execute("INSERT INTO limits VALUES ('solana:CCC', 'CCC', 1, 1, ?, ?, ?)",
+                      (self.s + 100000, self.e - 10000, self.e - 10000))
+            # DDD never granted either, but its limits are from an earlier day: counts toward
+            # "total", not "today".
+            db.execute("INSERT INTO limits VALUES ('solana:DDD', 'DDD', 1, 1, ?, ?, ?)",
+                      (self.s + 100000, self.s - 200000, self.s - 200000))
+            # EEE set limits too recently (within the last hour before the window ends) to call
+            # it abandoned yet.
+            db.execute("INSERT INTO limits VALUES ('solana:EEE', 'EEE', 1, 1, ?, ?, ?)",
+                      (self.s + 100000, self.e - 100, self.e - 100))
         db.close()
         return path
 
@@ -277,17 +288,45 @@ class DailyMetricsTests(unittest.TestCase):
                          {"web": {"count": 3, "buyers": 1, "usd": "3.50"},
                           "telegram": {"count": 1, "buyers": 1, "usd": "0.05"}})
 
+    def test_unsigned_solana_expiries_are_not_counted_as_errors(self):
+        path = self.root / "solana-allowance.db"
+        db = sqlite3.connect(path)
+        with db:
+            db.executescript("""
+                CREATE TABLE limits (account TEXT PRIMARY KEY, owner TEXT, daily_cap INTEGER, per_purchase_cap INTEGER,
+                    expiry INTEGER, created_at INTEGER, updated_at INTEGER);
+                CREATE TABLE ops (op_id TEXT PRIMARY KEY, account TEXT, kind TEXT, amount INTEGER, state TEXT,
+                    created_at INTEGER, detail TEXT NOT NULL DEFAULT '');
+                CREATE TABLE spends (id INTEGER PRIMARY KEY, account TEXT, amount INTEGER, purpose TEXT,
+                    pull_tx TEXT, created_at INTEGER);
+            """)
+            for i, detail in enumerate(self.dm.SOLANA_UNSIGNED_DETAILS):
+                db.execute("INSERT INTO ops VALUES (?, 'solana:BBB', 'GRANT', 1, 'EXPIRED', ?, ?)",
+                           (f"u{i}", self.s + 5, detail))
+            db.execute("INSERT INTO ops VALUES ('late', 'solana:BBB', 'GRANT', 1, 'EXPIRED', ?, "
+                       "'Too late for this transaction; prepare it again.')", (self.s + 6,))
+        db.close()
+        report = self.dm.build_report(DAY, **self.missing_paths(solana_db=path))
+        self.assertEqual(report["errors"]["ops_expired"], 1)  # only the signed-but-too-late one
+
     def test_solana_allowance_metrics(self):
         solana = self.seed_solana()
         report = self.dm.build_report(DAY, **self.missing_paths(solana_db=solana))
-        self.assertEqual(report["limits_set"], {"solana": 1})
+        self.assertEqual(report["limits_set"], {"solana": 3})  # BBB, CCC, EEE; DDD is from an earlier day
         self.assertEqual(report["approvals_done"], 1)
         self.assertEqual(report["usdc_volume"]["solana"], "0.70")
         self.assertEqual(report["purchases"], {"data_tool": 1})
         self.assertEqual(report["errors"]["stuck_reservations"], 1)
-        # sop2 (today, old enough) and sop3 (an earlier day) are abandoned; sop4 (prepared in the
-        # last hour) and sop1 (already DONE) are not.
-        self.assertEqual(report["abandoned_solana_setups"], {"today": 1, "total_outstanding": 2})
+        detail = report["detail"]["solana_allowance"]
+        self.assertEqual(detail["accounts_with_limits"], 4)  # BBB, CCC, DDD, EEE
+        self.assertEqual(detail["accounts_granted"], 1)  # BBB only (sop1 DONE)
+        # CCC (today, old enough) and DDD (an earlier day) never granted; EEE is too recent to
+        # call abandoned yet, and BBB did grant (its PREPARED rows are retries, not abandonment).
+        self.assertEqual(detail["abandoned_setups"], {"today": 1, "total": 2})
+        self.assertEqual(report["abandoned_solana_setups"], detail["abandoned_setups"])
+        # sop2 and sop4 (today) plus sop3 (an earlier day) are all retries from BBB, which did
+        # eventually grant.
+        self.assertEqual(detail["grant_retries"], {"today": 2, "total": 3})
 
     def test_telegram_metrics(self):
         telegram = self.seed_telegram()
@@ -316,7 +355,7 @@ class DailyMetricsTests(unittest.TestCase):
                                     solana_db=self.seed_solana(), user_wallet_db=self.seed_telegram())
         report = self.dm.build_report(DAY, **paths)
         self.assertEqual(report["new_accounts"], {"base": 1, "solana": 1})
-        self.assertEqual(report["limits_set"], {"base": 1, "solana": 1})
+        self.assertEqual(report["limits_set"], {"base": 1, "solana": 3})
         self.assertEqual(report["telegram_new_wallets"], 2)
         json.dumps(report)  # the whole thing must be JSON-serializable
 
@@ -396,6 +435,148 @@ class DailyMetricsTests(unittest.TestCase):
             user_wallet_db=self.root / "nope3.db", bitrefill_orders_db=self.root / "nope4.db")
         self.assertEqual(report["day"], DAY.isoformat())
         self.assertEqual(report["timezone"], "Europe/Prague")
+
+    # -- the `mcp` section (mcp_call events), the exclude list, api_keys.active and the margin fields --
+
+    def seed_mcp(self, *, with_ledger=True, with_spend=True):
+        """web.db with mcp_call events from three uids (u1 is "ours"), one outside the day, plus a
+        balance_ledger whose charges carry a provider cost for one row and none for another."""
+        (self.root / "web.db").unlink(missing_ok=True)  # a test may seed twice with different options
+        path = self.seed_web()
+        db = sqlite3.connect(path)
+        with db:
+            def call(offset, uid, **props):
+                db.execute("INSERT INTO events(at, name, uid, props_json) VALUES (?, 'mcp_call', ?, ?)",
+                           (self.s + offset, uid, json.dumps(props)))
+            call(10, "u1", tool="get_price", status="ok", latency_ms=100, paid=False, key_ref="aaaaaaaaaaaa")
+            call(11, "u2", tool="web_search", status="ok", latency_ms=200, paid=True, cost_usd="0.005",
+                 key_ref="bbbbbbbbbbbb")
+            call(12, "u2", tool="web_search", status="ok", latency_ms=300, paid=True, cost_usd="0.005",
+                 key_ref="bbbbbbbbbbbb")
+            call(13, "u3", tool="get_token_price", status="error", error_kind="upstream", latency_ms=400,
+                 paid=False, key_ref="cccccccccccc")
+            call(14, "u3", tool="unknown", status="error", error_kind="bad_args", latency_ms=1000, paid=False)
+            call(15, None, tool="list_models", status="ok", paid=False)  # no uid, no latency
+            db.execute("INSERT INTO events(at, name, uid, props_json) VALUES (?, 'mcp_call', 'u2', ?)",
+                       (self.s - 5, json.dumps({"tool": "get_price", "status": "ok"})))  # the day before
+            if with_ledger:
+                db.execute("""CREATE TABLE balance_ledger (id INTEGER PRIMARY KEY, account_id TEXT, at INTEGER,
+                    kind TEXT, amount_atomic INTEGER, balance_after INTEGER, ref TEXT, key_id TEXT, model TEXT,
+                    cost_atomic INTEGER)""")
+                rows = [("charge", -1_300_000, 1_000_000), ("charge", -650_000, 500_000), ("charge", -100_000, None),
+                        ("topup", 5_000_000, None), ("refund", 50_000, None)]
+                for i, (kind, amount, cost) in enumerate(rows):
+                    db.execute("INSERT INTO balance_ledger(account_id, at, kind, amount_atomic, balance_after, cost_atomic)"
+                               " VALUES ('wallet:AAA', ?, ?, ?, 0, ?)", (self.s + 20 + i, kind, amount, cost))
+            if with_spend:
+                day = self.s // 86400 + 1  # the UTC day the Prague window mostly falls in
+                db.execute("CREATE TABLE api_key_spend (key_id TEXT, day INTEGER, spent_atomic INTEGER, calls INTEGER)")
+                db.execute("INSERT INTO api_key_spend VALUES ('key1', ?, 5000, 1)", (day,))
+                db.execute("INSERT INTO api_key_spend VALUES ('key2', ?, 5000, 2)", (day,))
+                db.execute("INSERT INTO api_key_spend VALUES ('key3', ?, 5000, 1)", (day - 1,))
+        db.close()
+        return path
+
+    def test_mcp_section_aggregates_the_days_mcp_call_events(self):
+        web = self.seed_mcp()
+        report = self.dm.build_report(DAY, **self.missing_paths(web_db=web))
+        mcp = report["mcp"]
+        print("example mcp section:", json.dumps(mcp, indent=2, sort_keys=True))
+        self.assertEqual(mcp["calls_total"], 6)
+        self.assertEqual(mcp["by_tool"], {"get_price": 1, "get_token_price": 1, "list_models": 1, "unknown": 1,
+                                         "web_search": 2})
+        self.assertEqual(mcp["by_status"], {"error": 2, "ok": 4})
+        self.assertEqual(mcp["distinct_uids"], 3)
+        self.assertEqual(mcp["distinct_keys"], 3)
+        self.assertEqual(mcp["latency_ms"], {"p50": 300, "p95": 1000})  # nearest rank over 100,200,300,400,1000
+        self.assertEqual(mcp["paid_calls"], 2)
+        self.assertEqual(mcp["cost_usd"], "0.010")
+        self.assertEqual(report["events"]["mcp_call"], 6)
+
+    def test_mcp_is_null_when_the_events_table_is_missing(self):
+        web = self.seed_web(with_events=False)
+        self.assertIsNone(self.dm.build_report(DAY, **self.missing_paths(web_db=web))["mcp"])
+        self.assertIsNone(self.dm.build_report(DAY, **self.missing_paths(web_db=self.root / "absent.db"))["mcp"])
+
+    def test_mcp_with_no_calls_has_zero_counts_and_null_latency(self):
+        mcp = self.dm.build_report(DAY, **self.missing_paths(web_db=self.seed_web()))["mcp"]
+        self.assertEqual(mcp["calls_total"], 0)
+        self.assertEqual(mcp["latency_ms"], {"p50": None, "p95": None})
+        self.assertEqual(mcp["cost_usd"], "0.00")
+
+    def test_excluded_uids_are_removed_from_every_events_based_count(self):
+        web = self.seed_mcp()
+        report = self.dm.build_report(DAY, **self.missing_paths(web_db=web), exclude_uids=frozenset({"u2", "nobody"}))
+        mcp = report["mcp"]
+        self.assertEqual(mcp["calls_total"], 4)
+        self.assertEqual(mcp["distinct_uids"], 2)
+        self.assertEqual(mcp["paid_calls"], 0)
+        self.assertEqual(mcp["by_tool"].get("web_search"), None)
+        self.assertEqual(report["excluded_uids_count"], 2)
+        self.assertEqual(report["events"]["pause"], 1)  # u2's pause is gone, u1's stays
+        self.assertEqual(report["events"]["mcp_call"], 4)
+        self.assertEqual(report["pauses"], {"user": 0, "watcher": 1})
+        full = self.dm.build_report(DAY, **self.missing_paths(web_db=web))
+        self.assertEqual(full["excluded_uids_count"], 0)
+
+    def test_excluding_the_only_signed_in_uid_zeroes_signed_in_today(self):
+        web = self.seed_web()
+        report = self.dm.build_report(DAY, **self.missing_paths(web_db=web), exclude_uids=frozenset({"u1"}))
+        self.assertEqual(report["signed_in_today"], 0)
+
+    def test_exclude_uids_come_from_the_env_and_a_file_with_comments(self):
+        listed = self.root / "mine.txt"
+        listed.write_text("# my wallets\nu1  # laptop\n\n  u3\n")
+        self.assertEqual(self.dm.load_exclude_uids("u2, u4,,", listed), frozenset({"u1", "u2", "u3", "u4"}))
+        self.assertEqual(self.dm.load_exclude_uids(None, None), frozenset())
+        web = self.seed_mcp()
+        captured = io.StringIO()
+        with redirect_stdout(captured):
+            self.dm.main(["--day", DAY.isoformat(), "--web-db", str(web), "--exclude-uids-file", str(listed),
+                          "--allowance-db", str(self.root / "no1.db"), "--solana-db", str(self.root / "no2.db"),
+                          "--user-wallet-db", str(self.root / "no3.db")],
+                         env={self.dm.EXCLUDE_UIDS_ENV: "u2"})
+        printed = json.loads(captured.getvalue())
+        self.assertEqual(printed["excluded_uids_count"], 3)
+        self.assertEqual(printed["mcp"]["calls_total"], 1)  # only the uid-less call is left
+        self.assertNotIn("u1", captured.getvalue().replace('"u1"', ""))  # the uids themselves are never printed
+
+    def test_a_missing_exclude_file_is_a_clean_exit(self):
+        with self.assertRaises(SystemExit) as caught:
+            self.dm.main(["--exclude-uids-file", str(self.root / "nope.txt")], env={})
+        self.assertIn("exclude-uids-file", str(caught.exception))
+
+    def test_api_keys_active_counts_keys_with_billed_calls_that_day(self):
+        report = self.dm.build_report(DAY, **self.missing_paths(web_db=self.seed_mcp()))
+        self.assertEqual(report["api_keys"], {"active": 2, "created": 1})
+        self.assertIsNone(self.dm.build_report(DAY, **self.missing_paths(web_db=self.seed_mcp(with_spend=False)))
+                          ["api_keys"]["active"])
+
+    def test_margin_is_null_with_a_note_naming_the_stores_without_cost(self):
+        report = self.dm.build_report(DAY, **self.missing_paths(web_db=self.seed_mcp()))
+        revenue = report["revenue"]
+        self.assertIsNone(revenue["margin"])
+        for store in ("settlements", "chat_usage", "spends"):
+            self.assertIn(store, revenue["margin_note"])
+        self.assertEqual(revenue["chat_answers"], 2)
+        self.assertEqual(revenue["credit_topups_usd"], "2.00")
+
+    def test_the_api_key_balance_lane_reports_margin_only_over_charges_with_a_cost(self):
+        lane = self.dm.build_report(DAY, **self.missing_paths(web_db=self.seed_mcp()))["revenue"]["balance_lane"]
+        self.assertEqual(lane["charges"], 3)
+        self.assertEqual(lane["gross_usd"], "2.05")
+        self.assertEqual(lane["charges_without_cost"], 1)
+        self.assertEqual(lane["provider_cost_usd"], "1.50")
+        self.assertEqual(lane["margin_usd"], "0.45")  # (1.30 + 0.65) - (1.00 + 0.50), the costless 0.10 left out
+        self.assertEqual(lane["refunds_usd"], "0.05")
+        none = self.dm.build_report(DAY, **self.missing_paths(web_db=self.seed_mcp(with_ledger=False)))
+        self.assertIsNone(none["revenue"]["balance_lane"])
+
+    def test_text_summary_has_an_mcp_line_and_survives_a_null_section(self):
+        text = self.dm.text_summary(self.dm.build_report(DAY, **self.missing_paths(web_db=self.seed_mcp())))
+        self.assertIn("MCP calls: 6", text)
+        nothing = self.missing_paths(web_db=self.root / "absent" / "web.db")
+        self.assertIn("MCP calls: —", self.dm.text_summary(self.dm.build_report(DAY, **nothing)))
 
 
 if __name__ == "__main__":

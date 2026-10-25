@@ -287,6 +287,11 @@ class WebAccountStore:
         row = self.account(str(user_id))
         return row["owner_address"] if row else None
 
+    def count(self) -> int:
+        """Every web account ever created: for GET /brand/numbers.json (web_api.py)."""
+        with self._db() as db:
+            return int(db.execute("SELECT COUNT(*) FROM accounts").fetchone()[0])
+
     # -- linking a Telegram account --
 
     def new_link_code(self, account_id: str, now: int) -> str:

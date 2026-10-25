@@ -10,6 +10,7 @@ plan is not evidence that a feature is deployed.
 - [Recovery](recovery-runbook.md) and [release checks](production-beta-checklist.md).
 - [Verification record](checks.md): dated test and live-payment evidence.
 - [Ledger scope](ledger-v1.md) and [Telegram / Graph / Ledger demo](telegram-graph-ledger-demo.md).
+- [Free models: proposal, cost and owner decisions](free-models.md).
 - [Decision API](decide-public-endpoint.md) and [Bazantic experiment](bazantic-experiment.md).
 - [Bazaar curation readiness](bazaar-curation.md): checklist against Coinbase's curation rules and what needs the owner.
 - [Production incident: repeated Crypto News purchases](incidents/2026-09-08-crypto-news-memory.md).

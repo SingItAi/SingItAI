@@ -162,6 +162,6 @@ test("the app as built today passes the lint", { skip: !existsSync(ASK_MODULES) 
     assert.deepEqual(probes, { GET: 402, HEAD: 402, POST: 402 }, route);
     assert.deepEqual(findings.filter((f) => f.level === "FAIL"), [], route);
   }
-  // The only warning we accept today is the missing icon, which needs a hosted PNG.
-  assert.deepEqual([...new Set(result.routes.flatMap((r) => r.findings.map((f) => `${f.level} ${f.check}`)))], ["WARN iconUrl"]);
+  // The PNG iconUrl came with SI-61 (#62): no warnings are left.
+  assert.deepEqual([...new Set(result.routes.flatMap((r) => r.findings.map((f) => `${f.level} ${f.check}`)))], []);
 });
