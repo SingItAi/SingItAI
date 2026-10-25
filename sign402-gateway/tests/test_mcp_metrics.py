@@ -118,15 +118,16 @@ class McpCallEventTests(Fixture):
         _, _, props = self.only_call()
         self.assertEqual((props["tool"], props["status"], props["error_kind"]), ("get_price", "error", "bad_args"))
 
-    def test_the_per_minute_limit_is_rate_limited(self):
+    def test_a_call_over_the_mcp_rate_limit_is_refused_before_dispatch_and_not_recorded(self):
+        # Since SI-41 (#61) the MCP per-key limit is enforced in handle(), before tools/call is dispatched:
+        # the 61st request gets a JSON-RPC rate-limit error and never reaches _tools_call_observed.
         made = self.make_key(dailyUsd=1)
         self.api.mcp.fetch_json = Mock(return_value={})
         for _ in range(61):
             self.call_tool(made["key"], "list_price_symbols")
         calls = self.events("mcp_call")
-        self.assertEqual(len(calls), 61)
-        self.assertEqual(calls[-1][2]["status"], "rate_limited")
-        self.assertEqual({c[2]["status"] for c in calls[:-1]}, {"ok"})
+        self.assertEqual(len(calls), 60)
+        self.assertEqual({c[2]["status"] for c in calls}, {"ok"})
 
     def test_latency_is_an_int_and_props_are_all_whitelisted_types(self):
         made = self.make_key()

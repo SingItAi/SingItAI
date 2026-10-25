@@ -12,6 +12,11 @@ export const SOLANA_ASSET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const SOLANA_PAY_TO = "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu";
 export const SOLANA_TERMS = Object.freeze({ ...TERMS, settlementFeeAtomic: "2000" });
 
+// The x402 resource's branding, the same on every discoverable route (ResourceInfo's serviceName/iconUrl,
+// @x402/core 2.28): Bazaar and other directories show these next to the listing.
+export const SERVICE_NAME = "SingIt Ask";
+export const ICON_URL = "https://singitai.app/assets/icons/icon-512.png";
+
 // p90 of 38 recorded answer lengths was 0.65 of the max_tokens asked for: most answers stop well short of their
 // budget, so pricing `exact`'s flat ceiling at the whole budget (fraction 1) overcharges the typical question.
 // At this fraction, with the 30% markup and settlement fee, 2 of those 38 recorded cases (both Opus 5.5,
@@ -43,6 +48,10 @@ export function billUsage(usage, terms = TERMS, { allowOverrun = false } = {}) {
   return { ...billed, totalAtomic: cap.toString(), overrunAtomic: (total - cap).toString(), currency: "USDC" };
 }
 
+// Atomic USDC micro-units as a plain decimal string, for a human price (openapi.json, /v1/models, /openapi.json's
+// x-payment-info): "1008" -> "0.001008".
+export const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+
 // The ceiling one answer can cost: the most the model could bill for this question and answer size, plus the
 // markup and the fee. It never drops below MIN_CEILING_ATOMIC; only models whose worst case is higher get a
 // higher ceiling.
@@ -63,9 +72,14 @@ export function billUsage(usage, terms = TERMS, { allowOverrun = false } = {}) {
 // known (metered.mjs's `ceilings`, catalogue.mjs's `priceGuard`): Surplus's own list prices are above what a
 // seller actually charges, so a ceiling priced at list (share 1) holds even when a dearer seller wins; a smaller
 // share holds only together with the X-Min-Discount header that makes it true.
-export function ceilingAtomic(model, { chars, maxTokens, messageCount, charsPerToken = 4 }, terms, share = 1) {
+// The most the model itself could bill for this question and answer size, in micro-units, before markup and fee.
+export function worstModelCostMicro(model, { chars, maxTokens, messageCount, charsPerToken = 4 }, share = 1) {
   const inputTokens = Math.ceil(chars / charsPerToken) + 4 * messageCount;
-  const worst = Math.ceil((inputTokens * model.promptUsdPerToken + maxTokens * model.completionUsdPerToken) * share * 1e6);
+  return Math.ceil((inputTokens * model.promptUsdPerToken + maxTokens * model.completionUsdPerToken) * share * 1e6);
+}
+
+export function ceilingAtomic(model, size, terms, share = 1) {
+  const worst = worstModelCostMicro(model, size, share);
   const total = BigInt(worst) + (BigInt(worst) * BigInt(terms.markupBps) + 9999n) / 10000n + BigInt(terms.settlementFeeAtomic);
   const floor = BigInt(MIN_CEILING_ATOMIC);
   return (total > floor ? total : floor).toString();

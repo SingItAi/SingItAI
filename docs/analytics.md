@@ -42,7 +42,10 @@ cookies, no third-party script, no address/email/tx-hash/prompt content ever lea
 | `chat_answer_paid` | Server | `web_agent.py` `record_usage()` (web chat), `web_balance.py` `bill()` (API-key balance), `ask_metered.py`/`ask_solana.py` `pay()` (x402 metered Ask, Base and Solana) |
 | `funds_added` | Server | `web_balance.py` `credit_topup()`, once its ledger row is committed |
 | `api_key_created` | Server | `web_api_keys.py`, after the key is created |
+| `allowance_setup_view`, `limits_saved`, `limits_failed`, `grant_prepared`, `grant_prepare_failed`, `wallet_sign_rejected`, `grant_result` | Client | `main.js` `renderAllowance()`, `createLimiter()`, `walletOperation()` — the setup funnel, both chains (SI-45) |
 | `mcp_call` | Server | `web_mcp.py` `McpServer._tools_call_observed()`, once per MCP `tools/call` after it finishes |
+
+Setup funnel order: `allowance_setup_view` (once per page load per chain) → `limits_saved` (or `limits_failed` `reason=validation|server`) → `grant_prepared` (or `grant_prepare_failed` `reason=no_sol|other`) → `wallet_sign_rejected` (`reason=rejected|error`, `kind=grant|revoke|fund_gas`) → `grant_result` (`state` = final op state). All carry `chain`; the wallet/result events also carry `kind`. Server-side, a stale or superseded `PREPARED` Solana op now emits `approval_signed`/`revoke` with `state=EXPIRED`, and a refusal for lack of SOL emits them with `state=NO_SOL`.
 
 `repeat_purchase` is not a separate event: filter `purchase_completed` by `purchase_n >= 2`.
 `purchase_completed` is not emitted for a settlement of `https://ask.singitai.app/v1/credit` (a
@@ -68,8 +71,9 @@ building or storing the event is logged and swallowed: it never reaches the requ
 
 The user is the usual `uid`, from the key's `account_id`. Tool arguments (queries, URLs, symbols,
 prompts) are never read into the event, and neither are the API key, a wallet address, an account
-id or a transaction hash. `rate_limited` covers both the key's own 60-a-minute limit and a
-`rate_limit_exceeded` from the shop behind it; the two are not told apart.
+id or a transaction hash. `rate_limited` is a `rate_limit_exceeded` from the paid-tool path behind
+the call. A request over MCP's own per-key limit (`SINGIT_MCP_REQUESTS_PER_MINUTE`) is refused in
+`handle()` before `tools/call` is dispatched, so it is not recorded as an `mcp_call` at all.
 
 ## Environment variables
 
@@ -129,10 +133,15 @@ A few fields need a reporting note, because the underlying tables were not desig
 - **`settlements_by_lane`** splits Base settlements into `web` (`user_id` starts with
   `wallet:`, matching web.db's accounts) and `telegram` (a bare numeric id — the legacy
   Telegram-bot lane, which shares `allowance.db` with the web lane).
-- **`abandoned_solana_setups`** (`today` / `total_outstanding`) counts Solana `ops` rows that
-  are `GRANT`+`PREPARED` and more than an hour old: the owner never came back to sign the
-  wallet transaction. These are not counted as `errors.ops_failed`/`ops_expired` — nothing
-  failed, the setup was simply abandoned.
+- **`abandoned_solana_setups`** (`today` / `total`, in the `solana_allowance` detail section as
+  `abandoned_setups`) is account-level, not an `ops` row count: it counts accounts whose `limits`
+  row is more than an hour old and that never reached a `GRANT`+`DONE` op. Counting `PREPARED`
+  rows instead (as this used to) was misleading — the wallet prompt being closed/rejected or a
+  blockhash expiring leaves several `PREPARED` rows for an account that granted moments later
+  (SI-45); those now show up as `grant_retries` (`today` / `total`: `PREPARED`/`EXPIRED` `GRANT`
+  rows from an account that did eventually grant), alongside `accounts_with_limits` and
+  `accounts_granted`. None of these are counted as `errors.ops_failed`/`ops_expired` — nothing
+  failed, the setup was simply never finished (or was retried until it was).
 - **`errors.ops_failed`/`ops_expired`/`ops_uncertain`** only sum kinds that table actually has:
   Base's `operations.kind` is `GRANT`/`REVOKE`/`PAUSE` (no `FUND_GAS`, no `UNCERTAIN` state);
   Solana's `ops.kind` adds `FUND_GAS` and has no `PAUSE`.
