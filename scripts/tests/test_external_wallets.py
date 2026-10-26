@@ -170,7 +170,7 @@ class ExternalWalletsTests(unittest.TestCase):
             out = io.StringIO()
             with redirect_stdout(out):
                 ew.main(argv + ["--allowance-db", str(self.base), "--solana-db", str(self.sol), "--web-db", str(self.web)],
-                        env={"SINGIT_OWN_WALLETS": BASE_AGENT_OURS})
+                        env={"SINGIT_OWN_WALLETS": BASE_AGENT_OURS, "SINGIT_ID_SALT": "test-salt"})
             text = out.getvalue().lower()
             for addr in (BASE_OWNER_A, BASE_OWNER_OURS, BASE_AGENT_OURS, BASE_AGENT_A, LIMITER_A, LIMITER_OURS,
                          SOL_OWNER_X, SOL_OWNER_Y, SOL_AGENT_Y, "104561"):
@@ -198,9 +198,67 @@ class ExternalWalletsTests(unittest.TestCase):
             db.execute("DELETE FROM settlements")
         db.close()
 
+    def test_a_rejected_limiter_never_takes_the_payments(self):
+        db = sqlite3.connect(self.base)
+        db.execute("INSERT INTO limiters VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                   ("0x6666666666666666666666666666666666666666", f"wallet:{BASE_OWNER_A.lower()}",
+                    "0x7777777777777777777777777777777777777777", BASE_AGENT_A, "0xg", 1, 1, DAY * 2, "0xd", "REJECTED", "web", DAY + 60))
+        db.commit(); db.close()
+        r = self.report(ew.parse_list(BASE_OWNER_A))  # excluding the real owner must still exclude every payment of it
+        self.assertEqual((r["base"]["wallets_with_limits"], r["base"]["payments"], r["base"]["excluded_payments"]), (1, 1, 3))
+        self.assertEqual(r["base"]["users_with_several_owners"], 0)
+
+    def test_an_agent_exclusion_covers_a_payment_only_wallet(self):
+        db = sqlite3.connect(self.sol)
+        z, agent = "So1anaOwnerZzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz1", "So1anaAgentZzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz1"
+        db.execute("INSERT INTO agents VALUES (?,?,?,?)", (f"solana:{z}", agent, "enc", DAY))
+        db.execute("INSERT INTO spends(account, amount, purpose, pull_tx, created_at) VALUES (?, 5, 'x', 'tz', ?)", (f"solana:{z}", DAY))
+        db.commit(); db.close()
+        self.assertEqual(self.report()["solana"]["wallets_paid"], 3)
+        r = self.report(ew.parse_list(agent))
+        self.assertEqual((r["solana"]["wallets_paid"], r["solana"]["excluded_payments"]), (2, 1))
+
+    def test_errors_never_echo_arguments_or_values(self):
+        import contextlib
+        addr = SOL_OWNER_Y
+        for argv in (["--since", addr], ["--bogus", addr], ["--ids"]):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as caught:
+                ew.main(argv + ["--allowance-db", str(self.base), "--solana-db", str(self.sol)], env={})
+            self.assertNotIn(addr, err.getvalue() + str(caught.exception.code))
+        db = sqlite3.connect(self.sol)
+        db.execute("UPDATE spends SET amount = ? WHERE id = 1", (addr,))  # a malformed stored value
+        db.commit(); db.close()
+        with self.assertRaises(ew.StoreError) as caught:
+            self.report()
+        self.assertNotIn(addr, str(caught.exception))
+
+    def test_a_read_error_other_than_a_missing_table_is_not_a_zero(self):
+        db = sqlite3.connect(self.sol)
+        db.execute("ALTER TABLE spends RENAME COLUMN pull_tx TO something_else")
+        db.commit(); db.close()
+        with self.assertRaises(ew.StoreError):
+            self.report()
+
+    def test_a_wal_store_is_read_from_a_copy_and_left_untouched(self):
+        db = sqlite3.connect(self.sol)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA wal_autocheckpoint=0")
+        db.execute("INSERT INTO spends(account, amount, purpose, pull_tx, created_at) VALUES (?, 1, 'w', 'tw', ?)",
+                   (f"solana:{SOL_OWNER_Y}", DAY + 9))
+        db.commit()
+        directory = self.sol.parent
+        before = {p.name: p.read_bytes() for p in directory.iterdir()}
+        r = self.report()
+        self.assertEqual(r["solana"]["payments"], 4)  # the row still in the -wal is seen
+        after = {p.name: p.read_bytes() for p in directory.iterdir()}
+        self.assertEqual(before, after)
+        db.close()
+
     def test_confirmed_drops_the_provisional_mark(self):
         r = self.report(confirmed=True)
         self.assertFalse(r["provisional"])
+        self.assertTrue(r["exclusions_confirmed"])
         out = io.StringIO()
         with redirect_stdout(out):
             ew.main(["--allowance-db", str(self.base), "--solana-db", str(self.sol), "--web-db", str(self.web)], env={})
