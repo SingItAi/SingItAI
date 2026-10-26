@@ -1,4 +1,4 @@
-import { payAskRequest } from "../x402/pay.js";
+import { payAskRequest, SingItAskError } from "../x402/pay.js";
 import { DailyLimiter, usdToAtomic, BASE_PIN, DEFAULT_ASK_BASE_URL } from "../x402/guards.js";
 import { readSetting, readNumberSetting } from "../settings.js";
 
@@ -69,9 +69,11 @@ export const singitPaidChatAction = {
       await callback?.({ text, actions: ["SINGIT_PAID_CHAT"] });
       return { text, success: true, data: { answer, payment } };
     } catch (error) {
-      const text = `SingIt Ask payment was refused: ${error.message}`;
+      const unpaid = error instanceof SingItAskError;
+      const text = unpaid ? `SingIt Ask is unavailable (HTTP ${error.status}); no payment was made.`
+        : `SingIt Ask payment was refused: ${error.message}`;
       await callback?.({ text, actions: ["SINGIT_PAID_CHAT"] });
-      return { text, success: false, error: error.message };
+      return { text, success: false, error: error.message, ...(unpaid ? { data: { status: error.status } } : {}) };
     }
   },
 };

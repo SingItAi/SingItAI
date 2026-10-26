@@ -15,6 +15,7 @@ export declare class SingItMcpClient {
 }
 
 export declare class SingItPaymentError extends Error {}
+export declare class SingItAskError extends Error { status: number }
 
 export interface BasePin {
   caip: string;

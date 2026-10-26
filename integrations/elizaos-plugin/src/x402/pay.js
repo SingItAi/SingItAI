@@ -17,6 +17,14 @@ export function buildEvmSigner({ evmPrivateKey, rpcUrl = BASE_PIN.defaultRpcUrl 
   };
 }
 
+// A non-2xx, non-402 reply from Ask itself (rate limit, outage): no payment was made or attempted.
+export class SingItAskError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function signOffer(scheme, offer, extensions, signer) {
   const { [scheme === "upto" ? "UptoEvmScheme" : "ExactEvmScheme"]: Scheme } =
     await import(scheme === "upto" ? "@x402/evm/upto/client" : "@x402/evm/exact/client");
@@ -42,7 +50,12 @@ export async function payAskRequest({
   });
 
   const first = await send({});
-  if (first.status !== 402) return { response: await first.json(), payment: null };
+  if (first.status !== 402) {
+    if (!first.ok) {
+      throw new SingItAskError(`SingIt Ask returned HTTP ${first.status} before any payment challenge; nothing was paid.`, first.status);
+    }
+    return { response: await first.json(), payment: null };
+  }
 
   const header = first.headers.get("payment-required");
   if (!header) throw new SingItPaymentError("Got HTTP 402 with no PAYMENT-REQUIRED header.");

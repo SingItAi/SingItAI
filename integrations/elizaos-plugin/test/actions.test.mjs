@@ -39,6 +39,15 @@ test("extractPriceArgs does not turn contraction fragments into symbols", () => 
   assert.deepEqual(extractPriceArgs("What's the EUR to USD rate?"), { kind: "fx", base: "EUR", quote: "USD" });
 });
 
+test("extractPriceArgs sends crypto/metal pairs to the crypto/metal lookup and only fiat pairs to fx", () => {
+  assert.deepEqual(extractPriceArgs("What is the price of BTC/USD?"), { kind: "crypto", symbol: "BTC" });
+  assert.deepEqual(extractPriceArgs("Quote ETH to USD"), { kind: "crypto", symbol: "ETH" });
+  assert.deepEqual(extractPriceArgs("XAU/USD please"), { kind: "metal", symbol: "XAU" });
+  assert.deepEqual(extractPriceArgs("USD to BTC"), { kind: "crypto", symbol: "BTC" });
+  assert.deepEqual(extractPriceArgs("GBP/JPY"), { kind: "fx", base: "GBP", quote: "JPY" });
+  assert.deepEqual(extractPriceArgs("What's the EUR to USD rate?"), { kind: "fx", base: "EUR", quote: "USD" });
+});
+
 test("SINGIT_GET_PRICE validate() matches price-ish phrasing", async () => {
   assert.equal(await getSingitPriceAction.validate(makeRuntime(), { content: { text: "What's the price of BTC?" } }), true);
   assert.equal(await getSingitPriceAction.validate(makeRuntime(), { content: { text: "Tell me a joke" } }), false);

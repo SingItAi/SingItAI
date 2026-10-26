@@ -169,3 +169,54 @@ test("SINGIT_PAID_CHAT shares one daily limiter across handler invocations on th
     await merchant.close();
   }
 });
+
+async function startErrorServer(status) {
+  const http = await import("node:http");
+  let hits = 0;
+  const server = http.createServer((req, res) => {
+    hits += 1;
+    req.resume();
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: { message: "slow down" } }));
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  return { url: `http://127.0.0.1:${server.address().port}`, hits: () => hits, close: () => new Promise(r => server.close(r)) };
+}
+
+test("payAskRequest throws on a pre-challenge HTTP 429/503 instead of returning the error body", async () => {
+  const { SingItAskError } = await import("../src/x402/pay.js");
+  for (const status of [429, 503]) {
+    const server = await startErrorServer(status);
+    try {
+      const limiter = new DailyLimiter(usdToAtomic(1));
+      await assert.rejects(payAskRequest({
+        body: { messages: [{ role: "user", content: "Hello" }] }, baseUrl: server.url,
+        evmPrivateKey: privateKey, limiter, maxPerCallAtomic: usdToAtomic(0.01),
+      }), error => error instanceof SingItAskError && error.status === status);
+      assert.equal(server.hits(), 1);
+    } finally {
+      await server.close();
+    }
+  }
+});
+
+test("SINGIT_PAID_CHAT reports failure with the HTTP status when Ask errors before a challenge", async () => {
+  const server = await startErrorServer(503);
+  try {
+    const runtime = makeRuntime({
+      SINGIT_ASK_BASE_URL: server.url, SINGIT_EVM_PRIVATE_KEY: privateKey,
+      SINGIT_MAX_PER_CALL_USD: "0.01", SINGIT_MAX_PER_DAY_USD: "1",
+    });
+    let callback;
+    const result = await singitPaidChatAction.handler(
+      runtime, { content: { text: "ask singit ask: hello" } }, undefined, undefined, args => { callback = args; },
+    );
+    assert.equal(result.success, false);
+    assert.equal(result.data.status, 503);
+    assert.match(callback.text, /HTTP 503/);
+    assert.match(callback.text, /no payment was made/);
+    assert.doesNotMatch(callback.text, /\(no answer\)/);
+  } finally {
+    await server.close();
+  }
+});

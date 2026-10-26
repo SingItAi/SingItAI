@@ -3,6 +3,13 @@
 // an agent that wants richer extraction can replace this action with its own.
 const METALS = new Set(["XAU", "XAG"]);
 const KNOWN_SYMBOLS = new Set(["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "BNB", "LTC", "AVAX", "DOT", "LINK", "XAU", "XAG"]);
+// The gateway's fx lookup (/v1/prices/fx/{base}/{quote}) is fiat-only; crypto and metal tickers
+// must go through the crypto/metal lookup even when phrased as a pair ("BTC/USD").
+const FIAT = new Set([
+  "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY", "HKD", "SGD", "SEK", "NOK", "DKK",
+  "PLN", "CZK", "HUF", "RON", "TRY", "INR", "KRW", "MXN", "BRL", "ZAR", "THB", "IDR", "MYR", "PHP",
+  "ILS", "AED", "SAR", "TWD", "CLP", "COP", "ARS", "UAH", "VND", "EGP", "NGN", "KES", "PKR", "BDT",
+]);
 const NAMES = {
   bitcoin: "BTC", ethereum: "ETH", ether: "ETH", solana: "SOL", ripple: "XRP", dogecoin: "DOGE",
   cardano: "ADA", litecoin: "LTC", gold: "XAU", silver: "XAG",
@@ -15,8 +22,15 @@ const STOPWORDS = new Set([
 ]);
 
 export function extractPriceArgs(text = "") {
-  const fx = /\b([a-z]{3})\s*(?:\/|to)\s*([a-z]{3})\b/i.exec(text);
-  if (fx) return { kind: "fx", base: fx[1].toUpperCase(), quote: fx[2].toUpperCase() };
+  for (const pair of text.matchAll(/\b([a-z]{3})\s*(?:\/|to)\s*([a-z]{3})\b/gi)) {
+    const base = pair[1].toUpperCase();
+    const quote = pair[2].toUpperCase();
+    if (FIAT.has(base) && FIAT.has(quote)) return { kind: "fx", base, quote };
+    const symbol = [base, quote].find(side => KNOWN_SYMBOLS.has(side))
+      ?? (FIAT.has(quote) && !STOPWORDS.has(base.toLowerCase()) ? base : null)
+      ?? (FIAT.has(base) && !STOPWORDS.has(quote.toLowerCase()) ? quote : null);
+    if (symbol) return { kind: METALS.has(symbol) ? "metal" : "crypto", symbol };
+  }
 
   // Drop contraction suffixes first ("What's" -> "What", "it’s" -> "it") so a stray "s" or "re"
   // fragment can never be picked up as a symbol.
