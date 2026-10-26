@@ -58,7 +58,8 @@ export function spentOnReasoning(route, data) {
   const answered = (Array.isArray(data.output) ? data.output : []).some((item) => {
     if (!item || item.type === "reasoning") return false;
     if (item.type === "function_call") return true;
-    return Array.isArray(item.content) && item.content.length > 0;
+    return (Array.isArray(item.content) ? item.content : []).some((c) =>
+      c?.type === "refusal" || (c?.type !== "reasoning_text" && String(c?.text ?? "").trim()));
   });
   return data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" && !answered;
 }
