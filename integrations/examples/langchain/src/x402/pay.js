@@ -19,11 +19,22 @@ function buildEvmSigner({ evmPrivateKey, rpcUrl = BASE_PIN.defaultRpcUrl }) {
   };
 }
 
+// Same as sdk/typescript mergeExtensions: keep the merchant's declared extension fields next to the
+// signed ones, or the facilitator rejects the payment with extension_echo_mismatch.
+export function mergeExtensions(signedExtensions, declaredExtensions) {
+  if (!signedExtensions) return undefined;
+  return Object.fromEntries(Object.entries(signedExtensions).map(([key, value]) => {
+    const declared = declaredExtensions?.[key] ?? {};
+    return [key, { ...declared, ...value, info: { ...declared.info, ...value.info } }];
+  }));
+}
+
 async function signOffer(scheme, offer, extensions, signer) {
   const { [scheme === "upto" ? "UptoEvmScheme" : "ExactEvmScheme"]: Scheme } =
     await import(scheme === "upto" ? "@x402/evm/upto/client" : "@x402/evm/exact/client");
   const signed = await new Scheme(signer).createPaymentPayload(2, offer, { extensions });
-  return { x402Version: 2, accepted: offer, payload: signed.payload, ...(signed.extensions ? { extensions: signed.extensions } : {}) };
+  const merged = mergeExtensions(signed.extensions, extensions);
+  return { x402Version: 2, accepted: offer, payload: signed.payload, ...(merged ? { extensions: merged } : {}) };
 }
 
 /**
