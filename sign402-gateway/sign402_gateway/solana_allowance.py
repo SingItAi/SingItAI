@@ -13,6 +13,17 @@ contract here yet, so the pieces are split:
   facilitator checks the signer, mint, recipient and amount, not whose account it is:
   solana-x402-service/test/delegated.test.mjs).
 
+Emergency stop (pause, SI-98): one click, no wallet and no fee. From the moment it is
+recorded, no new purchase or metered hold for the account can be reserved (the check
+sits in the same write transaction as every reservation, so other workers see it too)
+and the agent no longer spends. The USDC never leaves the owner's wallet. Like Base's
+guardian pause it is not undone by a hot key: only a new approval signed by the owner's
+wallet after the pause (a GRANT prepared after it, confirmed, with a signature no other
+op carries and the blockhash we prepared) resumes spending. The
+SPL delegate approval itself stays on chain until the owner revokes it, so the app
+still recommends Revoke for a full on-chain stop. A purchase already reserved before
+the pause may still settle; nothing new starts.
+
 The owner pays approval/revoke fees from their SOL. Metered Ask funding uses the
 user agent's own SOL for network fees and token-account rent. The owner explicitly
 funds that agent through a wallet-signed SOL transfer; there is no operator fallback. The chain work runs in the Node x402 service (solana-x402-service/src/allowance.mjs)
@@ -21,6 +32,8 @@ through the same bridge the bot's Solana chat uses.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import os
 import secrets
@@ -35,7 +48,7 @@ from typing import Any, Callable, Iterator, Mapping
 from . import analytics
 from .agent_allowance import AllowanceError, AllowanceUnavailable
 from .secure_state import ensure_private_directory, ensure_private_file
-from .solana_keys import generate_keypair
+from .solana_keys import b58encode, generate_keypair
 from .web_accounts import SOLANA_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -57,6 +70,8 @@ NOTHING_SENT_CODES = frozenset({
     "RECIPIENT_ACCOUNT_MISSING", "INVALID_RECIPIENT", "FEE_PAYER_REQUIRED", "FEE_PAYER_LOW", "FEE_PAYER_UNAVAILABLE",
 })
 NOTHING_SENT_STATES = frozenset({"failed", "not_submitted"})
+PAUSED_TEXT = ("Your agent is paused (emergency stop), so it cannot spend. Nothing was paid. "
+               "To spend again, approve a new allowance from your wallet.")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS agents (
@@ -75,7 +90,52 @@ CREATE TABLE IF NOT EXISTS metered_holds (
     hold_id TEXT PRIMARY KEY, account TEXT NOT NULL, amount INTEGER NOT NULL, created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS metered_holds_by_account ON metered_holds(account);
 CREATE INDEX IF NOT EXISTS spends_by_day ON spends(account, created_at);
+CREATE TABLE IF NOT EXISTS pauses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT NOT NULL, trigger TEXT NOT NULL, created_at INTEGER NOT NULL,
+    ops_watermark INTEGER);
+CREATE INDEX IF NOT EXISTS pauses_by_account ON pauses(account, created_at);
 """
+
+
+def _shortvec(data: bytes, at: int) -> tuple[int, int]:
+    value = shift = 0
+    for _ in range(3):
+        byte = data[at]
+        at += 1
+        value |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return value, at
+        shift += 7
+    raise ValueError("bad length")
+
+
+def _parse_wire(wire_b64: Any) -> tuple[str | None, str | None]:
+    """(first signature as base58, recent blockhash as hex) of a base64 wire transaction, legacy or v0.
+
+    Layout: shortvec signature count, 64-byte signatures, then the message: an optional version byte
+    (high bit set), the 3-byte header, shortvec account count, 32-byte keys, the 32-byte blockhash.
+    The first signature is the fee payer's: the transaction's id, as the bridge reports it.
+    """
+    try:
+        raw = base64.b64decode(str(wire_b64), validate=True)
+        count, at = _shortvec(raw, 0)
+        first = raw[at:at + 64] if count else b""
+        at += 64 * count
+        if raw[at] & 0x80:
+            at += 1
+        keys, at = _shortvec(raw, at + 3)
+        at += 32 * keys
+        blockhash = raw[at:at + 32]
+        if len(blockhash) != 32:
+            return None, None
+        return (b58encode(first) if len(first) == 64 else None), blockhash.hex()
+    except (ValueError, IndexError, binascii.Error):
+        return None, None
+
+
+def transaction_blockhash(wire_b64: Any) -> str | None:
+    """The recent blockhash (hex) of a base64 wire transaction; None if it cannot be read."""
+    return _parse_wire(wire_b64)[1]
 
 
 def _usdc(value: Any, label: str) -> int:
@@ -112,6 +172,16 @@ class SolanaAllowanceStore:
                 db.execute("ALTER TABLE ops ADD COLUMN owner_pays_fee INTEGER NOT NULL DEFAULT 0")
             if "tx_blockhash" not in columns:
                 db.execute("ALTER TABLE ops ADD COLUMN tx_blockhash TEXT")
+            # SI-98: the blockhash of the transaction we prepared, and of the one the wallet signed (GRANT).
+            if "prepared_blockhash" not in columns:
+                db.execute("ALTER TABLE ops ADD COLUMN prepared_blockhash TEXT")
+            if "signed_blockhash" not in columns:
+                db.execute("ALTER TABLE ops ADD COLUMN signed_blockhash TEXT")
+            pause_columns = {row["name"] for row in db.execute("PRAGMA table_info(pauses)")}
+            if "ops_watermark" not in pause_columns:  # a pauses table from before the watermark: keep it paused
+                db.execute("ALTER TABLE pauses ADD COLUMN ops_watermark INTEGER")
+                db.execute("UPDATE pauses SET ops_watermark = (SELECT COALESCE(MAX(rowid), 0) FROM ops) "
+                           "WHERE ops_watermark IS NULL")
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
@@ -152,8 +222,17 @@ class SolanaAllowanceStore:
     def add_op(self, op: Mapping[str, Any]) -> None:
         with self._db() as db:
             db.execute("""INSERT INTO ops(op_id, account, kind, amount, message_hash, state, tx, detail, created_at, updated_at,
-                          owner_pays_fee) VALUES (:op_id, :account, :kind, :amount, :message_hash, :state, NULL, '', :now, :now,
-                          :owner_pays_fee)""", {"owner_pays_fee": 1, **dict(op)})
+                          owner_pays_fee, prepared_blockhash) VALUES (:op_id, :account, :kind, :amount, :message_hash, :state,
+                          NULL, '', :now, :now, :owner_pays_fee, :prepared_blockhash)""",
+                       {"owner_pays_fee": 1, "prepared_blockhash": None, **dict(op)})
+
+    def finish_grant(self, op_id: str, state: str, now: int, tx: str | None, detail: str,
+                     signed_blockhash: str | None) -> None:
+        """A GRANT's outcome, with the blockhash of the very transaction whose signature `tx` is: one write,
+        so a concurrent submission of another transaction cannot pair its blockhash with this signature."""
+        with self._db() as db:
+            db.execute("UPDATE ops SET state = ?, tx = COALESCE(?, tx), detail = ?, updated_at = ?, signed_blockhash = ? "
+                       "WHERE op_id = ?", (state, tx, detail, now, signed_blockhash, op_id))
 
     def op(self, account: str, op_id: str) -> sqlite3.Row | None:
         with self._db() as db:
@@ -163,6 +242,55 @@ class SolanaAllowanceStore:
         with self._db() as db:
             db.execute("UPDATE ops SET state = ?, tx = COALESCE(?, tx), detail = ?, updated_at = ? WHERE op_id = ?",
                        (state, tx, detail, now, op_id))
+
+    # -- emergency stop (SI-98) --
+
+    @staticmethod
+    def _paused_at(db: sqlite3.Connection, account: str) -> int | None:
+        """When the account's agent was paused, or None if it is not paused (any more).
+
+        A pause ends only with a wallet-signed approval prepared after it: a GRANT op inserted
+        after the pause was committed (its rowid is above the pause's ops_watermark, taken in the
+        same write transaction, so wall-clock order and same-second races do not matter) that
+        reached DONE with a transaction signature no other op carries (a replayed, already-landed
+        approval reports "confirmed" again but is not a new signature), and whose signed
+        transaction carries the very blockhash we fetched when preparing it after the pause: the
+        bridge accepts a wallet-modified message (allowance.mjs doesOnly), so without this an
+        approval signed before the pause and never sent could be submitted against a fresh op.
+        An approval prepared before the pause never lifts it. ops rows are never deleted, so
+        rowids only grow.
+        """
+        pause = db.execute("SELECT created_at, ops_watermark FROM pauses WHERE account = ? ORDER BY id DESC LIMIT 1",
+                           (account,)).fetchone()
+        if pause is None:
+            return None
+        resumed = db.execute(
+            "SELECT 1 FROM ops g WHERE g.account = ? AND g.kind = 'GRANT' AND g.state = 'DONE' AND g.rowid > ? "
+            "AND g.tx IS NOT NULL AND g.tx != '' "
+            "AND g.prepared_blockhash IS NOT NULL AND g.signed_blockhash = g.prepared_blockhash "
+            # Not a blockhash any op prepared before the pause also got (one slot's blockhash can serve
+            # several prepares): an approval signed then would carry it too.
+            "AND NOT EXISTS (SELECT 1 FROM ops e WHERE e.account = g.account AND e.rowid <= ? "
+            "AND e.prepared_blockhash = g.prepared_blockhash) "
+            "AND NOT EXISTS (SELECT 1 FROM ops o WHERE o.tx = g.tx AND o.rowid != g.rowid) LIMIT 1",
+            (account, pause["ops_watermark"], pause["ops_watermark"])).fetchone()
+        return None if resumed else int(pause["created_at"])
+
+    def paused_at(self, account: str) -> int | None:
+        with self._db() as db:
+            return self._paused_at(db, account)
+
+    def pause(self, account: str, trigger: str, now: int) -> tuple[bool, int]:
+        """Record an emergency stop. Returns (newly paused, paused_at); idempotent while paused."""
+        with self._db() as db:
+            db.execute("BEGIN IMMEDIATE")
+            already = self._paused_at(db, account)
+            if already is not None:
+                return False, already
+            watermark = db.execute("SELECT COALESCE(MAX(rowid), 0) FROM ops").fetchone()[0]
+            db.execute("INSERT INTO pauses(account, trigger, created_at, ops_watermark) VALUES (?, ?, ?, ?)",
+                       (account, trigger[:40], now, watermark))
+            return True, now
 
     def spent_since(self, account: str, since: int) -> int:
         with self._db() as db:
@@ -190,6 +318,8 @@ class SolanaAllowanceStore:
         limits = db.execute("SELECT * FROM limits WHERE account = ?", (account,)).fetchone()
         if limits is None:
             raise AllowanceUnavailable("Set your limits and approve them first.")
+        if SolanaAllowanceStore._paused_at(db, account) is not None:
+            raise AllowanceError(PAUSED_TEXT)
         if type(amount) is not int or amount <= 0:
             raise AllowanceError("The payment must be a positive integer amount of atomic USDC.")
         if limits["expiry"] <= now:
@@ -408,12 +538,16 @@ class SolanaAllowanceService:
         allowed = int(chain["owner"]["delegatedToAgent"])
         spent = self.store.spent_since(account, int(self.now()) // DAY * DAY)
         expired = limits["expiry"] <= self.now()
-        state = "expired" if expired else "granted" if allowed > 0 else "waiting_for_grant"
+        paused_at = self.store.paused_at(account)
+        state = ("paused" if paused_at is not None else "expired" if expired
+                 else "granted" if allowed > 0 else "waiting_for_grant")
         return {
             "configured": True, "chain": "solana", "state": state, "owner": owner,
+            "paused": paused_at is not None, "pausedAt": paused_at,
             "limiter": self.agent_key(account)[0],  # the delegate plays the limiter's part on Solana
             "dailyCapAtomic": limits["daily_cap"], "perPurchaseCapAtomic": limits["per_purchase_cap"],
-            "remainingTodayAtomic": max(0, limits["daily_cap"] - spent), "allowanceAtomic": allowed,
+            "remainingTodayAtomic": 0 if paused_at is not None else max(0, limits["daily_cap"] - spent),
+            "allowanceAtomic": allowed,
             "floatAtomic": int(chain["agent"]["usdcAtomic"]), "ownerUsdcAtomic": int(chain["owner"]["amount"]),
             "agentSolLamports": str(chain["agent"].get("solLamports") or "0"),
             "ownerSolLamports": str(chain["owner"].get("solLamports") or "0"),
@@ -486,7 +620,8 @@ class SolanaAllowanceService:
         for stale in self.store.expire_stale_prepared(account, now, PREPARE_SECONDS) + self.store.supersede_prepared(account, kind, now):
             self._emit_op_event(stale, "EXPIRED")
         self.store.add_op({"op_id": op_id, "account": account, "kind": kind, "amount": atomic, "owner_pays_fee": int(owner_pays),
-                           "message_hash": prepared["messageHash"], "state": "PREPARED", "now": now})
+                           "message_hash": prepared["messageHash"], "state": "PREPARED", "now": now,
+                           "prepared_blockhash": transaction_blockhash(prepared["transaction"])})
         agent = self.agent_key(account)[0]
         shows = (f"Your wallet will ask you to let {agent[:4]}…{agent[-4:]} spend up to {_text(atomic)} of your USDC."
                  if kind == "GRANT" else "Your wallet will ask you to revoke your agent's permission to spend your USDC.")
@@ -549,6 +684,13 @@ class SolanaAllowanceService:
             if result.get("transaction") != inspected["transaction"]:
                 state, detail = "UNCERTAIN", "The transfer receipt needs confirmation. It was not repeated."
             self.store.finish_pending_op(account, op_id, state, detail, int(self.now()))
+        elif op["kind"] == "GRANT":
+            # For the emergency stop's resume rule (SI-98): the blockhash of what the wallet signed, kept only
+            # when the bridge's confirmed signature is that very transaction's.
+            signature, signed_blockhash = _parse_wire(transaction)
+            bound = signed_blockhash if signature and signature == result.get("transaction") else None
+            self.store.finish_grant(op_id, state, int(self.now()), result.get("transaction"), detail, bound)
+            self._emit_op_event(op, state)
         else:
             self.store.update_op(op_id, state, int(self.now()), tx=result.get("transaction"), detail=detail)
             self._emit_op_event(op, state)
@@ -591,6 +733,26 @@ class SolanaAllowanceService:
                 "amountAtomic": str(op["amount"]), "currency": "SOL" if op["kind"] == "FUND_GAS" else "USDC", "txHash": op["tx"], "detail": detail,
                 "explorer": f"https://solscan.io/tx/{op['tx']}" if op["tx"] else None}
 
+    def pause(self, account: str, *, trigger: str = "user") -> dict[str, Any]:
+        """The emergency stop: the agent stops spending at once. No wallet, no transaction, no fee."""
+        self.owner(account)
+        limits = self.store.limits(account)
+        if limits is None:
+            raise AllowanceError("You have no Solana allowance to pause.")
+        newly, paused_at = self.store.pause(account, trigger, int(self.now()))
+        if newly:
+            logger.info("solana allowance: %s paused (%s)", analytics.hash_account_id(account), trigger)
+            analytics.emit("pause", account, chain="solana", trigger=trigger,
+                           days_since_grant=(paused_at - limits["created_at"]) // DAY)
+        try:
+            described = self.status(account)
+        except Exception:  # the stop is recorded; a slow RPC must not hide that
+            described = {"configured": True, "chain": "solana", "state": "paused", "paused": True, "pausedAt": paused_at}
+        described["text"] = ("Paused. Your agent can no longer spend from your wallet; your USDC stays where it is. "
+                             "To also end the approval on Solana, revoke it from your wallet. "
+                             "To resume later, approve a new allowance.")
+        return described
+
     def stale_allowances(self, account: str) -> list[dict[str, Any]]:
         return []  # one delegate per token account: a new approval replaces the old one
 
@@ -609,6 +771,8 @@ class SolanaAllowanceService:
                 raise AllowanceError("The payment must be a positive integer amount of atomic USDC.")
             if self.store.limits(account) is None:
                 raise AllowanceUnavailable("Set your limits and approve them first.")
+            if self.store.paused_at(account) is not None:  # fail fast; reserve_spend checks again atomically
+                raise AllowanceError(PAUSED_TEXT)
             owner = self.chain_state(account)["owner"]
             if amount > int(owner["delegatedToAgent"]):
                 raise AllowanceError("Your wallet's approval is used up or revoked. Approve a new allowance to continue. Nothing was paid.")

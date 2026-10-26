@@ -36,7 +36,7 @@ cookies, no third-party script, no address/email/tx-hash/prompt content ever lea
 | `limits_set` | Server | `agent_allowance.py` / `solana_allowance.py` `setup()`, after the limiter/limits row is committed |
 | `approval_signed` | Server | `agent_allowance.py` `_advance_op`/`advance()`, `solana_allowance.py` `submit_wallet()` — a GRANT operation reaching `DONE`/`FAILED` |
 | `revoke` | Server | same choke points as `approval_signed`, for a REVOKE operation |
-| `pause` | Server | `agent_allowance.py` `pause()` (`trigger=user` from the API route, `trigger=watcher_auto_pause` from `allowance_watcher.py`) |
+| `pause` | Server | `agent_allowance.py` `pause()` (`trigger=user` from the API route, `trigger=watcher_auto_pause` from `allowance_watcher.py`); `solana_allowance.py` `pause()` (`chain=solana`, `trigger=user`), once per stop |
 | `purchase_completed` | Server | `agent_allowance.py` `count_settlement()` (Base), `solana_allowance.py` `spend()` (Solana) |
 | `purchase_failed` | Server | `allowance_bitrefill.py` `buy()` (a refusal before paying), `solana_allowance.py` `spend()` (nothing sent) |
 | `chat_answer_paid` | Server | `web_agent.py` `record_usage()` (web chat), `web_balance.py` `bill()` (API-key balance), `ask_metered.py`/`ask_solana.py` `pay()` (x402 metered Ask, Base and Solana) |
@@ -145,7 +145,8 @@ A few fields need a reporting note, because the underlying tables were not desig
   failed, the setup was simply never finished (or was retried until it was).
 - **`errors.ops_failed`/`ops_expired`/`ops_uncertain`** only sum kinds that table actually has:
   Base's `operations.kind` is `GRANT`/`REVOKE`/`PAUSE` (no `FUND_GAS`, no `UNCERTAIN` state);
-  Solana's `ops.kind` adds `FUND_GAS` and has no `PAUSE`.
+  Solana's `ops.kind` adds `FUND_GAS` and has no `PAUSE` (a Solana emergency stop is a row in
+  its own `pauses` table, SI-98, and moves nothing on chain).
 - **`bitrefill_orders`** reports both the raw `by_state` counts and a `by_bucket` grouping
   (`delivered`, `user_rejected`, `pending`, `needs_reconciliation`, `failed`, `expired`); any
   state this script does not recognize yet lands under `other` instead of being dropped or
