@@ -13,7 +13,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
-import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
+import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
@@ -189,8 +189,22 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       .register(BASE, new ExactEvmScheme())
       .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
       .register(SOLANA, new ExactSvmScheme());
+    // The discovery probes (GET/HEAD and the empty, unpaid POST) are offered what this route's own Bazaar example
+    // body is offered right now, through the same parsing and pricing as a real question: that is the price CDP's
+    // Bazaar records for the route, and what vet402 compares its empty POST against (price_mismatch otherwise).
+    // The standing ceiling is kept only when the example cannot be quoted right now. A probe never pays.
+    const probeCeilings = perRequest(async () => {
+      try {
+        const input = readFormatRequest(route, EXAMPLES[route]);
+        const info = await catalogue.resolve(input.model);
+        return ceilings(info, { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) }, exactOutputFraction);
+      } catch {
+        return ceilings(null, {}, exactOutputFraction);
+      }
+    });
+    const probe = (bucket, network) => async (ctx) => (await probeCeilings(ctx))[bucket][network];
     app.post(route, async (req, res, next) => {
-      // x402scan's empty, unpaid probe gets the standing offer, not a "Send a JSON body"/"Name a model" error.
+      // x402scan's empty, unpaid probe gets the example's offer (above), not a "Send a JSON body"/"Name a model" error.
       if (isDiscoveryProbe(req)) { req.askCeilings = ceilings(null, {}, exactOutputFraction); return next(); }
       try {
         const input = readFormatRequest(route, req.body);
@@ -209,7 +223,8 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
     });
     addPaymentRoute(app, { [`POST ${route}`]: {
       // exact on Base first: the simplest offer for a buyer that only inspects accepts[0].
-      accepts: [exactBaseOffer(config, quotes), solanaOffer(config, quotes), baseOffer(config, quotes), exactSolanaOffer(config, quotes)],
+      accepts: [exactBaseOffer(config, quotes, probe("exact", BASE)), solanaOffer(config, quotes, probe("upto", SOLANA)),
+        baseOffer(config, quotes, probe("upto", BASE)), exactSolanaOffer(config, quotes, probe("exact", SOLANA))],
       mimeType: "application/json",
       description: `SingIt Ask: ${DESCRIPTIONS[route]}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
       tags: [...TAGS, route === "/v1/messages" ? "anthropic-compatible" : "openai-compatible"],
