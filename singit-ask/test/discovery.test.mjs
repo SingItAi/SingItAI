@@ -1,8 +1,8 @@
 // x402scan, Coinbase's Bazaar and 402 Index probe a paid route with GET and HEAD, not just an empty POST. Every
 // route listed for discovery must answer those with the same 402 challenge as an empty, unpaid POST — never a
 // different one, and never a reason to verify, settle or call upstream, even carrying a payment header. Routes
-// that are not listed for discovery (metered chat; credit only gives money away to anyone but the account's own
-// agent) must keep Express's plain 404.
+// that are not listed for discovery (metered chat; video while its seller is flaky; credit only gives money away
+// to anyone but the account's own agent) must keep Express's plain 404.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -23,9 +23,9 @@ const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64");
 const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("utf8"));
 
 // Every discoverable paid route: chat/completions, Anthropic/OpenAI's own formats, images, speech, Exa's three,
-// video, and one per popular model (SI-62). `/v1/chat/completions/metered` is paid but not listed; `/v1/credit` is
-// paid and deliberately hidden. Neither is in this list.
-const DISCOVERABLE = [ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, VIDEO_ROUTE, ...Object.keys(SEARCH_ROUTES),
+// and one per popular model (SI-62). `/v1/chat/completions/metered` and `/v1/video/generations` (unless
+// SINGIT_ASK_VIDEO_DISCOVERABLE=1) are paid but not listed; `/v1/credit` is paid and deliberately hidden.
+const DISCOVERABLE = [ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, ...Object.keys(SEARCH_ROUTES),
   ...modelRoutePaths()];
 
 function fakeFacilitator() {
@@ -122,7 +122,7 @@ test("a payment header on GET or HEAD changes nothing: still the challenge, neve
 
 test("routes not listed for discovery keep Express's plain 404 on GET and HEAD", async (t) => {
   const { url } = await serve(t);
-  for (const route of [CREDIT_ROUTE, METERED_ROUTE]) {
+  for (const route of [VIDEO_ROUTE, CREDIT_ROUTE, METERED_ROUTE]) {
     for (const method of ["GET", "HEAD"]) {
       const response = await fetch(`${url}${route}`, { method });
       assert.equal(response.status, 404, `${route} ${method}`);

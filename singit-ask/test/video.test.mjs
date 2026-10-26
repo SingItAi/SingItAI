@@ -63,10 +63,10 @@ function fakeSurplus({ submitStatus = 202, jobStatus = "running" } = {}) {
   return { calls, fetchImpl };
 }
 
-async function serve(t, { surplus = fakeSurplus() } = {}) {
+async function serve(t, { surplus = fakeSurplus(), config = CONFIG } = {}) {
   const facilitator = fakeFacilitator();
   const logs = [];
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue, fetchImpl: surplus.fetchImpl,
+  const app = createApp(config, { facilitatorClient: facilitator, catalogue, fetchImpl: surplus.fetchImpl,
     log: (line) => logs.push(line), upstream: async () => { throw new Error("no answer is asked"); } });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
@@ -151,8 +151,21 @@ test("what is not sold is refused before any payment is asked", async (t) => {
   assert.deepEqual(surplus.calls, []);
 });
 
-test("an empty unpaid probe gets the standing offer, so x402scan and Bazaar can index video", async (t) => {
+test("by default video is not listed: an empty probe, GET and HEAD keep the 404, and discovery files omit it", async (t) => {
   const { url, surplus } = await serve(t);
+  for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+                      { method: "GET" }, { method: "HEAD" }]) {
+    const probe = await fetch(`${url}${VIDEO_ROUTE}`, init);
+    assert.equal(probe.status, 404, `${init.method} ${init.body ?? ""}`);
+    assert.equal(probe.headers.get("payment-required"), null);
+  }
+  assert.ok(!JSON.stringify(await (await fetch(`${url}/.well-known/x402`)).json()).includes(VIDEO_ROUTE));
+  assert.ok(!(await (await fetch(`${url}/llms.txt`)).text()).includes(VIDEO_ROUTE));
+  assert.deepEqual(surplus.calls, []);
+});
+
+test("with videoDiscoverable on, an empty unpaid probe gets the standing offer, so x402scan and Bazaar can index video", async (t) => {
+  const { url, surplus } = await serve(t, { config: { ...CONFIG, videoDiscoverable: true } });
   for (const init of [{ method: "POST" }, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
                       { method: "GET" }]) {
     const probe = await fetch(`${url}${VIDEO_ROUTE}`, init);
@@ -161,11 +174,12 @@ test("an empty unpaid probe gets the standing offer, so x402scan and Bazaar can 
     assert.deepEqual(required.accepts.map((a) => a.network), [BASE, SOLANA], "exact on Base first");
     assert.ok(required.extensions?.bazaar);
   }
+  assert.ok(JSON.stringify(await (await fetch(`${url}/.well-known/x402`)).json()).includes(VIDEO_ROUTE));
   assert.deepEqual(surplus.calls, [], "a probe never starts a job");
 });
 
 test("paying with no question is refused before any job, and before the payment is verified", async (t) => {
-  const { url, surplus, facilitator } = await serve(t);
+  const { url, surplus, facilitator } = await serve(t, { config: { ...CONFIG, videoDiscoverable: true } });
   const probe = await fetch(`${url}${VIDEO_ROUTE}`, { method: "POST" });
   const required = JSON.parse(Buffer.from(probe.headers.get("payment-required"), "base64").toString());
   const refused = await post(`${url}${VIDEO_ROUTE}`, {}, pay(required, BASE));
