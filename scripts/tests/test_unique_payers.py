@@ -487,6 +487,11 @@ class ChunkSizeTests(unittest.TestCase):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             self.up._build_parser().parse_args(["--chunk-size", "0"])
 
+    def test_cli_rejects_reversed_block_range(self):
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as cm:
+            self.up.main(["--rpc", "https://rpc.test", "--from-block", "200", "--to-block", "100"], env={})
+        self.assertIn("--from-block", str(cm.exception.code))
+
 
 
 if __name__ == "__main__":

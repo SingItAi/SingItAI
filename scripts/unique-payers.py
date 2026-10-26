@@ -432,6 +432,8 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     args = _build_parser().parse_args(argv)
     if args.rpc and (args.from_block is None or args.to_block is None):
         raise SystemExit("unique-payers: --rpc needs both --from-block and --to-block")
+    if args.rpc and not (0 <= args.from_block <= args.to_block):
+        raise SystemExit("unique-payers: --from-block must be >= 0 and <= --to-block")
 
     try:
         exclude = load_exclusions(values.get(EXCLUDE_ENV), args.exclude_file)
