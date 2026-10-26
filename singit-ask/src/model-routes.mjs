@@ -127,10 +127,10 @@ export function addModelRoutes(app, config, { facilitatorClient, catalogue, read
   for (const model of MODEL_ROUTES) {
     // The discovery probes are quoted for this route's own Bazaar example body (metered.mjs's `exampleProbe`).
     addUsageRoute(app, routePath(model.id), (quotes, fallback) => [
-      // exact on Base first: the simplest offer for a buyer that only inspects accepts[0] (SI-61).
-      exactBaseOffer(config, quotes, fallback("exact", BASE)),
-      solanaOffer(config, quotes, fallback("upto", SOLANA)),
+      // upto first (SI-102): the metered, actual-cost offer is the one a buyer that only inspects accepts[0] sees.
       baseOffer(config, quotes, fallback("upto", BASE)),
+      solanaOffer(config, quotes, fallback("upto", SOLANA)),
+      exactBaseOffer(config, quotes, fallback("exact", BASE)),
       exactSolanaOffer(config, quotes, fallback("exact", SOLANA)),
     ], {
       description: discoveryDescription(model),

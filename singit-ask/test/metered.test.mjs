@@ -197,6 +197,18 @@ test("exact prices its output at exactOutputFraction of max_tokens; upto always 
   assert.ok(BigInt(exact)<BigInt(upto),`exact (${exact}) should price less output than upto (${upto})`);
 });
 
+test('SI-102: exact assumes 30% of max_tokens by default; Opus 5.5 at max_tokens 500 is offered at most BlockRun\'s exact on Base, upto unchanged',()=>{
+  assert.equal(DEFAULT_EXACT_OUTPUT_FRACTION,0.3);
+  // Opus 5.5 list price ($4/$20 per 1M) at the 26% share the live 402 quoted on 26.10, for the 45-character
+  // reference question (one message) at max_tokens 500.
+  const opus={promptUsdPerToken:4e-6,completionUsdPerToken:20e-6};
+  const q=ceilings(opus,{chars:45,messageCount:1,maxTokens:500,share:0.26});
+  const SOL='solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+  assert.deepEqual([q.exact[BASE],q.exact[SOL]],['2037','3037'],'was 3220/4220 at 0.65');
+  assert.ok(BigInt(q.exact[BASE])<=2153n,'not dearer than BlockRun\'s exact on Base for the same question (2153, 26.10)');
+  assert.deepEqual([q.upto[BASE],q.upto[SOL]],['4447','5447'],'upto still prices and authorizes the whole budget');
+});
+
 test('ceilings: with no exactOutputFraction given, exact prices ceil(maxTokens*DEFAULT_EXACT_OUTPUT_FRACTION); exactOutputFraction 1 restores equal output budgets',()=>{
   const model={promptUsdPerToken:4e-6,completionUsdPerToken:20e-6};
   // chars and messageCount are 0, so the input estimate (which upto and exact bound differently, see pricing.mjs)

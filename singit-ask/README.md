@@ -28,8 +28,10 @@ what it actually cost; nothing is charged without an answer.
   300 characters and says only what the route does and when to call it; Coinbase's Bazaar
   ranks listings by metadata completeness, and billing talk crowds that out, so it stays in
   `openapi.json` and `/.well-known/x402`'s instructions instead. Each resource also carries
-  `serviceName` ("SingIt Ask") and a PNG `iconUrl`, and its `accepts` always leads with
-  `exact` on Base, the simplest offer for a buyer that only inspects `accepts[0]`.
+  `serviceName` ("SingIt Ask") and a PNG `iconUrl`. On the token-metered model routes (chat
+  completions, `/v1/chat/{model}`, Messages, Responses) `accepts` leads with `upto` (Base, then
+  Solana), the actual-cost offer, followed by `exact` on Base and Solana; routes sold only at a
+  fixed price (images, speech, search, video) offer `exact` alone, Base first.
 - **Per-model routes:** when a catalogue is configured, `POST /v1/chat/{model}` is a
   separate x402 resource for each of 14 popular models (`claude-opus-5.5`,
   `claude-sonnet-5.5`, `claude-haiku-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.5`,

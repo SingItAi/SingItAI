@@ -186,14 +186,19 @@ test("every discoverable route's resource carries a PNG icon and a service name"
   }
 });
 
-test("every discoverable route offers exact on Base first, over both discovery and the empty POST probe", async (t) => {
+test("every discoverable route leads with upto on Base when it offers upto, else exact on Base, over both discovery and the empty POST probe", async (t) => {
   const { url } = await serve(t);
   for (const route of DISCOVERABLE) {
     for (const method of ["GET", "POST"]) {
       const required = decode((await fetch(`${url}${route}`, { method })).headers.get("payment-required"));
       const first = required.accepts[0];
-      assert.equal(first.scheme, "exact", `${route} ${method}`);
+      const metered = required.accepts.some((a) => a.scheme === "upto");
+      // SI-102: a token-metered route's actual-cost `upto` offer leads; fixed-price routes offer only `exact`.
+      assert.equal(first.scheme, metered ? "upto" : "exact", `${route} ${method}`);
       assert.equal(first.network, BASE, `${route} ${method}`);
+      const firstExact = required.accepts.findIndex((a) => a.scheme === "exact");
+      assert.ok(!metered || required.accepts.slice(firstExact).every((a) => a.scheme === "exact"),
+        `${route} ${method}: every upto offer comes before every exact offer`);
     }
   }
 });

@@ -74,9 +74,8 @@ test("Anthropic's Messages: offered with a ceiling, charged what it cost + 30% +
   const unpaid = await post(`${url}/v1/messages`, MESSAGE);
   assert.equal(unpaid.status, 402);
   const required = decode(unpaid.headers.get("payment-required"));
-  // SI-61: `exact` on Base leads; `upto` is what most buyers sign, `exact` on Solana alongside it at the same
-  // ceiling for buyers that sign only `exact`.
-  assert.deepEqual(required.accepts.map((a) => a.scheme), ["exact", "upto", "upto", "exact"]);
+  // SI-102: `upto` leads (Base, then Solana); `exact` follows on both for buyers that sign only `exact`.
+  assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto", "exact", "exact"]);
   assert.ok(required.extensions?.bazaar);
   const paid = await post(`${url}/v1/messages`, MESSAGE, pay(required, BASE));
   assert.equal(paid.status, 200);
@@ -158,8 +157,9 @@ test("x402scan's empty, unpaid probe gets the standing offer; a payment header d
       const probe = await fetch(`${url}${route}`, init);
       assert.equal(probe.status, 402, route);
       required = decode(probe.headers.get("payment-required"));
-      // Same offer order as a real question (SI-61): Base exact first, then Solana upto, Base upto, Solana exact.
-      assert.deepEqual(required.accepts.map((a) => a.scheme), ["exact", "upto", "upto", "exact"], route);
+      // Same offer order as a real question (SI-102): Base upto, Solana upto, Base exact, Solana exact.
+      assert.deepEqual(required.accepts.map((a) => [a.scheme, a.network]),
+        [["upto", BASE], ["upto", SOLANA], ["exact", BASE], ["exact", SOLANA]], route);
       assert.ok(required.extensions?.bazaar?.info, `${route} needs the input schema for x402scan to index it`);
       assert.ok(required.extensions?.bazaar?.schema, route);
     }
