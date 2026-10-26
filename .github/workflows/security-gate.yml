@@ -48,7 +48,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        component: [cdp-x402-service, singit-risk-check, tools/ledger-approve, sdk/typescript]
+        component: [cdp-x402-service, singit-risk-check, tools/ledger-approve, sdk/typescript,
+          integrations/elizaos-plugin, integrations/examples/langchain, integrations/examples/vercel-ai-sdk]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
