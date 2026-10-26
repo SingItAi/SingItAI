@@ -11,7 +11,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
+import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
 
 export const IMAGE_ROUTE = "/v1/images/generations";
@@ -103,6 +103,10 @@ const OUTPUT_SCHEMA = { type: "object", required: ["data", "billing"], propertie
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } },
 } };
 
+// The example body declared to Bazaar, and what the discovery probes are priced as (see `probeList`).
+const EXAMPLE = Object.freeze({ model: "venice-seedream-v5-lite", prompt: "a small green robot holding a coin, flat illustration",
+  n: 1, size: "1024x1024" });
+
 export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
@@ -123,13 +127,25 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
       }).sort((a, b) => a.singitUsdPerImage - b.singitUsdPerImage) });
   });
 
-  const price = (network) => (ctx) => {
+  // The discovery probes (GET/HEAD and the empty, unpaid POST) are offered what EXAMPLE, the body declared to
+  // Bazaar below, is offered right now: the price CDP's Bazaar records for this route and what vet402 compares its
+  // empty POST against (price_mismatch otherwise). The model-list ceiling only when it cannot be quoted right now.
+  const probeList = perRequest(async () => {
+    try {
+      const model = await catalogue.resolveImage(EXAMPLE.model);
+      const listAtomic = imageListAtomic(model, readImageRequest(EXAMPLE, model));
+      return listAtomic > IMAGE_TERMS.maxListAtomic ? IMAGE_TERMS.maxListAtomic : listAtomic;
+    } catch {
+      return IMAGE_TERMS.maxListAtomic;
+    }
+  });
+  const price = (network) => async (ctx) => {
     const quote = priced.get(ctx.adapter.getBody());
-    const amount = imagePrice(quote?.listAtomic ?? IMAGE_TERMS.maxListAtomic, network).totalAtomic;
+    const amount = imagePrice(quote?.listAtomic ?? await probeList(ctx), network).totalAtomic;
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(IMAGE_ROUTE, async (req, res, next) => {
-    // x402scan's empty, unpaid probe gets the standing offer (the model-list ceiling), not a model-lookup 404;
+    // x402scan's empty, unpaid probe gets the example's offer (`probeList`), not a model-lookup 404;
     // paying it with no question is still refused once a signature arrives, in the handler below.
     if (isDiscoveryProbe(req)) return next();
     try {
@@ -154,7 +170,7 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
     mimeType: "application/json", description: `SingIt Images: ${DESCRIPTION}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
     tags: ["image", "image-generation", "text-to-image", "openai-compatible", "flux", "pay-per-use", "solana", "base", "singit"],
     extensions: declareDiscoveryExtension({ bodyType: "json",
-      input: { model: "venice-seedream-v5-lite", prompt: "a small green robot holding a coin, flat illustration", n: 1, size: "1024x1024" },
+      input: EXAMPLE,
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
   } }, server);
   app.post(IMAGE_ROUTE, async (req, res) => {

@@ -152,18 +152,24 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
   const prices = new WeakMap();        // parsed body -> Exa's list price, for the middleware's price functions
   const used = new Map();              // payment signature digest -> when: one payment, one request to Exa
   const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");
-  const price = (network) => (ctx) => {
-    const amount = searchPrice(prices.get(ctx.adapter.getBody()) ?? SEARCH_TERMS.maxExaAtomic, network).totalAtomic;
+  // The discovery probes (GET/HEAD and the empty, unpaid POST) are offered what the route's own Bazaar example body
+  // is offered: the price CDP's Bazaar records for the route and what vet402 compares its empty POST against
+  // (price_mismatch otherwise). Exa's list price is static, so this is the same on every probe.
+  const probePrice = (route) => {
+    try { return exaPrice(route, EXAMPLES[route]); } catch { return SEARCH_TERMS.maxExaAtomic; }
+  };
+  const price = (route, network) => (ctx) => {
+    const amount = searchPrice(prices.get(ctx.adapter.getBody()) ?? probePrice(route), network).totalAtomic;
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   // exact on Base first: the simplest offer for a buyer that only inspects accepts[0].
-  const offers = [
-    { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120, price: price(BASE) },
-    { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
+  const offers = (route) => [
+    { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120, price: price(route, BASE) },
+    { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(route, SOLANA) },
   ];
   for (const route of Object.keys(SEARCH_ROUTES)) {
     app.post(route, (req, res, next) => {
-      // x402scan's empty, unpaid probe gets the standing offer, not a "Send a JSON body" 400.
+      // x402scan's empty, unpaid probe gets the example's offer (`probePrice`), not a "Send a JSON body" 400.
       if (isDiscoveryProbe(req)) return next();
       try {
         prices.set(req.body, exaPrice(route, req.body));
@@ -174,7 +180,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
     });
   }
   addPaymentRoute(app, Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [`POST ${route}`, {
-    accepts: offers, mimeType: "application/json", description: `SingIt Search: ${DESCRIPTIONS[route]}`,
+    accepts: offers(route), mimeType: "application/json", description: `SingIt Search: ${DESCRIPTIONS[route]}`,
     serviceName: SERVICE_NAME, iconUrl: ICON_URL,
     tags: ["search", "web-search", "exa", "answers", "citations", "pay-per-use", "solana", "base", "singit"],
     extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],

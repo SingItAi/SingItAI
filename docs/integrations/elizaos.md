@@ -1,6 +1,6 @@
 # ElizaOS recipe
 
-Package: [`integrations/elizaos-plugin`](../../integrations/elizaos-plugin) (`@singit/plugin-singit`).
+Package: [`integrations/elizaos-plugin`](../../integrations/elizaos-plugin) (`@singitai/plugin-singit`).
 Full reference is in that package's [README](../../integrations/elizaos-plugin/README.md); this
 page is the short recipe.
 
@@ -13,7 +13,7 @@ elizaOS community registry is retired) and the exact commands.
 export const character = {
   name: "MyAgent",
   // character.plugins takes package names (strings); the package must be installed in the project.
-  plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", "@singit/plugin-singit"],
+  plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", "@singitai/plugin-singit"],
   settings: {
     secrets: {
       SINGIT_API_KEY: process.env.SINGIT_API_KEY,               // optional: paid MCP tools
@@ -29,7 +29,7 @@ Or pass the plugin object to the runtime directly (the runtime's `plugins` optio
 
 ```ts
 import { AgentRuntime } from "@elizaos/core";
-import { singitPlugin } from "@singit/plugin-singit";
+import { singitPlugin } from "@singitai/plugin-singit";
 
 const runtime = new AgentRuntime({ character, plugins: [singitPlugin] });
 ```
