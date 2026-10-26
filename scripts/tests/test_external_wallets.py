@@ -255,6 +255,35 @@ class ExternalWalletsTests(unittest.TestCase):
         self.assertEqual(before, after)
         db.close()
 
+    def test_a_wal_copy_taken_while_the_store_changes_is_retried_then_refused(self):
+        from unittest.mock import patch
+        db = sqlite3.connect(self.sol)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA wal_autocheckpoint=0")
+        db.execute("INSERT INTO spends(account, amount, purpose, pull_tx, created_at) VALUES (?, 1, 'w', 'tw', ?)",
+                   (f"solana:{SOL_OWNER_Y}", DAY + 9))
+        db.commit()
+        real, calls = ew.shutil.copyfile, [0]
+        def copy_then_write(src, dst):
+            out = real(src, dst)
+            calls[0] += 1
+            if calls[0] == 1:  # a writer commits between the db copy and the -wal copy, once
+                db.execute("INSERT INTO spends(account, amount, purpose, pull_tx, created_at) VALUES (?, 1, 'w', 'tw2', ?)",
+                           (f"solana:{SOL_OWNER_Y}", DAY + 10))
+                db.commit()
+            return out
+        with patch.object(ew.shutil, "copyfile", copy_then_write):
+            self.assertEqual(self.report()["solana"]["payments"], 5)  # the retried copy is consistent
+        def always_write(src, dst):
+            out = real(src, dst)
+            db.execute("INSERT INTO spends(account, amount, purpose, pull_tx, created_at) VALUES (?, 1, 'w', NULL, ?)",
+                       (f"solana:{SOL_OWNER_Y}", DAY + 11))
+            db.commit()
+            return out
+        with patch.object(ew.shutil, "copyfile", always_write), self.assertRaises(ew.StoreError):
+            self.report()
+        db.close()
+
     def test_confirmed_drops_the_provisional_mark(self):
         r = self.report(confirmed=True)
         self.assertFalse(r["provisional"])

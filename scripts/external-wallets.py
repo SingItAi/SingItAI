@@ -129,10 +129,37 @@ def _is_wal(path: Path) -> bool:
     return len(header) == 20 and header[:16] == b"SQLite format 3\x00" and (header[18] == 2 or header[19] == 2)
 
 
+def _stat(path: Path) -> tuple[int, int] | None:
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return None
+    return st.st_size, st.st_mtime_ns
+
+
+def _snapshot_wal(source: Path, copy: Path, attempts: int = 5) -> Path:
+    """Copy a WAL store (db + -wal) so that neither file changed while it was copied, else give up.
+
+    A checkpoint between the two copies would pair an old db with a truncated -wal; comparing size and
+    mtime of both files before and after each attempt rejects that copy and tries again."""
+    wal = Path(str(source) + "-wal")
+    for _ in range(attempts):
+        before = (_stat(source), _stat(wal))
+        shutil.copyfile(source, copy)
+        if before[1] is not None:
+            shutil.copyfile(wal, Path(str(copy) + "-wal"))
+        else:
+            Path(str(copy) + "-wal").unlink(missing_ok=True)
+        if (_stat(source), _stat(wal)) == before:
+            return copy
+    raise OSError("the store kept changing while it was copied")
+
+
 def connect_readonly(path: Path, snapshots: list[str] | None = None) -> sqlite3.Connection | None:
     """A read-only connection. A rollback-journal store is opened in place with mode=ro (SQLite writes
-    nothing for that). A WAL store is copied first (db + -wal) into a private temp dir and the copy is
-    opened, because even a mode=ro open of a WAL database may create or touch its -shm sidecar."""
+    nothing for that). A WAL store is copied first (db + -wal, retried until neither changed during the
+    copy) into a private temp dir and the copy is opened, because even a mode=ro open of a WAL database
+    may create or touch its -shm sidecar."""
     path = Path(path).expanduser()
     if not path.exists():
         return None
@@ -141,12 +168,7 @@ def connect_readonly(path: Path, snapshots: list[str] | None = None) -> sqlite3.
             tmp = tempfile.mkdtemp(prefix="external-wallets-")
             if snapshots is not None:
                 snapshots.append(tmp)
-            copy = Path(tmp) / "store.db"
-            shutil.copyfile(path, copy)
-            wal = Path(str(path) + "-wal")
-            if wal.exists():
-                shutil.copyfile(wal, Path(str(copy) + "-wal"))
-            path = copy
+            path = _snapshot_wal(path, Path(tmp) / "store.db")
         db = sqlite3.connect("file:" + urllib.parse.quote(str(path.resolve())) + "?mode=ro", uri=True, timeout=5.0)
         db.row_factory = sqlite3.Row
         db.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchall()
