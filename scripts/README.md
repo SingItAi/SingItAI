@@ -219,6 +219,25 @@ python3 scripts/unique-payers.py --chain base --rpc https://mainnet.base.org --f
 
 Tests (offline): `python3 -m unittest discover -s scripts/tests`.
 
+## External Wallets With an Allowance
+
+`scripts/external-wallets.py` (SI-99) counts EXTERNAL wallets that set up an allowance in the app
+and their payments, on Base and Solana. `unique-payers.py` cannot see these: app purchases go to the
+sellers, not to SingIt's payTo. It reads the app's stores read-only (`allowance.db`,
+`solana-allowance.db`, optionally `web.db`; `mode=ro`, no network, no writes) and reports per chain
+wallets with limits, approved, paid, approved+paid (the SI-88 target), payments and USDC, plus the
+Base watcher's on-chain agent outflows as a cross-check. Own wallets are excluded only at run time
+via `$SINGIT_OWN_WALLETS` or `--exclude-file PATH` (owner, agent or limiter addresses, or app
+account ids; keep the file out of git). It never prints an address; `--ids` adds salted short hashes
+(`$SINGIT_ID_SALT`). Numbers are marked PROVISIONAL until run with `--confirmed`.
+
+```bash
+python3 scripts/external-wallets.py --exclude-file ~/.sign402/own-wallets.txt
+python3 scripts/external-wallets.py --since 2026-10-25 --json
+```
+
+Tests: `python3 -m unittest discover -s scripts/tests -p 'test_external_wallets.py'`.
+
 ## Bazaar Metadata Lint and CDP Validator
 
 Both are Node 22 scripts; the checklist they serve is in
