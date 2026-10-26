@@ -179,7 +179,7 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
   const app = createApp(config, { facilitatorClient, catalogue, exaKey: "lint", fetchImpl: never, exaFetch: never, log: () => {}, upstream: never });
   const server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
 
-  const routes = [ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, VIDEO_ROUTE, ...Object.keys(SEARCH_ROUTES)];
+  const routes = [ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, ...Object.keys(SEARCH_ROUTES)];
   const global = [];
   const results = [];
   try {
@@ -206,6 +206,10 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
       }
       results.push({ route, probes, findings });
     }
+    // Not listed while Surplus's video sellers are flaky (SINGIT_ASK_VIDEO_DISCOVERABLE unset): a 402 here would let a
+    // directory index a route that often cannot complete. Set the flag in production and add video back here together.
+    const hidden = await fetch(base + VIDEO_ROUTE, { method: "GET", headers });
+    if (hidden.status === 402) global.push({ level: "FAIL", check: "hidden", message: `${VIDEO_ROUTE} is advertising a 402 but is meant to stay unlisted` });
   } finally {
     server.close();
   }
