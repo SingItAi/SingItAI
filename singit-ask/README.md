@@ -16,14 +16,14 @@ what it actually cost; nothing is charged without an answer.
   CDP settles the actual amount and refunds the rest. Listed for discovery (Bazaar).
 - **Discovery probes:** `GET` and `HEAD` on every route listed for discovery
   (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/images/generations`,
-  `/v1/audio/speech`, `/v1/video/generations`, `/v1/exa/search`, `/v1/exa/contents`, `/v1/exa/answer`) answer
+  `/v1/audio/speech`, `/v1/exa/search`, `/v1/exa/contents`, `/v1/exa/answer`) answer
   with the same 402 challenge an empty, unpaid `POST` gets — same offers, same Bazaar
   extension, same resource URL — instead of Express's default 404, which is how
   x402scan, Coinbase's Bazaar and 402 Index find a route in the first place. Neither
   verb ever verifies or settles, even if the request carries a payment header.
   `/v1/chat/completions/metered` is a paid route that is not listed for discovery, so `GET`/`HEAD`
-  on it still 404. Video was hidden the same way until Surplus accepted video jobs again
-  (checked 25 October 2026).
+  on it still 404. `/v1/video/generations` is the same unless `SINGIT_ASK_VIDEO_DISCOVERABLE=1`:
+  Surplus's video sellers come and go, so video stays unlisted (but still sold) until they are steady.
 - **Listing metadata:** every discoverable route's 402 resource description stays under
   300 characters and says only what the route does and when to call it; Coinbase's Bazaar
   ranks listings by metadata completeness, and billing talk crowds that out, so it stays in
@@ -159,6 +159,7 @@ node --env-file=.env src/server.mjs
 | `SURPLUS_API_KEY` | Surplus buyer key (`inf_…`) with access to the configured model. Fund its workspace's deposited USDC balance; USDC in the linked wallet alone is not a prepaid balance. |
 | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` | Coinbase CDP facilitator credentials, required. The service reuses the `cdp-x402-service` installation of `@coinbase/x402`. |
 | `SINGIT_ASK_DIRECT_SOLANA` | Set `1` to enable the private direct Solana route with CDP metering. |
+| `SINGIT_ASK_VIDEO_DISCOVERABLE` | Set `1` to list `/v1/video/generations` for x402 discovery (402 on GET/HEAD and the empty probe, `/.well-known/x402`, `llms.txt`). Unset (default): video is still sold, but not listed. |
 | `SINGIT_ASK_QUOTE_TOKEN` | Dedicated server-only authentication secret, shared by merchant and gateway (at least 32 characters). |
 | `SINGIT_ASK_QUOTE_DB` | Private writable SQLite path for prepared answers and settlement claims. |
 | `SINGIT_ASK_MODEL` | Upstream model. Default: `deepseek-v4.1-flash`. |

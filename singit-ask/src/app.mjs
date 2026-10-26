@@ -494,7 +494,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model"] } } } },
           responses: { 200: { description: "The answer in that API's format, with billing" },
-                       ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged",
+                       ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged", reasoning: true,
                                        schema: route === "/v1/messages" ? ANTHROPIC_ERROR_SCHEMA : ERROR_SCHEMA }) },
           security: [{ x402: [] }],
         } }])) : {}),
@@ -610,7 +610,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.get("/.well-known/x402", open, (req, res) => {
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
-                         `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, `${origin(req)}${VIDEO_ROUTE}`,
+                         `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`,
+                         ...(config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
                          ...modelRoutePaths().map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
@@ -619,7 +620,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
   // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
   // list below and llms.txt can never list a route this instance did not add.
-  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, VIDEO_ROUTE,
+  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE,
+    ...(config.videoDiscoverable ? [VIDEO_ROUTE] : []),
     ...modelRoutePaths()] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
   // Free: a human or agent landing on the bare origin gets a small service index instead of Express's 404.

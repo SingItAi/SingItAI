@@ -45,8 +45,8 @@ async function serve(t) {
 const COMMON = [400, 402, 413, 503];
 const EXPECTED = {
   [ROUTE]: [...COMMON, 422, 429],
-  "/v1/messages": [...COMMON, 404],
-  "/v1/responses": [...COMMON, 404],
+  "/v1/messages": [...COMMON, 404, 422],
+  "/v1/responses": [...COMMON, 404, 422],
   [IMAGE_ROUTE]: [...COMMON, 404, 409],
   [SPEECH_ROUTE]: [...COMMON, 404, 409],
   [VIDEO_ROUTE]: [...COMMON, 404, 409],
