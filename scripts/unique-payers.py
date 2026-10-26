@@ -27,9 +27,16 @@ treasury, test) must be supplied at run time, never committed:
 Comparison is case-insensitive.
 
 Output defaults to aggregate numbers only: unique external payers, payment count, total USDC,
-excluded-own-payment count, date range, and a per-merchant breakdown. Individual payer addresses
-are only printed with --list (which also prints a stderr warning that the output must not be
-published), and never otherwise. --json switches to machine-readable JSON.
+excluded-own-payment count, zero-value-transfer count, date range, and a per-merchant breakdown.
+Individual payer addresses are only printed with --list (which also prints a stderr warning that
+the output must not be published), and never otherwise. --json switches to machine-readable JSON.
+
+Zero-value USDC transfers (the "address poisoning" spam pattern -- a 0-value Transfer from a
+lookalike address, meant to plant a fake entry in wallet history) are skipped before any
+payer/payment stat is updated; the count skipped is reported, never counted as a payment.
+
+Blockscout/RPC requests that answer HTTP 429 or 5xx are retried a few times with exponential
+backoff before giving up.
 
     python3 scripts/unique-payers.py
     python3 scripts/unique-payers.py --since 2026-01-01 --json
@@ -47,6 +54,7 @@ import datetime
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -103,6 +111,31 @@ def _parse_address_list(text: str) -> set[str]:
     return out
 
 
+def merge_merchants(defaults: dict[str, str], extra: list[str], *,
+                     extra_label: str = "ad-hoc (--merchant)") -> dict[str, str]:
+    """Merge DEFAULT_MERCHANTS with --merchant addresses, case-insensitively.
+
+    Dedupes by lowercased address so the same on-chain address is only scanned once even if it's
+    supplied with different casing; the first casing seen (defaults, then extra, in order) wins
+    the display key.
+    """
+    merchants: dict[str, str] = {}
+    seen: set[str] = set()
+    for addr, label in defaults.items():
+        lower = normalize_address(addr)
+        if lower in seen:
+            continue
+        seen.add(lower)
+        merchants[addr] = label
+    for addr in extra:
+        lower = normalize_address(addr)
+        if lower in seen:
+            continue
+        seen.add(lower)
+        merchants[addr] = extra_label
+    return merchants
+
+
 def load_exclusions(env_value: str | None, file_path: str | Path | None, *,
                      default_addresses: frozenset[str] = DEFAULT_EXCLUDE_ADDRESSES) -> frozenset[str]:
     addrs = {normalize_address(a) for a in default_addresses}
@@ -119,12 +152,41 @@ def _parse_iso_timestamp(value: str) -> datetime.datetime | None:
         return None
 
 
+# -- Retry with exponential backoff (HTTP 429 / 5xx from Blockscout or the RPC) -----------------
+
+DEFAULT_RETRY_ATTEMPTS = 4
+DEFAULT_RETRY_BASE_DELAY = 0.5
+
+
+def _is_retryable_http_error(exc: urllib.error.HTTPError) -> bool:
+    return exc.code == 429 or 500 <= exc.code < 600
+
+
+def _request_with_retries(do_request: Callable[[], dict], *, attempts: int = DEFAULT_RETRY_ATTEMPTS,
+                           base_delay: float = DEFAULT_RETRY_BASE_DELAY,
+                           sleep: Callable[[float], None] | None = None) -> dict:
+    # `sleep` defaults lazily (not `= time.sleep` in the signature) so tests can patch module-level
+    # time.sleep and have it take effect without passing `sleep=` explicitly on every call site.
+    sleep = sleep or time.sleep
+    for attempt in range(attempts):
+        try:
+            return do_request()
+        except urllib.error.HTTPError as exc:
+            if not _is_retryable_http_error(exc) or attempt == attempts - 1:
+                raise
+            sleep(base_delay * (2 ** attempt))
+
+
 # -- Blockscout --------------------------------------------------------------------------------
 
-def _http_get_json(url: str, *, timeout: float) -> dict:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read(READ_CAP))
+def _http_get_json(url: str, *, timeout: float, attempts: int = DEFAULT_RETRY_ATTEMPTS,
+                    base_delay: float = DEFAULT_RETRY_BASE_DELAY,
+                    sleep: Callable[[float], None] | None = None) -> dict:
+    def do_request() -> dict:
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read(READ_CAP))
+    return _request_with_retries(do_request, attempts=attempts, base_delay=base_delay, sleep=sleep)
 
 
 def iter_blockscout_transfers(address: str, *, usdc_token: str = USDC_BASE, base_url: str = BLOCKSCOUT_BASE,
@@ -167,12 +229,16 @@ def normalize_blockscout_item(item: dict) -> dict | None:
 
 # -- RPC fallback (eth_getLogs) -----------------------------------------------------------------
 
-def _http_post_json(url: str, payload: dict, *, timeout: float) -> dict:
-    body = json.dumps(payload).encode()
-    request = urllib.request.Request(url, data=body, method="POST",
-                                      headers={"Content-Type": "application/json", "User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read(READ_CAP))
+def _http_post_json(url: str, payload: dict, *, timeout: float, attempts: int = DEFAULT_RETRY_ATTEMPTS,
+                     base_delay: float = DEFAULT_RETRY_BASE_DELAY,
+                     sleep: Callable[[float], None] | None = None) -> dict:
+    def do_request() -> dict:
+        body = json.dumps(payload).encode()
+        request = urllib.request.Request(url, data=body, method="POST",
+                                          headers={"Content-Type": "application/json", "User-Agent": USER_AGENT})
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read(READ_CAP))
+    return _request_with_retries(do_request, attempts=attempts, base_delay=base_delay, sleep=sleep)
 
 
 def _rpc_call(rpc_url: str, method: str, params: list, *, timeout: float,
@@ -250,6 +316,7 @@ def aggregate(transfers_by_merchant: dict[str, list[dict]], *, exclude: frozense
     overall_count = 0
     overall_amount = Decimal(0)
     overall_excluded = 0
+    overall_zero_value_skipped = 0
     earliest: datetime.datetime | None = None
     latest: datetime.datetime | None = None
     per_merchant: dict[str, dict] = {}
@@ -259,8 +326,15 @@ def aggregate(transfers_by_merchant: dict[str, list[dict]], *, exclude: frozense
         m_count = 0
         m_amount = Decimal(0)
         m_excluded = 0
+        m_zero_value_skipped = 0
         for t in transfers:
             if since is not None and t["timestamp"] is not None and t["timestamp"].date() < since:
+                continue
+            # Address-poisoning spam: a 0-value Transfer from a lookalike address, meant to plant
+            # a fake entry in wallet history. Skip before touching payer/payment stats.
+            if t["amount"] == 0:
+                m_zero_value_skipped += 1
+                overall_zero_value_skipped += 1
                 continue
             payer = t["from"]
             if payer in exclude:
@@ -281,6 +355,7 @@ def aggregate(transfers_by_merchant: dict[str, list[dict]], *, exclude: frozense
             "payments": m_count,
             "total_usdc": _fmt_usdc(m_amount),
             "excluded_own_payments": m_excluded,
+            "zero_value_skipped": m_zero_value_skipped,
         }
 
     return {
@@ -288,6 +363,7 @@ def aggregate(transfers_by_merchant: dict[str, list[dict]], *, exclude: frozense
         "payments": overall_count,
         "total_usdc": _fmt_usdc(overall_amount),
         "excluded_own_payments": overall_excluded,
+        "zero_value_skipped": overall_zero_value_skipped,
         "date_range": {
             "from": earliest.date().isoformat() if earliest else None,
             "to": latest.date().isoformat() if latest else None,
@@ -303,12 +379,14 @@ def text_summary(report: dict) -> str:
         f"Payments: {report['payments']}",
         f"Total USDC: {report['total_usdc']}",
         f"Excluded own payments: {report['excluded_own_payments']}",
+        f"Zero-value transfers skipped: {report['zero_value_skipped']}",
         f"Date range: {report['date_range']['from'] or chr(8212)} .. {report['date_range']['to'] or chr(8212)}",
     ]
     for addr, stats in sorted(report.get("per_merchant", {}).items()):
         label = report.get("merchants", {}).get(addr, "")
         lines.append(f"  {addr} ({label}): {stats['unique_payers']} payers, {stats['payments']} payments, "
-                     f"{stats['total_usdc']} USDC, {stats['excluded_own_payments']} excluded")
+                     f"{stats['total_usdc']} USDC, {stats['excluded_own_payments']} excluded, "
+                     f"{stats['zero_value_skipped']} zero-value skipped")
     if report.get("errors"):
         lines.append("Errors:")
         for addr, msg in sorted(report["errors"].items()):
@@ -353,9 +431,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
 
     since = datetime.date.fromisoformat(args.since) if args.since else None
 
-    merchants = dict(DEFAULT_MERCHANTS["base"])
-    for addr in args.merchant:
-        merchants.setdefault(addr, "ad-hoc (--merchant)")
+    merchants = merge_merchants(DEFAULT_MERCHANTS["base"], args.merchant)
     exclude |= {normalize_address(addr) for addr in merchants}
 
     transfers_by_merchant: dict[str, list[dict]] = {}

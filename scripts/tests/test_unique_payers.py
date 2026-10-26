@@ -68,6 +68,25 @@ class ExclusionTests(unittest.TestCase):
         self.assertEqual(exclude, frozenset({MERCHANT.lower(), PAYER_A.lower(), PAYER_B.lower()}))
 
 
+class MergeMerchantsTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_extra_merchant_merges_in(self):
+        other = "0x" + "9" * 40
+        merged = self.up.merge_merchants({MERCHANT: "default"}, [other])
+        self.assertEqual(merged, {MERCHANT: "default", other: "ad-hoc (--merchant)"})
+
+    def test_extra_merchant_duplicating_default_case_insensitively_is_scanned_once(self):
+        merged = self.up.merge_merchants({MERCHANT: "default"}, [MERCHANT.upper()])
+        self.assertEqual(merged, {MERCHANT: "default"})
+
+    def test_two_extra_merchants_differing_only_by_case_are_scanned_once(self):
+        other = "0x" + "9" * 40
+        merged = self.up.merge_merchants({}, [other, other.upper()])
+        self.assertEqual(merged, {other: "ad-hoc (--merchant)"})
+
+
 class AmountTests(unittest.TestCase):
     def setUp(self):
         self.up = load_unique_payers()
@@ -92,6 +111,96 @@ class AmountTests(unittest.TestCase):
 
     def test_normalize_blockscout_item_rejects_incomplete_rows(self):
         self.assertIsNone(self.up.normalize_blockscout_item({"from": {}, "to": {"hash": MERCHANT}}))
+
+
+class RetryTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def _http_error(self, code):
+        return urllib.error.HTTPError("https://x.test", code, "err", {}, io.BytesIO(b""))
+
+    def test_get_retries_on_429_then_succeeds_without_real_sleep(self):
+        calls = {"n": 0}
+
+        def fake_urlopen(request, timeout):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise self._http_error(429)
+            return io.BytesIO(b'{"ok": true}')
+
+        sleeps = []
+        with patch.object(self.up.urllib.request, "urlopen", fake_urlopen):
+            result = self.up._http_get_json("https://x.test", timeout=5, attempts=4, base_delay=1.0,
+                                             sleep=sleeps.append)
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(calls["n"], 3)
+        self.assertEqual(sleeps, [1.0, 2.0])  # exponential backoff, one sleep per failed attempt
+
+    def test_get_retries_on_503_then_succeeds(self):
+        calls = {"n": 0}
+
+        def fake_urlopen(request, timeout):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise self._http_error(503)
+            return io.BytesIO(b'{"ok": true}')
+
+        sleeps = []
+        with patch.object(self.up.urllib.request, "urlopen", fake_urlopen):
+            result = self.up._http_get_json("https://x.test", timeout=5, sleep=sleeps.append)
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(sleeps, [0.5])
+
+    def test_get_gives_up_after_exhausting_attempts(self):
+        def fake_urlopen(request, timeout):
+            raise self._http_error(500)
+
+        sleeps = []
+        with patch.object(self.up.urllib.request, "urlopen", fake_urlopen):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.up._http_get_json("https://x.test", timeout=5, attempts=3, base_delay=0.1,
+                                       sleep=sleeps.append)
+        self.assertEqual(sleeps, [0.1, 0.2])  # slept between attempts, not after the last failure
+
+    def test_get_does_not_retry_non_retryable_status(self):
+        calls = {"n": 0}
+
+        def fake_urlopen(request, timeout):
+            calls["n"] += 1
+            raise self._http_error(403)
+
+        sleeps = []
+        with patch.object(self.up.urllib.request, "urlopen", fake_urlopen):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.up._http_get_json("https://x.test", timeout=5, sleep=sleeps.append)
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual(sleeps, [])
+
+    def test_post_retries_on_429_then_succeeds(self):
+        calls = {"n": 0}
+
+        def fake_urlopen(request, timeout):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise self._http_error(429)
+            return io.BytesIO(b'{"result": 1}')
+
+        sleeps = []
+        with patch.object(self.up.urllib.request, "urlopen", fake_urlopen):
+            result = self.up._http_post_json("https://x.test", {"a": 1}, timeout=5, sleep=sleeps.append)
+        self.assertEqual(result, {"result": 1})
+        self.assertEqual(sleeps, [0.5])
+
+    def test_default_sleep_is_time_sleep_when_not_injected(self):
+        def fake_urlopen(request, timeout):
+            raise self._http_error(429)
+
+        with patch.object(self.up.urllib.request, "urlopen", fake_urlopen), \
+             patch.object(self.up.time, "sleep") as fake_sleep:
+            with self.assertRaises(urllib.error.HTTPError):
+                self.up._http_get_json("https://x.test", timeout=5, attempts=2, base_delay=0.1)
+        fake_sleep.assert_called_once_with(0.1)
 
 
 class BlockscoutPaginationTests(unittest.TestCase):
@@ -217,7 +326,30 @@ class AggregateTests(unittest.TestCase):
         self.assertEqual(report["payments"], 3)
         self.assertEqual(report["total_usdc"], "6.000000")
         self.assertEqual(report["excluded_own_payments"], 0)
+        self.assertEqual(report["zero_value_skipped"], 0)
         self.assertEqual(report["_payers"], {PAYER_A.lower(), PAYER_B.lower()})
+
+    def test_zero_value_transfer_is_skipped_and_counted(self):
+        transfers = [
+            self._transfer(from_addr=PAYER_A, amount="0"),
+            self._transfer(from_addr=PAYER_A, amount="1"),
+            self._transfer(from_addr=PAYER_B, amount="0"),
+        ]
+        report = self.up.aggregate({MERCHANT: transfers}, exclude=frozenset())
+        # PAYER_B only ever sent a 0-value (spam) transfer, so it must not count as a payer.
+        self.assertEqual(report["unique_external_payers"], 1)
+        self.assertEqual(report["payments"], 1)
+        self.assertEqual(report["total_usdc"], "1.000000")
+        self.assertEqual(report["zero_value_skipped"], 2)
+        self.assertEqual(report["per_merchant"][MERCHANT]["zero_value_skipped"], 2)
+        self.assertEqual(report["_payers"], {PAYER_A.lower()})
+
+    def test_zero_value_transfer_from_an_excluded_address_is_not_double_counted(self):
+        transfers = [self._transfer(from_addr=PAYER_A, amount="0")]
+        report = self.up.aggregate({MERCHANT: transfers}, exclude=frozenset({PAYER_A.lower()}))
+        self.assertEqual(report["zero_value_skipped"], 1)
+        self.assertEqual(report["excluded_own_payments"], 0)
+        self.assertEqual(report["payments"], 0)
 
     def test_excluded_payer_is_not_counted_as_external(self):
         transfers = [self._transfer(from_addr=PAYER_A), self._transfer(from_addr=PAYER_B)]
@@ -320,6 +452,25 @@ class MainCliTests(unittest.TestCase):
         code, out, _ = self._run([], http_get=self._fake_get(items))
         self.assertIn("Unique external payers: 1", out)
         self.assertNotIn(PAYER_A.lower(), out.lower())
+
+    def test_zero_value_transfer_is_excluded_from_count_and_reported(self):
+        items = [blockscout_item(from_addr=PAYER_A, value="0"), blockscout_item(from_addr=PAYER_B, value="5000000")]
+        code, out, _ = self._run(["--json"], http_get=self._fake_get(items))
+        report = json.loads(out)
+        self.assertEqual(report["unique_external_payers"], 1)
+        self.assertEqual(report["zero_value_skipped"], 1)
+
+    def test_merchant_duplicating_default_case_insensitively_is_scanned_once(self):
+        calls = []
+
+        def fake_get(url, *, timeout):
+            calls.append(url)
+            return {"items": [blockscout_item(from_addr=PAYER_A)], "next_page_params": None}
+
+        code, out, _ = self._run(["--json", "--merchant", MERCHANT.upper()], http_get=fake_get)
+        report = json.loads(out)
+        self.assertEqual(len(calls), 1)  # not scanned twice under the two different casings
+        self.assertEqual(list(report["merchants"]), [MERCHANT])
 
 
 if __name__ == "__main__":
