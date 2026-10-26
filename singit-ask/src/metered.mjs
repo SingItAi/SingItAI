@@ -32,14 +32,14 @@ export const baseOffer = (config, quotes, fallback) => ({
   // 120 s covers the model and settlement; after it, a lost answer's signature is provably unusable.
   scheme: "upto", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[BASE] ?? (fallback ? await fallback() : TERMS.maxChargeAtomic);
+    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
     return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2", billing: { ...TERMS, maxChargeAtomic: amount } } };
   },
 });
 export const solanaOffer = (config, quotes, fallback) => ({
   scheme: "upto", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 300,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[SOLANA] ?? (fallback ? await fallback() : SOLANA_TERMS.maxChargeAtomic);
+    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[SOLANA] ?? (fallback ? await fallback(ctx) : SOLANA_TERMS.maxChargeAtomic);
     return { asset: SOLANA_ASSET, amount, extra: { billing: { ...SOLANA_TERMS, maxChargeAtomic: amount } } };
   },
 });
@@ -51,7 +51,7 @@ export const solanaOffer = (config, quotes, fallback) => ({
 export const exactBaseOffer = (config, quotes, fallback) => ({
   scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[BASE] ?? (fallback ? await fallback() : TERMS.maxChargeAtomic);
+    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
     return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2",
       billing: { ...TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
   },
@@ -59,7 +59,7 @@ export const exactBaseOffer = (config, quotes, fallback) => ({
 export const exactSolanaOffer = (config, quotes, fallback) => ({
   scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 300,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[SOLANA] ?? (fallback ? await fallback() : SOLANA_TERMS.maxChargeAtomic);
+    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[SOLANA] ?? (fallback ? await fallback(ctx) : SOLANA_TERMS.maxChargeAtomic);
     return { asset: SOLANA_ASSET, amount, extra: { billing: { ...SOLANA_TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
   },
 });
@@ -169,8 +169,45 @@ export function addPaymentRoute(app, routes, server, { discoverable = true } = {
   return httpServer;
 }
 
-export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, offerEmptyProbe = false }) {
-  const offers = makeOffers(quotes);
+// What the discovery probes (GET/HEAD and the empty, unpaid POST) are quoted, per scheme and network: the ceilings a
+// real POST of `probeBody` would be offered right now, through the very same `readRequest`, `choose` and
+// `ceilings` a paid question goes through. `probeBody` is the example body the route declares in its Bazaar
+// discovery extension, which is the body CDP's Bazaar sends to record the route's price; vet402 then compares that
+// recorded price with what its own empty, unpaid POST is offered (price_mismatch when no accept carries it). The
+// standing ceiling (the old probe price) is kept only when the example cannot be quoted right now. Probes never pay:
+// a payment on an empty body is refused before settlement (see `isDiscoveryProbe` and the handlers below).
+export function exampleProbe({ probeBody, readRequest, choose, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION }) {
+  const probe = perRequest(async () => {
+    try {
+      const input = await choose(readRequest(probeBody));
+      return ceilings(input.info, input, exactOutputFraction);
+    } catch {
+      return ceilings(null, {}, exactOutputFraction);
+    }
+  });
+  return (bucket, network) => async (ctx) => (await probe(ctx))[bucket][network];
+}
+
+// `quote` computed once per request, however many offers ask for it: @x402/core prices each offer in turn, so
+// without this a 402 with four offers would look the example up four times (and, with the catalogue down, wait
+// out four failed loads). Keyed by the request's adapter, which each request gets its own of; a call without one
+// is just computed.
+export function perRequest(quote) {
+  const seen = new WeakMap();
+  return (ctx) => {
+    const key = ctx?.adapter;
+    if (!key || typeof key !== "object") return quote();
+    if (!seen.has(key)) seen.set(key, quote());
+    return seen.get(key);
+  };
+}
+
+// `makeOffers(quotes, probeFallback)`: `probeFallback(bucket, network)` is the discovery probes' price for that
+// offer (see `exampleProbe`), present only when `probeBody` is given; without it the probes keep the standing ceiling.
+export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, offerEmptyProbe = false, probeBody }) {
+  const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose,
+    exactOutputFraction: config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION });
+  const offers = makeOffers(quotes, probeFallback);
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new UptoEvmScheme())
     .register(BASE, new ExactEvmScheme())

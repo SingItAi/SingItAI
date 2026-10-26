@@ -8,10 +8,10 @@
 // never reachable here, since there is no addFreeRoute call for these routes).
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { addUsageRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, solanaOffer } from "./metered.mjs";
+import { addUsageRoute, baseOffer, exactBaseOffer, exactSolanaOffer, solanaOffer } from "./metered.mjs";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAME, ICON_URL, ceilingAtomic, usd } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, SERVICE_NAME, ICON_URL, ceilingAtomic, usd } from "./pricing.mjs";
 
 // The id is Surplus's own model id (catalogue.mjs's ModelCatalogue.resolve), and must be URL-safe: it becomes
 // `/v1/chat/<id>` verbatim (see test/model-routes.test.mjs's id-shape assertion). None of these may ever be
@@ -107,15 +107,6 @@ export function operationId(model) {
   return "chat" + words.map((w) => w[0].toUpperCase() + w.slice(1)).join("");
 }
 
-// The ceilings a request of the default size would be offered for this model, for the discovery probes' price
-// (GET/HEAD and the empty POST): the same formula a real question gets, just without one yet. A catalogue that
-// cannot resolve the model right now falls back to `info: null`, exactly like the generic /v1/chat/completions
-// probe (metered.mjs's addUsageRoute) falls back for an unresolvable default model.
-async function probeCeilings(catalogue, id, exactOutputFraction) {
-  const info = await catalogue.resolve(id).catch(() => null);
-  return ceilings(info, { maxTokens: LIMITS.defaultTokens, chars: 1, messageCount: 1 }, exactOutputFraction);
-}
-
 // The least and the most this model's own route can charge, for its openapi.json listing: the least is Base's
 // settlement fee (same as every other route), the most is this model's own ceiling for the largest question and
 // answer this service takes, on Solana's terms. `null` when the model cannot be resolved right now; the caller
@@ -133,10 +124,9 @@ export async function modelPriceRange(catalogue, model) {
 export function addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest, upstream, fetchImpl, log,
                                               inputSchema, outputSchema, exampleOutput }) {
   const bufferPp = config.priceBufferPp ?? 1;
-  const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   for (const model of MODEL_ROUTES) {
-    const fallback = (bucket, network) => async () => (await probeCeilings(catalogue, model.id, exactOutputFraction))[bucket][network];
-    addUsageRoute(app, routePath(model.id), (quotes) => [
+    // The discovery probes are quoted for this route's own Bazaar example body (metered.mjs's `exampleProbe`).
+    addUsageRoute(app, routePath(model.id), (quotes, fallback) => [
       // exact on Base first: the simplest offer for a buyer that only inspects accepts[0] (SI-61).
       exactBaseOffer(config, quotes, fallback("exact", BASE)),
       solanaOffer(config, quotes, fallback("upto", SOLANA)),
@@ -157,6 +147,7 @@ export function addModelRoutes(app, config, { facilitatorClient, catalogue, read
       choose: (input) => chooseModelRoute(catalogue, model.id, bufferPp, input),
       upstream, fetchImpl, log,
       offerEmptyProbe: true,
+      probeBody: modelExample(model),
     });
   }
 }

@@ -1,4 +1,4 @@
-# @singit/plugin-singit
+# @singitai/plugin-singit
 
 An [ElizaOS](https://github.com/elizaOS/eliza) plugin that gives an agent [SingIt](../../README.md)'s
 tools: free crypto/metal/FX prices and model listing through SingIt's MCP server, optional paid web
@@ -6,7 +6,7 @@ search and page reading with a SingIt API key, and optional x402-paid chat on
 [SingIt Ask](../../singit-ask) (Base) when the agent has a funded wallet key and explicit spending
 caps.
 
-**Not published.** This package is `"private": true`, version `0.1.0`. The
+**Not on npm yet.** Version `0.1.0` is ready to publish as `@singitai/plugin-singit`. The
 [elizaOS community plugin registry is retired](https://plugins.eliza.app/index.json) (`410
 registry_retired`) and no longer accepts third-party registry submissions, so until this is
 published to npm, install it from a local path or a Git checkout:
@@ -19,7 +19,7 @@ npm install ./SingItAI/integrations/elizaos-plugin
 Once the project owner publishes it, this becomes:
 
 ```bash
-npm install @singit/plugin-singit
+npm install @singitai/plugin-singit
 ```
 
 ## Add it to an agent
@@ -28,7 +28,7 @@ npm install @singit/plugin-singit
 export const character = {
   name: "MyAgent",
   // character.plugins takes package names (strings); the package must be installed in the project.
-  plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", "@singit/plugin-singit"],
+  plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", "@singitai/plugin-singit"],
   settings: {
     secrets: {
       // Optional: paid MCP tools (web_search, read_page).
@@ -46,7 +46,7 @@ Or pass the plugin object to the runtime directly (the runtime's `plugins` optio
 
 ```ts
 import { AgentRuntime } from "@elizaos/core";
-import { singitPlugin } from "@singit/plugin-singit";
+import { singitPlugin } from "@singitai/plugin-singit";
 
 const runtime = new AgentRuntime({ character, plugins: [singitPlugin] });
 ```

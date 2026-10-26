@@ -692,8 +692,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Public: any x402 agent pays on Solana or Base for actual usage with `upto`, or the same ceiling flat with
   // `exact` for buyers that sign only that scheme. Listed for discovery. `exact` on Base leads `accepts`: it is the
   // simplest offer for a buyer that only inspects the first one, and the one this service is paid in most often.
-  addUsageRoute(app, ROUTE, quotes => [exactBaseOffer(config, quotes), solanaOffer(config, quotes),
-    baseOffer(config, quotes), exactSolanaOffer(config, quotes)], {
+  // Its discovery probes are quoted for the Bazaar example body below (metered.mjs's `exampleProbe`), the price
+  // Bazaar records for this route, so vet402's empty POST is offered that same price (no price_mismatch).
+  addUsageRoute(app, ROUTE, (quotes, probe) => [exactBaseOffer(config, quotes, probe("exact", BASE)),
+    solanaOffer(config, quotes, probe("upto", SOLANA)), baseOffer(config, quotes, probe("upto", BASE)),
+    exactSolanaOffer(config, quotes, probe("exact", SOLANA))], {
     description: `SingIt Ask: ${DISCOVERY_DESCRIPTION}`,
     serviceName: SERVICE_NAME,
     iconUrl: ICON_URL,
@@ -708,7 +711,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         output: { example: EXAMPLE.output, schema: OUTPUT_SCHEMA },
       }),
     },
-  }, { ...route, offerEmptyProbe: true });
+  }, { ...route, offerEmptyProbe: true, probeBody: EXAMPLE.input });
   // The web agent's Base payments, pinned to this address by the gateway's buyer (always `upto`: ask_metered.py
   // builds its own `upto` requirements and signs nothing else). `exact` is offered alongside it for buyers such
   // as vet402 that only sign `exact`; they pay the same ceiling flat instead of metered actual usage.

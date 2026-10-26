@@ -5,7 +5,7 @@ chat on [SingIt Ask](../../singit-ask)) from three agent frameworks:
 
 | Framework | Recipe | Runnable example |
 | --- | --- | --- |
-| [ElizaOS](elizaos.md) | A plugin (`@singit/plugin-singit`) an agent character loads directly | [`integrations/elizaos-plugin`](../../integrations/elizaos-plugin) |
+| [ElizaOS](elizaos.md) | A plugin (`@singitai/plugin-singit`) an agent character loads directly | [`integrations/elizaos-plugin`](../../integrations/elizaos-plugin) |
 | [LangChain.js](langchain.md) | MCP tools via `@langchain/mcp-adapters` + x402-paid `ChatOpenAI` | [`integrations/examples/langchain`](../../integrations/examples/langchain) |
 | [Vercel AI SDK](vercel-ai-sdk.md) | MCP tools via `@ai-sdk/mcp` + x402-paid `@ai-sdk/openai-compatible` | [`integrations/examples/vercel-ai-sdk`](../../integrations/examples/vercel-ai-sdk) |
 
@@ -36,7 +36,7 @@ challenge from SingIt Ask's chat route — without spending anything.
 
 ## Status
 
-- **ElizaOS plugin**: not published (`"private": true`); [the community plugin registry is
+- **ElizaOS plugin**: not on npm yet (ready as `@singitai/plugin-singit`); [the community plugin registry is
   retired](https://plugins.eliza.app/index.json), so install it from a local path or Git checkout
   until the project owner decides to publish — see [elizaos.md](elizaos.md).
 - **LangChain and Vercel AI SDK examples**: runnable recipes, not published packages. Both ship

@@ -286,6 +286,18 @@ needed.
 Limits: nothing is deployed and no free model was changed; the gateway part and the budget stay off until the
 owner sets them. The Bazaar input-schema change has not been checked against Coinbase's real facilitator.
 
+### October 26: Base and Solana payer reporting (local verification, SI-86)
+
+Extension of the imported Base payer script (PR #90) adds Solana
+USDC balance attribution, read-only agent-address database exclusions and configurable
+atomic-amount filters. Both filtered and unfiltered metrics are shown per chain and
+combined. Branch feat/si86-payers-solana; no deployment.
+Verification: `python3 -m unittest discover -s scripts/tests` — 228 tests passed.
+Limitations: amount matching cannot identify the purchased endpoint; Solana history
+depends on RPC retention and currently discoverable token accounts, and zero-delta
+transactions are discarded before aggregation. This is new reporting work in the
+merged tree, separate from the imported Base scanning behavior.
+
 ## Pending work — not claimed as completed
 
 - Manually verify the deployed wallet commands and refreshed navigation in Telegram.

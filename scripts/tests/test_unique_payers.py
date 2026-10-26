@@ -2,7 +2,10 @@ import datetime
 import importlib.util
 import io
 import json
+import os
+import sqlite3
 import sys
+import tempfile
 import unittest
 import urllib.error
 from contextlib import redirect_stderr, redirect_stdout
@@ -16,6 +19,12 @@ SCRIPT = ROOT / "scripts" / "unique-payers.py"
 MERCHANT = "0xC23d1Dc0f5fCe1abfFB051e06cB93f0329968B4e"
 PAYER_A = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 PAYER_B = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+SOLANA_MERCHANT = "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu"
+SOLANA_USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+SOLANA_PAYER_A = "SoLTestPayerAddressAAAAAAAAAAAAAAAAAAAAAA1"
+SOLANA_PAYER_B = "SoLTestPayerAddressBBBBBBBBBBBBBBBBBBBBBB2"
+SOLANA_FEE_PAYER = "SoLTestFacilitatorFeePayerAAAAAAAAAAAAAAA3"
 
 
 def load_unique_payers():
@@ -65,7 +74,7 @@ class ExclusionTests(unittest.TestCase):
             path = Path(tmp) / "mine.txt"
             path.write_text(PAYER_B)
             exclude = self.up.load_exclusions(PAYER_A, path)
-        self.assertEqual(exclude, frozenset({MERCHANT.lower(), PAYER_A.lower(), PAYER_B.lower()}))
+        self.assertEqual(exclude, frozenset({MERCHANT.lower(), SOLANA_MERCHANT, PAYER_A.lower(), PAYER_B.lower()}))
 
 
 class MergeMerchantsTests(unittest.TestCase):
@@ -386,7 +395,11 @@ class MainCliTests(unittest.TestCase):
     def setUp(self):
         self.up = load_unique_payers()
 
-    def _run(self, argv, *, http_get, env=None):
+    def _run(self, argv, *, http_get, env=None, chain="base"):
+        # Pinned to --chain base unless the test overrides it: these tests only mock the Blockscout
+        # HTTP path, and the default --chain is "all", which would otherwise also try a real
+        # Solana RPC call.
+        argv = (["--chain", chain] if chain else []) + list(argv)
         with patch.object(self.up, "_http_get_json", http_get):
             out, err = io.StringIO(), io.StringIO()
             with redirect_stdout(out), redirect_stderr(err):
@@ -492,6 +505,598 @@ class ChunkSizeTests(unittest.TestCase):
             self.up.main(["--rpc", "https://rpc.test", "--from-block", "200", "--to-block", "100"], env={})
         self.assertIn("--from-block", str(cm.exception.code))
 
+
+def solana_tx(*, pre, post, err=None, block_time=1_700_000_000, signature="sig"):
+    def balances(entries):
+        return [{"accountIndex": i, "mint": SOLANA_USDC, "owner": owner,
+                  "uiTokenAmount": {"amount": str(amount), "decimals": 6}}
+                for i, (owner, amount) in enumerate(entries)]
+    return {
+        "blockTime": block_time,
+        "meta": {"err": err, "preTokenBalances": balances(pre), "postTokenBalances": balances(post)},
+        "transaction": {"message": {"accountKeys": []}, "signatures": [signature]},
+    }
+
+
+class SolanaTransactionParsingTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_payer_is_the_owner_whose_balance_decreased(self):
+        tx = solana_tx(pre=[(SOLANA_PAYER_A, 5_000_000), (SOLANA_MERCHANT, 0)],
+                       post=[(SOLANA_PAYER_A, 2_500_000), (SOLANA_MERCHANT, 2_500_000)])
+        t = self.up.normalize_solana_transaction(tx, merchant=SOLANA_MERCHANT, signature="sig")
+        self.assertEqual(t["from"], SOLANA_PAYER_A)
+        self.assertEqual(t["amount"], Decimal("2.5"))
+        self.assertEqual(t["tx_hash"], "sig")
+        self.assertIsInstance(t["timestamp"], datetime.datetime)
+
+    def test_facilitator_fee_payer_is_not_attributed_even_if_present_in_other_mint_balances(self):
+        tx = solana_tx(pre=[(SOLANA_PAYER_A, 5_000_000)], post=[(SOLANA_PAYER_A, 2_500_000),
+                       (SOLANA_MERCHANT, 2_500_000)])
+        # The fee payer only ever shows up holding SOL / another mint, never this mint -- simulate by
+        # adding an other-mint balance for it, which normalize_solana_transaction must ignore.
+        tx["meta"]["preTokenBalances"].append({"accountIndex": 9, "mint": "SomeOtherMint111111111111111111111111111",
+                                               "owner": SOLANA_FEE_PAYER, "uiTokenAmount": {"amount": "1", "decimals": 6}})
+        t = self.up.normalize_solana_transaction(tx, merchant=SOLANA_MERCHANT, signature="sig")
+        self.assertEqual(t["from"], SOLANA_PAYER_A)
+        self.assertNotEqual(t["from"], SOLANA_FEE_PAYER)
+
+    def test_failed_transaction_is_skipped(self):
+        tx = solana_tx(pre=[(SOLANA_PAYER_A, 5_000_000)],
+                       post=[(SOLANA_PAYER_A, 2_500_000), (SOLANA_MERCHANT, 2_500_000)],
+                       err={"InstructionError": [0, "Custom"]})
+        self.assertIsNone(self.up.normalize_solana_transaction(tx, merchant=SOLANA_MERCHANT, signature="sig"))
+
+    def test_zero_value_is_skipped(self):
+        tx = solana_tx(pre=[(SOLANA_PAYER_A, 5_000_000), (SOLANA_MERCHANT, 1_000_000)],
+                       post=[(SOLANA_PAYER_A, 5_000_000), (SOLANA_MERCHANT, 1_000_000)])
+        self.assertIsNone(self.up.normalize_solana_transaction(tx, merchant=SOLANA_MERCHANT, signature="sig"))
+
+    def test_merchant_not_receiving_usdc_is_skipped(self):
+        tx = solana_tx(pre=[(SOLANA_MERCHANT, 1_000_000)], post=[(SOLANA_MERCHANT, 0)])
+        self.assertIsNone(self.up.normalize_solana_transaction(tx, merchant=SOLANA_MERCHANT, signature="sig"))
+
+    def test_multiple_decreasing_owners_attributes_unique_exact_match(self):
+        tx = solana_tx(pre=[(SOLANA_PAYER_A, 10_000_000), (SOLANA_PAYER_B, 10_000_000)],
+                       post=[(SOLANA_PAYER_A, 7_000_000), (SOLANA_PAYER_B, 3_000_000), (SOLANA_MERCHANT, 7_000_000)])
+        t = self.up.normalize_solana_transaction(tx, merchant=SOLANA_MERCHANT, signature="sig")
+        self.assertEqual(t["from"], SOLANA_PAYER_B)  # -7 USDC, bigger than payer A's -3 USDC
+
+    def test_null_transaction_is_unavailable(self):
+        self.assertEqual(self.up.normalize_solana_transaction(None, merchant=SOLANA_MERCHANT, signature="sig")["status"], "unavailable")
+
+
+class SolanaTokenAccountsTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_queries_by_owner_and_mint_and_returns_pubkeys(self):
+        def fake_post(url, payload, *, timeout):
+            self.assertEqual(payload["method"], "getTokenAccountsByOwner")
+            self.assertEqual(payload["params"][:2], [SOLANA_MERCHANT, {"mint": SOLANA_USDC}])
+            return {"result": {"value": [{"pubkey": "ACC1"}, {"pubkey": "ACC2"}]}}
+        accounts = self.up.iter_solana_token_accounts("https://rpc.test", SOLANA_MERCHANT, SOLANA_USDC,
+                                                       http_post=fake_post)
+        self.assertEqual(accounts, ["ACC1", "ACC2"])
+
+
+class SolanaSignaturePaginationTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_paginates_with_before_until_an_empty_page(self):
+        pages = [[{"signature": "s1", "blockTime": 2000, "err": None},
+                 {"signature": "s2", "blockTime": 1900, "err": None}], []]
+        calls = []
+
+        def fake_post(url, payload, *, timeout):
+            calls.append(payload["params"][1])
+            return {"result": pages[len(calls) - 1]}
+
+        sigs = list(self.up.iter_solana_signatures("https://rpc.test", SOLANA_MERCHANT, http_post=fake_post,
+                                                    limit=2, delay=0, sleep=lambda s: None))
+        self.assertEqual([s["signature"] for s in sigs], ["s1", "s2"])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[1]["before"], "s2")
+
+    def test_stops_once_a_page_reaches_the_since_cutoff_without_fetching_more(self):
+        new_day = int(datetime.datetime(2026, 3, 1, tzinfo=datetime.timezone.utc).timestamp())
+        old_day = int(datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc).timestamp())
+        pages = [[{"signature": "new1", "blockTime": new_day, "err": None}],
+                 [{"signature": "old1", "blockTime": old_day, "err": None}]]
+        calls = []
+
+        def fake_post(url, payload, *, timeout):
+            calls.append(payload)
+            if len(calls) > 2:
+                raise AssertionError("must not paginate past the --since cutoff")
+            return {"result": pages[len(calls) - 1]}
+
+        sigs = list(self.up.iter_solana_signatures("https://rpc.test", SOLANA_MERCHANT,
+                                                    since=datetime.date(2026, 2, 1), http_post=fake_post,
+                                                    limit=1, delay=0, sleep=lambda s: None))
+        self.assertEqual([s["signature"] for s in sigs], ["new1"])
+        self.assertEqual(len(calls), 2)
+
+    def test_runaway_pagination_raises_instead_of_looping_forever(self):
+        def fake_post(url, payload, *, timeout):
+            return {"result": [{"signature": "s", "blockTime": None, "err": None}]}
+
+        with self.assertRaises(RuntimeError):
+            list(self.up.iter_solana_signatures("https://rpc.test", SOLANA_MERCHANT, http_post=fake_post,
+                                                 limit=1, max_pages=3, delay=0, sleep=lambda s: None))
+
+
+class SolanaTransfersIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_same_signature_seen_via_two_token_accounts_is_not_double_counted(self):
+        def fake_post(url, payload, *, timeout):
+            method = payload["method"]
+            if method == "getTokenAccountsByOwner":
+                return {"result": {"value": [{"pubkey": "ACC1"}, {"pubkey": "ACC2"}]}}
+            if method == "getSignaturesForAddress":
+                if "before" in payload["params"][1]:
+                    return {"result": []}
+                return {"result": [{"signature": "sig1", "blockTime": 1_700_000_000, "err": None}]}
+            if method == "getTransaction":
+                return {"result": solana_tx(pre=[(SOLANA_PAYER_A, 5_000_000)],
+                                            post=[(SOLANA_PAYER_A, 2_500_000), (SOLANA_MERCHANT, 2_500_000)])}
+            raise AssertionError(method)
+
+        transfers = list(self.up.iter_solana_transfers("https://rpc.test", SOLANA_MERCHANT, http_post=fake_post,
+                                                        delay=0, sleep=lambda s: None))
+        self.assertEqual(len(transfers), 1)
+
+    def test_failed_signature_skips_the_getTransaction_call(self):
+        get_tx_calls = []
+
+        def fake_post(url, payload, *, timeout):
+            method = payload["method"]
+            if method == "getTokenAccountsByOwner":
+                return {"result": {"value": [{"pubkey": "ACC1"}]}}
+            if method == "getSignaturesForAddress":
+                if "before" in payload["params"][1]:
+                    return {"result": []}
+                return {"result": [{"signature": "sig1", "blockTime": 1_700_000_000, "err": {"x": 1}}]}
+            if method == "getTransaction":
+                get_tx_calls.append(payload)
+                return {"result": None}
+            raise AssertionError(method)
+
+        transfers = list(self.up.iter_solana_transfers("https://rpc.test", SOLANA_MERCHANT, http_post=fake_post,
+                                                        delay=0, sleep=lambda s: None))
+        self.assertEqual(transfers, [])
+        self.assertEqual(get_tx_calls, [])
+
+
+class ExcludeDbTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def _make_db(self, directory, name, script):
+        path = Path(directory) / name
+        conn = sqlite3.connect(path)
+        try:
+            conn.executescript(script)
+            conn.commit()
+        finally:
+            conn.close()
+        return path
+
+    def test_loads_non_empty_values_from_one_column_case_preserving(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._make_db(tmp, "allowance.db",
+                "CREATE TABLE agents (agent_address TEXT);"
+                f"INSERT INTO agents VALUES ('{PAYER_A}'), (''), (NULL), ('{SOLANA_PAYER_A}');")
+            addrs, label = self.up.load_exclude_db(f"{path}:agents.agent_address")
+        self.assertEqual(addrs, frozenset({PAYER_A.lower(), SOLANA_PAYER_A}))
+        self.assertEqual(label, "allowance.db:agents.agent_address")
+
+    def test_opens_the_database_read_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._make_db(tmp, "allowance.db",
+                "CREATE TABLE agents (agent_address TEXT); INSERT INTO agents VALUES ('x');")
+            self.up.load_exclude_db(f"{path}:agents.agent_address")
+            conn = sqlite3.connect(path)
+            try:
+                rows = conn.execute("SELECT agent_address FROM agents").fetchall()
+            finally:
+                conn.close()
+            self.assertEqual(rows, [("x",)])  # untouched by the read-only open
+
+    def test_rejects_invalid_table_identifier(self):
+        with self.assertRaises(ValueError):
+            self.up.load_exclude_db("/tmp/x.db:bad-table.col")
+
+    def test_rejects_invalid_column_identifier(self):
+        with self.assertRaises(ValueError):
+            self.up.load_exclude_db("/tmp/x.db:table.bad-col")
+
+    def test_spec_without_colon_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.up.load_exclude_db("no-colon-here")
+
+    def test_spec_without_dot_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.up.load_exclude_db("/tmp/x.db:justtable")
+
+    def test_missing_file_is_a_clear_error_without_addresses(self):
+        with self.assertRaises(ValueError) as cm:
+            self.up.load_exclude_db("/no/such/path/allowance.db:agents.agent_address")
+        self.assertIn("not found", str(cm.exception))
+        self.assertNotIn(PAYER_A.lower(), str(cm.exception).lower())
+
+    def test_missing_table_is_a_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._make_db(tmp, "allowance.db", "CREATE TABLE other (x TEXT);")
+            with self.assertRaises(ValueError) as cm:
+                self.up.load_exclude_db(f"{path}:agents.agent_address")
+        self.assertIn("agents.agent_address", str(cm.exception))
+
+
+class SolanaCaseSensitivityTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_normalize_address_only_lowercases_0x_addresses(self):
+        self.assertEqual(self.up.normalize_address(PAYER_A), PAYER_A.lower())
+        self.assertEqual(self.up.normalize_address(SOLANA_PAYER_A), SOLANA_PAYER_A)
+        self.assertEqual(self.up.normalize_address(SOLANA_PAYER_A.lower()), SOLANA_PAYER_A.lower())
+
+    def test_default_merchants_of_both_chains_are_always_excluded(self):
+        exclude = self.up.load_exclusions(None, None)
+        self.assertIn(MERCHANT.lower(), exclude)
+        self.assertIn(SOLANA_MERCHANT, exclude)
+
+    def test_solana_exclusion_via_env_is_case_sensitive(self):
+        exclude = self.up.load_exclusions(SOLANA_PAYER_A, None)
+        self.assertIn(SOLANA_PAYER_A, exclude)
+        self.assertNotIn(SOLANA_PAYER_A.lower(), exclude)
+        self.assertNotIn(SOLANA_PAYER_A.upper(), exclude)
+
+    def test_aggregate_does_not_match_a_differently_cased_solana_exclusion(self):
+        transfer = {"from": SOLANA_PAYER_A, "amount": Decimal("1"), "timestamp": None, "tx_hash": "x"}
+        report = self.up.aggregate({SOLANA_MERCHANT: [transfer]}, exclude=frozenset({SOLANA_PAYER_A.lower()}))
+        self.assertEqual(report["unique_external_payers"], 1)
+        self.assertEqual(report["excluded_own_payments"], 0)
+
+
+class VpsOwnWalletsTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_specs_expand_under_home_sign402(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"HOME": tmp}):
+                specs = self.up.vps_own_wallet_specs()
+        expected_dir = str(Path(tmp) / ".sign402")
+        self.assertEqual(specs, [
+            f"{expected_dir}/allowance.db:agents.agent_address",
+            f"{expected_dir}/solana-allowance.db:agents.agent_address",
+        ])
+
+    def test_vps_own_wallets_flag_excludes_agents_but_keeps_limiters(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sign402_dir = Path(tmp) / ".sign402"
+            sign402_dir.mkdir()
+            conn = sqlite3.connect(sign402_dir / "allowance.db")
+            conn.executescript(
+                "CREATE TABLE agents (agent_address TEXT);"
+                f"INSERT INTO agents VALUES ('{PAYER_A}');"
+                "CREATE TABLE limiters (limiter_address TEXT, agent_address TEXT);"
+                f"INSERT INTO limiters VALUES ('{PAYER_B}', '{PAYER_A}');")
+            conn.commit()
+            conn.close()
+            conn = sqlite3.connect(sign402_dir / "solana-allowance.db")
+            conn.executescript("CREATE TABLE agents (agent_address TEXT); "
+                               f"INSERT INTO agents VALUES ('{SOLANA_PAYER_A}');")
+            conn.commit()
+            conn.close()
+
+            items = [blockscout_item(from_addr=PAYER_A), blockscout_item(from_addr=PAYER_B)]
+
+            def fake_get(url, *, timeout):
+                return {"items": items, "next_page_params": None}
+
+            with patch.dict(os.environ, {"HOME": tmp}), patch.object(self.up, "_http_get_json", fake_get):
+                out, err = io.StringIO(), io.StringIO()
+                with redirect_stdout(out), redirect_stderr(err):
+                    self.up.main(["--chain", "base", "--vps-own-wallets", "--json"], env={})
+            report = json.loads(out.getvalue())
+            self.assertEqual(report["unique_external_payers"], 1)
+            self.assertEqual(report["excluded_own_payments"], 1)
+            self.assertIn("loaded 1 exclusion address(es)", err.getvalue())
+
+    def test_vps_own_wallets_does_not_include_custodial_user_wallets(self):
+        specs = self.up.vps_own_wallet_specs()
+        self.assertTrue(all("user-wallets" not in s and "user_wallets" not in s for s in specs))
+
+
+class ChainSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_chain_solana_does_not_call_blockscout(self):
+        get_calls = []
+
+        def fake_get(url, *, timeout):
+            get_calls.append(url)
+            return {"items": [], "next_page_params": None}
+
+        def fake_post(url, payload, *, timeout):
+            if payload["method"] == "getTokenAccountsByOwner":
+                return {"result": {"value": []}}
+            raise AssertionError(payload["method"])
+
+        with patch.object(self.up, "_http_get_json", fake_get), patch.object(self.up, "_http_post_json", fake_post):
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                self.up.main(["--chain", "solana", "--json", "--solana-delay", "0"], env={})
+        self.assertEqual(get_calls, [])
+        report = json.loads(out.getvalue())
+        self.assertEqual(list(report["chains"]), ["solana"])
+        self.assertEqual(report["chains"]["solana"]["rpc_host"], "api.mainnet-beta.solana.com")
+
+    def test_chain_base_does_not_call_solana_rpc(self):
+        post_calls = []
+
+        def fake_get(url, *, timeout):
+            return {"items": [], "next_page_params": None}
+
+        def fake_post(url, payload, *, timeout):
+            post_calls.append(payload)
+            return {"result": {"value": []}}
+
+        with patch.object(self.up, "_http_get_json", fake_get), patch.object(self.up, "_http_post_json", fake_post):
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                self.up.main(["--chain", "base", "--json"], env={})
+        self.assertEqual(post_calls, [])
+
+    def test_solana_rpc_url_is_never_printed_only_its_host(self):
+        def fake_post(url, payload, *, timeout):
+            if payload["method"] == "getTokenAccountsByOwner":
+                return {"result": {"value": []}}
+            raise AssertionError(payload["method"])
+
+        secret_rpc = "https://rpc.example/secret-api-key-123"
+        with patch.object(self.up, "_http_post_json", fake_post):
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                self.up.main(["--chain", "solana", "--solana-rpc", secret_rpc, "--json", "--solana-delay", "0"],
+                            env={})
+        self.assertNotIn("secret-api-key-123", out.getvalue())
+        self.assertNotIn("secret-api-key-123", err.getvalue())
+        report = json.loads(out.getvalue())
+        self.assertEqual(report["chains"]["solana"]["rpc_host"], "rpc.example")
+
+
+class CombinedReportTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_combined_sums_across_chains_and_breaks_down_per_chain(self):
+        def fake_get(url, *, timeout):
+            return {"items": [blockscout_item(from_addr=PAYER_A), blockscout_item(from_addr=PAYER_B)],
+                    "next_page_params": None}
+
+        def fake_post(url, payload, *, timeout):
+            method = payload["method"]
+            if method == "getTokenAccountsByOwner":
+                return {"result": {"value": [{"pubkey": "ACC1"}]}}
+            if method == "getSignaturesForAddress":
+                if "before" in payload["params"][1]:
+                    return {"result": []}
+                return {"result": [{"signature": "sig1", "blockTime": 1_700_000_000, "err": None}]}
+            if method == "getTransaction":
+                return {"result": solana_tx(pre=[(SOLANA_PAYER_A, 5_000_000)],
+                                            post=[(SOLANA_PAYER_A, 2_500_000), (SOLANA_MERCHANT, 2_500_000)])}
+            raise AssertionError(method)
+
+        with patch.object(self.up, "_http_get_json", fake_get), patch.object(self.up, "_http_post_json", fake_post):
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                self.up.main(["--chain", "all", "--json", "--solana-delay", "0"], env={})
+        report = json.loads(out.getvalue())
+        self.assertEqual(report["chains"]["base"]["unique_external_payers"], 2)
+        self.assertEqual(report["chains"]["solana"]["unique_external_payers"], 1)
+        self.assertEqual(report["unique_external_payers"], 3)  # SUM, not deduplicated across address spaces
+        self.assertIn("SUM", report["combined_note"])
+        self.assertEqual(report["merchants"][MERCHANT], "singit-ask metered chat (Base)")
+        self.assertEqual(report["merchants"][SOLANA_MERCHANT], "singit-ask metered chat (Solana)")
+
+    def test_single_chain_report_has_no_combined_note(self):
+        def fake_get(url, *, timeout):
+            return {"items": [blockscout_item(from_addr=PAYER_A)], "next_page_params": None}
+
+        with patch.object(self.up, "_http_get_json", fake_get):
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                self.up.main(["--chain", "base", "--json"], env={})
+        report = json.loads(out.getvalue())
+        self.assertNotIn("combined_note", report)
+
+
+class AmountFilterTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_exact_atomic_matching_all_metrics_and_since(self):
+        def transfer(payer, amount, day):
+            return dict(from_display=payer, amount=Decimal(amount), timestamp=
+                        datetime.datetime(2026, 1, day, tzinfo=datetime.timezone.utc),
+                        **{"from": payer, "tx_hash": "test"})
+        transfers = {MERCHANT: [
+            transfer(PAYER_A, "0.010100", 15),
+            transfer(PAYER_B, "0.006200", 16),
+            transfer(PAYER_B, "0.0101001", 17),
+            transfer(MERCHANT.lower(), "0.010100", 18),
+            transfer(MERCHANT.lower(), "2", 19),
+            transfer(PAYER_A, "0", 20),
+            transfer(PAYER_B, "0.006200", 1),
+        ]}
+        kwargs = dict(exclude=frozenset({MERCHANT.lower()}), since=datetime.date(2026, 1, 10))
+        raw = self.up.aggregate(transfers, **kwargs)
+        filtered = self.up.aggregate(transfers, amount_filter_atomic=frozenset({10100}), **kwargs)
+        self.assertEqual((raw['payments'], raw['excluded_own_payments'], raw['zero_value_skipped']), (3, 2, 1))
+        self.assertEqual(filtered['unique_external_payers'], 1)
+        self.assertEqual(filtered['payments'], 1)
+        self.assertEqual(filtered['total_usdc'], '0.010100')
+        self.assertEqual(filtered['excluded_own_payments'], 1)
+        self.assertEqual(filtered['zero_value_skipped'], 0)
+        self.assertEqual(filtered['date_range'], {'from': '2026-01-15', 'to': '2026-01-15'})
+        self.assertEqual(filtered['per_merchant'][MERCHANT]['payments'], 1)
+        zeros = self.up.aggregate(transfers, amount_filter_atomic=frozenset({0}), **kwargs)
+        self.assertEqual(zeros['zero_value_skipped'], 1)
+        self.assertEqual(zeros['payments'], 0)
+
+    def test_cli_preset_custom_override_and_both_chains(self):
+        for flags, expected in [(['--exa-search-amounts'], 2),
+                                (['--amount-filter-atomic', '6200'], 1),
+                                (['--exa-search-amounts', '--amount-filter-atomic', '6200'], 1)]:
+            with self.subTest(flags=flags):
+                transfers = {MERCHANT: [dict(amount=Decimal(a), timestamp=None,
+                             **{'from': PAYER_A, 'tx_hash': 'test'})
+                             for a in ('0.010100', '0.006200', '1')]}
+                sol = {SOLANA_MERCHANT: [dict(amount=Decimal('0.006200'), timestamp=None,
+                                       **{'from': SOLANA_PAYER_A, 'tx_hash': 'test'})]}
+                out = io.StringIO()
+                with patch.object(self.up, '_scan_base', return_value=(transfers, {})), \
+                     patch.object(self.up, '_scan_solana', return_value=(sol, {})), redirect_stdout(out):
+                    self.up.main(flags + ['--json'], env={})
+                report = json.loads(out.getvalue())
+                self.assertEqual(report['payments'], 4)
+                self.assertEqual(report['filtered']['payments'], expected + 1)
+                self.assertEqual(report['chains']['base']['filtered']['payments'], expected)
+                self.assertEqual(report['chains']['solana']['filtered']['payments'], 1)
+                self.assertEqual(report['filtered']['unique_external_payers'], 2)
+                text = self.up.text_summary(report)
+                self.assertIn('Unfiltered metrics:', text)
+                self.assertIn('Filtered metrics', text)
+                self.assertIn('Chain solana metrics:', text)
+                self.assertIn('Excluded own payments:', text)
+                self.assertIn('Date range:', text)
+
+    def test_invalid_amount_lists_rejected(self):
+        for value in ('', '1,', '-1', '1.0', '1e4', 'abc', '1,,2'):
+            with self.subTest(value=value), redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.up._build_parser().parse_args(['--amount-filter-atomic', value])
+        self.assertEqual(self.up._build_parser().parse_args(
+            ['--amount-filter-atomic', ' 6200,10100,6200,0 ']).amount_filter_atomic,
+            frozenset({6200, 10100, 0}))
+
+    def test_missing_database_column_is_an_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'wallets.db'
+            with sqlite3.connect(path) as conn:
+                conn.execute('CREATE TABLE agents (other TEXT)')
+            with self.assertRaisesRegex(ValueError, 'cannot read'):
+                self.up.load_exclude_db(f'{path}:agents.agent_address')
+
+
+class ReviewRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def normalize(self, tx):
+        return self.up.normalize_solana_transaction(tx, merchant=SOLANA_MERCHANT, signature="sig")
+
+    def test_exact_match_wins_over_larger_decrease_and_order(self):
+        for owners in ([SOLANA_PAYER_A, SOLANA_PAYER_B], [SOLANA_PAYER_B, SOLANA_PAYER_A]):
+            tx = solana_tx(pre=[(o, 10_000_000) for o in owners],
+                           post=[(SOLANA_PAYER_A, 8_000_000), (SOLANA_PAYER_B, 3_000_000),
+                                 (SOLANA_MERCHANT, 2_000_000)])
+            self.assertEqual(self.normalize(tx)["from"], SOLANA_PAYER_A)
+
+    def test_ambiguous_and_no_decreasing_owner_are_counts_not_payers(self):
+        records = []
+        for pre in ([(SOLANA_PAYER_A, 2), (SOLANA_PAYER_B, 2)],
+                    [(SOLANA_PAYER_A, 3), (SOLANA_PAYER_B, 4)], []):
+            record = self.normalize(solana_tx(pre=pre, post=[(SOLANA_MERCHANT, 2)]))
+            self.assertEqual(record["status"], "unattributed")
+            self.assertNotIn("from", record)
+            records.append(record)
+        records += [self.normalize(None), self.normalize({"meta": None})]
+        report = self.up.aggregate({SOLANA_MERCHANT: records}, exclude=frozenset())
+        self.assertEqual((report["payments"], report["unique_external_payers"]), (0, 0))
+        self.assertEqual(report["unattributed"], 4)
+        self.assertEqual(report["unavailable"], 1)
+        self.assertEqual(report["per_merchant"][SOLANA_MERCHANT]["unattributed"], 4)
+        combined = self.up.combine_chain_reports({"solana": report})
+        self.assertEqual(json.loads(json.dumps(combined))["unavailable"], 1)
+        text = self.up.text_summary(combined)
+        self.assertIn("4 unattributed, 1 unavailable", text)
+
+    def test_rpc_unresolved_records_survive_scan_and_cli(self):
+        def post(url, payload, **kwargs):
+            method = payload["method"]
+            if method == "getTokenAccountsByOwner":
+                return {"result": {"value": [{"pubkey": "account"}]}}
+            if method == "getSignaturesForAddress":
+                return {"result": [] if "before" in payload["params"][1] else
+                        [{"signature": sig} for sig in ("null", "meta", "owner")]}
+            if method == "getTransaction":
+                return {"result": {"null": None, "meta": {}, "owner":
+                        solana_tx(pre=[], post=[(SOLANA_MERCHANT, 1)])}[payload["params"][0]]}
+            raise AssertionError(method)
+        out = io.StringIO()
+        with patch.object(self.up, "_http_post_json", post), redirect_stdout(out):
+            self.up.main(["--chain", "solana", "--solana-delay", "0", "--json"], env={})
+        report = json.loads(out.getvalue())
+        self.assertEqual(report["per_merchant"][SOLANA_MERCHANT]["unattributed"], 2)
+        self.assertEqual(report["per_merchant"][SOLANA_MERCHANT]["unavailable"], 1)
+        self.assertEqual(report["unique_external_payers"], 0)
+
+    def test_short_signature_pages_continue(self):
+        pages = [[{"signature": "a"}], [{"signature": "b"}], []]
+        calls = []
+        def post(url, payload, **kwargs):
+            calls.append(payload)
+            return {"result": pages.pop(0)}
+        result = list(self.up.iter_solana_signatures("unused", "account", http_post=post, delay=0))
+        self.assertEqual([r["signature"] for r in result], ["a", "b"])
+        self.assertEqual(calls[2]["params"][1]["before"], "b")
+
+    def test_corrupt_db_and_connect_errors_are_clean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "broken.db"
+            path.write_text("not sqlite")
+            with self.assertRaisesRegex(ValueError, "cannot read"):
+                self.up.load_exclude_db(f"{path}:agents.agent_address")
+            with patch.object(self.up.sqlite3, "connect", side_effect=sqlite3.DatabaseError("broken")):
+                with self.assertRaisesRegex(ValueError, "cannot read"):
+                    self.up.load_exclude_db(f"{path}:agents.agent_address")
+
+    def test_identifier_trailing_newlines_rejected(self):
+        for suffix in ("agents\n.agent_address", "agents.agent_address\n"):
+            with self.assertRaisesRegex(ValueError, "invalid table/column"):
+                self.up._parse_exclude_db_spec("/tmp/x:" + suffix)
+
+    def test_missing_defaults_skip_but_explicit_db_is_strict(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"HOME": tmp}), \
+             patch.object(self.up, "_scan_base", return_value=({}, {})):
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                self.up.main(["--chain", "base", "--vps-own-wallets", "--json"], env={})
+            self.assertEqual(err.getvalue().count("loaded 0 exclusion address(es)"), 2)
+            with self.assertRaisesRegex(SystemExit, "database file not found"):
+                self.up.main(["--chain", "base", "--exclude-db", f"{tmp}/missing.db:agents.agent_address"], env={})
+
+    def test_filtered_errors_propagate_and_text_details_appear_once_per_report(self):
+        transfers = {MERCHANT: [{"from": PAYER_A, "amount": Decimal("1"), "timestamp": None}]}
+        with patch.object(self.up, "_scan_base", return_value=(transfers, {MERCHANT: "HTTP 403"})):
+            out, err = io.StringIO(), io.StringIO()
+            with redirect_stdout(out), redirect_stderr(err):
+                self.up.main(["--chain", "base", "--amount-filter-atomic", "1000000", "--json", "--list"], env={})
+        report = json.loads(out.getvalue())
+        self.assertEqual(report["filtered"]["errors"], {MERCHANT: "HTTP 403"})
+        self.assertEqual(report["chains"]["base"]["filtered"]["errors"], {MERCHANT: "HTTP 403"})
+        text = self.up.text_summary(report)
+        self.assertEqual(text.count("HTTP 403"), 2)  # once in each filtered/unfiltered report
+        self.assertEqual(text.count(PAYER_A), 2)
 
 
 if __name__ == "__main__":
