@@ -673,7 +673,7 @@ function renderSolanaAllowance(a) {
         ${a.allowanceAtomic > 0 ? `<button class="btn btn-danger btn-sm" data-action="revoke">Revoke</button>` : ""}
       </div>
     </div></div>
-    ${paused ? "" : `<div class="bezel" style="margin-top:18px"><div class="core">
+    ${!granted ? "" : `<div class="bezel" style="margin-top:18px"><div class="core">
       <div class="row" style="justify-content:space-between">
         <div><h2>Emergency stop</h2><p>Stops your agent at once, with no wallet signature and no fee. Your USDC stays in your wallet; to resume you approve again.</p></div>
         <button class="btn btn-danger" data-action="ask-pause">Pause the agent</button>
