@@ -677,11 +677,11 @@ function renderSolanaAllowance(a) {
       ${last30Line()}
       <p class="faint">Your wallet approved <span class="mono">${esc(short(a.limiter))}</span>, your agent, to take up to the approved total.
         The chain enforces that total; SingIt enforces the daily and per-purchase limits. Revoking takes effect at once.</p>
-      <p class="faint">Your approval is capped at your daily limit, so even if our server misbehaved, your agent could not take
+      ${approved > daily ? `<p class="note warn">Your wallet still approves ${usdc(approved)}, more than your
+        ${usdc(daily)} daily limit. Approve again to bring it down to ${usdc(daily)}, or revoke it.</p>`
+      : `<p class="faint">Your approval is capped at your daily limit, so even if our server misbehaved, your agent could not take
         more than one day's budget from your wallet. It does not refill on its own: purchases use it up, and you approve again
-        to set it back to your daily limit.</p>
-      ${granted && approved > daily ? `<p class="note warn">Your wallet still approves ${usdc(approved)}, more than your
-        ${usdc(daily)} daily limit. Approve again to bring it down to ${usdc(daily)}.</p>` : ""}
+        to set it back to your daily limit.</p>`}
       ${granted && approved < daily ? `<p class="faint">${usdc(approved)} of your approval is left. Approve again to set it back to ${usdc(daily)}.</p>` : ""}
       ${lowSol ? `<p class="note warn">Your wallet needs about 0.00002 SOL for the network fee before you can approve.</p>` : ""}
       ${paused ? `<p class="note warn">Emergency stop is on: your agent cannot spend. Your USDC stays in your wallet.

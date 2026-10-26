@@ -136,6 +136,16 @@ class SolanaAllowanceTests(unittest.TestCase):
         self.service.submit_wallet(ACCOUNT, prepared["operation"], "SIGNED")
         self.assertEqual(self.service.status(ACCOUNT)["allowanceAtomic"], 20_000_000)
 
+    def test_an_approval_prepared_before_the_limit_was_lowered_is_not_sent(self):
+        self.service.setup(ACCOUNT, "20", "5", "30")
+        prepared = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="20")
+        self.service.setup(ACCOUNT, "8", "5", "30")
+        op = self.service.submit_wallet(ACCOUNT, prepared["operation"], "SIGNED")
+        self.assertEqual(op["state"], "FAILED")
+        self.assertIn("Nothing was sent", op["detail"])
+        self.assertNotIn("allowance-submit", [call[0] for call in self.bridge.calls])
+        self.assertEqual(self.bridge.delegated, 0)
+
     def test_a_lowered_daily_limit_lowers_the_cap_of_the_next_approval(self):
         self.grant("20")
         self.service.setup(ACCOUNT, "8", "5", "30")  # the chain still holds the old 20 until the owner approves again

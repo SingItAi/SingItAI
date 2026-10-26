@@ -96,6 +96,15 @@ test("Solana: an approval above a lowered daily limit asks to approve again", ()
   const html = solanaPage.renderSolanaAllowance(sol({ state: "granted", dailyCapAtomic: 8000000, allowanceAtomic: 20000000 }));
   assert.match(html, /still approves 20 USDC, more than your\s+8 USDC daily limit/);
   assert.match(html, /Approve again/);
+  assert.doesNotMatch(html, /even if our server misbehaved/);  // not true while the wallet approves more
+});
+
+test("Solana: a paused account with an oversized approval is warned, not reassured", () => {
+  const html = solanaPage.renderSolanaAllowance(sol({ state: "paused", dailyCapAtomic: 8000000, allowanceAtomic: 20000000 }));
+  assert.match(html, /still approves 20 USDC/);
+  assert.match(html, /or revoke it/);
+  assert.doesNotMatch(html, /even if our server misbehaved/);
+  assert.match(html, /data-action="grant"/);
 });
 
 test("Solana: grant() refuses more than the daily limit before the wallet opens", () => {

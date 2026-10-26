@@ -650,6 +650,16 @@ class SolanaAllowanceService:
             return self.operation(account, op_id)
         if not op["owner_pays_fee"]:
             raise AllowanceError("This old sponsored request is disabled. Prepare a new transaction paid by your wallet.")
+        if op["kind"] == "GRANT":
+            # The cap is checked again here: the daily limit may have been lowered after this was prepared.
+            limits = self.store.limits(account)
+            if limits is None or op["amount"] > limits["daily_cap"]:
+                cap = _text(limits["daily_cap"]) if limits is not None else "your daily limit"
+                self.store.update_op(op_id, "FAILED", now, detail=(
+                    f"Your daily limit is now {cap}, below this approval of {_text(op['amount'])}. "
+                    "Nothing was sent; approve again."))
+                self._emit_op_event(op, "FAILED")
+                return self.operation(account, op_id)
         owner_pays = True
         # Wallets add their own fee settings and guards before signing; the bridge accepts those only
         # around exactly this approve or revoke (solana-x402-service/src/allowance.mjs, doesOnly).
