@@ -145,6 +145,7 @@
           <button type="button" class="tab" role="tab" id="tab-mcp" aria-controls="panel-mcp" aria-selected="false" tabindex="-1">MCP</button>
           <button type="button" class="tab" role="tab" id="tab-ts" aria-controls="panel-ts" aria-selected="false" tabindex="-1">x402 · no key</button>
           <button type="button" class="tab" role="tab" id="tab-find" aria-controls="panel-find" aria-selected="false" tabindex="-1">Discovery</button>
+          <button type="button" class="tab" role="tab" id="tab-frameworks" aria-controls="panel-frameworks" aria-selected="false" tabindex="-1">Frameworks</button>
         </div>
         <div class="tab-panels">
           <section class="tab-panel" role="tabpanel" id="panel-curl" aria-labelledby="tab-curl" tabindex="0">
@@ -273,6 +274,30 @@ GET https://ask.singitai.app/.well-known/x402</code></pre>
               </button>
             </div>
             <p class="tab-note">Listed on Coinbase's x402 Bazaar and on x402scan, so agents can find SingIt on their own.</p>
+          </section>
+
+          <section class="tab-panel" role="tabpanel" id="panel-frameworks" aria-labelledby="tab-frameworks" tabindex="0" hidden>
+            <h3>Frameworks</h3>
+            <div class="code">
+<pre><code id="code-frameworks"><span class="c"># LangChain.js — MCP tools and x402-paid chat</span>
+npm install @langchain/mcp-adapters @langchain/core @langchain/openai
+
+<span class="c"># Vercel AI SDK — MCP tools and x402-paid chat</span>
+npm install ai @ai-sdk/mcp @ai-sdk/openai-compatible
+
+<span class="c"># ElizaOS — plugin, not on npm yet: install from a checkout</span>
+git clone https://github.com/bubon-ik/SingItAI.git
+npm install ./SingItAI/integrations/elizaos-plugin</code></pre>
+              <button type="button" class="copy-btn" data-copy="code-frameworks" aria-label="Copy the framework install commands">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <p class="tab-note">
+              <span class="status is-live">Live</span> <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/integrations/langchain.md" target="_blank" rel="noopener">LangChain.js recipe</a> &mdash;
+              <span class="status is-live">Live</span> <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/integrations/vercel-ai-sdk.md" target="_blank" rel="noopener">Vercel AI SDK recipe</a> &mdash;
+              <span class="status">Soon</span> <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/integrations/elizaos.md" target="_blank" rel="noopener">ElizaOS plugin</a>, not published yet.
+            </p>
           </section>
         </div>
       </div>
