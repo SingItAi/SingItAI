@@ -1,8 +1,7 @@
 {
-  "name": "@singit/plugin-singit",
+  "name": "@singitai/plugin-singit",
   "version": "0.1.0",
-  "private": true,
-  "description": "ElizaOS plugin for SingIt: free crypto/FX prices and model listing via SingIt's MCP server, optional paid web search/page reading with a SingIt API key, and optional x402-paid chat on SingIt Ask (Base). Not published yet.",
+  "description": "ElizaOS plugin for SingIt: free crypto/FX prices and model listing via SingIt's MCP server, optional paid web search/page reading with a SingIt API key, and optional x402-paid chat on SingIt Ask (Base).",
   "type": "module",
   "main": "src/index.js",
   "types": "index.d.ts",
@@ -34,6 +33,9 @@
     "directory": "integrations/elizaos-plugin"
   },
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20"
   },
