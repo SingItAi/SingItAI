@@ -257,6 +257,8 @@ def _pad_address_topic(address: str) -> str:
 def iter_rpc_logs(rpc_url: str, usdc_token: str, merchant_address: str, from_block: int, to_block: int, *,
                    chunk_size: int = 5000, timeout: float = 20.0,
                    http_post: Callable[..., dict] | None = None) -> Iterator[dict]:
+    if chunk_size < 1:
+        raise ValueError("chunk_size must be a positive integer")
     http_post = http_post or _http_post_json
     start = from_block
     while start <= to_block:
@@ -399,6 +401,13 @@ def text_summary(report: dict) -> str:
 
 # -- CLI ------------------------------------------------------------------------------------
 
+def _positive_int(value: str) -> int:
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return n
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--since", help="YYYY-MM-DD; only count payments on/after this UTC date")
@@ -408,7 +417,7 @@ def _build_parser() -> argparse.ArgumentParser:
                                                        "Blockscout (use when Blockscout answers 403)")
     parser.add_argument("--from-block", type=int, help="required with --rpc: first block to scan")
     parser.add_argument("--to-block", type=int, help="required with --rpc: last block to scan")
-    parser.add_argument("--chunk-size", type=int, default=5000, help="blocks per eth_getLogs call (default: 5000)")
+    parser.add_argument("--chunk-size", type=_positive_int, default=5000, help="blocks per eth_getLogs call (default: 5000)")
     parser.add_argument("--merchant", action="append", default=[], metavar="ADDR",
                         help="extra Base address to scan in addition to the built-in SingIt merchant(s)")
     parser.add_argument("--timeout", type=float, default=20.0, help="HTTP timeout in seconds (default: 20)")

@@ -473,5 +473,21 @@ class MainCliTests(unittest.TestCase):
         self.assertEqual(list(report["merchants"]), [MERCHANT])
 
 
+class ChunkSizeTests(unittest.TestCase):
+    def setUp(self):
+        self.up = load_unique_payers()
+
+    def test_nonpositive_chunk_size_is_rejected(self):
+        for bad in (0, -5):
+            with self.assertRaises(ValueError):
+                list(self.up.iter_rpc_logs("https://rpc.test", self.up.USDC_BASE, MERCHANT, 1, 10, chunk_size=bad,
+                                           http_post=lambda *a, **k: {"result": []}))
+
+    def test_cli_rejects_zero_chunk_size(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            self.up._build_parser().parse_args(["--chunk-size", "0"])
+
+
+
 if __name__ == "__main__":
     unittest.main()
