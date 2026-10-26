@@ -19,7 +19,7 @@ sits in the same write transaction as every reservation, so other workers see it
 and the agent no longer spends. The USDC never leaves the owner's wallet. Like Base's
 guardian pause it is not undone by a hot key: only a new approval signed by the owner's
 wallet after the pause (a GRANT prepared after it, confirmed, with a signature no other
-op carries) resumes spending. The
+op carries and the blockhash we prepared) resumes spending. The
 SPL delegate approval itself stays on chain until the owner revokes it, so the app
 still recommends Revoke for a full on-chain stop. A purchase already reserved before
 the pause may still settle; nothing new starts.
@@ -32,6 +32,8 @@ through the same bridge the bot's Solana chat uses.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import os
 import secrets
@@ -90,9 +92,41 @@ CREATE INDEX IF NOT EXISTS metered_holds_by_account ON metered_holds(account);
 CREATE INDEX IF NOT EXISTS spends_by_day ON spends(account, created_at);
 CREATE TABLE IF NOT EXISTS pauses (
     id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT NOT NULL, trigger TEXT NOT NULL, created_at INTEGER NOT NULL,
-    ops_watermark INTEGER NOT NULL);
+    ops_watermark INTEGER);
 CREATE INDEX IF NOT EXISTS pauses_by_account ON pauses(account, created_at);
 """
+
+
+def _shortvec(data: bytes, at: int) -> tuple[int, int]:
+    value = shift = 0
+    for _ in range(3):
+        byte = data[at]
+        at += 1
+        value |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return value, at
+        shift += 7
+    raise ValueError("bad length")
+
+
+def transaction_blockhash(wire_b64: Any) -> str | None:
+    """The recent blockhash (hex) of a base64 wire transaction, legacy or v0; None if it cannot be read.
+
+    Layout: shortvec signature count, 64-byte signatures, then the message: an optional version byte
+    (high bit set), the 3-byte header, shortvec account count, 32-byte keys, the 32-byte blockhash.
+    """
+    try:
+        raw = base64.b64decode(str(wire_b64), validate=True)
+        count, at = _shortvec(raw, 0)
+        at += 64 * count
+        if raw[at] & 0x80:
+            at += 1
+        keys, at = _shortvec(raw, at + 3)
+        at += 32 * keys
+        blockhash = raw[at:at + 32]
+        return blockhash.hex() if len(blockhash) == 32 else None
+    except (ValueError, IndexError, binascii.Error):
+        return None
 
 
 def _usdc(value: Any, label: str) -> int:
@@ -129,6 +163,16 @@ class SolanaAllowanceStore:
                 db.execute("ALTER TABLE ops ADD COLUMN owner_pays_fee INTEGER NOT NULL DEFAULT 0")
             if "tx_blockhash" not in columns:
                 db.execute("ALTER TABLE ops ADD COLUMN tx_blockhash TEXT")
+            # SI-98: the blockhash of the transaction we prepared, and of the one the wallet signed (GRANT).
+            if "prepared_blockhash" not in columns:
+                db.execute("ALTER TABLE ops ADD COLUMN prepared_blockhash TEXT")
+            if "signed_blockhash" not in columns:
+                db.execute("ALTER TABLE ops ADD COLUMN signed_blockhash TEXT")
+            pause_columns = {row["name"] for row in db.execute("PRAGMA table_info(pauses)")}
+            if "ops_watermark" not in pause_columns:  # a pauses table from before the watermark: keep it paused
+                db.execute("ALTER TABLE pauses ADD COLUMN ops_watermark INTEGER")
+                db.execute("UPDATE pauses SET ops_watermark = (SELECT COALESCE(MAX(rowid), 0) FROM ops) "
+                           "WHERE ops_watermark IS NULL")
 
     @contextmanager
     def _db(self) -> Iterator[sqlite3.Connection]:
@@ -169,8 +213,13 @@ class SolanaAllowanceStore:
     def add_op(self, op: Mapping[str, Any]) -> None:
         with self._db() as db:
             db.execute("""INSERT INTO ops(op_id, account, kind, amount, message_hash, state, tx, detail, created_at, updated_at,
-                          owner_pays_fee) VALUES (:op_id, :account, :kind, :amount, :message_hash, :state, NULL, '', :now, :now,
-                          :owner_pays_fee)""", {"owner_pays_fee": 1, **dict(op)})
+                          owner_pays_fee, prepared_blockhash) VALUES (:op_id, :account, :kind, :amount, :message_hash, :state,
+                          NULL, '', :now, :now, :owner_pays_fee, :prepared_blockhash)""",
+                       {"owner_pays_fee": 1, "prepared_blockhash": None, **dict(op)})
+
+    def set_signed_blockhash(self, op_id: str, blockhash: str | None) -> None:
+        with self._db() as db:
+            db.execute("UPDATE ops SET signed_blockhash = ? WHERE op_id = ?", (blockhash, op_id))
 
     def op(self, account: str, op_id: str) -> sqlite3.Row | None:
         with self._db() as db:
@@ -191,8 +240,12 @@ class SolanaAllowanceStore:
         after the pause was committed (its rowid is above the pause's ops_watermark, taken in the
         same write transaction, so wall-clock order and same-second races do not matter) that
         reached DONE with a transaction signature no other op carries (a replayed, already-landed
-        approval reports "confirmed" again but is not a new signature). An approval prepared
-        before the pause never lifts it. ops rows are never deleted, so rowids only grow.
+        approval reports "confirmed" again but is not a new signature), and whose signed
+        transaction carries the very blockhash we fetched when preparing it after the pause: the
+        bridge accepts a wallet-modified message (allowance.mjs doesOnly), so without this an
+        approval signed before the pause and never sent could be submitted against a fresh op.
+        An approval prepared before the pause never lifts it. ops rows are never deleted, so
+        rowids only grow.
         """
         pause = db.execute("SELECT created_at, ops_watermark FROM pauses WHERE account = ? ORDER BY id DESC LIMIT 1",
                            (account,)).fetchone()
@@ -201,6 +254,7 @@ class SolanaAllowanceStore:
         resumed = db.execute(
             "SELECT 1 FROM ops g WHERE g.account = ? AND g.kind = 'GRANT' AND g.state = 'DONE' AND g.rowid > ? "
             "AND g.tx IS NOT NULL AND g.tx != '' "
+            "AND g.prepared_blockhash IS NOT NULL AND g.signed_blockhash = g.prepared_blockhash "
             "AND NOT EXISTS (SELECT 1 FROM ops o WHERE o.tx = g.tx AND o.rowid != g.rowid) LIMIT 1",
             (account, pause["ops_watermark"])).fetchone()
         return None if resumed else int(pause["created_at"])
@@ -549,7 +603,8 @@ class SolanaAllowanceService:
         for stale in self.store.expire_stale_prepared(account, now, PREPARE_SECONDS) + self.store.supersede_prepared(account, kind, now):
             self._emit_op_event(stale, "EXPIRED")
         self.store.add_op({"op_id": op_id, "account": account, "kind": kind, "amount": atomic, "owner_pays_fee": int(owner_pays),
-                           "message_hash": prepared["messageHash"], "state": "PREPARED", "now": now})
+                           "message_hash": prepared["messageHash"], "state": "PREPARED", "now": now,
+                           "prepared_blockhash": transaction_blockhash(prepared["transaction"])})
         agent = self.agent_key(account)[0]
         shows = (f"Your wallet will ask you to let {agent[:4]}…{agent[-4:]} spend up to {_text(atomic)} of your USDC."
                  if kind == "GRANT" else "Your wallet will ask you to revoke your agent's permission to spend your USDC.")
@@ -576,6 +631,8 @@ class SolanaAllowanceService:
         # around exactly this approve or revoke (solana-x402-service/src/allowance.mjs, doesOnly).
         if op["kind"] == "FUND_GAS" and not self.store.claim_gas_submission(account, op_id, now):
             return self.operation(account, op_id)
+        if op["kind"] == "GRANT":  # what the wallet signed, for the emergency stop's resume rule (SI-98)
+            self.store.set_signed_blockhash(op_id, transaction_blockhash(transaction))
         payload = dict(owner=self.owner(account), ownerPaysFee=owner_pays, transaction=str(transaction or ""),
                        messageHash=op["message_hash"], kind={"GRANT": "approve", "REVOKE": "revoke", "FUND_GAS": "fund-gas"}[op["kind"]],
                        amount=str(op["amount"]))

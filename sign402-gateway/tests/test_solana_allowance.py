@@ -430,11 +430,22 @@ class SolanaAllowanceTests(unittest.TestCase):
         with self.service.store._db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM pauses").fetchone()[0], 1)
 
+    @staticmethod
+    def wire(blockhash_byte):
+        """A minimal legacy wire transaction: 1 signature, header, 1 key, the blockhash, no instructions."""
+        import base64
+        return base64.b64encode(bytes([1]) + bytes(64) + bytes([1, 0, 0, 1]) + bytes(32) + bytes([blockhash_byte]) * 32
+                                + bytes([0])).decode()
+
     def unique_signatures(self):
-        """Each submitted approval gets its own signature, as on chain (FakeBridge reuses one)."""
-        real, counter = self.bridge.run, [0]
+        """Each submitted approval gets its own signature and each prepare a fresh blockhash, as on chain
+        (FakeBridge reuses one of each). Submit prepared["transaction"] to sign exactly what was prepared."""
+        real, counter, hashes = self.bridge.run, [0], [0]
         def run(user_id, payer, key, operation, fee_payer_key=None, **payload):
             out = real(user_id, payer, key, operation, fee_payer_key=fee_payer_key, **payload)
+            if operation == "allowance-prepare":
+                hashes[0] += 1
+                out = {**out, "transaction": self.wire(hashes[0])}
             if operation == "allowance-submit" and self.replay is None:
                 counter[0] += 1
                 out = {**out, "transaction": f"Sig{counter[0]}"}
@@ -469,7 +480,7 @@ class SolanaAllowanceTests(unittest.TestCase):
         self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
         # The owner's wallet signs a fresh approval: spending resumes.
         fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
-        self.assertEqual(self.service.submit_wallet(ACCOUNT, fresh["operation"], "SIGNED")["state"], "DONE")
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, fresh["operation"], fresh["transaction"])["state"], "DONE")
         status = self.service.status(ACCOUNT)
         self.assertEqual((status["state"], status["paused"]), ("granted", False))
         self.assertEqual(self.service.spend(ACCOUNT, 1_000_000, "ok", self.paid(1_000_000))["state"], "accepted")
@@ -499,11 +510,50 @@ class SolanaAllowanceTests(unittest.TestCase):
         # delayed request): the approval still comes after the pause, so it resumes.
         self.service.store.pause(ACCOUNT, "user", NOW + 3600)
         fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")  # same second as setup, before the pause stamp
-        self.assertEqual(self.service.submit_wallet(ACCOUNT, fresh["operation"], "SIGNED")["state"], "DONE")
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, fresh["operation"], fresh["transaction"])["state"], "DONE")
         self.assertEqual(self.service.status(ACCOUNT)["state"], "granted")
         # And a pause recorded after an approval completed is not undone by it, even with an older timestamp.
         self.assertTrue(self.service.store.pause(ACCOUNT, "user", NOW - 3600)[0])
         self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+
+    def test_an_approval_signed_before_the_pause_submitted_against_a_fresh_op_does_not_resume(self):
+        self.unique_signatures()
+        self.grant("20")
+        old = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")  # signed in the wallet, never sent
+        self.clock[0] += 1
+        self.service.pause(ACCOUNT)
+        fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        # The bridge accepts a wallet-modified message with the same instructions; the blockhash gives it away.
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, fresh["operation"], old["transaction"])["state"], "DONE")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+        # Unreadable signed transactions never resume either.
+        again = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        self.service.submit_wallet(ACCOUNT, again["operation"], "not-a-transaction")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+
+    def test_transaction_blockhash_reads_legacy_and_v0_and_refuses_garbage(self):
+        import base64
+        from sign402_gateway.solana_allowance import transaction_blockhash
+        self.assertEqual(transaction_blockhash(self.wire(7)), "07" * 32)
+        v0 = base64.b64encode(bytes([1]) + bytes(64) + bytes([0x80, 1, 0, 0, 1]) + bytes(32) + bytes([9]) * 32 + bytes([0, 0])).decode()
+        self.assertEqual(transaction_blockhash(v0), "09" * 32)
+        for bad in ("BASE64TX", "", None, base64.b64encode(b"\x01short").decode()):
+            self.assertIsNone(transaction_blockhash(bad))
+
+    def test_a_pauses_table_from_before_the_watermark_is_migrated_and_stays_paused(self):
+        self.unique_signatures()
+        self.grant("20")
+        path = self.service.store.path
+        with sqlite3.connect(path) as db:
+            db.execute("DROP TABLE pauses")
+            db.execute("CREATE TABLE pauses (id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT NOT NULL, "
+                       "trigger TEXT NOT NULL, created_at INTEGER NOT NULL)")
+            db.execute("INSERT INTO pauses(account, trigger, created_at) VALUES (?, 'user', ?)", (ACCOUNT, NOW - 10))
+        self.service.store = SolanaAllowanceStore(path)
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")  # the earlier GRANT does not lift it
+        fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        self.service.submit_wallet(ACCOUNT, fresh["operation"], fresh["transaction"])
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "granted")
 
     def test_an_uncertain_approval_from_before_the_pause_confirming_later_does_not_resume(self):
         self.unique_signatures()
