@@ -430,7 +430,22 @@ class SolanaAllowanceTests(unittest.TestCase):
         with self.service.store._db() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM pauses").fetchone()[0], 1)
 
+    def unique_signatures(self):
+        """Each submitted approval gets its own signature, as on chain (FakeBridge reuses one)."""
+        real, counter = self.bridge.run, [0]
+        def run(user_id, payer, key, operation, fee_payer_key=None, **payload):
+            out = real(user_id, payer, key, operation, fee_payer_key=fee_payer_key, **payload)
+            if operation == "allowance-submit" and self.replay is None:
+                counter[0] += 1
+                out = {**out, "transaction": f"Sig{counter[0]}"}
+            elif operation == "allowance-submit":
+                out = {**out, "transaction": self.replay}
+            return out
+        self.replay = None
+        self.bridge.run = run
+
     def test_only_a_new_wallet_approval_prepared_after_the_pause_resumes(self):
+        self.unique_signatures()
         self.grant("20")
         early = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")  # prepared before the stop
         self.clock[0] += 1
@@ -463,6 +478,43 @@ class SolanaAllowanceTests(unittest.TestCase):
         self.assertEqual(self.service.pause(ACCOUNT)["state"], "paused")
         with self.assertRaisesRegex(AllowanceError, "paused"):
             self.service.spend(ACCOUNT, 1_000_000, "x", self.paid(1_000_000))
+
+    def test_a_replayed_already_landed_approval_does_not_resume(self):
+        self.unique_signatures()
+        self.grant("20")  # lands as Sig1
+        self.clock[0] += 1
+        self.service.pause(ACCOUNT)
+        self.clock[0] += 1
+        self.replay = "Sig1"  # the chain reports the old, already-landed signature "confirmed" again
+        again = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="20")
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, again["operation"], "OLD-SIGNED")["state"], "DONE")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+        with self.assertRaisesRegex(AllowanceError, "paused"):
+            self.service.spend(ACCOUNT, 1_000_000, "x", self.paid(1_000_000))
+
+    def test_order_not_wall_clock_decides_what_a_pause_covers(self):
+        self.unique_signatures()
+        self.grant("20")
+        # The pause's own timestamp is later than the approval prepared right after it (clock skew, a
+        # delayed request): the approval still comes after the pause, so it resumes.
+        self.service.store.pause(ACCOUNT, "user", NOW + 3600)
+        fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")  # same second as setup, before the pause stamp
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, fresh["operation"], "SIGNED")["state"], "DONE")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "granted")
+        # And a pause recorded after an approval completed is not undone by it, even with an older timestamp.
+        self.assertTrue(self.service.store.pause(ACCOUNT, "user", NOW - 3600)[0])
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+
+    def test_an_uncertain_approval_from_before_the_pause_confirming_later_does_not_resume(self):
+        self.unique_signatures()
+        self.grant("20")
+        self.bridge.submit_state = "uncertain"
+        pending = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, pending["operation"], "SIGNED")["state"], "UNCERTAIN")
+        self.service.pause(ACCOUNT)
+        self.bridge.submit_state = "confirmed"
+        self.assertEqual(self.service.operation(ACCOUNT, pending["operation"])["state"], "DONE")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
 
     def test_a_pause_from_another_process_stops_a_purchase_already_past_the_chain_read(self):
         self.grant("20")

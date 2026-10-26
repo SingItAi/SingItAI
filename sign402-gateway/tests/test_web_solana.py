@@ -253,6 +253,7 @@ class SolanaRoutesTests(unittest.TestCase):
         cookie = self._cookie()
         auth = dict(token=cookie["token"], csrf=cookie["csrf"])
         from sign402_gateway.agent_allowance import AllowanceError
+        from sign402_gateway.web_api import WebError
         with self.assertRaisesRegex(AllowanceError, "no Solana allowance"):  # the server turns it into a 400
             self.call("POST", "/allowance/pause", **auth)
         self.call("POST", "/allowance/setup", {"dailyCap": "20", "perPurchaseCap": "5", "days": "30"}, **auth)
@@ -262,6 +263,12 @@ class SolanaRoutesTests(unittest.TestCase):
         self.assertEqual((status, body["state"], body["paused"], body["chain"]), (200, "paused", True, "solana"))
         self.assertEqual(self.call("GET", "/allowance", token=cookie["token"], csrf=None)[1]["state"], "paused")
         from sign402_gateway.web_accounts import WebAuthError
+        for _ in range(10):  # setup traffic cannot use up the emergency stop
+            try:
+                self.call("POST", "/allowance/setup", {"dailyCap": "20", "perPurchaseCap": "5", "days": "30"}, **auth)
+            except WebError:
+                break
+        self.assertEqual(self.call("POST", "/allowance/pause", **auth)[0], 200)
         with self.assertRaises(WebAuthError):  # a state change needs the CSRF token, like every POST
             self.call("POST", "/allowance/pause", token=cookie["token"], csrf=None)
 

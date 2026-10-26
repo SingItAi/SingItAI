@@ -18,7 +18,8 @@ recorded, no new purchase or metered hold for the account can be reserved (the c
 sits in the same write transaction as every reservation, so other workers see it too)
 and the agent no longer spends. The USDC never leaves the owner's wallet. Like Base's
 guardian pause it is not undone by a hot key: only a new approval signed by the owner's
-wallet after the pause (a GRANT prepared after it and confirmed) resumes spending. The
+wallet after the pause (a GRANT prepared after it, confirmed, with a signature no other
+op carries) resumes spending. The
 SPL delegate approval itself stays on chain until the owner revokes it, so the app
 still recommends Revoke for a full on-chain stop. A purchase already reserved before
 the pause may still settle; nothing new starts.
@@ -88,7 +89,8 @@ CREATE TABLE IF NOT EXISTS metered_holds (
 CREATE INDEX IF NOT EXISTS metered_holds_by_account ON metered_holds(account);
 CREATE INDEX IF NOT EXISTS spends_by_day ON spends(account, created_at);
 CREATE TABLE IF NOT EXISTS pauses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT NOT NULL, trigger TEXT NOT NULL, created_at INTEGER NOT NULL);
+    id INTEGER PRIMARY KEY AUTOINCREMENT, account TEXT NOT NULL, trigger TEXT NOT NULL, created_at INTEGER NOT NULL,
+    ops_watermark INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS pauses_by_account ON pauses(account, created_at);
 """
 
@@ -185,17 +187,23 @@ class SolanaAllowanceStore:
     def _paused_at(db: sqlite3.Connection, account: str) -> int | None:
         """When the account's agent was paused, or None if it is not paused (any more).
 
-        A pause ends only with a wallet-signed approval prepared after it: a GRANT op whose
-        created_at is strictly later than the pause and which reached DONE. One prepared
-        before the pause (still signable for PREPARE_SECONDS) never lifts it.
+        A pause ends only with a wallet-signed approval prepared after it: a GRANT op inserted
+        after the pause was committed (its rowid is above the pause's ops_watermark, taken in the
+        same write transaction, so wall-clock order and same-second races do not matter) that
+        reached DONE with a transaction signature no other op carries (a replayed, already-landed
+        approval reports "confirmed" again but is not a new signature). An approval prepared
+        before the pause never lifts it. ops rows are never deleted, so rowids only grow.
         """
-        row = db.execute("SELECT MAX(created_at) FROM pauses WHERE account = ?", (account,)).fetchone()
-        paused_at = row[0] if row else None
-        if paused_at is None:
+        pause = db.execute("SELECT created_at, ops_watermark FROM pauses WHERE account = ? ORDER BY id DESC LIMIT 1",
+                           (account,)).fetchone()
+        if pause is None:
             return None
-        resumed = db.execute("SELECT 1 FROM ops WHERE account = ? AND kind = 'GRANT' AND state = 'DONE' "
-                             "AND created_at > ? LIMIT 1", (account, paused_at)).fetchone()
-        return None if resumed else int(paused_at)
+        resumed = db.execute(
+            "SELECT 1 FROM ops g WHERE g.account = ? AND g.kind = 'GRANT' AND g.state = 'DONE' AND g.rowid > ? "
+            "AND g.tx IS NOT NULL AND g.tx != '' "
+            "AND NOT EXISTS (SELECT 1 FROM ops o WHERE o.tx = g.tx AND o.rowid != g.rowid) LIMIT 1",
+            (account, pause["ops_watermark"])).fetchone()
+        return None if resumed else int(pause["created_at"])
 
     def paused_at(self, account: str) -> int | None:
         with self._db() as db:
@@ -208,7 +216,9 @@ class SolanaAllowanceStore:
             already = self._paused_at(db, account)
             if already is not None:
                 return False, already
-            db.execute("INSERT INTO pauses(account, trigger, created_at) VALUES (?, ?, ?)", (account, trigger[:40], now))
+            watermark = db.execute("SELECT COALESCE(MAX(rowid), 0) FROM ops").fetchone()[0]
+            db.execute("INSERT INTO pauses(account, trigger, created_at, ops_watermark) VALUES (?, ?, ?, ?)",
+                       (account, trigger[:40], now, watermark))
             return True, now
 
     def spent_since(self, account: str, since: int) -> int:
