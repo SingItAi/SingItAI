@@ -171,10 +171,11 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(VIDEO_ROUTE, async (req, res, next) => {
-    // x402scan's empty, unpaid probe gets the standing offer (the model-list ceiling), not a model-lookup 404, as
-    // images do. Surplus accepts video jobs again (checked 25.10.2026: a LongCat clip, 0.045 USDC). Paying with no
-    // question is still refused: a payment header makes this no probe, and the model lookup below answers 404.
-    if (isDiscoveryProbe(req)) return next();
+    // Listed for discovery only when config.videoDiscoverable is set: then x402scan's empty, unpaid probe gets the
+    // standing offer, as images do. Off by default because Surplus's video sellers come and go (a clip went through
+    // on 25.10.2026, then three paid attempts met no_healthy_sellers); a 402 here would let a directory index a route
+    // that often cannot complete. Paying with no question is refused either way: the model lookup answers 404.
+    if (config.videoDiscoverable && isDiscoveryProbe(req)) return next();
     try {
       const model = await catalogue.resolveVideo(req.body?.model);
       const request = readVideoRequest(req.body, model);
@@ -199,7 +200,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: { model: "longcat-distilled-text-to-video", prompt: "a small green robot waves hello", duration_seconds: 5 },
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
-  } }, server);
+  } }, server, { discoverable: Boolean(config.videoDiscoverable) });  // undefined would mean the default, true
   app.post(VIDEO_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;

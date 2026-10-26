@@ -14,7 +14,7 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
 import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -27,6 +27,45 @@ const UPSTREAM_USAGE_FIELDS = ["cost", "is_byok", "cost_details", "buyer_cost_mi
 export class FormatError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
+
+// A Surplus answer that is not billable. `code` is Surplus's error.code (Anthropic's envelope has none: its
+// error.type then), or ours; never Surplus's message, which is not for matching. The message is safe to log.
+class NoAnswer extends Error {
+  constructor(status, code) { super(`model answered HTTP ${status} (${code})`); this.name = "NoAnswer"; this.code = code; }
+}
+
+// Sampling knobs a caller may send that a model can refuse outright (Surplus forwards what it does not strip: kimi-k3
+// and claude-opus-5.5 refuse temperature, SI-62). Each is dropped when the model's supported_parameters do not list
+// it; a model with no list keeps the request as it came.
+const FILTERED_PARAMS = ["temperature", "top_p", "top_k", "frequency_penalty", "presence_penalty", "reasoning_effort"];
+export function fitRequest(request, params) {
+  if (!Array.isArray(params)) return request;
+  const fitted = { ...request };
+  for (const name of FILTERED_PARAMS) if (name in fitted && !params.includes(name)) delete fitted[name];
+  return fitted;
+}
+
+// Whether a reasoning model spent the whole answer budget thinking and wrote nothing usable: Messages stops on
+// max_tokens with no text block and no tool_use block, Responses ends incomplete on max_output_tokens with no
+// output_text, no function_call, and no other non-reasoning item carrying content. A completed tool call with
+// no text is still a real answer, not a reasoning-exhaustion refusal.
+export function spentOnReasoning(route, data) {
+  if (route === "/v1/messages") {
+    const answered = (Array.isArray(data.content) ? data.content : []).some((b) =>
+      b?.type === "tool_use" || (b?.type === "text" && String(b.text ?? "").trim()));
+    return data.stop_reason === "max_tokens" && !answered;
+  }
+  const answered = (Array.isArray(data.output) ? data.output : []).some((item) => {
+    if (!item || item.type === "reasoning") return false;
+    if (item.type === "function_call") return true;
+    return (Array.isArray(item.content) ? item.content : []).some((c) =>
+      c?.type === "refusal" || (c?.type !== "reasoning_text" && String(c?.text ?? "").trim()));
+  });
+  return data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" && !answered;
+}
+
+const MAX_TOKENS_TOO_SMALL = "This model spent the whole token budget reasoning and wrote no answer. Raise max_tokens "
+  + "(max_output_tokens on /v1/responses). You were not charged.";
 
 export const surplusModel = (name) => {
   const m = ANTHROPIC_ID.exec(name);
@@ -78,9 +117,9 @@ export function scrub(data) {
   return data;
 }
 
-const refusal = (route, status, message) => (route === "/v1/messages"
-  ? { type: "error", error: { type: status === 400 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message } }
-  : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", message } });
+const refusal = (route, status, message, code) => (route === "/v1/messages"
+  ? { type: "error", error: { type: status === 400 || status === 422 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message } }
+  : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", ...(code ? { code } : {}), message } });
 
 // <=300 characters with the "SingIt Ask: " prefix (see app.mjs's DISCOVERY_DESCRIPTION for why): what each format
 // does and when to call it, not what it costs.
@@ -159,7 +198,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         if (catalogue.canAnswer && !(await catalogue.canAnswer(info.id))) {
           throw new FormatError(400, "No trusted seller offers that model right now. Pick another; nothing was paid.");
         }
-        req.format = { ...input, ...priceGuard(catalogue, info.id, bufferPp) };
+        req.format = { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) };
         req.askCeilings = ceilings(info, req.format, exactOutputFraction);
         quotes.set(req.body, req.askCeilings);
         next();
@@ -187,13 +226,21 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         const bucket = exact ? req.askCeilings?.exact : req.askCeilings?.upto;
         const terms = TERMS_BY_NETWORK[accepted.network] && bucket && { ...TERMS_BY_NETWORK[accepted.network], maxChargeAtomic: bucket[accepted.network] };
         if (!terms) throw new Error("payment on an unknown network");
+        // The price floor only when the model's list-price worst case would not fit what was paid (pricing.mjs).
+        const minDiscount = minDiscountFor(req.format, terms);
         const response = await fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
-                     ...(req.format.minDiscount != null ? { "X-Min-Discount": String(req.format.minDiscount) } : {}),
+                     ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify(req.format.request), signal: AbortSignal.timeout(FORMAT_LIMITS.timeoutMs) });
+          body: JSON.stringify(fitRequest(req.format.request, req.format.info?.params)), signal: AbortSignal.timeout(FORMAT_LIMITS.timeoutMs) });
+        // Read for every status: a long request can come back HTTP 200 with an error body.
         const data = await response.json().catch(() => null);
-        if (!response.ok || !data || typeof data !== "object") throw new Error(`model answered HTTP ${response.status}`);
+        if (!response.ok || !data || typeof data !== "object" || data.error || data.type === "error" || data.status === "failed") {
+          const code = typeof data?.error?.code === "string" ? data.error.code
+            : typeof data?.error?.type === "string" ? data.error.type : "upstream_error";
+          throw new NoAnswer(response.status, code);
+        }
+        if (spentOnReasoning(route, data)) throw new NoAnswer(response.status, "max_tokens_spent_reasoning");
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
         const usage = billUsage({ buyer_cost_micro: reported }, terms, { allowOverrun: exact });
         // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override,
@@ -205,8 +252,12 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         res.json({ ...scrub(data), billing });
       } catch (error) {
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
-        log(`singit-ask: ${route} no billable answer after ${Date.now() - started} ms (${error.message})`);
-        res.set("Retry-After", "30").status(503).json(refusal(route, 503, "No billable answer was produced. You were not charged; try again."));
+        log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
+        if (error.code === "max_tokens_spent_reasoning") {
+          return res.status(422).json(refusal(route, 422, MAX_TOKENS_TOO_SMALL, "max_tokens_too_small"));
+        }
+        // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
+        res.set("Retry-After", "30").status(503).json(refusal(route, 503, "No billable answer was produced. You were not charged; try again.", "no_billable_answer"));
       }
     });
   }

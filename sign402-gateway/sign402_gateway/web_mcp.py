@@ -18,10 +18,14 @@ the four free lookups that only read SingIt's own data, openWorldHint (they reac
 get_sign402_report (server.PAID_TOOLS) is not offered over MCP: its demo upstream is not running in production.
 
 A request with no credentials at all is served keyless: initialize, ping, tools/list and the three free
-tools work, so catalogues and people can see what the server offers before they make a key. A paid tool
-called keyless gets a tool error asking for a key; nothing is billed and no account is touched. A request
-that does send a key (Authorization: Bearer sk_singit_…, or x-api-key) must send a valid one: a wrong or
-revoked key is a 401, never a quiet fall back to keyless, so a typo in a key is noticed.
+tools work, so catalogues and people can see what the server offers before they make a key. The same
+applies to a header that only looks like a credential - empty/whitespace Authorization or x-api-key, a
+bare "Bearer" with nothing after it, or an unexpanded client template like "${SINGIT_API_KEY}" or
+"Bearer ${env:SINGIT_API_KEY}" - since those are a client misconfiguration, not an attempt to send a key
+(_credential_is_unset). A paid tool called keyless gets a tool error asking for a key; nothing is billed
+and no account is touched. A request that does send a key (Authorization: Bearer sk_singit_…, or
+x-api-key) must send a valid one: a wrong or revoked key is a 401, never a quiet fall back to keyless, so
+a typo in a key is noticed.
 
 MCP has its own rate limit, separate from the /v1 one in ApiKeys._rate: heavy use of one must not starve
 the other. It is per key, or per client address for keyless requests, 60 requests a minute by default,
@@ -67,7 +71,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 OUR_VERSION = SUPPORTED_VERSIONS[0]
-SERVER_INFO = {"name": "singit", "title": "SingIt x402", "version": "0.1.1"}
+SERVER_INFO = {"name": "singit", "title": "SingIt x402", "version": "0.1.2"}
 INSTRUCTIONS = (
     "Look up prices, models, web pages and market data. get_price, list_price_symbols and list_models are "
     "free and work without a key. Paid tools need a SingIt API key and are charged per call to that key's "
@@ -158,6 +162,23 @@ ALLOWED_ORIGINS_ENV = "SINGIT_MCP_ALLOWED_ORIGINS"
 
 def _normalize_origin(origin: str) -> str:
     return origin.strip().lower().rstrip("/")
+
+
+_TEMPLATE_PLACEHOLDER_RE = re.compile(r"^\$\{[^{}]*\}$")
+
+
+def _credential_is_unset(value: str | None) -> bool:
+    """True for a header that is really "no credential": empty/whitespace, a bare "Bearer" with no
+    token after it (any case, any amount of whitespace), or an unexpanded client template such as
+    "${SINGIT_API_KEY}" or "Bearer ${env:SINGIT_API_KEY}" - clients that fail to substitute an env var
+    send the literal placeholder, which must not be looked up as a key (Codex review)."""
+    text = str(value or "").strip()
+    if not text:
+        return True
+    scheme, _, rest = text.partition(" ")
+    if scheme.lower() == "bearer":
+        text = rest.strip()
+    return not text or bool(_TEMPLATE_PLACEHOLDER_RE.match(text))
 
 
 def allowed_origins_from_env(env: Mapping[str, str] | None = None) -> frozenset[str]:
@@ -426,7 +447,7 @@ class McpServer:
 
     def _authenticated(self, authorization: str | None, api_key: str | None, protocol_version: str | None,
                         body: bytes | dict[str, Any], client_ip: str | None = None) -> tuple[int, dict[str, Any] | None, dict[str, str]]:
-        if not str(authorization or "").strip() and not str(api_key or "").strip():
+        if _credential_is_unset(authorization) and _credential_is_unset(api_key):
             row, bucket = None, f"keyless:{client_ip or '-'}"
         else:
             try:

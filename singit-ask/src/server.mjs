@@ -45,6 +45,8 @@ function required(name) {
 
 const config = {
   directSolana: process.env.SINGIT_ASK_DIRECT_SOLANA === "1",
+  // Video is sold either way; "1" also lists it for x402 discovery. Off while Surplus's video sellers are flaky.
+  videoDiscoverable: process.env.SINGIT_ASK_VIDEO_DISCOVERABLE === "1",
   quoteToken: process.env.SINGIT_ASK_QUOTE_TOKEN,
   quoteDb: process.env.SINGIT_ASK_QUOTE_DB,
   payToSolana: required("SINGIT_ASK_PAY_TO_SOLANA"),
