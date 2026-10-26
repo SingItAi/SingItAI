@@ -25,11 +25,13 @@ Data sources:
     page reaches --since -- then getTransaction with jsonParsed encoding and
     maxSupportedTransactionVersion 0). Per transaction, the payer is derived from
     meta.preTokenBalances/postTokenBalances for the USDC mint: the merchant's positive balance delta
-    is the payment amount, and the payer is the token-balance OWNER whose USDC balance decreased the
-    most -- NOT the fee payer, since x402 on Solana is settled through a facilitator that pays
+    is the payment amount, and the payer is the token-balance OWNER whose USDC balance decreased
+    (requiring a unique exact amount match when several decrease) -- NOT the fee payer, since x402 on Solana is settled through a facilitator that pays
     network fees and never appears as a USDC balance owner in the transaction. Failed transactions
     (meta.err set), zero-value transfers, and transactions where the merchant didn't receive USDC are
-    skipped. This script does not derive the merchant's associated token account address itself (that
+    skipped. Ambiguous or missing-owner payments and missing metadata are counted as unattributed;
+    null transactions are counted as unavailable, per merchant, never as payers.
+    This script does not derive the merchant's associated token account address itself (that
     needs an off-chain PDA/sha256 derivation); getTokenAccountsByOwner already returns every USDC
     account the merchant owns, which is sufficient for scanning its payment history.
     RPC endpoint: --solana-rpc URL, else $SOLANA_RPC_URL, else the public
@@ -58,6 +60,7 @@ committed:
     locations under ~/.sign402: allowance.db:agents.agent_address and
     solana-allowance.db:agents.agent_address only. End-user wallets and limiter addresses are
     never included by default; additional columns can be supplied explicitly with --exclude-db.
+    Missing default databases are skipped with a stderr note; explicit --exclude-db stays strict.
   Base (0x...) addresses are matched case-insensitively (normalized to lowercase); Solana addresses
   are base58 and case-sensitive, and are matched and reported exactly as given.
   This script only ever reports how many exclusion addresses were loaded from each source, never the
@@ -68,7 +71,8 @@ committed:
 With a filter, all metrics remain unfiltered and an additional "filtered" report contains the
 same metrics per chain and combined, including per-merchant counts and date ranges. The filter
 applies before own-payment and zero-value counting (zero matches only if LIST contains 0).
-Amount matching alone does not prove which endpoint a payment purchased.
+Unresolved records with unknown amounts remain visible in filtered reports because their amounts
+cannot be checked. Amount matching alone does not prove which endpoint a payment purchased.
 
 Output defaults to aggregate numbers only, both combined across the scanned chain(s) and broken down
 per chain: unique external payers, payment count, total USDC, excluded-own-payment count,
@@ -224,7 +228,7 @@ def _parse_exclude_db_spec(spec: str) -> tuple[str, str, str]:
     if "." not in rest:
         raise ValueError(f"--exclude-db: expected PATH:TABLE.COLUMN, got {spec!r}")
     table, _, column = rest.rpartition(".")
-    if not _IDENTIFIER_RE.match(table) or not _IDENTIFIER_RE.match(column):
+    if not _IDENTIFIER_RE.fullmatch(table) or not _IDENTIFIER_RE.fullmatch(column):
         raise ValueError(f"--exclude-db: invalid table/column identifier in {spec!r}")
     return path_str, table, column
 
@@ -238,14 +242,16 @@ def load_exclude_db(spec: str) -> tuple[frozenset[str], str]:
     if not path.is_file():
         raise ValueError(f"--exclude-db: database file not found: {path}")
     uri = f"file:{urllib.parse.quote(str(path), safe='/:')}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
+    conn = None
     try:
+        conn = sqlite3.connect(uri, uri=True)
         # TABLE/COLUMN were validated as plain identifiers above, so quoting them here is safe.
         rows = conn.execute(f'SELECT "{table}"."{column}" FROM "{table}"').fetchall()
-    except sqlite3.OperationalError as exc:
+    except sqlite3.DatabaseError as exc:
         raise ValueError(f"--exclude-db: cannot read {table}.{column} from {path.name}: {exc}") from None
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
     addresses = frozenset(normalize_address(str(row[0])) for row in rows if row[0] and str(row[0]).strip())
     return addresses, f"{path.name}:{table}.{column}"
 
@@ -432,7 +438,7 @@ def iter_solana_signatures(rpc_url: str, address: str, *, since: datetime.date |
                             delay: float = DEFAULT_SOLANA_DELAY, sleep: Callable[[float], None] | None = None,
                             limit: int = 1000, max_pages: int = 500) -> Iterator[dict]:
     """Newest-first signatures for `address`, paginated with `before`. Stops (without raising) once
-    a page reaches a signature older than `since`, or once a short page signals there's no more."""
+    a page reaches a signature older than `since`, or an empty page is returned."""
     http_post = http_post or _http_post_json
     sleep = sleep or time.sleep
     before: str | None = None
@@ -451,11 +457,9 @@ def iter_solana_signatures(rpc_url: str, address: str, *, since: datetime.date |
                 if day < since:
                     return
             yield item
-        if len(batch) < limit:
-            return
         before = batch[-1].get("signature")
         if before is None:
-            return
+            raise RuntimeError("Solana signature page has no pagination cursor")
         if delay:
             sleep(delay)
     raise RuntimeError(f"stopped after {max_pages} Solana signature pages; it may be paginating forever")
@@ -495,37 +499,41 @@ def _solana_token_decimals(meta: dict, mint: str) -> int:
 
 def normalize_solana_transaction(tx: Any, *, merchant: str, signature: str,
                                   mint: str = SOLANA_USDC_MINT) -> dict | None:
-    """The payer/amount of one Solana transaction, or None if it isn't a qualifying USDC payment to
-    `merchant`: a failed transaction, one where the merchant didn't receive USDC, or one with no
-    other balance that decreased to attribute the payment to.
+    """Return a payment, an unresolved status record, or None for a non-payment.
 
-    The payer is the token-balance OWNER (not the fee payer -- x402 on Solana settles through a
-    facilitator that pays network fees and never appears as a token-balance owner here) whose USDC
-    balance decreased the most; if several owners' balances decreased, the largest decrease wins.
+    A sole decreasing owner is the payer. With several, only a unique exact match
+    to the merchant's received amount establishes attribution.
     """
+    unresolved = {"status": "unavailable", "amount": None, "timestamp": None,
+                  "tx_hash": signature}
     if not isinstance(tx, dict):
-        return None
+        return unresolved
     meta = tx.get("meta")
-    if not isinstance(meta, dict) or meta.get("err") is not None:
+    if not isinstance(meta, dict):
+        return {**unresolved, "status": "unattributed"}
+    if meta.get("err") is not None:
         return None
     before = _solana_token_balances(meta, "preTokenBalances", mint)
     after = _solana_token_balances(meta, "postTokenBalances", mint)
     merchant_delta = after.get(merchant, 0) - before.get(merchant, 0)
     if merchant_delta <= 0:
         return None
-    payer, largest_decrease = None, 0
-    for owner in set(before) | set(after):
-        if owner == merchant:
-            continue
-        delta = after.get(owner, 0) - before.get(owner, 0)
-        if delta < largest_decrease:
-            payer, largest_decrease = owner, delta
-    if payer is None:
-        return None
+    decreases = {}
+    for owner in sorted(set(before) | set(after)):
+        decrease = before.get(owner, 0) - after.get(owner, 0)
+        if owner != merchant and decrease > 0:
+            decreases[owner] = decrease
+    candidates = list(decreases)
+    if len(candidates) > 1:
+        candidates = [owner for owner in candidates if decreases[owner] == merchant_delta]
+    payer = candidates[0] if len(candidates) == 1 else None
     decimals = _solana_token_decimals(meta, mint)
     block_time = tx.get("blockTime")
     timestamp = (datetime.datetime.fromtimestamp(block_time, tz=datetime.timezone.utc)
                  if block_time is not None else None)
+    if payer is None:
+        return {"status": "unattributed", "amount": parse_amount(merchant_delta, decimals),
+                "timestamp": timestamp, "tx_hash": signature}
     return {
         "from": normalize_address(payer),
         "from_display": payer,
@@ -579,6 +587,7 @@ def aggregate(transfers_by_merchant: dict[str, list[dict]], *, exclude: frozense
     earliest: datetime.datetime | None = None
     latest: datetime.datetime | None = None
     per_merchant: dict[str, dict] = {}
+    unresolved_totals = {"unattributed": 0, "unavailable": 0}
 
     for merchant, transfers in transfers_by_merchant.items():
         m_payers: set[str] = set()
@@ -586,11 +595,16 @@ def aggregate(transfers_by_merchant: dict[str, list[dict]], *, exclude: frozense
         m_amount = Decimal(0)
         m_excluded = 0
         m_zero_value_skipped = 0
+        unresolved = {"unattributed": 0, "unavailable": 0}
         for t in transfers:
             if since is not None and t["timestamp"] is not None and t["timestamp"].date() < since:
                 continue
-            if (amount_filter_atomic is not None
+            if (amount_filter_atomic is not None and t["amount"] is not None
                     and t["amount"] * 1_000_000 not in amount_filter_atomic):
+                continue
+            if t.get("status") in unresolved:
+                unresolved[t["status"]] += 1
+                unresolved_totals[t["status"]] += 1
                 continue
             # Address-poisoning spam: a 0-value Transfer from a lookalike address, meant to plant
             # a fake entry in wallet history. Skip before touching payer/payment stats.
@@ -613,6 +627,7 @@ def aggregate(transfers_by_merchant: dict[str, list[dict]], *, exclude: frozense
                 earliest = t["timestamp"] if earliest is None else min(earliest, t["timestamp"])
                 latest = t["timestamp"] if latest is None else max(latest, t["timestamp"])
         per_merchant[merchant] = {
+            **unresolved,
             "unique_payers": len(m_payers),
             "payments": m_count,
             "total_usdc": _fmt_usdc(m_amount),
@@ -621,6 +636,7 @@ def aggregate(transfers_by_merchant: dict[str, list[dict]], *, exclude: frozense
         }
 
     return {
+        **unresolved_totals,
         "unique_external_payers": len(overall_payers),
         "payments": overall_count,
         "total_usdc": _fmt_usdc(overall_amount),
@@ -646,6 +662,7 @@ def combine_chain_reports(chain_reports: dict[str, dict]) -> dict:
     plus a "chains" breakdown. See the module docstring for why the combined payer count is a sum,
     not a dedup."""
     combined_payers = combined_payments = combined_excluded = combined_zero = 0
+    unresolved_totals = {"unattributed": 0, "unavailable": 0}
     combined_amount = Decimal(0)
     earliest: datetime.date | None = None
     latest: datetime.date | None = None
@@ -656,6 +673,8 @@ def combine_chain_reports(chain_reports: dict[str, dict]) -> dict:
     chains_out: dict[str, dict] = {}
 
     for chain, report in chain_reports.items():
+        for status in unresolved_totals:
+            unresolved_totals[status] += report.get(status, 0)
         combined_payers += report["unique_external_payers"]
         combined_payments += report["payments"]
         combined_amount += Decimal(report["total_usdc"])
@@ -675,6 +694,7 @@ def combine_chain_reports(chain_reports: dict[str, dict]) -> dict:
         chains_out[chain] = {k: v for k, v in report.items() if k != "_payers"}
 
     combined = {
+        **unresolved_totals,
         "unique_external_payers": combined_payers,
         "payments": combined_payments,
         "total_usdc": _fmt_usdc(combined_amount),
@@ -699,6 +719,8 @@ def text_summary(report: dict) -> str:
     lines = [
         f"Unique external payers: {report['unique_external_payers']}",
         f"Payments: {report['payments']}",
+        f"Unattributed transactions: {report.get('unattributed', 0)}",
+        f"Unavailable transactions: {report.get('unavailable', 0)}",
         f"Total USDC: {report['total_usdc']}",
         f"Excluded own payments: {report['excluded_own_payments']}",
         f"Zero-value transfers skipped: {report['zero_value_skipped']}",
@@ -710,7 +732,9 @@ def text_summary(report: dict) -> str:
         label = report.get("merchants", {}).get(addr, "")
         lines.append(f"  {addr} ({label}): {stats['unique_payers']} payers, {stats['payments']} payments, "
                      f"{stats['total_usdc']} USDC, {stats['excluded_own_payments']} excluded, "
-                     f"{stats['zero_value_skipped']} zero-value skipped")
+                     f"{stats['zero_value_skipped']} zero-value skipped, "
+                     f"{stats.get('unattributed', 0)} unattributed, "
+                     f"{stats.get('unavailable', 0)} unavailable")
     for chain, chain_report in sorted(report.get("chains", {}).items()):
         host_suffix = f", RPC host {chain_report['rpc_host']}" if chain_report.get("rpc_host") else ""
         lines.append(f"Chain {chain}: {chain_report['unique_external_payers']} payers, "
@@ -725,7 +749,8 @@ def text_summary(report: dict) -> str:
     # Render full chain metrics, including exclusions, zero counts and date ranges.
     for chain, chain_report in sorted(report.get("chains", {}).items()):
         lines.append(f"Chain {chain} metrics:")
-        lines.append(text_summary({k: v for k, v in chain_report.items() if k != "filtered"}))
+        lines.append(text_summary({k: v for k, v in chain_report.items()
+                                   if k not in ("filtered", "errors", "payer_addresses")}))
     if "filtered" in report:
         lines.insert(0, "Unfiltered metrics:")
         lines.append("Filtered metrics (USDC atomic amounts: "
@@ -846,10 +871,16 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
 
     try:
         exclude = load_exclusions(values.get(EXCLUDE_ENV), args.exclude_file)
-        exclude_db_specs = list(args.exclude_db)
+        exclude_db_specs = [(spec, False) for spec in args.exclude_db]
         if args.vps_own_wallets:
-            exclude_db_specs += vps_own_wallet_specs()
-        for spec in exclude_db_specs:
+            exclude_db_specs += [(spec, True) for spec in vps_own_wallet_specs()]
+        for spec, optional in exclude_db_specs:
+            path_str, table, column = _parse_exclude_db_spec(spec)
+            path = Path(path_str).expanduser()
+            if optional and not path.exists():
+                print(f"unique-payers: skipped missing default database {path.name}; "
+                      "loaded 0 exclusion address(es)", file=sys.stderr)
+                continue
             addrs, label = load_exclude_db(spec)
             exclude |= addrs
             print(f"unique-payers: loaded {len(addrs)} exclusion address(es) from {label}", file=sys.stderr)
@@ -866,12 +897,14 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
     chain_reports: dict[str, dict] = {}
     filtered_reports: dict[str, dict] = {}
 
-    def add_filtered(chain, transfers, merchants):
+    def add_filtered(chain, transfers, merchants, errors):
         if amounts is None:
             return
         filtered = aggregate(transfers, exclude=exclude, since=since, amount_filter_atomic=amounts)
         payers = filtered.pop("_payers")
         filtered["merchants"] = dict(merchants)
+        if errors:
+            filtered["errors"] = dict(errors)
         if args.list:
             filtered["payer_addresses"] = sorted(payers)
         filtered_reports[chain] = filtered
@@ -886,7 +919,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         if args.list:
             report["payer_addresses"] = sorted(payers)
         chain_reports["base"] = report
-        add_filtered("base", transfers_by_merchant, base_merchants)
+        add_filtered("base", transfers_by_merchant, base_merchants, errors)
 
     if "solana" in chains:
         solana_rpc = args.solana_rpc or values.get(SOLANA_RPC_ENV) or DEFAULT_SOLANA_RPC
@@ -900,7 +933,7 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None) ->
         if args.list:
             report["payer_addresses"] = sorted(payers)
         chain_reports["solana"] = report
-        add_filtered("solana", transfers_by_merchant, solana_merchants)
+        add_filtered("solana", transfers_by_merchant, solana_merchants, errors)
 
     report = combine_chain_reports(chain_reports)
     if amounts is not None:
