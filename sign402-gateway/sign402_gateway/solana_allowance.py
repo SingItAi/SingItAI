@@ -48,7 +48,7 @@ from typing import Any, Callable, Iterator, Mapping
 from . import analytics
 from .agent_allowance import AllowanceError, AllowanceUnavailable
 from .secure_state import ensure_private_directory, ensure_private_file
-from .solana_keys import generate_keypair
+from .solana_keys import b58encode, generate_keypair
 from .web_accounts import SOLANA_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -109,24 +109,33 @@ def _shortvec(data: bytes, at: int) -> tuple[int, int]:
     raise ValueError("bad length")
 
 
-def transaction_blockhash(wire_b64: Any) -> str | None:
-    """The recent blockhash (hex) of a base64 wire transaction, legacy or v0; None if it cannot be read.
+def _parse_wire(wire_b64: Any) -> tuple[str | None, str | None]:
+    """(first signature as base58, recent blockhash as hex) of a base64 wire transaction, legacy or v0.
 
     Layout: shortvec signature count, 64-byte signatures, then the message: an optional version byte
     (high bit set), the 3-byte header, shortvec account count, 32-byte keys, the 32-byte blockhash.
+    The first signature is the fee payer's: the transaction's id, as the bridge reports it.
     """
     try:
         raw = base64.b64decode(str(wire_b64), validate=True)
         count, at = _shortvec(raw, 0)
+        first = raw[at:at + 64] if count else b""
         at += 64 * count
         if raw[at] & 0x80:
             at += 1
         keys, at = _shortvec(raw, at + 3)
         at += 32 * keys
         blockhash = raw[at:at + 32]
-        return blockhash.hex() if len(blockhash) == 32 else None
+        if len(blockhash) != 32:
+            return None, None
+        return (b58encode(first) if len(first) == 64 else None), blockhash.hex()
     except (ValueError, IndexError, binascii.Error):
-        return None
+        return None, None
+
+
+def transaction_blockhash(wire_b64: Any) -> str | None:
+    """The recent blockhash (hex) of a base64 wire transaction; None if it cannot be read."""
+    return _parse_wire(wire_b64)[1]
 
 
 def _usdc(value: Any, label: str) -> int:
@@ -217,9 +226,13 @@ class SolanaAllowanceStore:
                           NULL, '', :now, :now, :owner_pays_fee, :prepared_blockhash)""",
                        {"owner_pays_fee": 1, "prepared_blockhash": None, **dict(op)})
 
-    def set_signed_blockhash(self, op_id: str, blockhash: str | None) -> None:
+    def finish_grant(self, op_id: str, state: str, now: int, tx: str | None, detail: str,
+                     signed_blockhash: str | None) -> None:
+        """A GRANT's outcome, with the blockhash of the very transaction whose signature `tx` is: one write,
+        so a concurrent submission of another transaction cannot pair its blockhash with this signature."""
         with self._db() as db:
-            db.execute("UPDATE ops SET signed_blockhash = ? WHERE op_id = ?", (blockhash, op_id))
+            db.execute("UPDATE ops SET state = ?, tx = COALESCE(?, tx), detail = ?, updated_at = ?, signed_blockhash = ? "
+                       "WHERE op_id = ?", (state, tx, detail, now, signed_blockhash, op_id))
 
     def op(self, account: str, op_id: str) -> sqlite3.Row | None:
         with self._db() as db:
@@ -255,8 +268,12 @@ class SolanaAllowanceStore:
             "SELECT 1 FROM ops g WHERE g.account = ? AND g.kind = 'GRANT' AND g.state = 'DONE' AND g.rowid > ? "
             "AND g.tx IS NOT NULL AND g.tx != '' "
             "AND g.prepared_blockhash IS NOT NULL AND g.signed_blockhash = g.prepared_blockhash "
+            # Not a blockhash any op prepared before the pause also got (one slot's blockhash can serve
+            # several prepares): an approval signed then would carry it too.
+            "AND NOT EXISTS (SELECT 1 FROM ops e WHERE e.account = g.account AND e.rowid <= ? "
+            "AND e.prepared_blockhash = g.prepared_blockhash) "
             "AND NOT EXISTS (SELECT 1 FROM ops o WHERE o.tx = g.tx AND o.rowid != g.rowid) LIMIT 1",
-            (account, pause["ops_watermark"])).fetchone()
+            (account, pause["ops_watermark"], pause["ops_watermark"])).fetchone()
         return None if resumed else int(pause["created_at"])
 
     def paused_at(self, account: str) -> int | None:
@@ -631,8 +648,6 @@ class SolanaAllowanceService:
         # around exactly this approve or revoke (solana-x402-service/src/allowance.mjs, doesOnly).
         if op["kind"] == "FUND_GAS" and not self.store.claim_gas_submission(account, op_id, now):
             return self.operation(account, op_id)
-        if op["kind"] == "GRANT":  # what the wallet signed, for the emergency stop's resume rule (SI-98)
-            self.store.set_signed_blockhash(op_id, transaction_blockhash(transaction))
         payload = dict(owner=self.owner(account), ownerPaysFee=owner_pays, transaction=str(transaction or ""),
                        messageHash=op["message_hash"], kind={"GRANT": "approve", "REVOKE": "revoke", "FUND_GAS": "fund-gas"}[op["kind"]],
                        amount=str(op["amount"]))
@@ -669,6 +684,13 @@ class SolanaAllowanceService:
             if result.get("transaction") != inspected["transaction"]:
                 state, detail = "UNCERTAIN", "The transfer receipt needs confirmation. It was not repeated."
             self.store.finish_pending_op(account, op_id, state, detail, int(self.now()))
+        elif op["kind"] == "GRANT":
+            # For the emergency stop's resume rule (SI-98): the blockhash of what the wallet signed, kept only
+            # when the bridge's confirmed signature is that very transaction's.
+            signature, signed_blockhash = _parse_wire(transaction)
+            bound = signed_blockhash if signature and signature == result.get("transaction") else None
+            self.store.finish_grant(op_id, state, int(self.now()), result.get("transaction"), detail, bound)
+            self._emit_op_event(op, state)
         else:
             self.store.update_op(op_id, state, int(self.now()), tx=result.get("transaction"), detail=detail)
             self._emit_op_event(op, state)

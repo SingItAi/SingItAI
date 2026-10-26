@@ -434,8 +434,8 @@ class SolanaAllowanceTests(unittest.TestCase):
     def wire(blockhash_byte):
         """A minimal legacy wire transaction: 1 signature, header, 1 key, the blockhash, no instructions."""
         import base64
-        return base64.b64encode(bytes([1]) + bytes(64) + bytes([1, 0, 0, 1]) + bytes(32) + bytes([blockhash_byte]) * 32
-                                + bytes([0])).decode()
+        return base64.b64encode(bytes([1]) + bytes([blockhash_byte]) * 64 + bytes([1, 0, 0, 1]) + bytes(32)
+                                + bytes([blockhash_byte]) * 32 + bytes([0])).decode()
 
     def unique_signatures(self):
         """Each submitted approval gets its own signature and each prepare a fresh blockhash, as on chain
@@ -447,8 +447,9 @@ class SolanaAllowanceTests(unittest.TestCase):
                 hashes[0] += 1
                 out = {**out, "transaction": self.wire(hashes[0])}
             if operation == "allowance-submit" and self.replay is None:
-                counter[0] += 1
-                out = {**out, "transaction": f"Sig{counter[0]}"}
+                from sign402_gateway.solana_allowance import _parse_wire
+                counter[0] += 1  # on chain the id is the transaction's first signature
+                out = {**out, "transaction": _parse_wire(payload["transaction"])[0] or f"Sig{counter[0]}"}
             elif operation == "allowance-submit":
                 out = {**out, "transaction": self.replay}
             return out
@@ -529,6 +530,38 @@ class SolanaAllowanceTests(unittest.TestCase):
         # Unreadable signed transactions never resume either.
         again = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
         self.service.submit_wallet(ACCOUNT, again["operation"], "not-a-transaction")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+
+    def test_a_blockhash_also_prepared_before_the_pause_never_resumes(self):
+        self.unique_signatures()
+        self.grant("20")
+        real = self.bridge.run
+        def same_slot(user_id, payer, key, operation, fee_payer_key=None, **payload):
+            out = real(user_id, payer, key, operation, fee_payer_key=fee_payer_key, **payload)
+            if operation == "allowance-prepare":
+                out = {**out, "transaction": self.wire(200)}  # one slot's blockhash serves both prepares
+            return out
+        self.bridge.run = same_slot
+        self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")  # before the pause
+        self.service.pause(ACCOUNT)
+        fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, fresh["operation"], fresh["transaction"])["state"], "DONE")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+        self.bridge.run = real  # the next slot: a new blockhash, a new approval resumes
+        fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        self.service.submit_wallet(ACCOUNT, fresh["operation"], fresh["transaction"])
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "granted")
+
+    def test_a_confirmed_signature_of_another_transaction_is_not_bound_to_this_blockhash(self):
+        self.unique_signatures()
+        self.grant("20")
+        self.service.pause(ACCOUNT)
+        fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        self.replay = "SomeOtherSignature"  # the bridge confirmed a different transaction than the one we parsed
+        self.service.submit_wallet(ACCOUNT, fresh["operation"], fresh["transaction"])
+        with self.service.store._db() as db:
+            row = db.execute("SELECT signed_blockhash, tx FROM ops WHERE op_id = ?", (fresh["operation"],)).fetchone()
+        self.assertEqual((row["signed_blockhash"], row["tx"]), (None, "SomeOtherSignature"))
         self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
 
     def test_transaction_blockhash_reads_legacy_and_v0_and_refuses_garbage(self):

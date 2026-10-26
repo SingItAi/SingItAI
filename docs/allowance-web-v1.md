@@ -147,8 +147,10 @@ product, denomination, price, network and recipient before anything is paid.
   by the owner's wallet after the pause (a GRANT prepared after it — ordered by
   the store, not the clock — and confirmed with a signature no other op carries,
   so a replayed old approval does not count, and whose signed transaction
-  keeps the blockhash we fetched when preparing it, so an approval signed before
-  the pause cannot be passed off as a new one) resumes; new limits alone, a revoke, or signing an approval
+  keeps the blockhash we fetched when preparing it — bound to the confirmed
+  signature in one write, and not a blockhash any pre-pause prepare also got —
+  so an approval signed before the pause cannot be passed off as a new one)
+  resumes; new limits alone, a revoke, or signing an approval
   prepared before the pause do not. The SPL delegate approval stays on chain
   until the owner revokes it, so the page still recommends Revoke. Known limit:
   a wallet that replaces the prepared blockhash when it signs would keep the
