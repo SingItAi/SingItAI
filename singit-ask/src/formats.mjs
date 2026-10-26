@@ -13,7 +13,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
-import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, solanaOffer } from "./metered.mjs";
+import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
@@ -193,7 +193,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
     // body is offered right now, through the same parsing and pricing as a real question: that is the price CDP's
     // Bazaar records for the route, and what vet402 compares its empty POST against (price_mismatch otherwise).
     // The standing ceiling is kept only when the example cannot be quoted right now. A probe never pays.
-    const probeCeilings = async () => {
+    const probeCeilings = perRequest(async () => {
       try {
         const input = readFormatRequest(route, EXAMPLES[route]);
         const info = await catalogue.resolve(input.model);
@@ -201,8 +201,8 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       } catch {
         return ceilings(null, {}, exactOutputFraction);
       }
-    };
-    const probe = (bucket, network) => async () => (await probeCeilings())[bucket][network];
+    });
+    const probe = (bucket, network) => async (ctx) => (await probeCeilings(ctx))[bucket][network];
     app.post(route, async (req, res, next) => {
       // x402scan's empty, unpaid probe gets the example's offer (above), not a "Send a JSON body"/"Name a model" error.
       if (isDiscoveryProbe(req)) { req.askCeilings = ceilings(null, {}, exactOutputFraction); return next(); }

@@ -32,14 +32,14 @@ export const baseOffer = (config, quotes, fallback) => ({
   // 120 s covers the model and settlement; after it, a lost answer's signature is provably unusable.
   scheme: "upto", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[BASE] ?? (fallback ? await fallback() : TERMS.maxChargeAtomic);
+    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
     return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2", billing: { ...TERMS, maxChargeAtomic: amount } } };
   },
 });
 export const solanaOffer = (config, quotes, fallback) => ({
   scheme: "upto", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 300,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[SOLANA] ?? (fallback ? await fallback() : SOLANA_TERMS.maxChargeAtomic);
+    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[SOLANA] ?? (fallback ? await fallback(ctx) : SOLANA_TERMS.maxChargeAtomic);
     return { asset: SOLANA_ASSET, amount, extra: { billing: { ...SOLANA_TERMS, maxChargeAtomic: amount } } };
   },
 });
@@ -51,7 +51,7 @@ export const solanaOffer = (config, quotes, fallback) => ({
 export const exactBaseOffer = (config, quotes, fallback) => ({
   scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[BASE] ?? (fallback ? await fallback() : TERMS.maxChargeAtomic);
+    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
     return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2",
       billing: { ...TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
   },
@@ -59,7 +59,7 @@ export const exactBaseOffer = (config, quotes, fallback) => ({
 export const exactSolanaOffer = (config, quotes, fallback) => ({
   scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 300,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[SOLANA] ?? (fallback ? await fallback() : SOLANA_TERMS.maxChargeAtomic);
+    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[SOLANA] ?? (fallback ? await fallback(ctx) : SOLANA_TERMS.maxChargeAtomic);
     return { asset: SOLANA_ASSET, amount, extra: { billing: { ...SOLANA_TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
   },
 });
@@ -177,15 +177,29 @@ export function addPaymentRoute(app, routes, server, { discoverable = true } = {
 // standing ceiling (the old probe price) is kept only when the example cannot be quoted right now. Probes never pay:
 // a payment on an empty body is refused before settlement (see `isDiscoveryProbe` and the handlers below).
 export function exampleProbe({ probeBody, readRequest, choose, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION }) {
-  const probe = async () => {
+  const probe = perRequest(async () => {
     try {
       const input = await choose(readRequest(probeBody));
       return ceilings(input.info, input, exactOutputFraction);
     } catch {
       return ceilings(null, {}, exactOutputFraction);
     }
+  });
+  return (bucket, network) => async (ctx) => (await probe(ctx))[bucket][network];
+}
+
+// `quote` computed once per request, however many offers ask for it: @x402/core prices each offer in turn, so
+// without this a 402 with four offers would look the example up four times (and, with the catalogue down, wait
+// out four failed loads). Keyed by the request's adapter, which each request gets its own of; a call without one
+// is just computed.
+export function perRequest(quote) {
+  const seen = new WeakMap();
+  return (ctx) => {
+    const key = ctx?.adapter;
+    if (!key || typeof key !== "object") return quote();
+    if (!seen.has(key)) seen.set(key, quote());
+    return seen.get(key);
   };
-  return (bucket, network) => async () => (await probe())[bucket][network];
 }
 
 // `makeOffers(quotes, probeFallback)`: `probeFallback(bucket, network)` is the discovery probes' price for that

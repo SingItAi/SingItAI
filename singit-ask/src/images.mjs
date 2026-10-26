@@ -11,7 +11,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
+import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
 
 export const IMAGE_ROUTE = "/v1/images/generations";
@@ -130,7 +130,7 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
   // The discovery probes (GET/HEAD and the empty, unpaid POST) are offered what EXAMPLE, the body declared to
   // Bazaar below, is offered right now: the price CDP's Bazaar records for this route and what vet402 compares its
   // empty POST against (price_mismatch otherwise). The model-list ceiling only when it cannot be quoted right now.
-  const probeList = async () => {
+  const probeList = perRequest(async () => {
     try {
       const model = await catalogue.resolveImage(EXAMPLE.model);
       const listAtomic = imageListAtomic(model, readImageRequest(EXAMPLE, model));
@@ -138,10 +138,10 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
     } catch {
       return IMAGE_TERMS.maxListAtomic;
     }
-  };
+  });
   const price = (network) => async (ctx) => {
     const quote = priced.get(ctx.adapter.getBody());
-    const amount = imagePrice(quote?.listAtomic ?? await probeList(), network).totalAtomic;
+    const amount = imagePrice(quote?.listAtomic ?? await probeList(ctx), network).totalAtomic;
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(IMAGE_ROUTE, async (req, res, next) => {

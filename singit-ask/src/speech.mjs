@@ -10,7 +10,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
-import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
+import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
 
 export const SPEECH_ROUTE = "/v1/audio/speech";
@@ -98,17 +98,17 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
   // The discovery probes (GET/HEAD and the empty, unpaid POST) are offered what EXAMPLE, the body declared to
   // Bazaar below, is offered right now: the price CDP's Bazaar records for this route and what vet402 compares its
   // empty POST against (price_mismatch otherwise). The old standing list price only when it cannot be quoted now.
-  const probeList = async () => {
+  const probeList = perRequest(async () => {
     try {
       const model = await catalogue.resolveSpeech(EXAMPLE.model);
       return speechListAtomic(model, readSpeechRequest(EXAMPLE, model));
     } catch {
       return 1_000_000;
     }
-  };
+  });
   const price = (network) => async (ctx) => {
     const quote = priced.get(ctx.adapter.getBody());
-    const amount = speechPrice(quote?.listAtomic ?? await probeList(), network).totalAtomic;
+    const amount = speechPrice(quote?.listAtomic ?? await probeList(ctx), network).totalAtomic;
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(SPEECH_ROUTE, async (req, res, next) => {

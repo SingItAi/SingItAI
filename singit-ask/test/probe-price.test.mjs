@@ -8,8 +8,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, ROUTE, createApp } from "../src/app.mjs";
 import { FORMAT_ROUTES } from "../src/formats.mjs";
-import { IMAGE_ROUTE } from "../src/images.mjs";
-import { SPEECH_ROUTE } from "../src/speech.mjs";
+import { IMAGE_ROUTE, IMAGE_TERMS, imagePrice } from "../src/images.mjs";
+import { SPEECH_ROUTE, speechPrice } from "../src/speech.mjs";
 import { SEARCH_ROUTES } from "../src/search.mjs";
 import { UnknownModel, parseImageModels, parseVoiceModels } from "../src/catalogue.mjs";
 import { MODEL_ROUTES, modelRoutePaths } from "../src/model-routes.mjs";
@@ -117,28 +117,77 @@ test("a catalogue that cannot price the example right now keeps the old standing
   const down = { ...catalogue, async resolve() { throw new Error("catalogue down"); },
     async resolveImage() { throw new Error("down"); }, async resolveSpeech() { throw new Error("down"); } };
   const { url, facilitator } = await serve(t, down);
-  for (const route of [...Object.keys(FORMAT_ROUTES), ...modelRoutePaths()]) {
+  const amounts = async (route) => {
     const posted = await fetch(`${url}${route}`, { method: "POST" });
     assert.equal(posted.status, 402, route);
-    const amounts = decode(posted.headers.get("payment-required")).accepts.map((a) => a.amount);
-    assert.ok(amounts.every((a) => STANDING.has(a)), `${route}: ${amounts}`);
+    return Object.fromEntries(decode(posted.headers.get("payment-required")).accepts.map((a) => [`${a.scheme} ${a.network}`, a.amount]));
+  };
+  for (const route of [ROUTE, ...Object.keys(FORMAT_ROUTES), ...modelRoutePaths()]) {
+    assert.deepEqual(await amounts(route), { [`exact ${BASE}`]: TERMS.maxChargeAtomic, [`upto ${BASE}`]: TERMS.maxChargeAtomic,
+      [`exact ${SOLANA}`]: SOLANA_TERMS.maxChargeAtomic, [`upto ${SOLANA}`]: SOLANA_TERMS.maxChargeAtomic }, route);
   }
-  for (const route of [IMAGE_ROUTE, SPEECH_ROUTE]) {
-    assert.equal((await fetch(`${url}${route}`, { method: "POST" })).status, 402, route);
-  }
+  assert.deepEqual(await amounts(IMAGE_ROUTE), { [`exact ${BASE}`]: imagePrice(IMAGE_TERMS.maxListAtomic, BASE).totalAtomic,
+    [`exact ${SOLANA}`]: imagePrice(IMAGE_TERMS.maxListAtomic, SOLANA).totalAtomic });
+  assert.deepEqual(await amounts(SPEECH_ROUTE), { [`exact ${BASE}`]: speechPrice(1_000_000, BASE).totalAtomic,
+    [`exact ${SOLANA}`]: speechPrice(1_000_000, SOLANA).totalAtomic });
   assert.equal(facilitator.calls.verify, 0);
 });
 
-test("paying the probe's offer with an empty body is still refused before verify or settle", async (t) => {
+test("one probe looks the example up once, however many offers it carries", async (t) => {
+  const counts = { resolve: 0, image: 0, speech: 0 };
+  const counting = { ...catalogue,
+    async resolve(id) { counts.resolve += 1; return catalogue.resolve(id); },
+    async resolveImage(id) { counts.image += 1; return catalogue.resolveImage(id); },
+    async resolveSpeech(id) { counts.speech += 1; return catalogue.resolveSpeech(id); } };
+  const { url } = await serve(t, counting);
+  for (const route of [...Object.keys(FORMAT_ROUTES), ...modelRoutePaths()]) {
+    counts.resolve = 0;
+    await fetch(`${url}${route}`, { method: "POST" });
+    assert.equal(counts.resolve, 1, route);
+  }
+  await fetch(`${url}${IMAGE_ROUTE}`, { method: "GET" });
+  await fetch(`${url}${SPEECH_ROUTE}`, { method: "GET" });
+  assert.deepEqual([counts.image, counts.speech], [1, 1]);
+});
+
+// A body that costs more than the example: what a payer would send to try to pay the cheaper probe price for it.
+function pricier(route, example) {
+  if (route === SPEECH_ROUTE) return { ...example, input: example.input.repeat(100) };
+  if (route === IMAGE_ROUTE) return { ...example, n: 4 };
+  if (route === ROUTE) return null;  // default model: clamped to the standing ceiling either way (metered.mjs)
+  if ("max_tokens" in example) return { ...example, max_tokens: 8000 };
+  if ("max_output_tokens" in example) return { ...example, max_output_tokens: 8000 };
+  return null;
+}
+
+test("a payment signed for the probe's offer never verifies or settles an empty, invalid or pricier body", async (t) => {
   const { url, facilitator } = await serve(t);
+  let pricierChecked = 0;
   for (const route of DISCOVERABLE) {
     const probe = decode((await fetch(`${url}${route}`, { method: "POST" })).headers.get("payment-required"));
+    const example = probe.extensions.bazaar.info.input.body;
+    const bodies = ["{}", JSON.stringify({ model: 7 }), "[]"];
+    const more = pricier(route, example);
+    if (more) {
+      const quoted = decode((await fetch(`${url}${route}`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(more) })).headers.get("payment-required"));
+      assert.notDeepEqual(terms(quoted), terms(probe), `${route}: the pricier body must be quoted differently`);
+      bodies.push(JSON.stringify(more));
+      pricierChecked += 1;
+    }
     for (const accepted of probe.accepts) {
-      const paid = await fetch(`${url}${route}`, { method: "POST", headers: { "Content-Type": "application/json",
-        "PAYMENT-SIGNATURE": encode({ x402Version: 2, resource: probe.resource, accepted, payload: { signature: "0xsigned" },
-          extensions: probe.extensions }) }, body: "{}" });
-      assert.ok(paid.status >= 400, `${route}: an empty paid body must never be answered (got ${paid.status})`);
+      const payment = encode({ x402Version: 2, resource: probe.resource, accepted, payload: { signature: "0xsigned" },
+        extensions: probe.extensions });
+      for (const header of ["PAYMENT-SIGNATURE", "X-PAYMENT"]) {
+        for (const body of bodies) {
+          const paid = await fetch(`${url}${route}`, { method: "POST",
+            headers: { "Content-Type": "application/json", [header]: payment }, body });
+          assert.ok(paid.status >= 400, `${route} ${header} ${body.slice(0, 40)}: got ${paid.status}`);
+        }
+      }
     }
   }
+  assert.ok(pricierChecked >= 17, `pricier bodies checked on ${pricierChecked} routes`);
+  assert.equal(facilitator.calls.verify, 0, "nothing verified");
   assert.deepEqual(facilitator.calls.settle, [], "nothing settled");
 });
