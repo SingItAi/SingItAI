@@ -45,6 +45,8 @@ export async function runPaidChat({ question, caps, baseUrl = DEFAULT_ASK_BASE_U
   const chat = new ChatOpenAI({
     model,
     apiKey: "unused-singit-pays-over-x402",
+    // No automatic retries: a retry would sign a second payment for the same question.
+    maxRetries: 0,
     configuration: { baseURL: `${baseUrl}/v1`, fetch: fetchImpl },
   });
   return chat.invoke(question);

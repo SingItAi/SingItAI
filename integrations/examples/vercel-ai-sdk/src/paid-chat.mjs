@@ -49,6 +49,7 @@ export async function runPaidChat({ prompt, caps, baseUrl = DEFAULT_ASK_BASE_URL
     apiKey: "unused-singit-pays-over-x402",
     fetch: fetchImpl,
   });
-  const result = await generateText({ model: provider.chatModel(model), prompt });
+  // No automatic retries: a retry would sign a second payment for the same question.
+  const result = await generateText({ model: provider.chatModel(model), prompt, maxRetries: 0 });
   return result;
 }

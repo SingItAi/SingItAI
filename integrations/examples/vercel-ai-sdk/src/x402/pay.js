@@ -67,7 +67,8 @@ export function createSingitPaidFetch({
       throw error;
     }
 
-    const paidRequest = request.clone();
+    // redirect: "error" so a redirect can never carry PAYMENT-SIGNATURE elsewhere or resend the paid POST.
+    const paidRequest = new Request(request.clone(), { redirect: "error" });
     paidRequest.headers.set("PAYMENT-SIGNATURE", Buffer.from(JSON.stringify(payload)).toString("base64"));
     let response;
     try {

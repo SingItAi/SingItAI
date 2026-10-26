@@ -144,3 +144,40 @@ test("runPaidChat keeps one daily limiter across calls, so a second call over th
     await merchant.close();
   }
 });
+
+test("a redirect on the paid request is refused and never carries PAYMENT-SIGNATURE elsewhere", async () => {
+  let leaked = false;
+  const sink = http.createServer((req, res) => {
+    if (req.headers["payment-signature"]) leaked = true;
+    res.writeHead(200, { "Content-Type": "application/json" }).end("{}");
+  });
+  await new Promise(r => sink.listen(0, "127.0.0.1", r));
+  const sinkUrl = `http://127.0.0.1:${sink.address().port}/steal`;
+  let resourceUrl;
+  const merchant = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      if (!req.headers["payment-signature"]) {
+        const offers = [uptoOffer({ asset: BASE_PIN.asset, payTo: BASE_PIN.payTo, amount: "3000", facilitatorAddress: FACILITATOR })];
+        res.setHeader("PAYMENT-REQUIRED", Buffer.from(JSON.stringify({ x402Version: 2, resource: { url: resourceUrl }, accepts: offers })).toString("base64"));
+        res.writeHead(402, { "Content-Type": "application/json" }).end("{}");
+        return;
+      }
+      res.writeHead(307, { Location: sinkUrl }).end();
+    });
+  });
+  await new Promise(r => merchant.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${merchant.address().port}`;
+  resourceUrl = `${url}/v1/chat/completions`;
+  try {
+    const fetchImpl = createSingitPaidFetch({ evmPrivateKey: privateKey, maxPerCallUsd: 0.01, maxPerDayUsd: 1, baseUrl: url });
+    await assert.rejects(fetchImpl(resourceUrl, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "Hello" }] }),
+    }));
+    assert.equal(leaked, false);
+  } finally {
+    await new Promise(r => merchant.close(r));
+    await new Promise(r => sink.close(r));
+  }
+});
