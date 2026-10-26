@@ -172,23 +172,52 @@ alerts are a separate script and are out of scope here.
 
 ## Unique Payers
 
-`scripts/unique-payers.py` counts unique EXTERNAL x402 payers of SingIt's Base USDC merchant
-address(es) from Base USDC `Transfer` events (primary: Blockscout's v2 API; fallback `--rpc URL`
-with `--from-block`/`--to-block`: chunked `eth_getLogs`, for when Blockscout answers 403). The
-merchant/payTo addresses and any SingIt-owned address already public in this repo are hardcoded
-and always excluded as payers; other own wallets (operator, treasury, test) must be supplied at
-run time via `$SINGIT_OWN_WALLETS` or `--exclude-file PATH` (keep that file out of git) and are
-never hardcoded. Output defaults to aggregate numbers only (unique payers, payments, total USDC,
-excluded count, date range, per-merchant breakdown); individual payer addresses only print with
-`--list`, which also warns on stderr that the output must not be published.
+`scripts/unique-payers.py` counts external USDC payers on Base and Solana (`--chain
+base|solana|all`, default `all`). Base uses Blockscout, or `--rpc URL` with explicit
+`--from-block`/`--to-block` for chunked `eth_getLogs`. Solana discovers the merchant's
+USDC token accounts, paginates signatures and reads parsed transaction balances. The
+payer is the owner with the largest USDC decrease, rather than the facilitator paying
+network fees. Failed transactions and transactions without a positive merchant delta
+are skipped. Token accounts are discovered via RPC; no ATA derivation is performed.
+
+Solana uses `--solana-rpc URL`, `$SOLANA_RPC_URL`, or the public mainnet endpoint.
+Only its hostname is reported. `--solana-delay` defaults to 0.2 seconds; HTTP
+429/5xx responses use retry backoff. Historical coverage depends on RPC retention
+and the currently discoverable token accounts; closed accounts are not discovered.
+Solana zero-delta transactions are discarded during parsing, so its reported
+zero-value skipped count does not measure those transactions.
+
+Both public merchant addresses are always excluded. Supply other own addresses via
+`$SINGIT_OWN_WALLETS`, `--exclude-file PATH`, or repeatable
+`--exclude-db PATH:TABLE.COLUMN` (local SQLite, opened read-only). Base addresses
+are case-insensitive; Solana addresses retain their case. `--vps-own-wallets` reads
+only `~/.sign402/allowance.db:agents.agent_address` and
+`~/.sign402/solana-allowance.db:agents.agent_address`. It excludes neither limiter
+addresses nor end-user wallets. Additional database columns require explicit flags.
+Keep private exclusion files outside git; database loading reports counts, not addresses.
+
+Output includes every metric per chain and combined: unique external payers,
+payments, total USDC, own payments excluded, zero-value transfers skipped, date
+range and per-merchant counts. Combined unique payers sum the separate address
+spaces. `--json` produces JSON; `--list` prints sensitive individual payer addresses
+and warns against publishing them.
+
+`--amount-filter-atomic LIST` adds exact amount matching in USDC atomic units
+(6 decimals). `--exa-search-amounts` supplies `10100,6200` (0.010100 and 0.006200
+USDC). An explicit list overrides the preset. Unfiltered totals remain visible;
+JSON adds `filtered` reports at the top level and under each chain, while text
+prints both views. Every metric, including exclusions and date ranges, is computed
+for the selected amounts. Zero-value transfers match only if the list includes 0.
+Amounts are a heuristic and do not establish which endpoint was purchased.
 
 ```bash
-python3 scripts/unique-payers.py
-python3 scripts/unique-payers.py --since 2026-01-01 --json
-python3 scripts/unique-payers.py --rpc https://mainnet.base.org --from-block 20000000 --to-block 20100000
+python3 scripts/unique-payers.py --chain all --since 2026-01-01 --json
+python3 scripts/unique-payers.py --vps-own-wallets --exa-search-amounts
+python3 scripts/unique-payers.py --amount-filter-atomic 10100,6200,5000 --json
+python3 scripts/unique-payers.py --chain base --rpc https://mainnet.base.org --from-block 20000000 --to-block 20100000
 ```
 
-Tests: `python3 -m unittest discover -s scripts/tests`.
+Tests (offline): `python3 -m unittest discover -s scripts/tests`.
 
 ## Bazaar Metadata Lint and CDP Validator
 
