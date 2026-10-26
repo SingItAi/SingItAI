@@ -139,6 +139,15 @@ product, denomination, price, network and recipient before anything is paid.
 - **Pause:** permanent; the owner can call `pause()` from the wallet, and the
   guardian (our watcher) pauses on the v1 anomalies. After a pause, "create a
   new limiter" is the only way forward.
+- **Pause on Solana (SI-98):** the same `POST /allowance/pause`. There is no
+  contract to pause, so the gateway records the stop (`pauses` in
+  `solana-allowance.db`) and refuses every new purchase and metered hold in the
+  same write transaction that would reserve it; no wallet, no transaction, no
+  fee, and the USDC never leaves the owner's wallet. Only a new approval signed
+  by the owner's wallet after the pause (a GRANT prepared after it and
+  confirmed) resumes; new limits alone, a revoke, or signing an approval
+  prepared before the pause do not. The SPL delegate approval stays on chain
+  until the owner revokes it, so the page still recommends Revoke.
 - The page always links to the limiter on revoke.cash, so users know they can
   revoke without us.
 
@@ -162,7 +171,7 @@ decimals); every response that changes something carries `state`.
 | `POST /allowance/revoke/prepare` | `{method, limiter?}` | as grant, amount 0 |
 | `POST /allowance/revoke/submit` | as grant | the operation |
 | `GET /allowance/operations/{id}` | — | `{operation, kind, method, state, limiter, amountAtomic, txHash, detail, createdAt, updatedAt}`; poll every 2 s |
-| `POST /allowance/pause` | — | the limiter, paused for good by our guardian (the panic button; no wallet needed) |
+| `POST /allowance/pause` | — | Base: the limiter, paused for good by our guardian (the panic button; no wallet needed). Solana: the allowance status with `state: paused`, `paused: true`, `pausedAt`, and `text` (see "Pause on Solana") |
 | `POST /link/telegram` | — | `{code, expiresAt, text}`: send `/link <code>` to the bot within 10 minutes |
 | `POST /link/telegram/remove` | — | `{telegramLinked: false}` |
 | `GET /shop/tools` | — | `{tools: [{id, name, description, source, resourceUrl, inputSchema}]}` |

@@ -249,6 +249,22 @@ class SolanaRoutesTests(unittest.TestCase):
         self.assertEqual(done["state"], "DONE")
         self.assertEqual(self.call("GET", "/allowance", token=cookie["token"], csrf=None)[1]["state"], "granted")
 
+    def test_the_emergency_stop_route_pauses_a_solana_wallet(self):
+        cookie = self._cookie()
+        auth = dict(token=cookie["token"], csrf=cookie["csrf"])
+        from sign402_gateway.agent_allowance import AllowanceError
+        with self.assertRaisesRegex(AllowanceError, "no Solana allowance"):  # the server turns it into a 400
+            self.call("POST", "/allowance/pause", **auth)
+        self.call("POST", "/allowance/setup", {"dailyCap": "20", "perPurchaseCap": "5", "days": "30"}, **auth)
+        prepared = self.call("POST", "/allowance/grant/prepare", {"amount": "20"}, **auth)[1]
+        self.call("POST", "/allowance/grant/submit", {"operation": prepared["operation"], "transaction": "SIGNED"}, **auth)
+        status, body, _ = self.call("POST", "/allowance/pause", **auth)
+        self.assertEqual((status, body["state"], body["paused"], body["chain"]), (200, "paused", True, "solana"))
+        self.assertEqual(self.call("GET", "/allowance", token=cookie["token"], csrf=None)[1]["state"], "paused")
+        from sign402_gateway.web_accounts import WebAuthError
+        with self.assertRaises(WebAuthError):  # a state change needs the CSRF token, like every POST
+            self.call("POST", "/allowance/pause", token=cookie["token"], csrf=None)
+
     def test_a_solana_wallet_short_of_usdc_is_told_before_anything_is_set(self):
         self.bridge.owner_usdc = 500_000
         cookie = self._cookie()

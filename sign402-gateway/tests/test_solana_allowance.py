@@ -390,6 +390,115 @@ class SolanaAllowanceTests(unittest.TestCase):
             self.service.store.reserve_metered("expired", ACCOUNT, 1, 20_000_000, NOW)
         pay.assert_not_called()
 
+    # -- emergency stop (SI-98) --
+
+    def test_pause_stops_every_new_spend_and_keeps_the_money_with_the_owner(self):
+        self.grant("20")
+        self.service.spend(ACCOUNT, 1_000_000, "Weather", self.paid(1_000_000))
+        calls_before = len(self.bridge.calls)
+        with patch.object(analytics, "emit") as emit:
+            paused = self.service.pause(ACCOUNT)
+        emit.assert_called_once()
+        self.assertEqual(emit.call_args.args[0], "pause")
+        self.assertEqual((emit.call_args.kwargs["chain"], emit.call_args.kwargs["trigger"]), ("solana", "user"))
+        self.assertEqual((paused["state"], paused["paused"], paused["remainingTodayAtomic"]), ("paused", True, 0))
+        self.assertIn("revoke it from your wallet", paused["text"])
+        # No transaction was prepared, signed or sent for the pause: only reads.
+        self.assertEqual({c[0] for c in self.bridge.calls[calls_before:]} - {"allowance-state"}, set())
+        owner_usdc, delegated = self.bridge.owner_usdc, self.bridge.delegated
+        pay = Mock()
+        with self.assertRaisesRegex(AllowanceError, "paused"):
+            self.service.spend(ACCOUNT, 1_000_000, "x", pay)
+        with self.assertRaisesRegex(AllowanceError, "paused"):
+            self.service.store.reserve_spend(ACCOUNT, 1_000_000, "x", NOW, daily_ceiling=100_000_000, per_ceiling=25_000_000)
+        with self.assertRaisesRegex(AllowanceError, "paused"):
+            self.service.store.reserve_metered("ask-hold", ACCOUNT, 10_000, 20_000_000, NOW)
+        pay.assert_not_called()
+        self.assertEqual((self.bridge.owner_usdc, self.bridge.delegated), (owner_usdc, delegated))
+        self.assertEqual(self.service.store.spent_since(ACCOUNT, 0), 1_000_000)
+
+    def test_pause_is_idempotent_and_needs_limits(self):
+        with self.assertRaisesRegex(AllowanceError, "no Solana allowance"):
+            self.service.pause(ACCOUNT)
+        self.grant()
+        with patch.object(analytics, "emit") as emit:
+            first = self.service.pause(ACCOUNT)
+            self.clock[0] += 5
+            second = self.service.pause(ACCOUNT)
+        self.assertEqual(emit.call_count, 1)  # one stop, one event
+        self.assertEqual(first["pausedAt"], second["pausedAt"])
+        with self.service.store._db() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM pauses").fetchone()[0], 1)
+
+    def test_only_a_new_wallet_approval_prepared_after_the_pause_resumes(self):
+        self.grant("20")
+        early = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")  # prepared before the stop
+        self.clock[0] += 1
+        self.service.pause(ACCOUNT)
+        # New limits alone do not resume; neither does signing an approval prepared before the pause.
+        self.service.setup(ACCOUNT, "20", "5", "30")
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, early["operation"], "SIGNED")["state"], "DONE")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+        with self.assertRaisesRegex(AllowanceError, "paused"):
+            self.service.spend(ACCOUNT, 1_000_000, "x", self.paid(1_000_000))
+        # A failed new approval does not resume either.
+        self.clock[0] += 1
+        self.bridge.submit_state = "failed"
+        failed = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, failed["operation"], "SIGNED")["state"], "FAILED")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+        # A revoke is not a resume.
+        self.bridge.submit_state = "confirmed"
+        revoke = self.service.prepare_wallet(ACCOUNT, "REVOKE")
+        self.service.submit_wallet(ACCOUNT, revoke["operation"], "SIGNED")
+        self.assertEqual(self.service.status(ACCOUNT)["state"], "paused")
+        # The owner's wallet signs a fresh approval: spending resumes.
+        fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        self.assertEqual(self.service.submit_wallet(ACCOUNT, fresh["operation"], "SIGNED")["state"], "DONE")
+        status = self.service.status(ACCOUNT)
+        self.assertEqual((status["state"], status["paused"]), ("granted", False))
+        self.assertEqual(self.service.spend(ACCOUNT, 1_000_000, "ok", self.paid(1_000_000))["state"], "accepted")
+        # And a second stop works again.
+        self.clock[0] += 1
+        self.assertEqual(self.service.pause(ACCOUNT)["state"], "paused")
+        with self.assertRaisesRegex(AllowanceError, "paused"):
+            self.service.spend(ACCOUNT, 1_000_000, "x", self.paid(1_000_000))
+
+    def test_a_pause_from_another_process_stops_a_purchase_already_past_the_chain_read(self):
+        self.grant("20")
+        other = SolanaAllowanceService(
+            store=SolanaAllowanceStore(self.service.store.path), bridge=self.bridge, fernet=self.fernet,
+            fee_payer_key=None, max_daily=100_000_000, max_per_purchase=25_000_000,
+            max_days=90, max_grant=300_000_000, now=lambda: self.clock[0])
+        real = self.service.chain_state
+        def state(account, **kwargs):
+            out = real(account, **kwargs)
+            other.pause(account)  # the owner presses stop while this purchase reads the chain
+            return out
+        self.service.chain_state = state
+        pay = Mock()
+        with self.assertRaisesRegex(AllowanceError, "paused"):
+            self.service.spend(ACCOUNT, 1_000_000, "x", pay)
+        pay.assert_not_called()
+        self.assertEqual(self.service.store.spent_since(ACCOUNT, 0), 0)
+
+    def test_pause_survives_an_rpc_failure_after_it_is_recorded(self):
+        self.grant()
+        self.service.chain_state = Mock(side_effect=RuntimeError("rpc down"))
+        paused = self.service.pause(ACCOUNT)
+        self.assertEqual((paused["state"], paused["paused"]), ("paused", True))
+        self.assertIsNotNone(self.service.store.paused_at(ACCOUNT))
+
+    def test_pause_schema_is_added_to_an_existing_database(self):
+        path = self.service.store.path
+        self.grant()
+        with sqlite3.connect(path) as db:
+            db.execute("DROP TABLE pauses")
+        reopened = SolanaAllowanceStore(path)
+        self.assertIsNone(reopened.paused_at(ACCOUNT))
+        self.assertTrue(reopened.pause(ACCOUNT, "user", NOW + 10)[0])
+        self.assertEqual(reopened.paused_at(ACCOUNT), NOW + 10)
+
     def test_nonpositive_or_noninteger_spend_never_calls_payment(self):
         self.grant()
         for amount in (0, -1, True, 1.5, "100"):

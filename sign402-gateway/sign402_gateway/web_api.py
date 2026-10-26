@@ -464,7 +464,9 @@ class WebApi:
         if method == "GET" and path.startswith("/allowance/operations/"):
             return 200, lane.operation(account, path.rsplit("/", 1)[1]), {}
         if method == "POST" and path == "/allowance/pause":
-            raise WebError(400, "solana_revoke", "On Solana, revoking the approval is the stop: it takes effect at once.")
+            # The emergency stop (SI-98): the agent stops spending at once, no wallet needed.
+            self.setup_by_account.hit(account)
+            return 200, {**lane.pause(account), "alerts": [], "staleLimiters": []}, {}
         raise WebError(404, "not_found", "No such endpoint.")
 
     # -- allowance --
