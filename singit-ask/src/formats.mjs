@@ -45,16 +45,22 @@ export function fitRequest(request, params) {
   return fitted;
 }
 
-// Whether a reasoning model spent the whole answer budget thinking and wrote nothing: Messages stops on max_tokens
-// with no text block, Responses ends incomplete on max_output_tokens with no output_text.
+// Whether a reasoning model spent the whole answer budget thinking and wrote nothing usable: Messages stops on
+// max_tokens with no text block and no tool_use block, Responses ends incomplete on max_output_tokens with no
+// output_text, no function_call, and no other non-reasoning item carrying content. A completed tool call with
+// no text is still a real answer, not a reasoning-exhaustion refusal.
 export function spentOnReasoning(route, data) {
   if (route === "/v1/messages") {
-    const text = (Array.isArray(data.content) ? data.content : []).some((b) => b?.type === "text" && String(b.text ?? "").trim());
-    return data.stop_reason === "max_tokens" && !text;
+    const answered = (Array.isArray(data.content) ? data.content : []).some((b) =>
+      b?.type === "tool_use" || (b?.type === "text" && String(b.text ?? "").trim()));
+    return data.stop_reason === "max_tokens" && !answered;
   }
-  const text = (Array.isArray(data.output) ? data.output : []).some((item) => (Array.isArray(item?.content) ? item.content : [])
-    .some((c) => c?.type === "output_text" && String(c.text ?? "").trim()));
-  return data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" && !text;
+  const answered = (Array.isArray(data.output) ? data.output : []).some((item) => {
+    if (!item || item.type === "reasoning") return false;
+    if (item.type === "function_call") return true;
+    return Array.isArray(item.content) && item.content.length > 0;
+  });
+  return data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" && !answered;
 }
 
 const MAX_TOKENS_TOO_SMALL = "This model spent the whole token budget reasoning and wrote no answer. Raise max_tokens "

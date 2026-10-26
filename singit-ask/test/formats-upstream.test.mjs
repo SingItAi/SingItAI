@@ -134,3 +134,21 @@ test("a cut-off answer that has some text is still an answer", () => {
     output: [{ type: "message", content: [{ type: "output_text", text: "Hi" }] }] }), false);
   assert.deepEqual(fitRequest({ model: "m", temperature: 1 }, undefined), { model: "m", temperature: 1 });
 });
+
+test("/v1/messages: a completed tool call with no text and max_tokens is still a billable answer", async (t) => {
+  const s = await serve(t, () => [200, { type: "message", role: "assistant",
+    content: [{ type: "tool_use", id: "toolu_1", name: "get_weather", input: { city: "Lyon" } }],
+    stop_reason: "max_tokens", usage: { buyer_cost_micro: 3 } }]);
+  const paid = await payExact(s.url, "/v1/messages", message("kimi-k3"));
+  assert.equal(paid.status, 200);
+  assert.ok(s.settled.length > 0);
+});
+
+test("/v1/responses: a completed function_call with no output_text and incomplete is still a billable answer", async (t) => {
+  const s = await serve(t, () => [200, { object: "response", status: "incomplete", incomplete_details: { reason: "max_output_tokens" },
+    output: [{ type: "function_call", call_id: "call_1", name: "get_weather", arguments: "{\"city\":\"Lyon\"}" }],
+    usage: { buyer_cost_micro: 3 } }]);
+  const paid = await payExact(s.url, "/v1/responses", response("kimi-k3"));
+  assert.equal(paid.status, 200);
+  assert.ok(s.settled.length > 0);
+});
