@@ -464,10 +464,12 @@ function grant() {
 
 async function pause() {
   state.modal = null;
-  await busy("Pausing your limiter…", async () => {
+  const solana = state.allowance?.chain === "solana";
+  await busy(solana ? "Pausing your agent…" : "Pausing your limiter…", async () => {
     await api.pause();
     await loadAllowance();
-    toast("Paused for good. To be thorough, also revoke the allowance.");
+    toast(solana ? "Paused. Your agent cannot spend. To end the approval on Solana too, revoke it."
+                 : "Paused for good. To be thorough, also revoke the allowance.");
   });
 }
 
@@ -644,12 +646,13 @@ function methodSwitch() {
 // Solana: the owner's wallet approved the agent for a total; the day and per-purchase limits are ours.
 function renderSolanaAllowance(a) {
   const granted = a.state === "granted";
+  const paused = a.state === "paused";
   // Below this, prepare_wallet's own SOL check (sign402_gateway/solana_allowance.py,
   // OWNER_FEE_LAMPORTS) would refuse the approval outright; warn before that happens (SI-45).
   const lowSol = a.state === "waiting_for_grant" && BigInt(a.ownerSolLamports || "0") < 20000n;
   return `
     <div class="page-head"><span class="eyebrow">Agent allowance · Solana</span>
-      <h1>${granted ? "Your agent can <em>spend</em>." : "Approve it <em>once</em>."}</h1>
+      <h1>${granted ? "Your agent can <em>spend</em>." : paused ? "Your agent is <em>paused</em>." : "Approve it <em>once</em>."}</h1>
       <p>Your USDC stays in your wallet. Your agent takes only what a purchase needs, inside these limits.</p></div>
     <div class="metrics">
       <div class="metric"><span class="label">Can spend today</span><b>${usdc(spendableToday(a))}</b></div>
@@ -661,6 +664,8 @@ function renderSolanaAllowance(a) {
       <p class="faint">Your wallet approved <span class="mono">${esc(short(a.limiter))}</span>, your agent, to take up to the approved total.
         The chain enforces that total; SingIt enforces the daily and per-purchase limits. Revoking takes effect at once.</p>
       ${lowSol ? `<p class="note warn">Your wallet needs about 0.00002 SOL for the network fee before you can approve.</p>` : ""}
+      ${paused ? `<p class="note warn">Emergency stop is on: your agent cannot spend. Your USDC stays in your wallet.
+        To resume, approve a new allowance below; to end the approval on Solana too, revoke it.</p>` : ""}
       <div class="row">
         ${granted ? "" : `<input id="grant-amount" class="input" style="width:120px" value="${esc(amount(a.dailyCapAtomic))}" aria-label="Amount to approve">
           <button class="btn btn-primary btn-sm has-orb" data-action="grant">Approve in wallet${orb}</button>`}
@@ -668,6 +673,12 @@ function renderSolanaAllowance(a) {
         ${a.allowanceAtomic > 0 ? `<button class="btn btn-danger btn-sm" data-action="revoke">Revoke</button>` : ""}
       </div>
     </div></div>
+    ${paused ? "" : `<div class="bezel" style="margin-top:18px"><div class="core">
+      <div class="row" style="justify-content:space-between">
+        <div><h2>Emergency stop</h2><p>Stops your agent at once, with no wallet signature and no fee. Your USDC stays in your wallet; to resume you approve again.</p></div>
+        <button class="btn btn-danger" data-action="ask-pause">Pause the agent</button>
+      </div>
+    </div></div>`}
     <div class="bezel" style="margin-top:18px"><div class="core">
       <h2>Pay in USDC, nothing else</h2>
       <p>SingIt Ask charges the actual token cost + 30% + 0.001 USDC per answer,
@@ -1070,7 +1081,16 @@ function renderModal() {
       </div>`);
     return;
   }
-  if (m.type === "pause") {
+  if (m.type === "pause" && state.allowance?.chain === "solana") {
+    modalEl.innerHTML = modal(`
+      <div class="approval-head"><div class="avatar">${mark()}</div>
+        <div><strong>Pause your agent?</strong><span>It stops spending at once</span></div></div>
+      <p>Your agent will not be able to spend from your wallet. Your USDC stays where it is. To spend again you approve a new allowance from your wallet; to end the approval on Solana too, revoke it.</p>
+      <div class="actions" style="margin-top:20px">
+        <button class="btn btn-danger" data-action="pause">Pause the agent</button>
+        <button class="btn btn-ghost" data-action="dismiss-button">Keep it</button>
+      </div>`);
+  } else if (m.type === "pause") {
     modalEl.innerHTML = modal(`
       <div class="approval-head"><div class="avatar">${mark()}</div>
         <div><strong>Pause the limiter for good?</strong><span>This cannot be undone</span></div></div>
