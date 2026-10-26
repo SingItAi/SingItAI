@@ -1097,7 +1097,13 @@ class WebAgent:
         if not state["configured"]:
             return self._no_limiter(lang)
         amounts = numbers(text)
-        amount = str(amounts[0]) if amounts else str(Decimal(state["dailyCapAtomic"]) / Decimal(1_000_000))
+        daily = Decimal(state["dailyCapAtomic"]) / Decimal(1_000_000)
+        amount = str(amounts[0]) if amounts else str(daily)
+        if state.get("chain") == "solana" and Decimal(amount) > daily:
+            # On Solana the wallet's approval is capped at the daily limit (prepare refuses more).
+            return say(lang, f"On Solana your approval is capped at your daily limit, {daily} USDC. Approve {daily} USDC in your wallet:",
+                       f"На Solana разрешение ограничено дневным лимитом, {daily} USDC. Подтвердите {daily} USDC в кошельке:"), [
+                {"type": "wallet", "kind": "grant", "amount": str(daily), "limiter": state["limiter"]}]
         return say(lang, f"Approve {amount} USDC for your limiter in your wallet:",
                    f"Подтвердите {amount} USDC для лимитера в кошельке:"), [
             {"type": "wallet", "kind": "grant", "amount": amount, "limiter": state["limiter"]}]

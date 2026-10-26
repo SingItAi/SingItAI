@@ -459,6 +459,18 @@ class AgentTests(unittest.TestCase):
         self.assertTrue(reply["cards"][0]["readOnly"])
         self.assertNotIn("bitrefill-buy", [c[0] for c in self.shop.calls])
 
+    def test_a_solana_approval_above_the_daily_limit_is_offered_at_the_daily_limit(self):
+        solana = {"configured": True, "chain": "solana", "state": "granted", "dailyCapAtomic": 20_000_000, "limiter": "AGENT"}
+        with patch.object(self.agent, "_state", return_value=solana):
+            text, cards = self.agent._on_grant("solana:x", "en", "approve 50 USDC", "grant")
+            self.assertIn("capped at your daily limit, 20 USDC", text)
+            self.assertEqual(cards, [{"type": "wallet", "kind": "grant", "amount": "20", "limiter": "AGENT"}])
+            _, cards = self.agent._on_grant("solana:x", "en", "approve 5 USDC", "grant")
+            self.assertEqual(cards[0]["amount"], "5")
+        with patch.object(self.agent, "_state", return_value={**solana, "chain": "base"}):  # Base: the contract's own limits
+            _, cards = self.agent._on_grant("0xabc", "en", "approve 50 USDC", "grant")
+            self.assertEqual(cards[0]["amount"], "50")
+
     def test_short_of_usdc_the_reply_offers_to_add_funds(self):
         self.allowance.status.return_value = {"configured": False}
         self.agent.setup.side_effect = type("WebError", (Exception,), {

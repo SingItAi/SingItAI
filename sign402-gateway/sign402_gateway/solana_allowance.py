@@ -582,9 +582,16 @@ class SolanaAllowanceService:
         owner = self.owner(account)
         kind = str(kind).upper()
         if kind == "GRANT":
-            if self.store.limits(account) is None:
+            limits = self.store.limits(account)
+            if limits is None:
                 raise AllowanceError("Set your limits first.")
             atomic = _usdc(amount, "The amount")
+            # The wallet's approval is capped at the daily limit: then the agent's key alone (or a server
+            # that skipped our own checks) can never take more than one day's budget. It does not refill;
+            # the owner approves again once it is used up, or after lowering the limit.
+            if atomic > limits["daily_cap"]:
+                raise AllowanceError(f"On Solana your approval is capped at your daily limit, {_text(limits['daily_cap'])}. "
+                                     "Approve that or less.")
             if atomic > self.max_grant:
                 raise AllowanceError(f"Allow at most {_text(self.max_grant)} at a time.")
         elif kind == "FUND_GAS":
@@ -643,6 +650,16 @@ class SolanaAllowanceService:
             return self.operation(account, op_id)
         if not op["owner_pays_fee"]:
             raise AllowanceError("This old sponsored request is disabled. Prepare a new transaction paid by your wallet.")
+        if op["kind"] == "GRANT":
+            # The cap is checked again here: the daily limit may have been lowered after this was prepared.
+            limits = self.store.limits(account)
+            if limits is None or op["amount"] > limits["daily_cap"]:
+                cap = _text(limits["daily_cap"]) if limits is not None else "your daily limit"
+                self.store.update_op(op_id, "FAILED", now, detail=(
+                    f"Your daily limit is now {cap}, below this approval of {_text(op['amount'])}. "
+                    "Nothing was sent; approve again."))
+                self._emit_op_event(op, "FAILED")
+                return self.operation(account, op_id)
         owner_pays = True
         # Wallets add their own fee settings and guards before signing; the bridge accepts those only
         # around exactly this approve or revoke (solana-x402-service/src/allowance.mjs, doesOnly).
