@@ -494,7 +494,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model"] } } } },
           responses: { 200: { description: "The answer in that API's format, with billing" },
-                       ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged",
+                       ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged", reasoning: true,
                                        schema: route === "/v1/messages" ? ANTHROPIC_ERROR_SCHEMA : ERROR_SCHEMA }) },
           security: [{ x402: [] }],
         } }])) : {}),
