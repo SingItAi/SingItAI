@@ -1,0 +1,24 @@
+{
+  "name": "singit-vercel-ai-sdk-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runnable recipe: SingIt MCP tools and x402-paid chat with the Vercel AI SDK. See docs/integrations/vercel-ai-sdk.md.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/run.mjs free",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "ai": "^7.0.153",
+    "@ai-sdk/mcp": "2.0.84",
+    "@ai-sdk/openai-compatible": "^3.0.78",
+    "@x402/evm": "2.28.0",
+    "viem": "^2.48.11"
+  },
+  "overrides": {
+    "zod": "^4.6.7"
+  }
+}
