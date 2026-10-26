@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "app.singitai/singit",
   "title": "SingIt x402",
-  "description": "Web search, page reading, prices and market data for agents via x402, in USDC on Base or Solana.",
-  "version": "0.1.1",
+  "description": "Web search, page reading, prices and market data for agents, billed to your SingIt API key in USDC.",
+  "version": "0.1.2",
   "websiteUrl": "https://singitai.app/developers/",
   "repository": {
     "url": "https://github.com/bubon-ik/SingItAI",
