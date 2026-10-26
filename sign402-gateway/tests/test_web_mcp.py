@@ -284,6 +284,81 @@ class AuthTests(Fixture):
         self.assertEqual(self.shop.calls, [])
 
 
+class BlankAndUnexpandedCredentialTests(Fixture):
+    """A blank bearer or an unexpanded "${...}" client template is a client misconfiguration, not an
+    attempt to authenticate, so it must be served exactly like a request with no header at all."""
+
+    def raw_rpc(self, method, params=None, *, authorization=None, api_key=None, id_=1):
+        body = {"jsonrpc": "2.0", "method": method}
+        if id_ is not None:
+            body["id"] = id_
+        if params is not None:
+            body["params"] = params
+        return self.api.mcp.handle(authorization=authorization, api_key=api_key, origin=None,
+                                   protocol_version="2025-06-18", body=body)
+
+    def test_blank_or_bare_bearer_authorization_is_served_keyless(self):
+        self.api.mcp.fetch_json = lambda url: {"ok": True}
+        for header in ("Bearer", "Bearer ", "bearer   ", "", "   "):
+            with self.subTest(authorization=repr(header)):
+                status, out, _ = self.raw_rpc("initialize", {"protocolVersion": "2025-06-18"}, authorization=header)
+                self.assertEqual(status, 200)
+                status, out, _ = self.raw_rpc("tools/list", authorization=header)
+                self.assertEqual(status, 200)
+                self.assertEqual(len(out["result"]["tools"]), 14)
+                status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
+                                              authorization=header)
+                self.assertFalse(out["result"].get("isError"))
+                status, out, _ = self.raw_rpc("tools/call", {"name": sorted(PAID_TOOL_NAMES)[0], "arguments": {}},
+                                              authorization=header)
+                self.assertTrue(out["result"]["isError"])
+                self.assertIn("API key", out["result"]["content"][0]["text"])
+        self.assertEqual(self.shop.calls, [])
+
+    def test_blank_x_api_key_is_served_keyless(self):
+        for header in ("", "   "):
+            with self.subTest(api_key=repr(header)):
+                status, out, _ = self.raw_rpc("tools/list", api_key=header)
+                self.assertEqual(status, 200)
+                self.assertEqual(len(out["result"]["tools"]), 14)
+
+    def test_unexpanded_template_placeholder_in_authorization_is_served_keyless(self):
+        self.api.mcp.fetch_json = lambda url: {"ok": True}
+        for placeholder in ("Bearer ${env:SINGIT_API_KEY}", "${SINGIT_API_KEY}", "${env:SINGIT_API_KEY}",
+                            "bearer ${SINGIT_API_KEY}"):
+            with self.subTest(authorization=placeholder):
+                status, out, _ = self.raw_rpc("tools/list", authorization=placeholder)
+                self.assertEqual(status, 200)
+                self.assertEqual(len(out["result"]["tools"]), 14)
+                status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
+                                              authorization=placeholder)
+                self.assertFalse(out["result"].get("isError"))
+                status, out, _ = self.raw_rpc("tools/call", {"name": sorted(PAID_TOOL_NAMES)[0], "arguments": {}},
+                                              authorization=placeholder)
+                self.assertTrue(out["result"]["isError"])
+                self.assertIn("API key", out["result"]["content"][0]["text"])
+        self.assertEqual(self.shop.calls, [])
+
+    def test_unexpanded_template_placeholder_in_x_api_key_is_served_keyless(self):
+        status, out, _ = self.raw_rpc("tools/list", api_key="${SINGIT_API_KEY}")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(out["result"]["tools"]), 14)
+
+    def test_a_real_but_wrong_key_still_gets_401(self):
+        status, out, _ = self.raw_rpc("tools/list", authorization=f"Bearer {BAD_KEY}")
+        self.assertEqual(status, 401)
+        status, out, _ = self.raw_rpc("tools/list", api_key=BAD_KEY)
+        self.assertEqual(status, 401)
+
+    def test_a_value_that_merely_contains_a_dollar_brace_is_not_a_placeholder(self):
+        # Only an *exact* "${...}" template (after stripping "Bearer ") is treated as unset; anything
+        # else, even if it contains the same characters, goes through real auth and is just a wrong key.
+        for bad in ("Bearer $" + "x" * 20, "Bearer ${SINGIT_API_KEY} extra", "${SINGIT_API_KEY}x"):
+            with self.subTest(authorization=bad):
+                status, out, _ = self.raw_rpc("tools/list", authorization=bad)
+                self.assertEqual(status, 401)
+
+
 class FailedAuthIpLimitTests(Fixture):
     def test_too_many_failed_auths_from_one_address_get_429_instead_of_401(self):
         for _ in range(wm.AUTH_FAILURES_PER_WINDOW):
