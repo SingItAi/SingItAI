@@ -1,0 +1,24 @@
+{
+  "name": "singit-langchain-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runnable recipe: SingIt MCP tools and x402-paid chat with LangChain.js. See docs/integrations/langchain.md.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/run.mjs free",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@langchain/core": "^1.2.6",
+    "@langchain/mcp-adapters": "2.0.1",
+    "@langchain/openai": "^1.7.0",
+    "@x402/evm": "2.28.0",
+    "viem": "^2.48.11"
+  },
+  "overrides": {
+    "zod": "^4.6.7"
+  }
+}

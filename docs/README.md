@@ -14,6 +14,7 @@ plan is not evidence that a feature is deployed.
 - [Decision API](decide-public-endpoint.md) and [Bazantic experiment](bazantic-experiment.md).
 - [Bazaar curation readiness](bazaar-curation.md): checklist against Coinbase's curation rules and what needs the owner.
 - [Production incident: repeated Crypto News purchases](incidents/2026-09-08-crypto-news-memory.md).
+- [Framework integrations](integrations/README.md): ElizaOS, LangChain.js and the Vercel AI SDK.
 
 ## Historical material
 
