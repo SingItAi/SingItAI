@@ -69,6 +69,9 @@ const INPUT_SCHEMA = { properties: {
   speed: { type: "number", minimum: 0.25, maximum: 4, description: "Speaking speed." },
 }, required: ["model", "input"] };
 
+// The example body declared to Bazaar, and what the discovery probes are priced as (see `probeList`).
+const EXAMPLE = Object.freeze({ model: "venice-kokoro-tts", input: "Hello from SingIt.", voice: "af_heart", response_format: "mp3" });
+
 export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
@@ -92,13 +95,24 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
              ...transcription.sort((a, b) => a.listUsdPerMinute - b.listUsdPerMinute)] });
   });
 
-  const price = (network) => (ctx) => {
+  // The discovery probes (GET/HEAD and the empty, unpaid POST) are offered what EXAMPLE, the body declared to
+  // Bazaar below, is offered right now: the price CDP's Bazaar records for this route and what vet402 compares its
+  // empty POST against (price_mismatch otherwise). The old standing list price only when it cannot be quoted now.
+  const probeList = async () => {
+    try {
+      const model = await catalogue.resolveSpeech(EXAMPLE.model);
+      return speechListAtomic(model, readSpeechRequest(EXAMPLE, model));
+    } catch {
+      return 1_000_000;
+    }
+  };
+  const price = (network) => async (ctx) => {
     const quote = priced.get(ctx.adapter.getBody());
-    const amount = speechPrice(quote?.listAtomic ?? 1_000_000, network).totalAtomic;
+    const amount = speechPrice(quote?.listAtomic ?? await probeList(), network).totalAtomic;
     return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
   };
   app.post(SPEECH_ROUTE, async (req, res, next) => {
-    // x402scan's empty, unpaid probe gets the standing offer, not a model-lookup 404.
+    // x402scan's empty, unpaid probe gets the example's offer (`probeList`), not a model-lookup 404.
     if (isDiscoveryProbe(req)) return next();
     try {
       const model = await catalogue.resolveSpeech(req.body?.model);
@@ -121,7 +135,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
     tags: ["speech", "text-to-speech", "tts", "audio", "openai-compatible", "pay-per-use", "solana", "base", "singit"],
     // The answer is audio bytes, not JSON, so there is no JSON output example to give.
     extensions: declareDiscoveryExtension({ bodyType: "json",
-      input: { model: "venice-kokoro-tts", input: "Hello from SingIt.", voice: "af_heart", response_format: "mp3" },
+      input: EXAMPLE,
       inputSchema: INPUT_SCHEMA }),
   } }, server);
   app.post(SPEECH_ROUTE, async (req, res) => {

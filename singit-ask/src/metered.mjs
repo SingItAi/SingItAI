@@ -169,8 +169,31 @@ export function addPaymentRoute(app, routes, server, { discoverable = true } = {
   return httpServer;
 }
 
-export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, offerEmptyProbe = false }) {
-  const offers = makeOffers(quotes);
+// What the discovery probes (GET/HEAD and the empty, unpaid POST) are quoted, per scheme and network: the ceilings a
+// real POST of `probeBody` would be offered right now, through the very same `readRequest`, `choose` and
+// `ceilings` a paid question goes through. `probeBody` is the example body the route declares in its Bazaar
+// discovery extension, which is the body CDP's Bazaar sends to record the route's price; vet402 then compares that
+// recorded price with what its own empty, unpaid POST is offered (price_mismatch when no accept carries it). The
+// standing ceiling (the old probe price) is kept only when the example cannot be quoted right now. Probes never pay:
+// a payment on an empty body is refused before settlement (see `isDiscoveryProbe` and the handlers below).
+export function exampleProbe({ probeBody, readRequest, choose, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION }) {
+  const probe = async () => {
+    try {
+      const input = await choose(readRequest(probeBody));
+      return ceilings(input.info, input, exactOutputFraction);
+    } catch {
+      return ceilings(null, {}, exactOutputFraction);
+    }
+  };
+  return (bucket, network) => async () => (await probe())[bucket][network];
+}
+
+// `makeOffers(quotes, probeFallback)`: `probeFallback(bucket, network)` is the discovery probes' price for that
+// offer (see `exampleProbe`), present only when `probeBody` is given; without it the probes keep the standing ceiling.
+export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, offerEmptyProbe = false, probeBody }) {
+  const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose,
+    exactOutputFraction: config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION });
+  const offers = makeOffers(quotes, probeFallback);
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new UptoEvmScheme())
     .register(BASE, new ExactEvmScheme())
