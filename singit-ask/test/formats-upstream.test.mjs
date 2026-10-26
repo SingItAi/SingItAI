@@ -90,6 +90,15 @@ for (const [route, body, ok] of [["/v1/messages", message, MSG_OK], ["/v1/respon
     assert.deepEqual(s.settled, []);
   });
 
+  test(`${route}: a network error or timeout answers 503 with Retry-After, never 502, nothing settled`, async (t) => {
+    const s = await serve(t, () => { throw Object.assign(new Error("fetch failed"), { name: "AbortError" }); });
+    const paid = await payExact(s.url, route, body("kimi-k3"));
+    assert.equal(paid.status, 503);
+    assert.equal(paid.headers.get("retry-after"), "30");
+    assert.match(JSON.stringify(await paid.json()), /not charged/);
+    assert.deepEqual(s.settled, []);
+  });
+
   test(`${route}: parameters the model does not list are dropped; a model with no list keeps them`, async (t) => {
     const s = await serve(t, () => ok);
     assert.equal((await payExact(s.url, route, body("kimi-k3", 16, { temperature: 0.4, top_p: 0.9 }))).status, 200);
