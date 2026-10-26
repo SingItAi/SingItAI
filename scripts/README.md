@@ -170,6 +170,26 @@ Installing the timer, publishing any status page or status JSON, and enabling
 any alert channel need the owner's OK and are not done by this change. Operator
 alerts are a separate script and are out of scope here.
 
+## Unique Payers
+
+`scripts/unique-payers.py` counts unique EXTERNAL x402 payers of SingIt's Base USDC merchant
+address(es) from Base USDC `Transfer` events (primary: Blockscout's v2 API; fallback `--rpc URL`
+with `--from-block`/`--to-block`: chunked `eth_getLogs`, for when Blockscout answers 403). The
+merchant/payTo addresses and any SingIt-owned address already public in this repo are hardcoded
+and always excluded as payers; other own wallets (operator, treasury, test) must be supplied at
+run time via `$SINGIT_OWN_WALLETS` or `--exclude-file PATH` (keep that file out of git) and are
+never hardcoded. Output defaults to aggregate numbers only (unique payers, payments, total USDC,
+excluded count, date range, per-merchant breakdown); individual payer addresses only print with
+`--list`, which also warns on stderr that the output must not be published.
+
+```bash
+python3 scripts/unique-payers.py
+python3 scripts/unique-payers.py --since 2026-01-01 --json
+python3 scripts/unique-payers.py --rpc https://mainnet.base.org --from-block 20000000 --to-block 20100000
+```
+
+Tests: `python3 -m unittest discover -s scripts/tests`.
+
 ## Bazaar Metadata Lint and CDP Validator
 
 Both are Node 22 scripts; the checklist they serve is in

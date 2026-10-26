@@ -30,6 +30,10 @@ This repo's root `.mcp.json` has the same block for clients (like cursor.directo
 
 ## 3. Verify
 
-Call `initialize`, then `tools/list`; both need the key. `tools/list` shows every tool; a call checks
-the key's scopes (`get_price`, `list_price_symbols` and `list_models` need none; `web_search`/`read_page`
-need `search`; the rest need `tools`). A missing or revoked key gets `401`, never a silent empty tool list.
+Call `initialize`, then `tools/list`; neither needs the key - both work keyless too, so catalogues and
+people can see what the server offers before they make one. `tools/list` shows every tool; a call checks
+the key's scopes (`get_price`, `list_price_symbols` and `list_models` need none and work keyless; `web_search`/
+`read_page` need `search`; the rest need `tools` - all of those need a real key). A missing key behaves the
+same as an empty or unexpanded `${env:SINGIT_API_KEY}` header (e.g. the client never substituted the
+environment variable): both are treated as no key, not as a wrong one. A revoked or otherwise wrong key
+gets `401`, never a silent empty tool list.
