@@ -457,7 +457,15 @@ async function walletOperation(kind, body) {
 
 function grant() {
   let value;
-  try { value = $("#grant-amount").value.trim(); atomicFromUsdc(value); }  // exact, as typed; checked only
+  try {
+    value = $("#grant-amount").value.trim();
+    const atomic = atomicFromUsdc(value);  // exact, as typed; checked only
+    const a = state.allowance;
+    // Solana: the approval may not exceed the daily limit; the server refuses it too.
+    if (a?.chain === "solana" && atomic > BigInt(a.dailyCapAtomic || 0)) {
+      throw new Error(`On Solana your approval is capped at your daily limit, ${usdc(a.dailyCapAtomic)}.`);
+    }
+  }
   catch (error) { toast(error.message, true); return; }
   walletOperation("grant", { amount: value, method: method() });
 }
@@ -650,6 +658,12 @@ function renderSolanaAllowance(a) {
   // Below this, prepare_wallet's own SOL check (sign402_gateway/solana_allowance.py,
   // OWNER_FEE_LAMPORTS) would refuse the approval outright; warn before that happens (SI-45).
   const lowSol = a.state === "waiting_for_grant" && BigInt(a.ownerSolLamports || "0") < 20000n;
+  // The wallet's approval is capped at the daily limit (the server refuses more), so the agent's key alone
+  // can never take more than one day's budget. An SPL approval does not refill: purchases use it up, and the
+  // owner approves again to set it back. "again" covers a used-up part, and a limit lowered after approving.
+  const daily = BigInt(a.dailyCapAtomic || 0);
+  const approved = BigInt(a.allowanceAtomic || 0);
+  const again = granted && approved !== daily;
   return `
     <div class="page-head"><span class="eyebrow">Agent allowance · Solana</span>
       <h1>${granted ? "Your agent can <em>spend</em>." : paused ? "Your agent is <em>paused</em>." : "Approve it <em>once</em>."}</h1>
@@ -663,12 +677,19 @@ function renderSolanaAllowance(a) {
       ${last30Line()}
       <p class="faint">Your wallet approved <span class="mono">${esc(short(a.limiter))}</span>, your agent, to take up to the approved total.
         The chain enforces that total; SingIt enforces the daily and per-purchase limits. Revoking takes effect at once.</p>
+      <p class="faint">Your approval is capped at your daily limit, so even if our server misbehaved, your agent could not take
+        more than one day's budget from your wallet. It does not refill on its own: purchases use it up, and you approve again
+        to set it back to your daily limit.</p>
+      ${granted && approved > daily ? `<p class="note warn">Your wallet still approves ${usdc(approved)}, more than your
+        ${usdc(daily)} daily limit. Approve again to bring it down to ${usdc(daily)}.</p>` : ""}
+      ${granted && approved < daily ? `<p class="faint">${usdc(approved)} of your approval is left. Approve again to set it back to ${usdc(daily)}.</p>` : ""}
       ${lowSol ? `<p class="note warn">Your wallet needs about 0.00002 SOL for the network fee before you can approve.</p>` : ""}
       ${paused ? `<p class="note warn">Emergency stop is on: your agent cannot spend. Your USDC stays in your wallet.
         To resume, approve a new allowance below; to end the approval on Solana too, revoke it.</p>` : ""}
       <div class="row">
-        ${granted ? "" : `<input id="grant-amount" class="input" style="width:120px" value="${esc(amount(a.dailyCapAtomic))}" aria-label="Amount to approve">
-          <button class="btn btn-primary btn-sm has-orb" data-action="grant">Approve in wallet${orb}</button>`}
+        ${granted && !again ? "" : `<input id="grant-amount" class="input" style="width:120px" inputmode="decimal"
+          value="${esc(amount(a.dailyCapAtomic).replace(/,/g, ""))}" aria-label="Amount to approve, at most your daily limit">
+          <button class="btn btn-primary btn-sm has-orb" data-action="grant">${again ? "Approve again" : "Approve in wallet"}${orb}</button>`}
         ${granted ? `<button class="btn btn-ghost btn-sm" data-action="add-funds">Add funds</button>` : ""}
         ${a.allowanceAtomic > 0 ? `<button class="btn btn-danger btn-sm" data-action="revoke">Revoke</button>` : ""}
       </div>
@@ -700,7 +721,7 @@ function renderSolanaSetup() {
       <p class="hint">Three steps: save limits (free) — approve in your wallet (~0.000005 SOL) — done.</p></div>
     <div class="bezel glow"><div class="core">
       <h2>Choose your limits</h2>
-      <p>Saving these limits moves no money and deploys no contract. Next you approve the total once in your wallet.</p>
+      <p>Saving these limits moves no money and deploys no contract. Next you approve up to your daily limit in your wallet.</p>
       <div class="presets">${PRESETS.map((x, i) => `
         <button class="preset ${i === state.preset ? "selected" : ""}" data-action="preset" data-index="${i}">
           <b>$${x.daily}<span> / day</span></b><span>${x.name} · up to $${x.per} a purchase · ${x.days} days</span>

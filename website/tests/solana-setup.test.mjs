@@ -51,3 +51,65 @@ test("saving Solana limits does not say a Base contract is being created", () =>
   assert.match(fn, /Saving your limits\./);
   assert.match(fn, /Limits saved\. Now approve them in your wallet\./);
 });
+
+// The configured Solana page: the approval defaults to, and is capped at, the daily limit.
+const solanaPage = (() => {
+  const money = section("const esc =", "function atomicFromUsdc(");
+  const parse = section("function atomicFromUsdc(", "\n}\n") + "\n}\n";
+  const today = section("function spendableToday(a) {", "\n}\n") + "\n}\n";
+  const page = section("function renderSolanaAllowance(a) {", "// Solana setup saves limits");
+  const grantFn = section("function grant() {", "async function pause() {");
+  const ctx = vm.createContext({ state: { allowance: null, spend30: null }, calls: [], toasts: [], inputValue: "" });
+  vm.runInContext(`${money}\n${parse}\n${today}\nconst last30Line = () => "";\n${page}\n${grantFn}
+    function $() { return { value: inputValue }; }
+    function toast(text, bad) { toasts.push([text, bad]); }
+    function method() { return "approve"; }
+    function walletOperation(kind, body) { calls.push([kind, body]); }`, ctx);
+  return ctx;
+})();
+const sol = (over) => ({ chain: "solana", configured: true, state: "waiting_for_grant", limiter: "AgentDelegate1111",
+  dailyCapAtomic: 20000000, perPurchaseCapAtomic: 5000000, remainingTodayAtomic: 20000000, allowanceAtomic: 0,
+  ownerUsdcAtomic: 50000000, ownerSolLamports: "7000000", ...over });
+
+test("Solana: the approval defaults to the daily limit and says why", () => {
+  const html = solanaPage.renderSolanaAllowance(sol({ dailyCapAtomic: 1500000000, remainingTodayAtomic: 1500000000 }));
+  assert.match(html, /id="grant-amount"[^>]*\n?\s*value="1500"/);  // no thousands comma in the input
+  assert.match(html, /capped at your daily limit/);
+  assert.match(html, /does not refill on its own/);
+  assert.doesNotMatch(html, /on-chain daily/i);
+});
+
+test("Solana: a granted approval at the daily limit shows no approve button", () => {
+  const html = solanaPage.renderSolanaAllowance(sol({ state: "granted", allowanceAtomic: 20000000 }));
+  assert.doesNotMatch(html, /data-action="grant"/);
+  assert.match(html, /Pause the agent/);
+});
+
+test("Solana: a used-up part can be approved again, back to the daily limit", () => {
+  const html = solanaPage.renderSolanaAllowance(sol({ state: "granted", allowanceAtomic: 7500000 }));
+  assert.match(html, /7\.5 USDC of your approval is left/);
+  assert.match(html, /Approve again/);
+  assert.match(html, /value="20"/);
+});
+
+test("Solana: an approval above a lowered daily limit asks to approve again", () => {
+  const html = solanaPage.renderSolanaAllowance(sol({ state: "granted", dailyCapAtomic: 8000000, allowanceAtomic: 20000000 }));
+  assert.match(html, /still approves 20 USDC, more than your\s+8 USDC daily limit/);
+  assert.match(html, /Approve again/);
+});
+
+test("Solana: grant() refuses more than the daily limit before the wallet opens", () => {
+  solanaPage.state.allowance = sol({});
+  solanaPage.calls.length = 0; solanaPage.toasts.length = 0;
+  solanaPage.inputValue = "20.01";
+  solanaPage.grant();
+  assert.equal(solanaPage.calls.length, 0);
+  assert.match(solanaPage.toasts[0][0], /capped at your daily limit, 20 USDC/);
+  solanaPage.inputValue = "20";
+  solanaPage.grant();
+  assert.equal(JSON.stringify(solanaPage.calls), JSON.stringify([["grant", { amount: "20", method: "approve" }]]));
+  solanaPage.state.allowance = { ...sol({}), chain: "base" };  // Base keeps its own contract limits
+  solanaPage.inputValue = "50";
+  solanaPage.grant();
+  assert.equal(solanaPage.calls.length, 2);
+});

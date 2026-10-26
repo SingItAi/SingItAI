@@ -4,6 +4,7 @@ import sqlite3
 import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
 from unittest.mock import Mock, patch
 from pathlib import Path
 
@@ -116,8 +117,36 @@ class SolanaAllowanceTests(unittest.TestCase):
 
     def grant(self, amount="20"):
         self.service.setup(ACCOUNT, "20", "5", "30")
-        prepared = self.service.prepare_wallet(ACCOUNT, "GRANT", amount=amount)
-        return self.service.submit_wallet(ACCOUNT, prepared["operation"], "SIGNED")
+        # The app approves at most the daily limit (20 here). A larger approval models one made before that
+        # cap (or by another app): the chain still holds it, and our daily limit must still hold against it.
+        legacy = int(Decimal(amount) * 1_000_000) if Decimal(amount) > 20 else None
+        prepared = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="20" if legacy else amount)
+        result = self.service.submit_wallet(ACCOUNT, prepared["operation"], "SIGNED")
+        if legacy:
+            self.bridge.delegated = legacy
+        return result
+
+    def test_the_approval_is_capped_at_the_daily_limit(self):
+        self.service.setup(ACCOUNT, "20", "5", "30")
+        with self.assertRaisesRegex(AllowanceError, "capped at your daily limit, 20 USDC"):
+            self.service.prepare_wallet(ACCOUNT, "GRANT", amount="20.000001")
+        self.assertFalse(any(call[0] == "allowance-prepare" for call in self.bridge.calls))
+        prepared = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="20")
+        self.assertIn("spend up to 20 USDC", prepared["walletShows"])
+        self.service.submit_wallet(ACCOUNT, prepared["operation"], "SIGNED")
+        self.assertEqual(self.service.status(ACCOUNT)["allowanceAtomic"], 20_000_000)
+
+    def test_a_lowered_daily_limit_lowers_the_cap_of_the_next_approval(self):
+        self.grant("20")
+        self.service.setup(ACCOUNT, "8", "5", "30")  # the chain still holds the old 20 until the owner approves again
+        status = self.service.status(ACCOUNT)
+        self.assertEqual((status["state"], status["allowanceAtomic"], status["dailyCapAtomic"]),
+                         ("granted", 20_000_000, 8_000_000))
+        with self.assertRaisesRegex(AllowanceError, "capped at your daily limit, 8 USDC"):
+            self.service.prepare_wallet(ACCOUNT, "GRANT", amount="20")
+        prepared = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="8")
+        self.service.submit_wallet(ACCOUNT, prepared["operation"], "SIGNED")
+        self.assertEqual(self.service.status(ACCOUNT)["allowanceAtomic"], 8_000_000)
 
     def test_limits_then_one_approval_from_the_wallet(self):
         self.assertEqual(self.service.status(ACCOUNT)["configured"], False)

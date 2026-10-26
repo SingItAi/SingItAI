@@ -582,9 +582,16 @@ class SolanaAllowanceService:
         owner = self.owner(account)
         kind = str(kind).upper()
         if kind == "GRANT":
-            if self.store.limits(account) is None:
+            limits = self.store.limits(account)
+            if limits is None:
                 raise AllowanceError("Set your limits first.")
             atomic = _usdc(amount, "The amount")
+            # The wallet's approval is capped at the daily limit: then the agent's key alone (or a server
+            # that skipped our own checks) can never take more than one day's budget. It does not refill;
+            # the owner approves again once it is used up, or after lowering the limit.
+            if atomic > limits["daily_cap"]:
+                raise AllowanceError(f"On Solana your approval is capped at your daily limit, {_text(limits['daily_cap'])}. "
+                                     "Approve that or less.")
             if atomic > self.max_grant:
                 raise AllowanceError(f"Allow at most {_text(self.max_grant)} at a time.")
         elif kind == "FUND_GAS":
