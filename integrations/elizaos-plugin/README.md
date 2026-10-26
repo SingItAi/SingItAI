@@ -25,11 +25,10 @@ npm install @singit/plugin-singit
 ## Add it to an agent
 
 ```ts
-import { singitPlugin } from "@singit/plugin-singit";
-
 export const character = {
   name: "MyAgent",
-  plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", singitPlugin],
+  // character.plugins takes package names (strings); the package must be installed in the project.
+  plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", "@singit/plugin-singit"],
   settings: {
     secrets: {
       // Optional: paid MCP tools (web_search, read_page).
@@ -41,6 +40,15 @@ export const character = {
     SINGIT_MAX_PER_DAY_USD: "1",
   },
 };
+```
+
+Or pass the plugin object to the runtime directly (the runtime's `plugins` option takes `Plugin[]`):
+
+```ts
+import { AgentRuntime } from "@elizaos/core";
+import { singitPlugin } from "@singit/plugin-singit";
+
+const runtime = new AgentRuntime({ character, plugins: [singitPlugin] });
 ```
 
 Settings are read through `runtime.getSetting()` with a `process.env` fallback

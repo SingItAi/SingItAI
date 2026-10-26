@@ -55,6 +55,7 @@ const fetchImpl = createSingitPaidFetch({
 const chat = new ChatOpenAI({
   model: "deepseek-v4.1-flash",
   apiKey: "unused-singit-pays-over-x402",
+  maxRetries: 0, // never auto-retry: a retry would sign a second payment
   configuration: { baseURL: "https://ask.singitai.app/v1", fetch: fetchImpl },
 });
 

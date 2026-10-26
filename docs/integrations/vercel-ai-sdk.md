@@ -53,7 +53,7 @@ const singitAsk = createOpenAICompatible({
   fetch: fetchImpl,
 });
 
-const result = await generateText({ model: singitAsk.chatModel("deepseek-v4.1-flash"), prompt: "What is x402?" });
+const result = await generateText({ model: singitAsk.chatModel("deepseek-v4.1-flash"), prompt: "What is x402?", maxRetries: 0 }); // never auto-retry: a retry would sign a second payment
 console.log(result.text);
 ```
 
