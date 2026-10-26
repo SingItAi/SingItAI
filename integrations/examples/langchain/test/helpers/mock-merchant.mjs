@@ -114,7 +114,7 @@ export function exactOffer({ asset, payTo, amount, maxTimeoutSeconds = 120, asse
 // Starts a one-shot local HTTP merchant. `accepts(body)` builds the offer list for a given request
 // body; `bill(offer)` decides the atomic amount actually billed (defaults to the full ceiling for
 // `exact`, half of it for `upto`, simulating metered usage).
-export function startMockMerchant({ accepts, bill, verifyOverride } = {}) {
+export function startMockMerchant({ accepts, bill, verifyOverride, receiptNetwork = "eip155:8453" } = {}) {
   let resourceUrl;
   const server = http.createServer(async (req, res) => {
     if (req.method !== "POST") { res.writeHead(404).end(); return; }
@@ -139,7 +139,7 @@ export function startMockMerchant({ accepts, bill, verifyOverride } = {}) {
       return;
     }
     const billedAtomic = (bill ?? (o => (o.scheme === "exact" ? o.amount : (BigInt(o.amount) / 2n).toString())))(offer);
-    res.setHeader("payment-response", encode({ success: true, network: "base", payer, transaction: `0x${"ab".repeat(32)}` }));
+    res.setHeader("payment-response", encode({ success: true, network: receiptNetwork, payer, transaction: `0x${"ab".repeat(32)}` }));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       id: "singit-ask-mock-1", object: "chat.completion", created: 0, model: "singit-ask-mock",

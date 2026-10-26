@@ -131,3 +131,41 @@ test("SINGIT_PAID_CHAT handler pays over x402 once the wallet key and caps are c
     await merchant.close();
   }
 });
+
+test("payAskRequest accepts the live CAIP-2 settlement receipt and refuses a mismatched network", async () => {
+  const offer = () => [uptoOffer({ asset: BASE_PIN.asset, payTo: BASE_PIN.payTo, amount: "9000", facilitatorAddress: "0x0000000000000000000000000000000000000002" })];
+  const run = merchant => payAskRequest({
+    body: { messages: [{ role: "user", content: "Hello" }] }, baseUrl: merchant.url,
+    evmPrivateKey: privateKey, limiter: new DailyLimiter(usdToAtomic(1)), maxPerCallAtomic: usdToAtomic(0.01),
+  });
+  const good = await startMockMerchant({ accepts: offer, receiptNetwork: BASE_PIN.caip });
+  const bad = await startMockMerchant({ accepts: offer, receiptNetwork: "eip155:1" });
+  try {
+    assert.equal((await run(good)).payment.txHash, `0x${"ab".repeat(32)}`);
+    await assert.rejects(run(bad), /settlement receipt does not match/);
+  } finally {
+    await good.close();
+    await bad.close();
+  }
+});
+
+test("SINGIT_PAID_CHAT shares one daily limiter across handler invocations on the same runtime", async () => {
+  const merchant = await startMockMerchant({
+    accepts: () => [uptoOffer({ asset: BASE_PIN.asset, payTo: BASE_PIN.payTo, amount: "4000", facilitatorAddress: "0x0000000000000000000000000000000000000002" })],
+    bill: () => "4000",
+  });
+  try {
+    const runtime = makeRuntime({
+      SINGIT_ASK_BASE_URL: merchant.url, SINGIT_EVM_PRIVATE_KEY: privateKey,
+      SINGIT_MAX_PER_CALL_USD: "0.01", SINGIT_MAX_PER_DAY_USD: "0.006",
+    });
+    const run = () => singitPaidChatAction.handler(runtime, { content: { text: "ask singit ask: hi" } }, undefined, undefined, () => {});
+    const first = await run();
+    assert.equal(first.success, true, first.error);
+    const second = await run();
+    assert.equal(second.success, false);
+    assert.match(second.error, /Daily spend cap/);
+  } finally {
+    await merchant.close();
+  }
+});

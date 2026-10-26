@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { startMockMcpServer } from "./helpers/mock-mcp-server.mjs";
+import { extractPriceArgs } from "../src/price-args.js";
 import { getSingitPriceAction } from "../src/actions/get-price.js";
 import { listSingitPriceSymbolsAction } from "../src/actions/list-price-symbols.js";
 import { listSingitModelsAction } from "../src/actions/list-models.js";
@@ -26,6 +27,16 @@ test("SINGIT_GET_PRICE calls the free get_price tool with no key and returns a r
   } finally {
     await mock.close();
   }
+});
+
+test("extractPriceArgs does not turn contraction fragments into symbols", () => {
+  assert.equal(extractPriceArgs("What's the price of BTC?").symbol, "BTC");
+  assert.equal(extractPriceArgs("What\u2019s the price of ETH?").symbol, "ETH");
+  assert.equal(extractPriceArgs("What's ETH at?").symbol, "ETH");
+  assert.equal(extractPriceArgs("how much is eth worth").symbol, "ETH");
+  assert.equal(extractPriceArgs("what's the price of ethereum").symbol, "ETH");
+  assert.deepEqual(extractPriceArgs("it's worth how much, XAU"), { kind: "metal", symbol: "XAU" });
+  assert.deepEqual(extractPriceArgs("What's the EUR to USD rate?"), { kind: "fx", base: "EUR", quote: "USD" });
 });
 
 test("SINGIT_GET_PRICE validate() matches price-ish phrasing", async () => {

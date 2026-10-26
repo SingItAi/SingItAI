@@ -6,6 +6,7 @@ import { SingItPaymentError, BASE_PIN } from "../src/x402/guards.js";
 import { startMockMerchant, uptoOffer } from "./helpers/mock-merchant.mjs";
 import { runFreeChatProbe } from "../src/free-chat-probe.mjs";
 import http from "node:http";
+import { runPaidChat } from "../src/paid-chat.mjs";
 
 const privateKey = generatePrivateKey();
 const FACILITATOR = "0x0000000000000000000000000000000000000002";
@@ -108,5 +109,37 @@ test("createSingitPaidFetch passes through requests to other origins unpaid (no 
   } finally {
     await merchant.close();
     await new Promise(resolve => other.close(resolve));
+  }
+});
+
+test("createSingitPaidFetch accepts the live CAIP-2 receipt network", async () => {
+  const merchant = await startMockMerchant({
+    accepts: () => [uptoOffer({ asset: BASE_PIN.asset, payTo: BASE_PIN.payTo, amount: "9000", facilitatorAddress: FACILITATOR })],
+    receiptNetwork: BASE_PIN.caip,
+  });
+  try {
+    const fetchImpl = createSingitPaidFetch({ evmPrivateKey: privateKey, maxPerCallUsd: 0.01, maxPerDayUsd: 1, baseUrl: merchant.url });
+    const response = await fetchImpl(`${merchant.url}/v1/chat/completions`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [] }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("payment-response") !== null, true);
+  } finally {
+    await merchant.close();
+  }
+});
+
+test("runPaidChat keeps one daily limiter across calls, so a second call over the cap is refused", async () => {
+  const merchant = await startMockMerchant({
+    accepts: () => [uptoOffer({ asset: BASE_PIN.asset, payTo: BASE_PIN.payTo, amount: "4000", facilitatorAddress: FACILITATOR })],
+    bill: () => "4000",
+  });
+  try {
+    const caps = { evmPrivateKey: privateKey, maxPerCallUsd: 0.01, maxPerDayUsd: 0.006 };
+    const call = () => runPaidChat({ prompt: "hello", caps, baseUrl: merchant.url });
+    await call();
+    await assert.rejects(call(), /Daily spend cap/);
+  } finally {
+    await merchant.close();
   }
 });

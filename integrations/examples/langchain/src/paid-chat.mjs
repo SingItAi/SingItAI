@@ -3,6 +3,7 @@
 // Runs only when the caller opts in explicitly — see runPaidChat below.
 import { ChatOpenAI } from "@langchain/openai";
 import { createSingitPaidFetch } from "./x402/pay.js";
+import { DailyLimiter, usdToAtomic } from "./x402/guards.js";
 import { DEFAULT_ASK_BASE_URL } from "./free-chat-probe.mjs";
 
 export function paidChatModeFromEnv(env = process.env) {
@@ -14,17 +15,33 @@ export function paidChatModeFromEnv(env = process.env) {
   return { evmPrivateKey, maxPerCallUsd, maxPerDayUsd };
 }
 
+// One limiter per (baseUrl) for the life of the process, so repeated runPaidChat calls share one
+// rolling-day cap instead of each call starting a fresh one. Callers may pass their own `limiter`.
+const limiters = new Map();
+export function sharedLimiter(baseUrl, maxPerDayUsd) {
+  const capAtomic = BigInt(usdToAtomic(maxPerDayUsd));
+  let limiter = limiters.get(baseUrl);
+  if (!limiter) {
+    limiter = new DailyLimiter(capAtomic);
+    limiters.set(baseUrl, limiter);
+  } else {
+    limiter.capAtomic = capAtomic;
+  }
+  return limiter;
+}
+
 /**
  * `question` is sent to SingIt Ask, paid over x402. `caps` is `{ evmPrivateKey, maxPerCallUsd,
  * maxPerDayUsd }` — pass `paidChatModeFromEnv()`'s result, or your own. `baseUrl`/`model` default
- * to the live SingIt Ask route; override for a local mock merchant in tests.
+ * to the live SingIt Ask route; override for a local mock merchant in tests. `limiter` is an
+ * optional DailyLimiter; by default one is kept per `baseUrl` for the life of the process.
  */
-export async function runPaidChat({ question, caps, baseUrl = DEFAULT_ASK_BASE_URL, model = "deepseek-v4.1-flash" }) {
+export async function runPaidChat({ question, caps, baseUrl = DEFAULT_ASK_BASE_URL, model = "deepseek-v4.1-flash", limiter }) {
   if (!caps) {
     throw new Error("Paid mode needs SINGIT_ALLOW_PAID=1, SINGIT_EVM_PRIVATE_KEY, SINGIT_MAX_PER_CALL_USD "
       + "and SINGIT_MAX_PER_DAY_USD (see README.md).");
   }
-  const fetchImpl = createSingitPaidFetch({ ...caps, baseUrl });
+  const fetchImpl = createSingitPaidFetch({ ...caps, baseUrl, limiter: limiter ?? sharedLimiter(baseUrl, caps.maxPerDayUsd) });
   const chat = new ChatOpenAI({
     model,
     apiKey: "unused-singit-pays-over-x402",

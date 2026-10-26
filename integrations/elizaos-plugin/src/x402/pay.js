@@ -85,7 +85,7 @@ export async function payAskRequest({
   // (network is still checked). See sdk/typescript/src/singit.js for the full check.
   const receiptHeader = response.headers.get("payment-response");
   const receipt = receiptHeader ? decodeHeader(receiptHeader) : null;
-  if (receipt && receipt.network !== "base") {
+  if (receipt && receipt.network !== BASE_PIN.caip) {
     throw new SingItPaymentError("The settlement receipt does not match this request; treating the payment as unresolved.");
   }
 

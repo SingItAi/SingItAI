@@ -30,11 +30,12 @@ async function signOffer(scheme, offer, extensions, signer) {
  * Returns a fetch-compatible function that pays SingIt Ask's Base x402 offer whenever the wrapped
  * request gets a 402, guarded by a per-call and per-day USDC ceiling. Requests to origins other
  * than `baseUrl` are passed through unpaid — this wrapper is deliberately not a drop-in general
- * x402 client, it only pays the merchant it was pinned to.
+ * x402 client, it only pays the merchant it was pinned to. Pass one long-lived `limiter` (a
+ * DailyLimiter) to share the daily cap across several fetches; by default each fetch has its own.
  */
 export function createSingitPaidFetch({
   evmPrivateKey, maxPerCallUsd, maxPerDayUsd, payTo = BASE_PIN.payTo,
-  baseUrl = "https://ask.singitai.app", rpcUrl, scheme = "upto", fetchImpl = fetch,
+  baseUrl = "https://ask.singitai.app", rpcUrl, scheme = "upto", fetchImpl = fetch, limiter,
 }) {
   if (!evmPrivateKey) throw new SingItPaymentError("createSingitPaidFetch needs evmPrivateKey to pay on Base.");
   if (maxPerCallUsd == null || maxPerDayUsd == null) {
@@ -42,7 +43,7 @@ export function createSingitPaidFetch({
   }
   const signer = buildEvmSigner({ evmPrivateKey, rpcUrl });
   const maxPerCallAtomic = usdToAtomic(maxPerCallUsd);
-  const limiter = new DailyLimiter(usdToAtomic(maxPerDayUsd));
+  const dailyLimiter = limiter ?? new DailyLimiter(usdToAtomic(maxPerDayUsd));
   const allowedOrigin = new URL(baseUrl).origin;
 
   return async function singitPaidFetch(input, init) {
@@ -57,7 +58,7 @@ export function createSingitPaidFetch({
     const challenge = decodeHeader(header);
     const offer = selectOffer(challenge, { scheme, payTo, maxCapAtomic: maxPerCallAtomic, resourceUrl: request.url });
 
-    const release = limiter.reserve(offer.amount);
+    const release = dailyLimiter.reserve(offer.amount);
     let payload;
     try {
       payload = await signOffer(scheme, offer, challenge.extensions, signer);
@@ -91,7 +92,7 @@ export function createSingitPaidFetch({
       throw new SingItPaymentError("The invoice does not match the offered ceiling; treating the payment as unresolved "
         + "(its ceiling stays counted against the daily cap).");
     }
-    limiter.settle(release, totalAtomic, offer.amount);
+    dailyLimiter.settle(release, totalAtomic, offer.amount);
 
     // Rebuild the Response: body was already consumed above to read the billed amount.
     return new Response(bodyText, { status: response.status, statusText: response.statusText, headers: response.headers });

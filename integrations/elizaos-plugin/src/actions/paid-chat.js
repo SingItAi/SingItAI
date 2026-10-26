@@ -2,13 +2,21 @@ import { payAskRequest } from "../x402/pay.js";
 import { DailyLimiter, usdToAtomic, BASE_PIN, DEFAULT_ASK_BASE_URL } from "../x402/guards.js";
 import { readSetting, readNumberSetting } from "../settings.js";
 
-// One process-wide limiter per configured per-day ceiling, so repeated calls in one runtime share
-// a rolling-day cap instead of resetting it on every action invocation.
-const limiters = new Map();
-function limiterFor(maxPerDayUsd) {
-  const key = String(maxPerDayUsd);
-  if (!limiters.has(key)) limiters.set(key, new DailyLimiter(usdToAtomic(maxPerDayUsd)));
-  return limiters.get(key);
+// One limiter per runtime, so repeated action invocations share a rolling-day cap instead of
+// resetting it. A changed cap setting updates the same limiter rather than starting a fresh one.
+const limiters = new WeakMap();
+const fallbackKey = {};
+export function limiterFor(runtime, maxPerDayUsd) {
+  const key = runtime !== null && typeof runtime === "object" ? runtime : fallbackKey;
+  const capAtomic = BigInt(usdToAtomic(maxPerDayUsd));
+  let limiter = limiters.get(key);
+  if (!limiter) {
+    limiter = new DailyLimiter(capAtomic);
+    limiters.set(key, limiter);
+  } else {
+    limiter.capAtomic = capAtomic;
+  }
+  return limiter;
 }
 
 function requiredSettings(runtime) {
@@ -53,7 +61,7 @@ export const singitPaidChatAction = {
     try {
       const { response, payment } = await payAskRequest({
         body: { messages: [{ role: "user", content: question }] },
-        baseUrl, evmPrivateKey, limiter: limiterFor(maxPerDayUsd),
+        baseUrl, evmPrivateKey, limiter: limiterFor(runtime, maxPerDayUsd),
         maxPerCallAtomic: usdToAtomic(maxPerCallUsd), payTo: BASE_PIN.payTo,
       });
       const answer = response?.choices?.[0]?.message?.content ?? "(no answer)";
