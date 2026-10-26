@@ -48,8 +48,10 @@ Known, deliberate differences:
 - `/v1/audio/speech` returns audio, so its challenge carries no JSON output
   example; the lint allows that when `mimeType` is not JSON.
 - `/v1/chat/completions/metered` and `/v1/credit` are paid but not listed.
-  `/v1/video/generations` was hidden too while Surplus refused video jobs; it is
-  listed again since 25 October 2026, when a test clip went through.
+- `/v1/video/generations` is sold but listed only with `SINGIT_ASK_VIDEO_DISCOVERABLE=1`.
+  It is off: Surplus's video sellers come and go (a clip went through on 25 October
+  2026, then three paid attempts met `no_healthy_sellers`). To list it, set the flag,
+  add it to `scripts/bazaar-lint.mjs` and `bazaar-resources.json`, and make one paid call.
 - Per-model `/v1/chat/{model}` routes (PR #66) are not covered; add them to the
   lint and to `bazaar-resources.json` when that PR lands.
 
