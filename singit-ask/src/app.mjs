@@ -25,7 +25,7 @@ import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, addFormatRoutes } from "./formats.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 
 export const BASE = "eip155:8453";
@@ -138,6 +138,8 @@ export const REASONING_OFF = Object.freeze({
   "deepseek-v4-pro": Object.freeze({ enable_thinking: false, thinking: Object.freeze({ type: "disabled" }) }),
 });
 
+// REASONING_HEADROOM (pricing.mjs, SI-112): a model that thinks inside max_tokens and will not stop gets that much
+// more room upstream; its ceiling already prices it.
 export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params } = {}) {
   const sends = (name) => !params || params.includes(name);
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
@@ -146,7 +148,7 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens, ...(sends("temperature") ? { temperature: 0.4 } : {}),
+    body: JSON.stringify({ model, messages, max_tokens: maxTokens + reasoningHeadroom(model), ...(sends("temperature") ? { temperature: 0.4 } : {}),
                            ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
                              : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
                            ...extra, si_route: { objective: "price" } }),

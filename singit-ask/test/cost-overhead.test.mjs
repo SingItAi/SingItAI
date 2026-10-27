@@ -39,3 +39,37 @@ test("a model without overhead keeps exactly the old ceiling", () => {
     assert.equal(worstModelCostMicro(PLAIN, size), Math.ceil((inputTokens * 2e-6 + size.maxTokens * 6e-6) * 1e6));
   }
 });
+
+// SI-112: gemini-3.1-pro-preview thinks inside max_tokens and ignores effort "none"; it gets headroom upstream, priced.
+test("gemini-3.1-pro-preview gets reasoning headroom, sent upstream and priced", async () => {
+  const { REASONING_HEADROOM, reasoningHeadroom } = await import("../src/pricing.mjs");
+  const { askSurplus } = await import("../src/app.mjs");
+  const GEMINI = { id: "gemini-3.1-pro-preview", promptUsdPerToken: 2e-6, completionUsdPerToken: 12e-6 };
+  assert.equal(REASONING_HEADROOM["gemini-3.1-pro-preview"], 1024);
+  assert.deepEqual(costOverhead(GEMINI), { promptTokens: 0, reasoningTokens: 1024 });
+  for (const id of ["grok-4.7", "gemini-3.8-flash", "toString", "__proto__", undefined, null, 7])
+    assert.equal(reasoningHeadroom(id), 0);
+  // (22 + 4) * 2e-6 + (32 + 1024) * 12e-6 = 0.012724 USD at list, rounded up (float) to 12725.
+  assert.equal(worstModelCostMicro(GEMINI, TEST_CALL), 12725);
+  const sent = [];
+  const ok = async (_url, init) => { sent.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "hi" } }], usage: {} })); };
+  const config = { surplusUrl: "https://surplus.invalid", surplusKey: "k" };
+  const messages = [{ role: "user", content: "Say hi in three words." }];
+  await askSurplus(config, messages, 32, ok, "gemini-3.1-pro-preview", { params: ["max_tokens", "reasoning"] });
+  await askSurplus(config, messages, 32, ok, "gemini-3.8-flash", { params: ["max_tokens", "reasoning_effort"] });
+  assert.deepEqual(sent.map((b) => b.max_tokens), [32 + 1024, 32]);
+  assert.deepEqual(sent[0].reasoning, { effort: "none" }, "thinking is still asked to be as small as it goes");
+});
+
+test("Messages and Responses send the same priced headroom upstream (Codex P2)", async () => {
+  const { withHeadroom } = await import("../src/formats.mjs");
+  const G = "gemini-3.1-pro-preview";
+  assert.equal(withHeadroom({ model: G, max_tokens: 32, messages: [] }).max_tokens, 32 + 1024);
+  assert.equal(withHeadroom({ model: G, input: "hi", max_output_tokens: 64 }).max_output_tokens, 64 + 1024);
+  const plain = { model: "gpt-5.5", max_tokens: 32 };
+  assert.equal(withHeadroom(plain), plain, "other models go as they came");
+  const original = { model: G, max_tokens: 32 };
+  withHeadroom(original);
+  assert.equal(original.max_tokens, 32, "the parsed request is not mutated");
+});
