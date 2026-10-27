@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
-import { BASE, SOLANA, ROUTE, LIMITS, RequestError, UpstreamError, readRequest, askSurplus, createApp } from "../src/app.mjs";
+import { BASE, SOLANA, ROUTE, LIMITS, RequestError, UpstreamError, readRequest, askSurplus, createApp, REASONING_OFF } from "../src/app.mjs";
 import { FORMAT_ROUTES } from "../src/formats.mjs";
 import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage } from "../src/pricing.mjs";
 import { ModelCatalogue, UnknownModel, priceGuard } from "../src/catalogue.mjs";
@@ -902,4 +902,46 @@ test("reasoning uses the listed spelling and falls back to low", async () => {
       assert.ok(calls.every(call => !("reasoning_effort" in call)));
     }
   }
+});
+
+// SI-110: deepseek-v4-pro ignored `reasoning: {effort: "none"}`; its DashScope and DeepSeek sellers each take their
+// own off switch. Only that model gets them, only with "none", and a seller refusing them is asked again without.
+test("deepseek-v4-pro sends its own thinking-off fields, and only with none", async () => {
+  const PRO = "deepseek-v4-pro", params = ["max_tokens", "temperature", "reasoning", "include_reasoning"];
+  const ok = () => new Response(JSON.stringify({ choices: [{ message: { content: "answer" } }], usage: {} }));
+  const reject = (message) => new Response(JSON.stringify({ error: { code: "request_rejected", message } }), { status: 400 });
+  const run = async (answers, model = PRO) => {
+    const calls = [];
+    await askSurplus(CONFIG, QUESTION.messages, 300, async (_url, init) => {
+      calls.push(JSON.parse(init.body)); return answers[calls.length - 1]();
+    }, model, { params });
+    return calls;
+  };
+  assert.deepEqual(REASONING_OFF[PRO], { enable_thinking: false, thinking: { type: "disabled" } });
+
+  const [first] = await run([ok]);
+  assert.equal(first.enable_thinking, false);
+  assert.deepEqual(first.thinking, { type: "disabled" });
+  assert.deepEqual(first.reasoning, { effort: "none" });
+  assert.equal("reasoning_effort" in first, false);
+  assert.equal(first.max_tokens, 300, "max_tokens still goes upstream unchanged");
+
+  // A seller refusing an unknown field: asked once more, plain.
+  const refused = await run([() => reject("Unknown parameter: enable_thinking"), ok]);
+  assert.equal(refused.length, 2);
+  assert.equal("enable_thinking" in refused[1] || "thinking" in refused[1], false);
+  assert.deepEqual(refused[1].reasoning, { effort: "none" });
+
+  // A seller that will not turn thinking off: asked plain, still refused, then low, never with the off fields again.
+  const mandatory = await run([() => reject("Thinking is mandatory for this endpoint"),
+    () => reject("Thinking is mandatory for this endpoint"), ok]);
+  assert.deepEqual(mandatory.map((c) => [c.reasoning.effort, "thinking" in c]), [["none", true], ["none", false], ["low", false]]);
+
+  // Unknown field refused, then thinking refused: none+off, none, low.
+  const both = await run([() => reject("Unknown parameter: thinking"), () => reject("Reasoning is mandatory"), ok]);
+  assert.deepEqual(both.map((c) => [c.reasoning.effort, "thinking" in c]), [["none", true], ["none", false], ["low", false]]);
+
+  // Any other model: none of it.
+  const [other] = await run([ok], "deepseek-v4.1-flash");
+  assert.equal("enable_thinking" in other || "thinking" in other, false);
 });
