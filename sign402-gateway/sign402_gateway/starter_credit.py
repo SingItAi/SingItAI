@@ -564,6 +564,9 @@ class GitHubError(Exception):
     """GitHub could not be asked. Never carries a token or code."""
 
 
+REPO_PAGE_SIZE, REPO_PAGE_CAP = 100, 10
+
+
 class GitHubOAuth:
     """The few GitHub calls the claim needs, over urllib with timeouts. The access token stays in the caller's
     memory: it is never stored, logged or put in an error."""
@@ -617,11 +620,27 @@ class GitHubOAuth:
             raise GitHubError("GitHub answered /user unexpectedly")
         return reply
 
+    def iter_repos(self, token: str) -> Iterator[dict[str, Any]]:
+        """The user's owned repositories, page by page (stops at a short page or REPO_PAGE_CAP pages)."""
+        for page in range(1, REPO_PAGE_CAP + 1):
+            reply = self._get(token, f"/user/repos?type=owner&per_page={REPO_PAGE_SIZE}&page={page}")
+            if not isinstance(reply, list):
+                raise GitHubError("GitHub answered /user/repos unexpectedly")
+            yield from (r for r in reply if isinstance(r, dict))
+            if len(reply) < REPO_PAGE_SIZE:
+                return
+
     def repos(self, token: str) -> list[dict[str, Any]]:
-        reply = self._get(token, "/user/repos?type=owner&per_page=100")
-        if not isinstance(reply, list):
-            raise GitHubError("GitHub answered /user/repos unexpectedly")
-        return [r for r in reply if isinstance(r, dict)]
+        return list(self.iter_repos(token))
+
+    def has_original_repo(self, token: str, github_id: int) -> bool:
+        """True as soon as one public, non-fork repository owned by github_id turns up."""
+        return any(is_original_repo(r, github_id) for r in self.iter_repos(token))
+
+
+def is_original_repo(repo: Mapping[str, Any], github_id: int) -> bool:
+    return (repo.get("fork") is False and repo.get("private") is False
+            and (repo.get("owner") or {}).get("id", github_id) == github_id)
 
 
 def github_from_env(env: Mapping[str, str], redirect_uri: str) -> GitHubOAuth | None:
@@ -717,14 +736,17 @@ class StarterWeb:
                 raise self.credit._refuse(now, "web", "no_code", "GitHub sent no code.", account=account)
             try:
                 token = self.github.exchange(code)
-                user, repos = self.github.user(token), self.github.repos(token)
+                user = self.github.user(token)
+                github_id = user.get("id")
+                has_repo = (type(github_id) is int and github_id > 0
+                            and self.github.has_original_repo(token, github_id))
             except GitHubError as exc:
                 logger.warning("starter credit: GitHub lookup failed for %s: %s", short_account(account), exc)
                 raise self.credit._refuse(now, "web", "github_unavailable", "GitHub could not be asked.",
                                           account=account) from None
             finally:
                 token = None  # noqa: F841 - dropped as soon as GitHub has answered
-            github_id, login = user.get("id"), str(user.get("login") or "")
+            login = str(user.get("login") or "")
             created = _github_time(user.get("created_at"))
             if type(github_id) is not int or github_id <= 0 or created is None:
                 raise self.credit._refuse(now, "web", "github_unreadable", "GitHub did not say who you are.",
@@ -732,8 +754,7 @@ class StarterWeb:
             if now - created < MIN_GITHUB_AGE_DAYS * 86400:
                 raise self.credit._refuse(now, "web", "github_too_young", "Your GitHub account is too new.",
                                           account=account)
-            if not any(r.get("fork") is False and r.get("private") is False
-                       and (r.get("owner") or {}).get("id", github_id) == github_id for r in repos):
+            if not has_repo:
                 raise self.credit._refuse(now, "web", "no_public_repo",
                                           "Your GitHub account needs a public repository of its own (not a fork).",
                                           account=account)

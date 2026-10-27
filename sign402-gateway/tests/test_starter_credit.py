@@ -107,9 +107,9 @@ class FakeGitHub:
         assert token == TOKEN
         return {"id": self.gid, "login": self.login, "created_at": self.created}
 
-    def repos(self, token):
+    def has_original_repo(self, token, github_id):
         assert token == TOKEN
-        return self.repo_list
+        return any(sc.is_original_repo(r, github_id) for r in self.repo_list)
 
 
 def audit_actions(credit):
@@ -536,6 +536,37 @@ class RouteTests(RouteFixture):
                      "redirect_uri=https%3A%2F%2Fapp.singit.test%2Fweb%2Fv1%2Fstarter-credit%2Fgithub%2Fcallback"):
             self.assertIn(part, url)
         self.assertNotIn("fake-secret", url + repr(github))
+
+    def _paged_github(self, pages):
+        github = sc.GitHubOAuth("Iv1.fakeclientid", "fake-secret", URI + "/cb")
+        seen = []
+
+        def fake_get(token, path):
+            self.assertEqual(token, TOKEN)
+            seen.append(path)
+            return pages(len(seen))
+        github._get = fake_get
+        return github, seen
+
+    def test_repos_are_paginated_and_the_search_stops_at_the_first_original(self):
+        fork = {"fork": True, "private": False, "owner": {"id": 4242}}
+        own = {"fork": False, "private": False, "owner": {"id": 4242}}
+        github, seen = self._paged_github(lambda n: [fork] * 100 if n == 1 else [own])
+        self.assertTrue(github.has_original_repo(TOKEN, 4242))
+        self.assertEqual([p.rsplit("&", 1)[1] for p in seen], ["page=1", "page=2"])
+        github, seen = self._paged_github(lambda n: [own] + [fork] * 99)
+        self.assertTrue(github.has_original_repo(TOKEN, 4242))
+        self.assertEqual(len(seen), 1, "the first qualifying repo ends the walk")
+
+    def test_the_repo_walk_stops_at_a_short_page_and_at_the_cap(self):
+        fork = {"fork": True, "private": False, "owner": {"id": 4242}}
+        github, seen = self._paged_github(lambda n: [fork] * 100 if n == 1 else [fork] * 3)
+        self.assertFalse(github.has_original_repo(TOKEN, 4242))
+        self.assertEqual(len(seen), 2)
+        github, seen = self._paged_github(lambda n: [fork] * 100)
+        self.assertFalse(github.has_original_repo(TOKEN, 4242))
+        self.assertEqual(len(seen), sc.REPO_PAGE_CAP)
+        self.assertNotIn(TOKEN, "".join(seen))
 
     def test_the_state_is_single_use_bound_and_short_lived(self):
         state = self.start()
