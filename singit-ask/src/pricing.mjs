@@ -70,7 +70,8 @@ export function billUsage(usage, terms = TERMS, { allowOverrun = false } = {}) {
   const cap = BigInt(terms.maxChargeAtomic);
   const billed = { ...terms, providerCostAtomic: provider.toString(), markupAtomic: markup.toString() };
   if (total <= cap) return { ...billed, totalAtomic: total.toString(), currency: "USDC" };
-  if (!allowOverrun) throw new Error("Actual cost exceeds the authorized ceiling; payment refused.");
+  if (!allowOverrun) throw Object.assign(new Error("Actual cost exceeds the authorized ceiling; payment refused."),
+    { code: "ceiling_exceeded", totalAtomic: total.toString() });
   return { ...billed, totalAtomic: cap.toString(), overrunAtomic: (total - cap).toString(), currency: "USDC" };
 }
 

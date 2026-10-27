@@ -139,7 +139,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
       inputSchema: INPUT_SCHEMA }),
-  } }, server);
+  } }, server, { log });
   app.post(SPEECH_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;

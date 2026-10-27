@@ -201,7 +201,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: { model: "longcat-distilled-text-to-video", prompt: "a small green robot waves hello", duration_seconds: 5 },
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
-  } }, server, { discoverable: Boolean(config.videoDiscoverable) });  // undefined would mean the default, true
+  } }, server, { discoverable: Boolean(config.videoDiscoverable), log });  // undefined would mean the default, true
   app.post(VIDEO_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;

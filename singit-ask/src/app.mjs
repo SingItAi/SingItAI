@@ -118,25 +118,28 @@ export class UpstreamError extends Error {
 //
 // `params` is the model's supported_parameters from Surplus's list: Surplus forwards what it does not strip, so a
 // parameter the model does not list (temperature on kimi-k3 and others) reaches the provider and is refused, and
-// reasoning_effort, when stripped, leaves a thinking model spending the whole budget on thinking. Absent (a model
+// reasoning controls, when stripped, leave a thinking model spending the whole budget on thinking. Use the
+// listed spelling: reasoning_effort takes precedence over nested reasoning.effort. Absent (a model
 // not on the list), everything is sent as before.
 //
 // A long non-streamed request can come back as HTTP 200 with an error body, so the body is read for every status.
 export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params } = {}) {
   const sends = (name) => !params || params.includes(name);
+  const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
   const ask = (reasoning) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
     body: JSON.stringify({ model, messages, max_tokens: maxTokens, ...(sends("temperature") ? { temperature: 0.4 } : {}),
-                           ...(sends("reasoning_effort") ? { reasoning_effort: reasoning } : {}),
+                           ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
+                             : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
                            si_route: { objective: "price" } }),
     signal: AbortSignal.timeout(LIMITS.timeoutMs),
   });
   let response;
   try {
     response = await ask("none");
-    if (response.status === 400 && sends("reasoning_effort")) {
+    if (response.status === 400 && (sends("reasoning_effort") || nestedReasoning)) {
       const refusal = await response.clone().json().catch(() => null);
       if (refusal?.error?.code === "request_rejected" && /reasoning/i.test(refusal.error.message ?? "")) response = await ask("low");
     }

@@ -13,8 +13,8 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
-import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -237,7 +237,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       extensions: { ...declareEip2612GasSponsoringExtension(),
         ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
           output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }) },
-    } }, server);
+    } }, server, { log });
     app.post(route, async (req, res) => {
       const started = Date.now();
       try {
@@ -263,13 +263,15 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         }
         if (spentOnReasoning(route, data)) throw new NoAnswer(response.status, "max_tokens_spent_reasoning");
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
-        const usage = billUsage({ buyer_cost_micro: reported }, terms, { allowOverrun: exact });
+        const usage = billWithDiagnostics({ ...data.usage, buyer_cost_micro: reported },
+          terms, exact, route, req.format.model, log);
         // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override,
         // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
         const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
         if (exact && usage.overrunAtomic) log(`singit-ask: ${route} exact overrun ${usage.overrunAtomic} micro-USDC`);
         if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
-        log(`singit-ask: ${route} answered by ${req.format.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
+        log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms,`
+          + ` settling ${billing.totalAtomic} micro-USDC`);
         res.json({ ...scrub(data), billing });
       } catch (error) {
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
