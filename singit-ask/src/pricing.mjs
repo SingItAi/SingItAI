@@ -111,10 +111,21 @@ export const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, ""
 export const MODEL_COST_OVERHEAD = Object.freeze({
   "grok-4.7": Object.freeze({ promptTokens: 1300, reasoningTokens: 64 }),
 });
+// REASONING_HEADROOM (SI-112): tokens added to max_tokens upstream (askSurplus) for a model whose thinking cannot be
+// switched off and is counted inside max_tokens, so a small max_tokens is not all spent thinking. Measured on
+// gemini-3.1-pro-preview on 27 October: `reasoning: {effort: "none"}` (its only listed control) still thought; at
+// max_tokens 32 the answer was empty (422 max_tokens_too_small), at 512 a three-word answer took 275 completion
+// tokens. Gemini 3 Pro has no thinking-off setting (lowest thinking level is "low"), so room is added instead.
+// The headroom is priced as output (costOverhead's reasoningTokens), so the ceiling covers it; `upto` still settles
+// actual usage, `exact` gets dearer by it. The payer's max_tokens may then bound the answer only loosely.
+export const REASONING_HEADROOM = Object.freeze({
+  "gemini-3.1-pro-preview": 1024,
+});
+export const reasoningHeadroom = (id) => (typeof id === "string" && Object.hasOwn(REASONING_HEADROOM, id) ? REASONING_HEADROOM[id] : 0);
 export const costOverhead = (model) => {
   const id = typeof model?.id === "string" ? model.id : "";
   const extra = Object.hasOwn(MODEL_COST_OVERHEAD, id) ? MODEL_COST_OVERHEAD[id] : null;
-  return { promptTokens: extra?.promptTokens ?? 0, reasoningTokens: extra?.reasoningTokens ?? 0 };
+  return { promptTokens: extra?.promptTokens ?? 0, reasoningTokens: (extra?.reasoningTokens ?? 0) + reasoningHeadroom(id) };
 };
 
 // The most the model itself could bill for this question and answer size, in micro-units, before markup and fee.
