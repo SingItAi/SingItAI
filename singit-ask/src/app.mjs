@@ -558,6 +558,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           } },
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "Voice models and their prices",
             responses: { 200: { description: "Model list" } }, security: [] } },
+          ...(config.videoSold ? {
           [VIDEO_ROUTE]: { post: {
             operationId: "createVideo", summary: "A video clip from any of 30+ text-to-video models, as a job",
             description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio. Paid per clip "
@@ -578,7 +579,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                          400: errorBody("No job id or no token"), 403: errorBody("Wrong token"), 404: errorBody("No such job"),
                          503: errorBody(`${UNAVAILABLE}, or Surplus answered something unreadable`) } } },
           "/v1/video/models": { get: { operationId: "listVideoModels", summary: "Video models and their prices",
-            responses: { 200: { description: "Model list" } }, security: [] } } } : {}),
+            responses: { 200: { description: "Model list" } }, security: [] } } } : {}) } : {}),
         ...(priceBook ? {
           "/v1/prices": { get: { operationId: "listPrices", summary: "Free prices: what can be asked for", security: [],
             responses: { 200: { description: "Crypto, metal and currency symbols, with sources" } } } },
@@ -641,7 +642,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
                          `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`,
-                         ...(config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
+                         ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
                          ...modelRoutePaths().map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
@@ -651,7 +652,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
   // list below and llms.txt can never list a route this instance did not add.
   const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE,
-    ...(config.videoDiscoverable ? [VIDEO_ROUTE] : []),
+    ...(config.videoSold && config.videoDiscoverable ? [VIDEO_ROUTE] : []),
     ...modelRoutePaths()] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
   // Free: a human or agent landing on the bare origin gets a small service index instead of Express's 404.

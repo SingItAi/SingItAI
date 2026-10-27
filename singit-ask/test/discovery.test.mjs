@@ -18,7 +18,7 @@ import { MODEL_ROUTES, modelRoutePaths, routePath } from "../src/model-routes.mj
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
-  model: "deepseek-v4.1-flash" };
+  model: "deepseek-v4.1-flash", videoSold: true };
 const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64");
 const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("utf8"));
 
@@ -205,7 +205,7 @@ const EXPECTED = {
 };
 
 test("every discoverable route is named and described by what it is, with its category among the first 5 tags", async (t) => {
-  const { url } = await serve(t, { ...CONFIG, videoDiscoverable: true });
+  const { url } = await serve(t, { ...CONFIG, videoSold: true, videoDiscoverable: true });
   const routes = [...DISCOVERABLE, VIDEO_ROUTE];
   assert.deepEqual(new Set(routes), new Set(Object.keys(EXPECTED)), "every discoverable route has an expectation");
   for (const route of routes) {

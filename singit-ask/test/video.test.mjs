@@ -9,7 +9,7 @@ import { VIDEO_ROUTE, publicJob, readVideoRequest, videoPrice } from "../src/vid
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
-  model: "deepseek-v4.1-flash" };
+  model: "deepseek-v4.1-flash", videoSold: true };
 const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64");
 const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("utf8"));
 const VIDEOS = parseVideoModels({ data: [
@@ -196,4 +196,36 @@ test("prices, the request and the free model list", async (t) => {
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/video/models`)).json();
   assert.deepEqual(list.data.map((m) => [m.id, m.singitUsdPerJob]), [["venice-seedance-2-fast-t2v", 0.105]]);
+});
+
+// Video is off unless SINGIT_ASK_VIDEO_SOLD=1: a paid job could fail after settlement (27.10.2026). Off, a new job is
+// refused before any payment offer, the model list says so, discovery and openapi leave it out, and polling still works.
+test("with video off, nothing is offered or started; already-paid jobs can still be polled", async (t) => {
+  const { videoSold, ...off } = CONFIG;
+  const { url, surplus, facilitator } = await serve(t, { config: { ...off, videoDiscoverable: true } });
+  const unpaid = await post(`${url}${VIDEO_ROUTE}`, VIDEO);
+  assert.equal(unpaid.status, 503);
+  assert.equal(unpaid.headers.get("payment-required"), null);
+  assert.equal((await unpaid.json()).error.code, "video_disabled");
+  const probe = await fetch(`${url}${VIDEO_ROUTE}`, { method: "POST" });
+  assert.equal(probe.status, 503, "the empty discovery probe gets no offer either");
+  for (const method of ["GET", "HEAD"]) {
+    const r = await fetch(`${url}${VIDEO_ROUTE}`, { method });
+    assert.equal(r.status, 404, method);
+    assert.equal(r.headers.get("payment-required"), null, method);
+  }
+  const forged = await post(`${url}${VIDEO_ROUTE}`, VIDEO, { "PAYMENT-SIGNATURE": encode({ x402Version: 2 }) });
+  assert.equal(forged.status, 503, "a payment header is not even read");
+  const models = await fetch(`${url}/v1/video/models`);
+  assert.equal(models.status, 503);
+  assert.equal((await models.json()).error.code, "video_disabled");
+  const listed = await (await fetch(`${url}/.well-known/x402`)).json();
+  assert.ok(!listed.resources.some((r) => r.includes("/v1/video")), "not in discovery even with videoDiscoverable");
+  assert.ok(!/video/i.test(await (await fetch(`${url}/llms.txt`)).text()));
+  const openapi = await (await fetch(`${url}/openapi.json`)).json();
+  assert.ok(!Object.keys(openapi.paths).some((p) => p.startsWith("/v1/video")));
+  assert.equal(surplus.calls.length, 0, "Surplus is never asked to start a job");
+  assert.equal(facilitator.calls.settle.length, 0);
+  const poll = await fetch(`${url}${VIDEO_ROUTE}/01M5STJCFTVSC5588N9YGQCPQW`, { headers: { "X-Job-Token": "jt_x" } });
+  assert.notEqual(poll.status, 503, "polling a paid job still reaches Surplus");
 });

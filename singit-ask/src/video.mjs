@@ -110,7 +110,17 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
   const origin = (req) => `${req.protocol}://${req.get("host")}`;
   const tokenOf = (req) => String(req.get("x-job-token") ?? req.query.token ?? "").slice(0, 400);
 
-  app.get(VIDEO_MODELS_ROUTE, open, async (_req, res) => {
+  // Off unless config.videoSold (SINGIT_ASK_VIDEO_SOLD=1): Surplus accepted a paid job on 27.10.2026 and failed it
+  // moments later (provider_unavailable), and a payment settled on acceptance is not refunded. Until settlement waits
+  // for a finished clip, a new job is refused before any payment offer, with no 402; jobs already paid for can still be
+  // polled and downloaded below.
+  const sold = Boolean(config.videoSold);
+  const disabled = (_req, res) => res.set("Retry-After", "86400").status(503).json({ error: { type: "upstream_error",
+    code: "video_disabled", message: "Video generation is switched off for now. Nothing was charged." } });
+  if (!sold) {
+    app.get(VIDEO_MODELS_ROUTE, open, disabled);
+    app.post(VIDEO_ROUTE, open, disabled);
+  } else app.get(VIDEO_MODELS_ROUTE, open, async (_req, res) => {
     const models = await catalogue.videoModels().catch(() => new Map());
     res.json({ object: "list", endpoint: VIDEO_ROUTE, fees: { markupPct: VIDEO_TERMS.markupBps / 100,
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
@@ -166,6 +176,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     }
   });
 
+  if (!sold) return;
   const price = (network) => (ctx) => {
     const quote = priced.get(ctx.adapter.getBody());
     const amount = videoPrice(quote?.listAtomic ?? VIDEO_TERMS.maxListAtomic, network).totalAtomic;
