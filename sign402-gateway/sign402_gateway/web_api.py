@@ -81,6 +81,7 @@ STATUS_CACHE_SECONDS = 60
 NUMBERS_PATH = "/brand/numbers.json"  # public, unauthenticated: live counts for the marketing site
 NUMBERS_CACHE_SECONDS = 300
 COOKIE = "singit_session"
+BINDING_COOKIE = "singit_starter_oauth"  # starter_credit.BINDING_COOKIE: the GitHub-link nonce, callback path only
 CSRF_HEADER = "X-SingIt-CSRF"
 ACCOUNT_HEADER = "X-SingIt-Account"
 MAX_BODY = 16 * 1024
@@ -302,7 +303,7 @@ class WebApi:
 
     def handle(self, method: str, path: str, *, token: str, csrf: str | None, body: dict[str, Any],
                client: str, expected_account: str | None = None,
-               user_agent: str = "") -> tuple[int, dict[str, Any], dict[str, str]]:
+               user_agent: str = "", oauth_binding: str = "") -> tuple[int, dict[str, Any], dict[str, str]]:
         """(status, JSON body, extra headers)."""
         if method == "POST" and path == "/auth/nonce":
             self.auth_by_ip.hit(client)
@@ -328,7 +329,7 @@ class WebApi:
             # names the account instead.
             if self.starter is None:
                 raise WebError(404, "starter_credit_off", "Starter credit is not available.")
-            return self.starter.callback(body, client)
+            return self.starter.callback(body, client, oauth_binding)
         session = self.auth.session(token, None if method == "GET" and expected_account is None else (csrf or ""))
         account, owner = session["account_id"], session["address"]
         # The HTTP client pins the identity displayed in that tab. A cookie can
@@ -1113,12 +1114,13 @@ class WebHandler(BaseHTTPRequestHandler):
             try:
                 cookie = SimpleCookie(self.headers.get("Cookie", ""))
                 token = cookie[COOKIE].value if COOKIE in cookie else ""
+                oauth_binding = cookie[BINDING_COOKIE].value if BINDING_COOKIE in cookie else ""
             except CookieError:
-                token = ""
+                token = oauth_binding = ""
             status, out, headers = self.server.api.handle(
                 method, path[len(PREFIX):], token=token, csrf=self.headers.get(CSRF_HEADER),
                 body=body, client=self._client(), expected_account=self.headers.get(ACCOUNT_HEADER, ""),
-                user_agent=self.headers.get("User-Agent", ""))
+                user_agent=self.headers.get("User-Agent", ""), oauth_binding=oauth_binding)
             self._send(status, out, headers)
         except WebError as error:
             self.close_connection = True

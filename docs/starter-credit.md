@@ -24,10 +24,18 @@ Code: `sign402-gateway/sign402_gateway/starter_credit.py` (store, GitHub OAuth, 
 
 1. The page calls `POST /web/v1/starter-credit/github/start` (session + CSRF). It gets back `{"url": ...}`, a GitHub
    authorize URL (`scope=read:user`, `allow_signup=false`, a single-use `state` that lasts 10 minutes and is bound to
-   the account).
+   the account). The response also sets `singit_starter_oauth=<random nonce>; Path=/web/v1/starter-credit/github/callback;
+   Max-Age=600; HttpOnly; Secure; SameSite=Lax` (Lax because GitHub's redirect back is a top-level cross-site GET).
+   Only the nonce's sha256 is stored, next to the state's. This binds the link to the browser that started it: a
+   `state` alone names an account but doesn't prove the authorizing browser began the flow, so without the nonce an
+   attacker could start a link and send the URL to a victim, binding the victim's GitHub to the attacker's wallet.
 2. GitHub redirects to `GET /web/v1/starter-credit/github/callback?code=&state=`. This route runs without the session
-   cookie, which is SameSite=Strict and so isn't sent on GitHub's redirect. The state identifies the account. The
-   server exchanges the code, reads `/user` and `/user/repos`, re-checks the allowance and creates a `pending` claim.
+   cookie, which is SameSite=Strict and so isn't sent on GitHub's redirect. The state identifies the account; the
+   `singit_starter_oauth` cookie must also match the hash stored for that state (`hmac.compare_digest`). That check
+   comes first, before the state is consumed and before GitHub is asked anything. A missing or wrong cookie (or a
+   state started before this column existed) is refused with `reason=browser_mismatch` and audited; the state is not
+   burned, so the real user can still finish. The nonce is never logged. The response always clears the cookie
+   (`Max-Age=0`). The server then exchanges the code, reads `/user` and `/user/repos`, re-checks the allowance and creates a `pending` claim.
    It then answers `302` to `SIGN402_STARTER_CREDIT_REDIRECT?starter=pending`, or
    `?starter=refused&reason=<code>`. The callback is rate-limited per IP.
 3. `GET /web/v1/starter-credit` (session) returns the account's own claim: its state, what is spendable today, what
@@ -35,7 +43,7 @@ Code: `sign402-gateway/sign402_gateway/starter_credit.py` (store, GitHub OAuth, 
 4. The operator approves by hand (below). From then on, small API-key requests are paid from the grant before the
    balance. `billing.paidFrom` says `"your SingIt starter credit"`, and nothing reaches `balance_ledger`.
 
-Refusal reason codes: `bad_state`, `no_code`, `github_unavailable`, `github_unreadable`, `github_too_young`,
+Refusal reason codes: `bad_state`, `browser_mismatch`, `no_code`, `github_unavailable`, `github_unreadable`, `github_too_young`,
 `no_public_repo`, `no_allowance`, `foreign_owner`, `allowance_unreadable`, `solana_not_supported`,
 `account_already_claimed`, `github_already_used`, `rate_limited`.
 

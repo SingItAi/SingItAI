@@ -27,6 +27,7 @@ states are never stored, logged or audited (the state only as its sha256).
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -62,6 +63,7 @@ MIN_GITHUB_AGE_DAYS = 182
 STATE_SECONDS = 10 * 60         # an OAuth state is good for 10 minutes, once
 HOLD_SECONDS = 15 * 60          # as web_balance: a hold nobody has touched this long is let go
 CALLBACK_PATH = "/starter-credit/github/callback"
+BINDING_COOKIE = "singit_starter_oauth"  # browser-bound OAuth nonce, scoped to the callback path
 
 
 class StarterCreditError(Exception):
@@ -181,10 +183,13 @@ class StarterCredit:
                     state_hash TEXT PRIMARY KEY,      -- sha256 of the state; the state itself is never stored
                     account_id TEXT NOT NULL,
                     expires_at INTEGER NOT NULL,
-                    used INTEGER NOT NULL DEFAULT 0
+                    used INTEGER NOT NULL DEFAULT 0,
+                    binding_hash TEXT                 -- sha256 of the browser-bound nonce; NULL on pre-binding rows
                 );
                 """
             )
+            if "binding_hash" not in {r[1] for r in db.execute("PRAGMA table_info(starter_oauth_states)")}:
+                db.execute("ALTER TABLE starter_oauth_states ADD COLUMN binding_hash TEXT")
             db.execute("INSERT OR IGNORE INTO starter_budget(id, cap_atomic) VALUES (1, ?)", (HARD_CAP_ATOMIC,))
 
     @classmethod
@@ -281,16 +286,33 @@ class StarterCredit:
 
     # -- OAuth states --
 
-    def new_state(self, account: str, now: int) -> str:
-        """A random OAuth state bound to `account`, good once for STATE_SECONDS. Only its sha256 is stored."""
+    def new_state(self, account: str, now: int, binding: str = "") -> str:
+        """A random OAuth state bound to `account`, good once for STATE_SECONDS. Only its sha256 is stored, and so
+        is the sha256 of `binding`, the nonce the starting browser keeps in a cookie."""
         self._require_on()
         state = secrets.token_urlsafe(32)
         with self._write() as db:
             db.execute("DELETE FROM starter_oauth_states WHERE expires_at <= ? OR used = 1", (now,))
-            db.execute("INSERT INTO starter_oauth_states(state_hash, account_id, expires_at) VALUES (?, ?, ?)",
-                       (_sha256(state), account, now + STATE_SECONDS))
+            db.execute("INSERT INTO starter_oauth_states(state_hash, account_id, expires_at, binding_hash)"
+                       " VALUES (?, ?, ?, ?)",
+                       (_sha256(state), account, now + STATE_SECONDS, _sha256(binding) if binding else None))
             self._log(db, now, "web", "oauth_start", account=account)
         return state
+
+    def binding_matches(self, state: str, binding: str, now: int) -> bool | None:
+        """Does `binding` (the callback browser's cookie) belong to a live `state`? None when the state is unknown,
+        used or expired; otherwise True or False. Consumes nothing."""
+        if not state or len(state) > 200:
+            return None
+        with self._db() as db:
+            row = db.execute("SELECT binding_hash FROM starter_oauth_states WHERE state_hash = ? AND used = 0"
+                             " AND expires_at > ?", (_sha256(state), now)).fetchone()
+        if row is None:
+            return None
+        stored = row["binding_hash"]
+        if not stored or not binding or len(binding) > 200:
+            return False
+        return hmac.compare_digest(stored, _sha256(binding))
 
     def consume_state(self, state: str, now: int) -> str | None:
         """The account a state was made for, once: a used, expired or unknown state answers None."""
@@ -685,6 +707,11 @@ class StarterWeb:
             from .web_api import WebError  # noqa: PLC0415
             raise WebError(503, "starter_credit_unconfigured", "Starter credit is not configured on this server.")
 
+    @staticmethod
+    def _cookie_path() -> str:
+        from .web_api import PREFIX  # noqa: PLC0415
+        return PREFIX + CALLBACK_PATH
+
     def handle(self, method: str, path: str, account: str) -> tuple[int, dict[str, Any], dict[str, str]]:
         from .web_api import WebError  # noqa: PLC0415
 
@@ -707,15 +734,20 @@ class StarterWeb:
                                               error=type(exc)) from None
                 if self.credit.claim_for(account) is not None:
                     raise WebError(409, "already_claimed", "This wallet already claimed its starter credit.")
-                return 200, {"url": self.github.authorize_url(self.credit.new_state(account, now))}, {}
+                nonce = secrets.token_urlsafe(32)  # kept by this browser only; the server keeps its sha256
+                url = self.github.authorize_url(self.credit.new_state(account, now, nonce))
+                cookie = (f"{BINDING_COOKIE}={nonce}; Path={self._cookie_path()}; Max-Age={STATE_SECONDS}; "
+                          "HttpOnly; Secure; SameSite=Lax")  # Lax: GitHub's redirect back is a cross-site GET
+                return 200, {"url": url}, {"Set-Cookie": cookie}
         except StarterCreditError as exc:
             raise WebError(exc.status, exc.reason, exc.message) from None
         raise WebError(404, "not_found", "No such endpoint.")
 
-    def callback(self, query: Mapping[str, Any], client: str) -> tuple[int, dict[str, Any], dict[str, str]]:
+    def callback(self, query: Mapping[str, Any], client: str, binding: str = "") -> tuple[int, dict[str, Any], dict[str, str]]:
         """GitHub's redirect back: answered with a redirect to the app page, `?starter=pending` or
         `?starter=refused&reason=<code>`. Only `code` and `state` are read from the query; anything else the client
-        adds (a created_at, a login) is ignored."""
+        adds (a created_at, a login) is ignored. `binding` is the browser's OAuth cookie: it must match the one the
+        state was started with, or the link was begun in another browser and nothing is consumed or asked of GitHub."""
         from .web_api import WebError  # noqa: PLC0415
 
         if not self.credit.enabled:
@@ -729,7 +761,11 @@ class StarterWeb:
             except WebError:
                 raise StarterRefused("rate_limited") from None
             code, state = str(query.get("code") or ""), str(query.get("state") or "")
-            account = self.credit.consume_state(state, now)
+            bound = self.credit.binding_matches(state, binding, now)
+            if bound is False:
+                raise self.credit._refuse(now, "web", "browser_mismatch",
+                                          "Finish the link in the browser where you started it.")
+            account = self.credit.consume_state(state, now) if bound else None
             if account is None:
                 raise self.credit._refuse(now, "web", "bad_state", "The link expired. Start again from the app.")
             if not code or len(code) > 200:
@@ -773,7 +809,8 @@ class StarterWeb:
         params = {"starter": outcome, **({"reason": reason} if reason else {})}
         sep = "&" if "?" in self.redirect else "?"
         return 302, {"ok": outcome == "pending", **params}, {
-            "Location": self.redirect + sep + urllib.parse.urlencode(params), "Referrer-Policy": "no-referrer"}
+            "Location": self.redirect + sep + urllib.parse.urlencode(params), "Referrer-Policy": "no-referrer",
+            "Set-Cookie": f"{BINDING_COOKIE}=; Path={self._cookie_path()}; Max-Age=0; HttpOnly; Secure; SameSite=Lax"}
 
 
 def web_from_env(store_path: Path, allowance: Any, env: Mapping[str, str], public_uri: str, prefix: str,

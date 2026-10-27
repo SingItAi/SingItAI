@@ -501,18 +501,22 @@ class RouteFixture(unittest.TestCase):
         self.account = account_id_for(self.user.address)
         self.allowance.give(self.account)
 
-    def call(self, method, path, body=None, session=None, client="198.51.100.7"):
+    def call(self, method, path, body=None, session=None, client="198.51.100.7", binding=""):
         session = session if session is not None else self.session
         return self.api.handle(method, path, token=session.get("token", ""), csrf=session.get("csrfToken"),
-                               body=body or {}, client=client, expected_account=None)
+                               body=body or {}, client=client, expected_account=None, oauth_binding=binding)
 
     def start(self):
-        status, out, _ = self.call("POST", "/starter-credit/github/start")
+        status, out, headers = self.call("POST", "/starter-credit/github/start")
         self.assertEqual(status, 200)
+        self.nonce = headers["Set-Cookie"].split(";", 1)[0].split("=", 1)[1]
         return out["url"].split("state=", 1)[1]
 
-    def callback(self, state, code=CODE, **extra):
-        return self.call("GET", "/starter-credit/github/callback", {"code": code, "state": state, **extra}, session={})
+    def callback(self, state, code=CODE, binding=None, **extra):
+        """The callback as the starting browser would send it (its own cookie) unless `binding` says otherwise."""
+        binding = getattr(self, "nonce", "") if binding is None else binding
+        return self.call("GET", "/starter-credit/github/callback", {"code": code, "state": state, **extra},
+                         session={}, binding=binding)
 
 
 class RouteTests(RouteFixture):
@@ -568,6 +572,62 @@ class RouteTests(RouteFixture):
         self.assertEqual(len(seen), sc.REPO_PAGE_CAP)
         self.assertNotIn(TOKEN, "".join(seen))
 
+    def test_start_sets_a_lax_httponly_cookie_scoped_to_the_callback(self):
+        _, out, headers = self.call("POST", "/starter-credit/github/start")
+        parts = [p.strip() for p in headers["Set-Cookie"].split(";")]
+        name, nonce = parts[0].split("=", 1)
+        self.assertEqual(name, "singit_starter_oauth")
+        self.assertGreaterEqual(len(nonce), 32)
+        self.assertEqual(parts[1:], ["Path=/web/v1/starter-credit/github/callback", "Max-Age=600",
+                                     "HttpOnly", "Secure", "SameSite=Lax"])
+        self.assertNotIn(nonce, out["url"])
+        with closing(sqlite3.connect(self.path)) as db, db:
+            stored = [r[0] for r in db.execute("SELECT binding_hash FROM starter_oauth_states")]
+        self.assertEqual(stored, [sc._sha256(nonce)])
+
+    def test_callback_clears_the_cookie(self):
+        for response in (self.callback(self.start()), self.callback("wrong", binding="")):
+            cookie = response[2]["Set-Cookie"]
+            self.assertTrue(cookie.startswith("singit_starter_oauth=;"))
+            for part in ("Path=/web/v1/starter-credit/github/callback", "Max-Age=0", "HttpOnly", "Secure",
+                         "SameSite=Lax"):
+                self.assertIn(part, cookie)
+
+    def test_the_callback_needs_the_starting_browsers_cookie(self):
+        state = self.start()
+        for binding in ("", "not-the-nonce"):
+            _, _, headers = self.callback(state, binding=binding)
+            self.assertEqual(headers["Location"], REDIRECT + "?starter=refused&reason=browser_mismatch")
+        self.assertEqual(self.github.codes, [])
+        self.assertIsNone(self.credit.claim_for(self.account))
+        self.assertEqual(self.callback(state)[2]["Location"], REDIRECT + "?starter=pending",
+                         "a mismatch does not burn the state: the real user can still finish")
+
+    def test_victim_with_attackers_link_is_refused_before_github(self):
+        state = self.start()  # the attacker started it and sent the URL on
+        victim_cookies = ("", "someone-elses-nonce")
+        for binding in victim_cookies:
+            _, _, headers = self.callback(state, binding=binding)
+            self.assertIn("reason=browser_mismatch", headers["Location"])
+        self.assertEqual(self.github.codes, [], "GitHub is never asked")
+        self.assertIsNone(self.credit.claim_for(self.account))
+        self.assertIn("browser_mismatch", json.dumps([dict(r) for r in self.credit.audit_log()]))
+        self.assertNotIn(self.nonce, json.dumps([dict(r) for r in self.credit.audit_log()]))
+
+    def test_an_old_state_without_a_binding_is_refused(self):
+        state = self.credit.new_state(self.account, NOW)
+        self.assertIn("browser_mismatch", self.callback(state, binding="x")[2]["Location"])
+        self.assertIn("browser_mismatch", self.callback(state, binding="")[2]["Location"])
+
+    def test_an_existing_table_gets_the_binding_column(self):
+        path = Path(self.tmp.name) / "old.db"
+        with closing(sqlite3.connect(path)) as db, db:
+            db.execute("CREATE TABLE starter_oauth_states (state_hash TEXT PRIMARY KEY, account_id TEXT NOT NULL,"
+                       " expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0)")
+        StarterCredit(path, enabled=True)
+        with closing(sqlite3.connect(path)) as db:
+            self.assertIn("binding_hash", [r[1] for r in db.execute("PRAGMA table_info(starter_oauth_states)")])
+
     def test_the_state_is_single_use_bound_and_short_lived(self):
         state = self.start()
         self.assertEqual(self.callback("wrong")[2]["Location"], REDIRECT + "?starter=refused&reason=bad_state")
@@ -609,8 +669,9 @@ class RouteTests(RouteFixture):
         issued = self.auth.nonce(other.address)
         session = self.auth.verify(issued["message"], sign(other, issued["message"]))
         self.allowance.give(session["account"])
-        _, out, _ = self.call("POST", "/starter-credit/github/start", session=session)
-        _, _, headers = self.callback(out["url"].split("state=", 1)[1])
+        _, out, cookie = self.call("POST", "/starter-credit/github/start", session=session)
+        nonce = cookie["Set-Cookie"].split(";", 1)[0].split("=", 1)[1]
+        _, _, headers = self.callback(out["url"].split("state=", 1)[1], binding=nonce)
         self.assertEqual(headers["Location"], REDIRECT + "?starter=refused&reason=github_already_used")
         self.assertIsNone(self.credit.claim_for(session["account"]))
 
@@ -715,11 +776,17 @@ class HttpCallbackTests(RouteFixture):
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
 
-    def test_callback_over_http_without_a_cookie(self):
+    def test_callback_over_http_needs_the_oauth_cookie_only(self):
         state = self.start()
         connection = http.client.HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=5)
+        connection.request("GET", f"/web/v1/starter-credit/github/callback?code={CODE}&state={state}")
+        response = connection.getresponse()
+        response.read()
+        self.assertIn("browser_mismatch", response.getheader("Location"))
+        self.assertEqual(self.github.codes, [])
         with self.assertLogs("sign402_gateway", level=logging.DEBUG) as logs:
-            connection.request("GET", f"/web/v1/starter-credit/github/callback?code={CODE}&state={state}")
+            connection.request("GET", f"/web/v1/starter-credit/github/callback?code={CODE}&state={state}",
+                               headers={"Cookie": f"singit_starter_oauth={self.nonce}"})
             response = connection.getresponse()
             response.read()
         connection.close()
@@ -728,6 +795,7 @@ class HttpCallbackTests(RouteFixture):
         self.assertEqual(self.credit.claim_for(self.account)["state"], "pending")
         self.assertNotIn(CODE, "\n".join(logs.output))
         self.assertNotIn(state, "\n".join(logs.output))
+        self.assertNotIn(self.nonce, "\n".join(logs.output))
 
 
 class ProxyStarterTests(RouteFixture):
