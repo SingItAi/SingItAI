@@ -31,6 +31,9 @@ import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-rout
 export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 export const ROUTE = "/v1/chat/completions";
+// Linked from llms.txt: the x402 walkthrough, and SingIt's MCP server (paid with a SingIt API key, not x402).
+const FIRST_PAID_CALL_DOC = "https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md";
+const MCP_URL = "https://app.singitai.app/mcp";
 
 export { LIMITS };
 const ROLES = new Set(["system", "user", "assistant"]);
@@ -638,22 +641,33 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Free: llmstxt.org format, generated from the same route list as discovery so it cannot drift from it.
   app.get("/llms.txt", open, (req, res) => {
     const base = origin(req);
+    // What this instance sells, from the same flags its routes are added on: nothing listed that is not live here.
+    const sold = ["language-model chat completions",
+      ...(catalogue ? ["Anthropic's Messages and OpenAI's Responses formats", "images", "speech"] : []),
+      ...(exaKey ? ["Exa web search, page contents and cited answers"] : [])];
+    const exactShare = Math.round((config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION) * 100);
     const lines = [
       "# SingIt Ask", "", `> ${DISCOVERY_DESCRIPTION}`, "",
       "## What it is", "",
-      "An x402 seller: language-model chat completions, Anthropic's Messages and OpenAI's Responses formats, "
-        + "images, speech and (when enabled) Exa web search, each paid per call. No accounts or API keys.", "",
+      `An x402 seller: ${sold.length > 1 ? `${sold.slice(0, -1).join(", ")} and ${sold.at(-1)}` : sold[0]}, `
+        + "each paid per call. No accounts or API keys.", "",
       "## How to pay", "",
       "x402 v2. Call a paid route below with no payment and read the 402 response's PAYMENT-REQUIRED header for its "
         + "offers: `upto`, listed first (metered to actual cost, up to the ceiling it names), or `exact` (a flat price for "
-        + "a typical-length answer), in USDC on Base or Solana. Sign one "
+        + `a typical-length answer, about ${exactShare}% of max_tokens), in USDC on Base or Solana. Sign one `
         + "and retry with the signature in the PAYMENT-SIGNATURE header. Live prices and models: "
-        + `${base}/openapi.json and ${base}/v1/models.`, "",
+        + `${base}/openapi.json and ${base}/v1/models. Step by step: ${FIRST_PAID_CALL_DOC}`, "",
+      ...(freeOffer ? ["## Free to try", "",
+        `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `
+          + `${freeOffer.perVisitorPerDay} answers a day per network (IPv4 /24, IPv6 /64), up to ${freeOffer.maxTokens} `
+          + `tokens and ${freeOffer.maxChars} characters each, resetting at midnight UTC. When they are used up, drop `
+          + `the ${FREE_PREFIX} prefix to pay per answer, or come back tomorrow.`, ""] : []),
       "## Paid routes", "", ...discoverableRoutes().map((route) => `- POST ${base}${route}`), "",
       "## Free", "",
       `- GET ${base}/v1/models — models and their prices`,
       ...(catalogue ? [`- GET ${base}/v1/images/models — image models and their prices`,
         `- GET ${base}/v1/audio/models — voice models and their prices`] : []),
+      ...(priceBook ? [`- GET ${base}/v1/prices — crypto, metal and fx prices, no payment`] : []),
       `- GET ${base}/health — service status`, "",
       "## Links", "",
       `- OpenAPI: ${base}/openapi.json`,
@@ -661,6 +675,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       `- llms.txt: ${base}/llms.txt`,
       `- Models: ${base}/v1/models`,
       "- Docs: https://singitai.app/developers/",
+      `- First paid x402 call: ${FIRST_PAID_CALL_DOC}`,
+      `- MCP server (API key, not x402): ${MCP_URL}, see https://singitai.app/llms.txt`,
     ];
     res.set("Content-Type", "text/plain; charset=utf-8").send(lines.join("\n") + "\n");
   });
