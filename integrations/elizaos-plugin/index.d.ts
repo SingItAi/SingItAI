@@ -27,6 +27,10 @@ export interface BasePin {
 }
 export declare const BASE_PIN: BasePin;
 
+export declare const X402_INSTALL_HINT: string;
+/** True when the optional peer @x402/evm can be loaded (needed for SINGIT_PAID_CHAT). */
+export declare function isX402Available(): Promise<boolean>;
+
 export interface PayAskRequestOptions {
   body: unknown;
   path?: string;
@@ -38,6 +42,8 @@ export interface PayAskRequestOptions {
   limiter: unknown;
   maxPerCallAtomic: string;
   fetchImpl?: typeof fetch;
+  /** Test seam: replaces the dynamic import of @x402/evm client modules. */
+  importModule?: (specifier: string) => Promise<unknown>;
 }
 export declare function payAskRequest(options: PayAskRequestOptions): Promise<{
   response: unknown;

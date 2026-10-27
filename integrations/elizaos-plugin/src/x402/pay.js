@@ -4,6 +4,7 @@ import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { SingItPaymentError, BASE_PIN, DEFAULT_ASK_BASE_URL, decodeHeader, selectOffer, isAtomicAmount } from "./guards.js";
+import { loadX402Scheme } from "./loader.js";
 
 // { address, signTypedData, readContract } — the shape @x402/evm's client schemes expect.
 export function buildEvmSigner({ evmPrivateKey, rpcUrl = BASE_PIN.defaultRpcUrl }) {
@@ -35,9 +36,7 @@ export function mergeExtensions(signedExtensions, declaredExtensions) {
   }));
 }
 
-async function signOffer(scheme, offer, extensions, signer) {
-  const { [scheme === "upto" ? "UptoEvmScheme" : "ExactEvmScheme"]: Scheme } =
-    await import(scheme === "upto" ? "@x402/evm/upto/client" : "@x402/evm/exact/client");
+async function signOffer(Scheme, scheme, offer, extensions, signer) {
   const signed = await new Scheme(signer).createPaymentPayload(2, offer, { extensions });
   const merged = mergeExtensions(signed.extensions, extensions);
   return { x402Version: 2, accepted: offer, payload: signed.payload, ...(merged ? { extensions: merged } : {}) };
@@ -50,8 +49,10 @@ async function signOffer(scheme, offer, extensions, signer) {
  */
 export async function payAskRequest({
   body, path = "/v1/chat/completions", baseUrl = DEFAULT_ASK_BASE_URL, payTo = BASE_PIN.payTo,
-  rpcUrl, scheme = "upto", evmPrivateKey, limiter, maxPerCallAtomic, fetchImpl = fetch,
+  rpcUrl, scheme = "upto", evmPrivateKey, limiter, maxPerCallAtomic, fetchImpl = fetch, importModule,
 }) {
+  // Fail closed before any network call or key handling if the optional @x402/evm peer is absent.
+  const Scheme = await loadX402Scheme(scheme, importModule);
   const url = `${baseUrl.replace(/\/$/, "")}${path}`;
   const signer = buildEvmSigner({ evmPrivateKey, rpcUrl });
   const encodedBody = JSON.stringify(body);
@@ -76,7 +77,7 @@ export async function payAskRequest({
   const release = limiter.reserve(offer.amount);
   let payload;
   try {
-    payload = await signOffer(scheme, offer, challenge.extensions, signer);
+    payload = await signOffer(Scheme, scheme, offer, challenge.extensions, signer);
   } catch (error) {
     release();
     throw error;

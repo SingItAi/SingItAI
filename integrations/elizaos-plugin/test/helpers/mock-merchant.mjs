@@ -116,7 +116,9 @@ export function exactOffer({ asset, payTo, amount, maxTimeoutSeconds = 120, asse
 // `exact`, half of it for `upto`, simulating metered usage).
 export function startMockMerchant({ accepts, bill, verifyOverride, receiptNetwork = "eip155:8453" } = {}) {
   let resourceUrl;
+  const requests = [];
   const server = http.createServer(async (req, res) => {
+    requests.push(req.method);
     if (req.method !== "POST") { res.writeHead(404).end(); return; }
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
@@ -151,7 +153,7 @@ export function startMockMerchant({ accepts, bill, verifyOverride, receiptNetwor
     server.listen(0, "127.0.0.1", () => {
       const url = `http://127.0.0.1:${server.address().port}`;
       resourceUrl = `${url}/v1/chat/completions`;
-      resolve({ url, resourceUrl, close: () => new Promise(r => server.close(r)) });
+      resolve({ url, resourceUrl, requests, close: () => new Promise(r => server.close(r)) });
     });
   });
 }

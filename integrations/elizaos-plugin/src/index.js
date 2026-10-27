@@ -8,6 +8,7 @@ import { singitToolsProvider } from "./providers/singit-tools-provider.js";
 
 export { SingItMcpClient, SingItMcpError, DEFAULT_MCP_URL } from "./mcp-client.js";
 export { SingItPaymentError, BASE_PIN, DEFAULT_ASK_BASE_URL } from "./x402/guards.js";
+export { isX402Available, X402_INSTALL_HINT } from "./x402/loader.js";
 export { payAskRequest, SingItAskError } from "./x402/pay.js";
 export {
   getSingitPriceAction, listSingitPriceSymbolsAction, listSingitModelsAction,

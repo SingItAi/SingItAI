@@ -1,4 +1,5 @@
 import { readSetting } from "../settings.js";
+import { isX402Available } from "../x402/loader.js";
 
 // Tells the agent which SingIt tools/actions it currently has, based on configured settings —
 // so the model does not try SINGIT_WEB_SEARCH or SINGIT_PAID_CHAT when they are not configured.
@@ -10,17 +11,20 @@ export const singitToolsProvider = {
     const hasWallet = Boolean(readSetting(runtime, "SINGIT_EVM_PRIVATE_KEY"));
     const hasCaps = readSetting(runtime, "SINGIT_MAX_PER_CALL_USD") != null
       && readSetting(runtime, "SINGIT_MAX_PER_DAY_USD") != null;
+    const hasX402Evm = hasWallet && hasCaps ? await isX402Available() : false;
     const free = ["SINGIT_GET_PRICE", "SINGIT_LIST_PRICE_SYMBOLS", "SINGIT_LIST_MODELS"];
     const paid = hasApiKey ? ["SINGIT_WEB_SEARCH", "SINGIT_READ_PAGE"] : [];
-    const x402 = hasWallet && hasCaps ? ["SINGIT_PAID_CHAT"] : [];
+    const x402 = hasWallet && hasCaps && hasX402Evm ? ["SINGIT_PAID_CHAT"] : [];
     const available = [...free, ...paid, ...x402];
     const lines = [
       `Always available (no key): ${free.join(", ")}.`,
       hasApiKey ? `API-key tools available: ${paid.join(", ")}.` : "API-key tools unavailable: set SINGIT_API_KEY to enable SINGIT_WEB_SEARCH and SINGIT_READ_PAGE.",
       x402.length
         ? `x402 paid chat available: ${x402.join(", ")}.`
-        : "x402 paid chat unavailable: set SINGIT_EVM_PRIVATE_KEY, SINGIT_MAX_PER_CALL_USD and SINGIT_MAX_PER_DAY_USD to enable SINGIT_PAID_CHAT.",
+        : hasWallet && hasCaps
+          ? "x402 paid chat unavailable: the optional package @x402/evm is not installed."
+          : "x402 paid chat unavailable: set SINGIT_EVM_PRIVATE_KEY, SINGIT_MAX_PER_CALL_USD and SINGIT_MAX_PER_DAY_USD (and install @x402/evm) to enable SINGIT_PAID_CHAT.",
     ];
-    return { text: lines.join(" "), values: { singitAvailableActions: available }, data: { hasApiKey, hasWallet, hasCaps, available } };
+    return { text: lines.join(" "), values: { singitAvailableActions: available }, data: { hasApiKey, hasWallet, hasCaps, hasX402Evm, available } };
   },
 };
