@@ -24,7 +24,7 @@
 //   SINGIT_ASK_PRICE_BUFFER_PP percentage points added to a model's cheapest known Surplus share before it is
 //                              turned into the X-Min-Discount header (src/catalogue.mjs's priceGuard), default 1
 //   SINGIT_ASK_EXACT_OUTPUT_FRACTION  fraction (0,1] of max_tokens that `exact` offers price their output at;
-//                              `upto` always prices the whole budget. Default 0.65
+//                              `upto` always prices the whole budget. Default 0.3
 
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";

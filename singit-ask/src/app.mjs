@@ -351,7 +351,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const DESCRIPTION = "Ask a language model without an API key: any model listed at GET /v1/models (Claude, GPT, Gemini, "
     + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
     + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
-    + "price; nothing is charged without an answer. Exact payers are instead charged that ceiling flat, with no metering.";
+    + "price; nothing is charged without an answer. Exact payers instead pay a flat price for a typical-length answer.";
   // <=300 characters with the "SingIt Ask: " prefix: Coinbase's Bazaar ranks listings by metadata completeness, and a
   // description that is half about billing reads as incomplete on what the endpoint does. Billing stays in
   // DESCRIPTION above (openapi.json, /.well-known/x402) for the humans/agents that read terms there.
@@ -426,8 +426,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                   settlementFeeUsd: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) },
       },
       note: "upto settles actual usage: the amount shown is the ceiling the reference request would be asked to "
-        + "authorize, and a real answer normally settles for less once it comes back. exact pays the ceiling "
-        + "shown, flat, with no metering and no refund.",
+        + "authorize, and a real answer normally settles for less once it comes back. exact pays the amount "
+        + "shown, flat, with no metering and no refund: a price for a typical-length answer (about "
+        + `${Math.round((config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION) * 100)}% of max_tokens), `
+        + "and the whole answer is still returned.",
       models: priced,
     });
   });
@@ -642,7 +644,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + "images, speech and (when enabled) Exa web search, each paid per call. No accounts or API keys.", "",
       "## How to pay", "",
       "x402 v2. Call a paid route below with no payment and read the 402 response's PAYMENT-REQUIRED header for its "
-        + "offers: `upto` (metered to actual cost) or `exact` (a flat ceiling), in USDC on Base or Solana. Sign one "
+        + "offers: `upto`, listed first (metered to actual cost, up to the ceiling it names), or `exact` (a flat price for "
+        + "a typical-length answer), in USDC on Base or Solana. Sign one "
         + "and retry with the signature in the PAYMENT-SIGNATURE header. Live prices and models: "
         + `${base}/openapi.json and ${base}/v1/models.`, "",
       "## Paid routes", "", ...discoverableRoutes().map((route) => `- POST ${base}${route}`), "",
@@ -690,12 +693,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
   addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, catalogue, fetchImpl, log });
   // Public: any x402 agent pays on Solana or Base for actual usage with `upto`, or the same ceiling flat with
-  // `exact` for buyers that sign only that scheme. Listed for discovery. `exact` on Base leads `accepts`: it is the
-  // simplest offer for a buyer that only inspects the first one, and the one this service is paid in most often.
+  // `exact` for buyers that sign only that scheme. Listed for discovery. `upto` leads `accepts` (Base, then Solana;
+  // SI-102): it is the honest price, metered to the answer's actual cost, and a buyer that only inspects the first
+  // offer should see that one. `exact` (a flat price for a typical-length answer) follows on both networks.
   // Its discovery probes are quoted for the Bazaar example body below (metered.mjs's `exampleProbe`), the price
   // Bazaar records for this route, so vet402's empty POST is offered that same price (no price_mismatch).
-  addUsageRoute(app, ROUTE, (quotes, probe) => [exactBaseOffer(config, quotes, probe("exact", BASE)),
-    solanaOffer(config, quotes, probe("upto", SOLANA)), baseOffer(config, quotes, probe("upto", BASE)),
+  addUsageRoute(app, ROUTE, (quotes, probe) => [baseOffer(config, quotes, probe("upto", BASE)),
+    solanaOffer(config, quotes, probe("upto", SOLANA)), exactBaseOffer(config, quotes, probe("exact", BASE)),
     exactSolanaOffer(config, quotes, probe("exact", SOLANA))], {
     description: `SingIt Ask: ${DISCOVERY_DESCRIPTION}`,
     serviceName: SERVICE_NAME,

@@ -17,12 +17,16 @@ export const SOLANA_TERMS = Object.freeze({ ...TERMS, settlementFeeAtomic: "2000
 export const SERVICE_NAME = "SingIt Ask";
 export const ICON_URL = "https://singitai.app/assets/icons/icon-512.png";
 
-// p90 of 38 recorded answer lengths was 0.65 of the max_tokens asked for: most answers stop well short of their
-// budget, so pricing `exact`'s flat ceiling at the whole budget (fraction 1) overcharges the typical question.
-// At this fraction, with the 30% markup and settlement fee, 2 of those 38 recorded cases (both Opus 5.5,
-// 2000-char/1000-token questions) would have landed slightly negative, about -$0.0000 — an exact overrun that
-// `allowOverrun` (below) absorbs instead of refusing the answer.
-export const DEFAULT_EXACT_OUTPUT_FRACTION = 0.65;
+// The share of max_tokens `exact`'s flat price assumes the answer will use. Was 0.65 (p90 of 38 recorded answers,
+// SI-60); 0.3 since SI-102 (26.10), so `exact` on Base is not dearer than BlockRun's for the same question (Opus 5.5
+// at max_tokens 500: about 0.0020 USDC against their 0.00215; at 0.65 it was 0.00322). The recorded answers (32 paid
+// web-agent answers at max_tokens 1200) are bimodal: p50 about 0.12, p75 0.44, p90 0.63, mean 0.24, so 0.3 still
+// sits above the mean. The answer is never cut short: max_tokens goes upstream unchanged. An answer that runs past
+// 0.3 is still delivered and settled at the flat price (`allowOverrun` below absorbs the difference, and it is
+// logged); with the 30% markup and the settlement fee it costs this service more than it was paid only past about
+// 0.6-0.8 of max_tokens, depending on the model and network. `upto` is unaffected: it always prices and authorizes
+// the whole budget and settles actual usage. SINGIT_ASK_EXACT_OUTPUT_FRACTION overrides this (server.mjs).
+export const DEFAULT_EXACT_OUTPUT_FRACTION = 0.3;
 
 // Below this, a request is never authorized: cheap enough that a sensible floor matters more than honesty.
 // Unlike `terms.maxChargeAtomic`, which the gateway and every buyer pin as the standing maximum, this floor is

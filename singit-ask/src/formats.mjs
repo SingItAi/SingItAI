@@ -222,9 +222,9 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       }
     });
     addPaymentRoute(app, { [`POST ${route}`]: {
-      // exact on Base first: the simplest offer for a buyer that only inspects accepts[0].
-      accepts: [exactBaseOffer(config, quotes, probe("exact", BASE)), solanaOffer(config, quotes, probe("upto", SOLANA)),
-        baseOffer(config, quotes, probe("upto", BASE)), exactSolanaOffer(config, quotes, probe("exact", SOLANA))],
+      // upto first (SI-102): the metered, actual-cost offer is the one a buyer that only inspects accepts[0] sees.
+      accepts: [baseOffer(config, quotes, probe("upto", BASE)), solanaOffer(config, quotes, probe("upto", SOLANA)),
+        exactBaseOffer(config, quotes, probe("exact", BASE)), exactSolanaOffer(config, quotes, probe("exact", SOLANA))],
       mimeType: "application/json",
       description: `SingIt Ask: ${DESCRIPTIONS[route]}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
       tags: [...TAGS, route === "/v1/messages" ? "anthropic-compatible" : "openai-compatible"],

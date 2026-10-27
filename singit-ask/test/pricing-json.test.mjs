@@ -72,7 +72,7 @@ test("top-level shape: generatedAt, currency, referenceRequest, networks, note",
   assert.equal(body.networks.base.settlementFeeUsd, 0.001);
   assert.equal(body.networks.solana.settlementFeeUsd, 0.002);
   assert.match(body.note, /upto settles actual usage/);
-  assert.match(body.note, /exact pays the ceiling/);
+  assert.match(body.note, /exact pays the amount shown, flat/);
 });
 
 test("lists every model /v1/models exposes (answerable, or the default), never the idle one", async (t) => {

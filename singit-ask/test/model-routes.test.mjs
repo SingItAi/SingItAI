@@ -77,7 +77,7 @@ test("the 14 ids are URL-safe and none is \"completions\"", () => {
   assert.ok(!modelRoutePaths().includes(ROUTE), "a model route never collides with the generic chat route");
 });
 
-test("every model route's 402 (GET, HEAD, empty POST) leads with exact on Base", async (t) => {
+test("every model route's 402 (GET, HEAD, empty POST) leads with upto on Base (SI-102)", async (t) => {
   const { url, facilitator } = await serve(t);
   for (const model of MODEL_ROUTES) {
     const route = routePath(model.id);
@@ -86,8 +86,8 @@ test("every model route's 402 (GET, HEAD, empty POST) leads with exact on Base",
       assert.equal(response.status, 402, `${route} ${method}`);
       if (method !== "HEAD") {
         const required = decode(response.headers.get("payment-required"));
-        assert.equal(required.accepts[0].scheme, "exact", route);
-        assert.equal(required.accepts[0].network, BASE, route);
+        assert.deepEqual(required.accepts.map((a) => [a.scheme, a.network]),
+          [["upto", BASE], ["upto", SOLANA], ["exact", BASE], ["exact", SOLANA]], route);
       }
     }
   }

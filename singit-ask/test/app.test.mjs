@@ -101,11 +101,9 @@ test("an unpaid question is offered actual-usage payment on Solana and Base over
   const required = await offer(url);
   const solana = required.accepts.find((a) => a.network === SOLANA && a.scheme === "upto");
   const base = required.accepts.find((a) => a.network === BASE && a.scheme === "upto");
-  // `exact` on Base leads (SI-61: the simplest offer for a buyer that only inspects accepts[0]); `upto` is what
-  // the gateway and most buyers actually sign, with `exact` on Solana alongside for buyers like vet402 that sign
-  // only `exact`.
-  assert.deepEqual(required.accepts.map((a) => a.scheme), ["exact", "upto", "upto", "exact"]);
-  assert.equal(required.accepts[0].network, BASE);
+  // `upto` leads (SI-102: the actual-cost offer is what a buyer that only inspects accepts[0] sees), Base then
+  // Solana; `exact` follows on both for buyers like vet402 that sign only `exact`.
+  assert.deepEqual(required.accepts.map((a) => [a.scheme, a.network]), [["upto", BASE], ["upto", SOLANA], ["exact", BASE], ["exact", SOLANA]]);
   assert.equal(solana.amount, "3000");
   assert.equal(solana.payTo, SOLANA_PAY_TO);
   assert.deepEqual(solana.extra.billing, SOLANA_TERMS);
@@ -215,7 +213,7 @@ test("an empty unpaid request gets the standing offer, so directories can regist
     const response = await fetch(`${url}${ROUTE}`, init);
     assert.equal(response.status, 402);
     const required = decode(response.headers.get("payment-required"));
-    assert.deepEqual(required.accepts.map((a) => a.scheme), ["exact", "upto", "upto", "exact"]);
+    assert.deepEqual(required.accepts.map((a) => a.scheme), ["upto", "upto", "exact", "exact"]);
     assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]),
       [[BASE, "3000"], [SOLANA, "3000"], [BASE, "3000"], [SOLANA, "3000"]]);
     assert.ok(required.extensions?.bazaar?.info, "x402scan needs the input schema to index the route");
@@ -535,19 +533,19 @@ test("the paid call carries X-Min-Discount from the share guard fixed at quote t
   assert.equal(calls.at(-1).headers["X-Min-Discount"], undefined);
 });
 
-test("every discoverable route offers exact on Base first; the metered route is unchanged", async (t) => {
+test("every discoverable token-metered route offers upto first (Base, then Solana); the metered route is unchanged", async (t) => {
   const { url } = await serve(t);
   const probe = async (path, body) => {
     const response = await fetch(`${url}${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     assert.equal(response.status, 402, path);
     return decode(response.headers.get("payment-required")).accepts;
   };
-  // SI-61: discoverable routes lead with `exact` on Base, the simplest offer for a buyer that only inspects
-  // accepts[0]; the rest keep their previous relative order.
+  // SI-102: token-metered routes lead with `upto` (Base, then Solana), the actual-cost offer, so a buyer that only
+  // inspects accepts[0] sees it; `exact` (a flat price for a typical-length answer) follows on Base, then Solana.
   for (const route of [ROUTE, ...Object.keys(FORMAT_ROUTES)]) {
     const accepts = await probe(route, {});
-    assert.deepEqual(accepts.map((a) => a.scheme), ["exact", "upto", "upto", "exact"], route);
-    assert.equal(accepts[0].network, BASE, route);
+    assert.deepEqual(accepts.map((a) => [a.scheme, a.network]),
+      [["upto", BASE], ["upto", SOLANA], ["exact", BASE], ["exact", SOLANA]], route);
   }
   // Not listed for discovery; the gateway's buyer pins `upto` on Base directly and never reads `accepts`.
   assert.deepEqual((await probe(METERED_ROUTE, { messages: [{ role: "user", content: "Hi" }] })).map((a) => a.scheme),
