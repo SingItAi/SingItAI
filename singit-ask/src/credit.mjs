@@ -9,6 +9,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS } from "./pricing.mjs";
+import { withBuilderCode } from "./builder-code.mjs";
 
 export const CREDIT_ROUTE = "/v1/credit";
 export const CREDIT_LIMITS = Object.freeze({ minAtomic: 1_000_000, maxAtomic: 50_000_000, stepAtomic: 10_000 });
@@ -45,8 +46,9 @@ export function addCreditRoute(app, config, { facilitatorClient }) {
     res.status(400).json({ error: { type: "invalid_request_error", message: `Send {"amountAtomic": "<USDC micro-units>"}: `
       + `${minAtomic} to ${maxAtomic}, in steps of ${stepAtomic}.` } });
   });
-  app.use(paymentMiddleware({ [`POST ${CREDIT_ROUTE}`]: { accepts: offers, mimeType: "application/json",
-    description: "SingIt credit: a top-up of an API balance at app.singitai.app, bought by the account's own agent." } }, server));
+  app.use(paymentMiddleware(withBuilderCode({ [`POST ${CREDIT_ROUTE}`]: { accepts: offers, mimeType: "application/json",
+    description: "SingIt credit: a top-up of an API balance at app.singitai.app, bought by the account's own agent." } },
+  server), server));
   app.post(CREDIT_ROUTE, (req, res) => {
     const amountAtomic = readCredit(req.body);
     const header = req.get("payment-signature") ?? req.get("x-payment");

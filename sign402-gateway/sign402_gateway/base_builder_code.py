@@ -93,3 +93,39 @@ def append_suffix(data: str, *, chain_id: int, suffix: bytes | None) -> str:
     if body.lower().endswith(suffix.hex()):
         return "0x" + body
     return "0x" + body + suffix.hex()
+
+
+def has_attribution_suffix(tail_hex: str) -> bool:
+    """True if `tail_hex` (calldata after the ABI-encoded call, no 0x) is one ERC-8021 suffix.
+
+    Accepts any schema (0, 1 or 2), so a wallet that adds its own attribution is not
+    refused; the bytes are only checked to be well-formed, never trusted for anything else.
+    """
+    tail = (tail_hex or "").lower().removeprefix("0x")
+    marker = _MAGIC_TAIL.hex()
+    if len(tail) % 2 or not re.fullmatch(r"[0-9a-f]*", tail) or not tail.endswith(marker):
+        return False
+    body = bytes.fromhex(tail[: -len(marker)])
+    if not body:
+        return False
+    schema = body[-1]
+    if schema in (0, 1):
+        if len(body) < 2:
+            return False
+        length = body[-2]
+        if schema == 0:
+            return length > 0 and len(body) == length + 2
+        return length > 0 and len(body) > length + 2
+    if schema == 2:
+        if len(body) < 3:
+            return False
+        length = int.from_bytes(body[-3:-1], "big")
+        return length > 0 and len(body) == length + 3
+    return False
+
+
+def page_builder_code(env: "os._Environ[str] | None" = None) -> str | None:
+    """The code for the web page's own wallet transactions, or None when unset/invalid."""
+    source = env if env is not None else os.environ
+    code = (source.get(ENV_VAR) or "").strip()
+    return code if code and _valid_code(code) else None

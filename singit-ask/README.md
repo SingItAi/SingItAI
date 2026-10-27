@@ -158,6 +158,7 @@ node --env-file=.env src/server.mjs
 | --- | --- |
 | `SINGIT_ASK_PAY_TO_SOLANA` | Wallet that receives Solana payments. Its USDC token account must already exist. |
 | `SINGIT_ASK_PAY_TO_BASE` | Address that receives Base payments. |
+| `SIGN402_BASE_BUILDER_CODE` | Optional. Base Builder Code (base.dev). When set, every Base-payable 402 declares it as the x402 `builder-code` app code (`a`), and the CDP facilitator appends it to the settlement calldata as an ERC-8021 suffix. Unset or invalid: no extension. Keep it in the service env, never in git. |
 | `SURPLUS_API_KEY` | Surplus buyer key (`inf_…`) with access to the configured model. Fund its workspace's deposited USDC balance; USDC in the linked wallet alone is not a prepaid balance. |
 | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` | Coinbase CDP facilitator credentials, required. The service reuses the `cdp-x402-service` installation of `@coinbase/x402`. |
 | `SINGIT_ASK_DIRECT_SOLANA` | Set `1` to enable the private direct Solana route with CDP metering. |

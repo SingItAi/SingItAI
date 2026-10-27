@@ -8,6 +8,7 @@
 // only the answer's actual cost.
 import { ExpressAdapter, paymentMiddlewareFromHTTPServer, x402HTTPResourceServer, x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
+import { withBuilderCode } from "./builder-code.mjs";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -158,6 +159,7 @@ function discoveryChallenge(httpServer) {
 // `isDiscoveryProbe` above) — a route that does not offer that probe should not advertise itself over GET either.
 export function addPaymentRoute(app, routes, server, { discoverable = true } = {}) {
   if (!server.hasExtension("bazaar")) server.registerExtension(bazaarResourceServerExtension);
+  routes = withBuilderCode(routes, server);
   const httpServer = new x402HTTPResourceServer(server, routes);
   app.use(paymentMiddlewareFromHTTPServer(httpServer));
   if (discoverable) {

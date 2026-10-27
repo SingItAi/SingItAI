@@ -1,6 +1,7 @@
 import json
 import tempfile
 import threading
+import os
 import unittest
 import unittest.mock
 import urllib.error
@@ -554,6 +555,27 @@ class WalletLaneTests(unittest.TestCase):
                 self.assertEqual(op["state"], "FAILED")
                 self.assertIn("Nothing counted", op["detail"])
 
+    def test_an_approve_with_an_erc8021_suffix_still_counts(self):
+        # "bc_test1234" is an obviously-fake example code (schema 0), and a schema-2 tail the
+        # way a wallet may add its own attribution; both are ignored by USDC and must not block.
+        schema0 = "62635f74657374313233340b0080218021802180218021802180218021"
+        schema2 = "a16177647465737400080280218021802180218021802180218021"
+        for n, tail in enumerate((schema0, schema2), start=30):
+            with self.subTest(tail=tail[:8]):
+                prepared = self.grant("5", n=n, data=self.approve(self.limiter, 5_000_000) + tail)
+                self.evm.mine(n, self.limiter, 5_000_000)
+                op = self.service.operation(self.USER, prepared["operation"])
+                self.assertEqual((op["state"], op["amountAtomic"]), ("DONE", "5000000"))
+
+    def test_trailing_bytes_that_are_not_an_erc8021_suffix_are_refused(self):
+        for n, tail in enumerate(("00", "deadbeef", "0080218021802180218021802180218021",
+                                  "62635f74657374313233340c0080218021802180218021802180218021"), start=40):
+            with self.subTest(tail=tail[:8]):
+                prepared = self.grant(n=n, data=self.approve(self.limiter, 5_000_000) + tail)
+                op = self.service.operation(self.USER, prepared["operation"])
+                self.assertEqual(op["state"], "FAILED")
+                self.assertIn("not an approve", op["detail"])
+
     def test_another_token_or_chain_is_refused(self):
         prepared = self.service.prepare_wallet(self.USER, "GRANT", amount="5")
         self.evm.put(tx_hash(1), self.owner.address, prepared["tx"]["data"], chain_id="0x1")
@@ -849,6 +871,16 @@ class StaticPageTests(unittest.TestCase):
         self.assertEqual((status, body), (405, b""))
         self.assertEqual(headers["Allow"], "GET, POST")
         self.api.handle.assert_not_called()
+
+    def test_config_js_gets_the_builder_code_from_the_environment_only(self):
+        config = Path(self.tmp.name) / "website" / "app" / "config.js"
+        config.write_text('window.SINGIT_APP_CONFIG = {\n  apiBase: "/web/v1",\n  baseBuilderCode: "",\n};\n')
+        with unittest.mock.patch.dict(os.environ, {"SIGN402_BASE_BUILDER_CODE": "bc_test1234"}):
+            self.assertIn(b'baseBuilderCode: "bc_test1234"', self.get("/app/config.js")[2])
+        for bad in ("", "BC-Not-Valid", 'x";alert(1);"'):
+            with self.subTest(bad=bad), unittest.mock.patch.dict(os.environ, {"SIGN402_BASE_BUILDER_CODE": bad}):
+                self.assertIn(b'baseBuilderCode: ""', self.get("/app/config.js")[2])
+        self.assertEqual(config.read_text().count('baseBuilderCode: ""'), 1)  # the file itself is never changed
 
     def test_the_app_manifest_is_served_as_one(self):
         (Path(self.tmp.name) / "website" / "app" / "manifest.webmanifest").write_text('{"name": "SingIt"}')
