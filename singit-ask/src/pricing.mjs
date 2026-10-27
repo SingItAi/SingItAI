@@ -99,10 +99,30 @@ export const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, ""
 // known (metered.mjs's `ceilings`, catalogue.mjs's `priceGuard`): Surplus's own list prices are above what a
 // seller actually charges, so a ceiling priced at list (share 1) holds even when a dearer seller wins; a smaller
 // share holds only together with the X-Min-Discount header that makes it true.
+//
+// MODEL_COST_OVERHEAD (SI-110): tokens a model bills that the question and max_tokens do not account for, per model
+// id. `promptTokens` is a hidden system prompt the seller adds; `reasoningTokens` is thinking billed beyond
+// max_tokens instead of inside it. Measured on grok-4.7 on 27 October: a 22-character question came back with
+// prompt_tokens 1248 (about 1220 hidden) and, at max_tokens 32, completion_tokens 56 of which 51 reasoning, so its
+// actual cost (1561 micro-USDC with markup and fee) ran past the 1500 ceiling and the paid answer was refused while
+// this service still paid for it. Rounded up to 1300 and 64. Only the ceiling grows: `upto` still settles actual
+// usage, and a payer's balance must only cover the higher authorization. `exact`, which charges the ceiling, gets
+// dearer for these models by the same overhead, which it otherwise absorbs as an overrun.
+export const MODEL_COST_OVERHEAD = Object.freeze({
+  "grok-4.7": Object.freeze({ promptTokens: 1300, reasoningTokens: 64 }),
+});
+export const costOverhead = (model) => {
+  const id = typeof model?.id === "string" ? model.id : "";
+  const extra = Object.hasOwn(MODEL_COST_OVERHEAD, id) ? MODEL_COST_OVERHEAD[id] : null;
+  return { promptTokens: extra?.promptTokens ?? 0, reasoningTokens: extra?.reasoningTokens ?? 0 };
+};
+
 // The most the model itself could bill for this question and answer size, in micro-units, before markup and fee.
 export function worstModelCostMicro(model, { chars, maxTokens, messageCount, charsPerToken = 4 }, share = 1) {
-  const inputTokens = Math.ceil(chars / charsPerToken) + 4 * messageCount;
-  return Math.ceil((inputTokens * model.promptUsdPerToken + maxTokens * model.completionUsdPerToken) * share * 1e6);
+  const extra = costOverhead(model);
+  const inputTokens = Math.ceil(chars / charsPerToken) + 4 * messageCount + extra.promptTokens;
+  const outputTokens = maxTokens + extra.reasoningTokens;
+  return Math.ceil((inputTokens * model.promptUsdPerToken + outputTokens * model.completionUsdPerToken) * share * 1e6);
 }
 
 export function ceilingAtomic(model, size, terms, share = 1) {
