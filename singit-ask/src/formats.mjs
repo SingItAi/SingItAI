@@ -14,7 +14,7 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
 import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -43,6 +43,15 @@ export function fitRequest(request, params) {
   const fitted = { ...request };
   for (const name of FILTERED_PARAMS) if (name in fitted && !params.includes(name)) delete fitted[name];
   return fitted;
+}
+
+// REASONING_HEADROOM (pricing.mjs, SI-112): the room the ceiling already prices for a model that cannot stop
+// thinking is added to the answer limit sent upstream, as askSurplus does on the chat routes.
+export function withHeadroom(request) {
+  const extra = reasoningHeadroom(request?.model);
+  if (!extra) return request;
+  const field = Number.isInteger(request.max_output_tokens) ? "max_output_tokens" : Number.isInteger(request.max_tokens) ? "max_tokens" : null;
+  return field ? { ...request, [field]: request[field] + extra } : request;
 }
 
 // Whether a reasoning model spent the whole answer budget thinking and wrote nothing usable: Messages stops on
@@ -253,7 +262,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                      ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify(fitRequest(req.format.request, req.format.info?.params)), signal: AbortSignal.timeout(FORMAT_LIMITS.timeoutMs) });
+          body: JSON.stringify(withHeadroom(fitRequest(req.format.request, req.format.info?.params))), signal: AbortSignal.timeout(FORMAT_LIMITS.timeoutMs) });
         // Read for every status: a long request can come back HTTP 200 with an error body.
         const data = await response.json().catch(() => null);
         if (!response.ok || !data || typeof data !== "object" || data.error || data.type === "error" || data.status === "failed") {

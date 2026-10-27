@@ -61,3 +61,15 @@ test("gemini-3.1-pro-preview gets reasoning headroom, sent upstream and priced",
   assert.deepEqual(sent.map((b) => b.max_tokens), [32 + 1024, 32]);
   assert.deepEqual(sent[0].reasoning, { effort: "none" }, "thinking is still asked to be as small as it goes");
 });
+
+test("Messages and Responses send the same priced headroom upstream (Codex P2)", async () => {
+  const { withHeadroom } = await import("../src/formats.mjs");
+  const G = "gemini-3.1-pro-preview";
+  assert.equal(withHeadroom({ model: G, max_tokens: 32, messages: [] }).max_tokens, 32 + 1024);
+  assert.equal(withHeadroom({ model: G, input: "hi", max_output_tokens: 64 }).max_output_tokens, 64 + 1024);
+  const plain = { model: "gpt-5.5", max_tokens: 32 };
+  assert.equal(withHeadroom(plain), plain, "other models go as they came");
+  const original = { model: G, max_tokens: 32 };
+  withHeadroom(original);
+  assert.equal(original.max_tokens, 32, "the parsed request is not mutated");
+});
