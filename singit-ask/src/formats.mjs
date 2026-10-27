@@ -15,6 +15,7 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
 import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
+import { competitorCapFor } from "./competitor-cap.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -181,6 +182,7 @@ const TAGS = ["llm", "chat", "inference", "claude", "gpt", "gemini", "deepseek",
 
 export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error }) {
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
+  const cap = competitorCapFor(config);
   const bufferPp = config.priceBufferPp ?? 1;
   for (const [route, upstreamPath] of Object.entries(FORMAT_ROUTES)) {
     const quotes = new WeakMap();
@@ -197,7 +199,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       try {
         const input = readFormatRequest(route, EXAMPLES[route]);
         const info = await catalogue.resolve(input.model);
-        return ceilings(info, { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) }, exactOutputFraction);
+        return ceilings(info, { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) }, exactOutputFraction, cap);
       } catch {
         return ceilings(null, {}, exactOutputFraction);
       }
@@ -213,7 +215,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
           throw new FormatError(400, "No trusted seller offers that model right now. Pick another; nothing was paid.");
         }
         req.format = { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) };
-        req.askCeilings = ceilings(info, req.format, exactOutputFraction);
+        req.askCeilings = ceilings(info, req.format, exactOutputFraction, cap);
         quotes.set(req.body, req.askCeilings);
         next();
       } catch (error) {

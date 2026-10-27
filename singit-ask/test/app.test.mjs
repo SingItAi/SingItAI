@@ -652,11 +652,11 @@ test("ceilingAtomic: share prices a smaller fraction of list, the worst case Sur
 
 test("priceGuard: the ceiling share is the cheapest qualifying share rounded up a whole percent plus the buffer, capped at list price", () => {
   // 25% off list (share 0.75) plus a 1pp buffer -> share 0.76, so Surplus must beat a 24% discount.
-  assert.deepEqual(priceGuard({ guardShare: () => 0.75 }, "m", 1), { share: 0.76, minDiscount: 24 });
+  assert.deepEqual(priceGuard({ guardShare: () => 0.75 }, "m", 1), { share: 0.76, minDiscount: 24, cheapestShare: 0.75 });
   // A share that already rounds to a whole percent still gets the buffer added.
-  assert.deepEqual(priceGuard({ guardShare: () => 0.6 }, "m", 2), { share: 0.62, minDiscount: 38 });
+  assert.deepEqual(priceGuard({ guardShare: () => 0.6 }, "m", 2), { share: 0.62, minDiscount: 38, cheapestShare: 0.6 });
   // The buffer never pushes the share past list price (1): no header is sent, since there is nothing to bound.
-  assert.deepEqual(priceGuard({ guardShare: () => 0.995 }, "m", 2), { share: 1, minDiscount: null });
+  assert.deepEqual(priceGuard({ guardShare: () => 0.995 }, "m", 2), { share: 1, minDiscount: null, cheapestShare: 0.995 });
   // No guard share known (book not read, or no guardShare at all): list price, no header.
   assert.deepEqual(priceGuard({ guardShare: () => null }, "m", 1), { share: 1, minDiscount: null });
   assert.deepEqual(priceGuard(null, "m", 1), { share: 1, minDiscount: null });

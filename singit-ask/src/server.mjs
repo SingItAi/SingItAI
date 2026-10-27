@@ -25,6 +25,8 @@
 //                              turned into the X-Min-Discount header (src/catalogue.mjs's priceGuard), default 1
 //   SINGIT_ASK_EXACT_OUTPUT_FRACTION  fraction (0,1] of max_tokens that `exact` offers price their output at;
 //                              `upto` always prices the whole budget. Default 0.3
+//   SINGIT_ASK_COMPETITOR_CAP  "off" turns off the competitor cap on `exact` (src/competitor-cap.mjs); on by default
+//   SINGIT_ASK_COMPETITOR_CAP_FILE  a JSON file replacing the bundled src/competitor-ceilings.json (same shape)
 
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
@@ -32,6 +34,7 @@ import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 import { createApp } from "./app.mjs";
 import { PriceBook } from "./prices.mjs";
+import { readFileSync } from "node:fs";
 import { DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 
 function required(name) {
@@ -65,6 +68,11 @@ const config = {
   config.priceBufferPp = Number.isInteger(bufferPp) && bufferPp >= 0 ? bufferPp : 1;
   const fraction = Number(process.env.SINGIT_ASK_EXACT_OUTPUT_FRACTION);
   config.exactOutputFraction = fraction > 0 && fraction <= 1 ? fraction : DEFAULT_EXACT_OUTPUT_FRACTION;
+  // Unset: the bundled competitor-ceilings.json (createApp's default). A file that cannot be read stops the start.
+  if (String(process.env.SINGIT_ASK_COMPETITOR_CAP || "").trim().toLowerCase() === "off") config.competitorCap = null;
+  else if (process.env.SINGIT_ASK_COMPETITOR_CAP_FILE) {
+    config.competitorCap = JSON.parse(readFileSync(process.env.SINGIT_ASK_COMPETITOR_CAP_FILE, "utf8"));
+  }
 }
 const model = config.model;
 config.freeModels = process.env.SINGIT_ASK_FREE_MODELS === undefined ? [model]

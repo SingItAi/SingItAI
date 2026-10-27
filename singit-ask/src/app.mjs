@@ -25,6 +25,7 @@ import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, addFormatRoutes } from "./formats.mjs";
+import { competitorCapFor } from "./competitor-cap.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, SERVICE_NAME, ICON_URL, usd, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 
@@ -210,7 +211,7 @@ async function pricingFor(config, catalogue, modelId) {
     chars, messageCount: 1, model: modelId };
   const askInput = await chooseModel(config, catalogue, input);
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
-  const { upto, exact } = ceilings(askInput.info, askInput, exactOutputFraction);
+  const { upto, exact } = ceilings(askInput.info, askInput, exactOutputFraction, competitorCapFor(config));
   const price = net => ({ priceAtomic: upto[net], usd: Number(usd(upto[net])) });
   const ceiling = net => ({ ceilingAtomic: exact[net], usd: Number(usd(exact[net])) });
   return {

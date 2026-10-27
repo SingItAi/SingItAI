@@ -14,6 +14,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic, minDiscountFor,
   DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
+import { capExact, competitorCapFor } from "./competitor-cap.mjs";
 
 // Actual model cost + 30% + the network's settlement fee. Solana's upto escrows the ceiling, then
 // settles the actual amount and refunds the rest: two transactions, hence its higher fee.
@@ -76,14 +77,25 @@ export const exactSolanaOffer = (config, quotes, fallback) => ({
 // it only ever settles actual usage, so a higher authorization costs the payer nothing, and a dense prompt (CJK,
 // emoji, ...) can never tokenize to more than it authorized. `exact` is charged flat at the tighter ~4-chars-per-
 // token estimate, since it already absorbs an overrun via `allowOverrun` instead of refusing the answer.
-export function ceilings(info, input, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION) {
+//
+// `cap` (competitor-cap.mjs, config.competitorCap) then lowers each network's `exact` to the competitor's price for
+// the same question, never below this service's cost floor; null (or no catalogue entry) leaves `exact` as built.
+export function ceilings(info, input, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION, cap = null, log) {
   const size = { chars: input.chars, messageCount: input.messageCount };
   const build = (maxTokens, charsPerToken) => Object.fromEntries(Object.entries(TERMS_BY_NETWORK).map(([net, terms]) => {
     if (!info) return [net, terms.maxChargeAtomic];
     const amount = ceilingAtomic(info, { ...size, maxTokens, charsPerToken }, terms, input.share ?? 1);
     return [net, input.isDefault && BigInt(amount) > BigInt(terms.maxChargeAtomic) ? terms.maxChargeAtomic : amount];
   }));
-  return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction)) };
+  const exactTokens = Math.ceil(input.maxTokens * exactOutputFraction);
+  const exact = build(exactTokens);
+  if (info && cap) {
+    for (const [net, terms] of Object.entries(TERMS_BY_NETWORK)) {
+      exact[net] = capExact({ cap, info, network: net, terms, uncapped: exact[net], exactTokens,
+        size: { ...size, maxTokens: input.maxTokens }, share: input.cheapestShare ?? input.share, ...(log ? { log } : {}) });
+    }
+  }
+  return { upto: build(input.maxTokens, 1), exact };
 }
 
 // The terms of the network the payer chose, with the ceiling this question was offered for the scheme they
@@ -176,11 +188,11 @@ export function addPaymentRoute(app, routes, server, { discoverable = true } = {
 // recorded price with what its own empty, unpaid POST is offered (price_mismatch when no accept carries it). The
 // standing ceiling (the old probe price) is kept only when the example cannot be quoted right now. Probes never pay:
 // a payment on an empty body is refused before settlement (see `isDiscoveryProbe` and the handlers below).
-export function exampleProbe({ probeBody, readRequest, choose, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION }) {
+export function exampleProbe({ probeBody, readRequest, choose, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION, cap = null }) {
   const probe = perRequest(async () => {
     try {
       const input = await choose(readRequest(probeBody));
-      return ceilings(input.info, input, exactOutputFraction);
+      return ceilings(input.info, input, exactOutputFraction, cap);
     } catch {
       return ceilings(null, {}, exactOutputFraction);
     }
@@ -205,8 +217,9 @@ export function perRequest(quote) {
 // `makeOffers(quotes, probeFallback)`: `probeFallback(bucket, network)` is the discovery probes' price for that
 // offer (see `exampleProbe`), present only when `probeBody` is given; without it the probes keep the standing ceiling.
 export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, offerEmptyProbe = false, probeBody }) {
+  const cap = competitorCapFor(config);
   const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose,
-    exactOutputFraction: config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION });
+    exactOutputFraction: config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION, cap });
   const offers = makeOffers(quotes, probeFallback);
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new UptoEvmScheme())
@@ -223,7 +236,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     }
     try {
       req.askInput = await choose(readRequest(req.body));
-      req.askCeilings = ceilings(req.askInput.info, req.askInput, exactOutputFraction);
+      req.askCeilings = ceilings(req.askInput.info, req.askInput, exactOutputFraction, cap);
       quotes.set(req.body, req.askCeilings);
       next();
     } catch (error) {

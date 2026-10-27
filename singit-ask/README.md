@@ -32,6 +32,15 @@ what it actually cost; nothing is charged without an answer.
   completions, `/v1/chat/{model}`, Messages, Responses) `accepts` leads with `upto` (Base, then
   Solana), the actual-cost offer, followed by `exact` on Base and Solana; routes sold only at a
   fixed price (images, speech, search, video) offer `exact` alone, Base first.
+- **`exact` competitor cap (SI-102):** on Base, a model listed in `src/competitor-ceilings.json`
+  is never offered `exact` above what BlockRun asks for the same question: their rule (input
+  tokens x input price + 10% of `max_tokens` x output price + 0.001 USDC, at least 0.002),
+  rebuilt per question from that file, which also records where the numbers came from (BlockRun's
+  unpaid 402s and `/api/v1/models`, 26.10.2026). The cap never goes below the cost floor: the
+  typical answer `exact` assumes, bought at the cheapest trusted Surplus offer, plus
+  `floorMarkupBps` and the settlement fee. When the cap is below that floor the floor is kept and
+  logged. No Solana cap (BlockRun's Solana rule changed between probes); `upto` is never capped.
+  `SINGIT_ASK_COMPETITOR_CAP=off` turns it off, `SINGIT_ASK_COMPETITOR_CAP_FILE` replaces the file.
 - **Per-model routes:** when a catalogue is configured, `POST /v1/chat/{model}` is a
   separate x402 resource for each of 14 popular models (`claude-opus-5.5`,
   `claude-sonnet-5.5`, `claude-haiku-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.5`,

@@ -1,0 +1,16 @@
+{
+  "competitor": "BlockRun",
+  "source": "BlockRun's own unpaid 402 challenges (POST https://blockrun.ai/api/v1/chat/completions and /api/v1/messages, no payment) and its public price list (GET https://blockrun.ai/api/v1/models, llms.txt: 'no margin'), recorded by SingIt Dev/Ops on 26.10.2026 16:50 and re-checked 18:23 CET (SI-102 competitor review, notes kept outside this repo in the Dev/Ops workspace: competitors/blockrun-vs-singit.md and competitors/raw/). Their exact price on Base reproduced every probe to 1 micro-USDC as: input tokens x input price + ceil(10% of max_tokens) x output price + 0.001 USDC, never below 0.002 USDC. Their Solana exact rule changed between the two probes (10% of max_tokens at 16:50, the whole max_tokens at 18:23), so no Solana cap is set.",
+  "measuredAt": "2026-10-26",
+  "floorMarkupBps": 3000,
+  "networks": {
+    "eip155:8453": { "exactOutputFraction": 0.1, "feeAtomic": 1000, "minAtomic": 2000 },
+    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": null
+  },
+  "models": {
+    "claude-opus-5.5": { "competitorId": "anthropic/claude-opus-5.5", "inputUsdPerMillion": 4, "outputUsdPerMillion": 20, "probedExactBaseAtomic": 2153, "probedMaxTokens": 500 },
+    "claude-sonnet-5.5": { "competitorId": "anthropic/claude-sonnet-5.5", "inputUsdPerMillion": 2, "outputUsdPerMillion": 10, "probedExactBaseAtomic": 2000, "probedMaxTokens": 500 },
+    "gpt-5.5": { "competitorId": "openai/gpt-5.5", "inputUsdPerMillion": 5, "outputUsdPerMillion": 30, "probedExactBaseAtomic": 2690, "probedMaxTokens": 500 },
+    "deepseek-v4.1-flash": { "competitorId": "deepseek/deepseek-v4.1-flash", "inputUsdPerMillion": 0.14, "outputUsdPerMillion": 0.28, "probedExactBaseAtomic": 2000, "probedMaxTokens": 500 }
+  }
+}

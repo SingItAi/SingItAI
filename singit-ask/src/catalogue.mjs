@@ -152,7 +152,8 @@ export function priceGuard(catalogue, id, bufferPp) {
   const cheapest = catalogue?.guardShare ? catalogue.guardShare(id) : null;
   if (cheapest === null || cheapest === undefined) return { share: 1, minDiscount: null };
   const share = Math.min(1, (Math.ceil(cheapest * 100) + bufferPp) / 100);
-  return { share, minDiscount: share < 1 ? 100 - Math.round(share * 100) : null };
+  // `cheapestShare` (unbuffered) is what competitor-cap.mjs's cost floor is bought at; it never sets a ceiling.
+  return { share, minDiscount: share < 1 ? 100 - Math.round(share * 100) : null, cheapestShare: cheapest };
 }
 
 // Both lists are read from Surplus, which takes a second or three; a visitor must never wait for that. What is
