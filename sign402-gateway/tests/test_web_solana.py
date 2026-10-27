@@ -206,6 +206,23 @@ class SolanaVeniceTests(unittest.TestCase):
         self.assertIn("sold on Base only", agent.message(ACCOUNT, None, "resolve vitalik.eth ens")["messages"][1]["text"])
 
 
+    def test_a_paused_solana_agent_is_told_only_a_new_wallet_approval_resumes_it(self):
+        # SI-98: new limits alone never lift a Solana emergency stop, so the chat must not offer them (Base's wording);
+        # it offers the wallet approval that does resume it.
+        self.grant()
+        self.lane.pause(ACCOUNT)
+        agent = wg.WebAgent(allowance=Mock(), shop=None, store=wg.ChatStore(Path(self.tmp.name) / "web.db"))
+        agent.solana = self.lane
+        for lang, needle in (("en", "Only a new approval signed by your wallet resumes it; new limits alone do not"),
+                             ("ru", "только новое разрешение, подписанное вашим кошельком; одни новые лимиты")):
+            with self.subTest(lang=lang):
+                text, cards = agent._ready(ACCOUNT, lang)
+                self.assertIn(needle, text)
+                self.assertNotIn("New limits make a new", text)
+                self.assertNotIn("Новые лимиты — это новый лимитер", text)
+                self.assertEqual([(c["type"], c["kind"], c["amount"], c["limiter"]) for c in cards],
+                                 [("wallet", "grant", "20", self.lane.agent_key(ACCOUNT)[0])])
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -1133,6 +1133,16 @@ class WebAgent:
         state = self._state(account)
         if not state["configured"]:
             return self._no_limiter(lang)
+        if state["state"] == "paused" and state.get("chain") == "solana":
+            # SI-98: a Solana emergency stop ends only with a fresh approval the owner's wallet signs after it
+            # (solana_allowance.py _paused_at); new limits alone never resume it, unlike Base's new limiter.
+            daily = Decimal(state.get("dailyCapAtomic") or 20_000_000) / Decimal(1_000_000)
+            return say(lang, "Your agent is paused (emergency stop), so it cannot spend. Only a new approval signed by "
+                             "your wallet resumes it; new limits alone do not. Approve up to your daily limit to resume:",
+                       "Ваш агент на паузе (экстренная остановка) и не может тратить. Возобновить его может только "
+                       "новое разрешение, подписанное вашим кошельком; одни новые лимиты этого не делают. "
+                       "Подтвердите сумму до дневного лимита, чтобы продолжить:"), [
+                {"type": "wallet", "kind": "grant", "amount": str(daily), "limiter": state["limiter"]}]
         if state["state"] in ("paused", "expired"):
             daily = Decimal(state.get("dailyCapAtomic") or 20_000_000) / Decimal(1_000_000)
             per = Decimal(state.get("perPurchaseCapAtomic") or 5_000_000) / Decimal(1_000_000)
