@@ -160,7 +160,7 @@ function discoveryChallenge(httpServer) {
 // `isDiscoveryProbe` above) — a route that does not offer that probe should not advertise itself over GET either.
 export function addPaymentRoute(app, routes, server,
   { discoverable = true, log = console.log, permitGuard = defaultPermitGuard } = {}) {
-  server.onAfterSettle(ctx => { permitGuard.record(ctx.paymentPayload); });
+  server.onAfterSettle(ctx => { permitGuard.record(ctx.paymentPayload, ctx.requirements, ctx.result); });
   // Only diagnostic fields are logged: facilitator errors can embed payer addresses or signatures, so redact
   // long encoded values even in the reason string rather than serializing any part of the payment payload.
   const failure = phase => ctx => {

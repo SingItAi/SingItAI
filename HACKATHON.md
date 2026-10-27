@@ -324,6 +324,6 @@ verification and inference. Failure hooks redact payment identifiers, overrun di
 cost without changing pricing, and reasoning-only models receive the nested effort control with the existing
 low-effort retry. Pre-settlement answer logs now describe settlement as pending.
 
-Verification: `npm test` under Node 22: 217 of 218 pass; the one failure (`test/solana-direct.test.mjs`, module
+Verification: `npm test` under Node 22: 218 of 219 pass; the one failure (`test/solana-direct.test.mjs`, module
 link error) fails the same way on `main` without this change. No live payments were sent. The nonce memory is local to one process, bounded to 10,000 owner/asset pairs and
 expires after ten minutes; it does not coordinate concurrent requests or replicas and does not replace chain validation.

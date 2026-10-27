@@ -1,6 +1,8 @@
 // RPCs can lag a successful settlement: remembering consumed nonces locally prevents paying for another model
 // answer while the buyer and facilitator still see the old chain state. This is only a short-lived safety net;
 // the facilitator remains authoritative, and malformed payments must reach its existing validation unchanged.
+const PERMIT2 = "0x000000000022d473030f116ddee9f6b43ac78ba3";
+
 export function createPermitGuard({ maxEntries = 10000, ttlMs = 600000, now = Date.now } = {}) {
   const settled = new Map();
   const permit = payload => {
@@ -16,7 +18,20 @@ export function createPermitGuard({ maxEntries = 10000, ttlMs = 600000, now = Da
     return value;
   };
   return {
-    record(payload) {
+    // Only a permit the settlement provably consumed: on `upto` over EVM (Permit2), a payment that carries the
+    // eip2612GasSponsoring extension is verified with that permit bound to the payer and the token
+    // (@x402/evm 2.28 upto/facilitator `validateEip2612PermitForPayment`) and settled through
+    // `settleUptoWithEIP2612`, which spends its nonce in the same transaction. `exact` (EIP-3009) settles
+    // without it, so an extension riding along there is never trusted: anyone could name another wallet in it.
+    record(payload, requirements, result) {
+      if (requirements?.scheme !== "upto" || !String(requirements?.network ?? "").startsWith("eip155:")) return;
+      if (!payload?.payload?.permit2Authorization) return;
+      const info = payload?.extensions?.eip2612GasSponsoring?.info;
+      if (typeof result?.payer !== "string" || typeof info?.from !== "string"
+          || info.from.toLowerCase() !== result.payer.toLowerCase()) return;
+      if (typeof requirements.asset !== "string" || typeof info.asset !== "string"
+          || info.asset.toLowerCase() !== requirements.asset.toLowerCase()) return;
+      if (typeof info.spender !== "string" || info.spender.toLowerCase() !== PERMIT2) return;
       const p = permit(payload);
       if (!p) return;
       const previous = entry(p.key);
