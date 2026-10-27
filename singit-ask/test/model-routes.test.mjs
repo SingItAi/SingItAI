@@ -106,8 +106,9 @@ test("every model route's description is short, billing-free, and the resource c
     assert.ok(description.length <= 300, `${route}: ${description.length} chars`);
     assert.doesNotMatch(description, BILLING_WORDS, route);
     assert.match(required.resource.iconUrl ?? "", /\.png$/, route);
-    assert.equal(required.resource.serviceName, "SingIt Ask", route);
-    assert.ok(required.resource.tags.includes(model.id), route);
+    assert.equal(required.resource.serviceName, `SingIt ${model.name} Chat`, route);
+    // Bazaar keeps only the first 5 tags (SI-90): the model's own id must survive the cut.
+    assert.ok(required.resource.tags.slice(0, 5).includes(model.id), route);
   }
 });
 

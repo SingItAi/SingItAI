@@ -14,7 +14,7 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
 import { addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -121,14 +121,15 @@ const refusal = (route, status, message, code) => (route === "/v1/messages"
   ? { type: "error", error: { type: status === 400 || status === 422 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message } }
   : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", ...(code ? { code } : {}), message } });
 
-// <=300 characters with the "SingIt Ask: " prefix (see app.mjs's DISCOVERY_DESCRIPTION for why): what each format
-// does and when to call it, not what it costs.
+// <=300 characters, opening with the category words and naming the brand once, later (see app.mjs's
+// DISCOVERY_DESCRIPTION for why): what each format does and when to call it, not what it costs.
 const DESCRIPTIONS = {
-  "/v1/messages": "Anthropic's Messages API (what Claude Code and the Anthropic SDK speak), any model listed at GET "
-    + "/v1/models, Claude included. Call it when an agent needs a Claude-format answer with no API key or account, "
-    + "or wants to try another model the same way.",
-  "/v1/responses": "OpenAI's Responses API, any model listed at GET /v1/models (GPT, Claude, Gemini, DeepSeek and more). "
-    + "Call it when an agent needs an answer in OpenAI's Responses format with no API key or account.",
+  "/v1/messages": "Anthropic Messages API for LLM inference (what Claude Code and the Anthropic SDK speak), any model "
+    + "listed at GET /v1/models, Claude included. Call it when an agent needs a Claude-format answer with no API key "
+    + "or account, or wants to try another model the same way. Served by SingIt.",
+  "/v1/responses": "OpenAI Responses API for LLM inference, any model listed at GET /v1/models (GPT, Claude, Gemini, "
+    + "DeepSeek and more). Call it when an agent needs an answer in OpenAI's Responses format with no API key or "
+    + "account. Served by SingIt.",
 };
 const EXAMPLES = {
   "/v1/messages": { model: "claude-sonnet-5.5", max_tokens: 300, messages: [{ role: "user", content: "What is x402?" }] },
@@ -177,7 +178,13 @@ const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
     providerCostAtomic: { type: "string" }, markupAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } } } };
-const TAGS = ["llm", "chat", "inference", "claude", "gpt", "gemini", "deepseek", "pay-per-use", "solana", "base", "singit"];
+// Bazaar keeps only the first 5 (pricing.mjs's discoveryTags): the format's own category first.
+const TAGS = {
+  "/v1/messages": discoveryTags("llm", "anthropic-messages", "claude", "inference", "chat", "anthropic-compatible",
+                                "gpt", "gemini", "deepseek", "singit"),
+  "/v1/responses": discoveryTags("llm", "openai-responses", "inference", "chat", "openai-compatible", "gpt", "claude",
+                                 "gemini", "deepseek", "singit"),
+};
 
 export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error }) {
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
@@ -226,8 +233,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       accepts: [baseOffer(config, quotes, probe("upto", BASE)), solanaOffer(config, quotes, probe("upto", SOLANA)),
         exactBaseOffer(config, quotes, probe("exact", BASE)), exactSolanaOffer(config, quotes, probe("exact", SOLANA))],
       mimeType: "application/json",
-      description: `SingIt Ask: ${DESCRIPTIONS[route]}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
-      tags: [...TAGS, route === "/v1/messages" ? "anthropic-compatible" : "openai-compatible"],
+      description: DESCRIPTIONS[route], serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
       extensions: { ...declareEip2612GasSponsoringExtension(),
         ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
           output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }) },

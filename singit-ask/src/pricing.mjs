@@ -12,10 +12,32 @@ export const SOLANA_ASSET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const SOLANA_PAY_TO = "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu";
 export const SOLANA_TERMS = Object.freeze({ ...TERMS, settlementFeeAtomic: "2000" });
 
-// The x402 resource's branding, the same on every discoverable route (ResourceInfo's serviceName/iconUrl,
-// @x402/core 2.28): Bazaar and other directories show these next to the listing.
+// The x402 resource's branding (ResourceInfo's serviceName/iconUrl, @x402/core 2.28): Bazaar and other directories
+// show these next to the listing. SERVICE_NAME is the service's own name (the bare origin's index, llms.txt).
 export const SERVICE_NAME = "SingIt Ask";
 export const ICON_URL = "https://singitai.app/assets/icons/icon-512.png";
+
+// Each discoverable route's serviceName says what it is, brand first (SI-90): CDP's Bazaar search is semantic, and
+// every top result for a generic query ("chat completions", "web search") has a descriptive serviceName, so one
+// "SingIt Ask" for every route ranked for none of them. Short: directories show it as the listing's title.
+export const SERVICE_NAMES = Object.freeze({
+  "/v1/chat/completions": "SingIt LLM Chat Completions",
+  "/v1/messages": "SingIt Anthropic Messages API",
+  "/v1/responses": "SingIt OpenAI Responses API",
+  "/v1/exa/search": "SingIt Web Search (Exa)",
+  "/v1/exa/answer": "SingIt Web Answers (Exa)",
+  "/v1/exa/contents": "SingIt Web Page Contents (Exa)",
+  "/v1/audio/speech": "SingIt Text to Speech",
+  "/v1/images/generations": "SingIt Image Generation",
+  "/v1/video/generations": "SingIt Video Generation",
+});
+// A per-model route's (model-routes.mjs) serviceName: "SingIt Claude Opus 5.5 Chat".
+export const modelServiceName = (name) => `SingIt ${name} Chat`;
+
+// Bazaar keeps only the first 5 tags (SI-90), so the category tags a buyer searches for come first, brand and
+// network after; the rest still reach directories that keep them all.
+export const MAX_TAGS = 10;
+export const discoveryTags = (...tags) => [...new Set(tags)].slice(0, MAX_TAGS);
 
 // The share of max_tokens `exact`'s flat price assumes the answer will use. Was 0.65 (p90 of 38 recorded answers,
 // SI-60); 0.3 since SI-102 (26.10), so `exact` on Base is not dearer than BlockRun's for the same question (Opus 5.5
