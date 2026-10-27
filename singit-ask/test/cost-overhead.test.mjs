@@ -47,7 +47,7 @@ test("gemini-3.1-pro-preview gets reasoning headroom, sent upstream and priced",
   const GEMINI = { id: "gemini-3.1-pro-preview", promptUsdPerToken: 2e-6, completionUsdPerToken: 12e-6 };
   assert.equal(REASONING_HEADROOM["gemini-3.1-pro-preview"], 1024);
   assert.deepEqual(costOverhead(GEMINI), { promptTokens: 0, reasoningTokens: 1024 });
-  for (const id of ["grok-4.7", "gemini-3.8-flash", "toString", "__proto__", undefined, null, 7])
+  for (const id of ["grok-4.7", "gemini-3.8-flash", "claude-sonnet-5.5", "toString", "__proto__", undefined, null, 7])
     assert.equal(reasoningHeadroom(id), 0);
   // (22 + 4) * 2e-6 + (32 + 1024) * 12e-6 = 0.012724 USD at list, rounded up (float) to 12725.
   assert.equal(worstModelCostMicro(GEMINI, TEST_CALL), 12725);
@@ -72,4 +72,24 @@ test("Messages and Responses send the same priced headroom upstream (Codex P2)",
   const original = { model: G, max_tokens: 32 };
   withHeadroom(original);
   assert.equal(original.max_tokens, 32, "the parsed request is not mutated");
+});
+
+// SI-113: claude-opus-5.5 spent max_tokens 64 thinking once (422) despite reasoning_effort "none"; 256 tokens of room.
+test("claude-opus-5.5 gets 256 tokens of reasoning headroom, sent upstream and priced", async () => {
+  const { REASONING_HEADROOM } = await import("../src/pricing.mjs");
+  const { askSurplus } = await import("../src/app.mjs");
+  const { withHeadroom } = await import("../src/formats.mjs");
+  const OPUS = { id: "claude-opus-5.5", promptUsdPerToken: 4e-6, completionUsdPerToken: 20e-6 };
+  assert.equal(REASONING_HEADROOM["claude-opus-5.5"], 256);
+  assert.deepEqual(costOverhead(OPUS), { promptTokens: 0, reasoningTokens: 256 });
+  // (22 + 4) * 4e-6 + (64 + 256) * 20e-6 = 0.006504 USD at list.
+  assert.ok(Math.abs(worstModelCostMicro(OPUS, { ...TEST_CALL, maxTokens: 64 }) - 6504) <= 1);
+  const sent = [];
+  const ok = async (_url, init) => { sent.push(JSON.parse(init.body));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "hi" } }], usage: {} })); };
+  await askSurplus({ surplusUrl: "https://surplus.invalid", surplusKey: "k" }, [{ role: "user", content: "hi" }], 64, ok,
+    "claude-opus-5.5", { params: ["max_tokens", "reasoning", "reasoning_effort"] });
+  assert.equal(sent[0].max_tokens, 64 + 256);
+  assert.equal(sent[0].reasoning_effort, "none", "thinking is still asked to be off");
+  assert.equal(withHeadroom({ model: "claude-opus-5.5", max_tokens: 64, messages: [] }).max_tokens, 64 + 256);
 });

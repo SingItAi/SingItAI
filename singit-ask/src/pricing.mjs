@@ -118,8 +118,13 @@ export const MODEL_COST_OVERHEAD = Object.freeze({
 // tokens. Gemini 3 Pro has no thinking-off setting (lowest thinking level is "low"), so room is added instead.
 // The headroom is priced as output (costOverhead's reasoningTokens), so the ceiling covers it; `upto` still settles
 // actual usage, `exact` gets dearer by it. The payer's max_tokens may then bound the answer only loosely.
+//
+// claude-opus-5.5 (SI-113): it lists reasoning_effort and is sent "none", yet a three-word answer came back with 26
+// completion tokens (about 20 of them thinking, 27 October, twice) and once spent all of max_tokens 64 thinking (422,
+// paid test 17:49 CET); at 256 it answered. 256 more tokens upstream cover that; the payer is billed what was used.
 export const REASONING_HEADROOM = Object.freeze({
   "gemini-3.1-pro-preview": 1024,
+  "claude-opus-5.5": 256,
 });
 export const reasoningHeadroom = (id) => (typeof id === "string" && Object.hasOwn(REASONING_HEADROOM, id) ? REASONING_HEADROOM[id] : 0);
 export const costOverhead = (model) => {
