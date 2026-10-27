@@ -8,6 +8,8 @@ import { FORMAT_ROUTES } from "../src/formats.mjs";
 import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage } from "../src/pricing.mjs";
 import { ModelCatalogue, UnknownModel, priceGuard } from "../src/catalogue.mjs";
 import { modelRoutePaths } from "../src/model-routes.mjs";
+import { SEARCH_ROUTES } from "../src/search.mjs";
+import { VIDEO_ROUTE } from "../src/video.mjs";
 
 const SOLANA_PAY_TO = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
 const BASE_PAY_TO = "0x1111111111111111111111111111111111111111";
@@ -371,6 +373,45 @@ test("GET /llms.txt lists every discoverable route and the OpenAPI/model links",
   for (const route of [ROUTE, ...Object.keys(FORMAT_ROUTES)]) assert.ok(text.includes(`${url}${route}`), route);
   assert.ok(text.includes(`${url}/openapi.json`));
   assert.ok(text.includes(`${url}/v1/models`));
+});
+
+// llms.txt says only what this instance serves: Exa without "(when enabled)" when it is on and not at all when it is
+// off, the free tier from the free terms in use, /v1/prices when it is registered, no video route while video is
+// unlisted, and `upto` before `exact`.
+test("GET /llms.txt describes only what is live: Exa, free tier, prices, no video, upto first", async (t) => {
+  const llms = async (options, config = CONFIG) => {
+    const app = createApp(config, { facilitatorClient: fakeFacilitator(), log: () => {}, catalogue: fakeCatalogue,
+      upstream: async () => { throw new Error("no model is asked"); }, ...options });
+    const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
+    t.after(() => listener.close());
+    const url = `http://127.0.0.1:${listener.address().port}`;
+    return { url, text: await (await fetch(`${url}/llms.txt`)).text() };
+  };
+  const on = await llms({ exaKey: "exa_test", priceBook: {} },
+    { ...CONFIG, freeModels: ["deepseek-v4.1-flash"], freeLimits: { perVisitorPerDay: 7, maxTokens: 300 } });
+  assert.ok(!on.text.includes("when enabled"));
+  assert.match(on.text, /Exa web search/);
+  for (const route of Object.keys(SEARCH_ROUTES)) assert.ok(on.text.includes(`- POST ${on.url}${route}`), route);
+  assert.ok(!on.text.includes(VIDEO_ROUTE));
+  assert.ok(!/video/i.test(on.text));
+  const free = on.text.split("## Free to try\n\n")[1]?.split("\n")[0];
+  assert.ok(free, "a Free to try section");
+  assert.match(free, new RegExp(`"free/deepseek-v4\\.1-flash" on POST ${on.url.replace(/\./g, "\\.")}/v1/chat/completions`));
+  assert.match(free, /7 answers a day per network/);
+  assert.match(free, /up to 300 tokens/);
+  assert.match(free, /midnight UTC/);
+  assert.ok(on.text.includes(`- GET ${on.url}/v1/prices `));
+  assert.ok(on.text.indexOf("`upto`, listed first") > 0);
+  assert.ok(on.text.indexOf("`upto`") < on.text.indexOf("`exact`"));
+  assert.match(on.text, /`exact` \(a flat price for a typical-length answer, about 30% of max_tokens\)/);
+  assert.ok(on.text.includes("https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md"));
+  assert.ok(on.text.includes("MCP server (API key, not x402): https://app.singitai.app/mcp"));
+
+  const off = await llms({ exaKey: null }, { ...CONFIG, freeModels: [] });
+  assert.ok(!off.text.includes("when enabled"));
+  assert.ok(!/Exa|\/v1\/exa\//.test(off.text));
+  assert.ok(!off.text.includes("## Free to try"));
+  assert.ok(!off.text.includes("/v1/prices"));
 });
 
 test("health and the model list are free, and the old test page is gone", async (t) => {

@@ -12,6 +12,27 @@ SingIt lets you connect the wallet you already use, set a daily and a per-purcha
 - SingIt Ask, an x402 API at https://ask.singitai.app — language-model chat completions, Anthropic's Messages and OpenAI's Responses formats, images, speech and web search, each paid per call in USDC on Base or Solana, no account or API key. Its own llms.txt: https://ask.singitai.app/llms.txt
 - A remote MCP server at https://app.singitai.app/mcp (free tools without a key; a SingIt API key for paid tools).
 
+## Start here: free, then a key, then MCP
+
+1. Free: POST https://ask.singitai.app/v1/chat/completions with model "free/deepseek-v4.1-flash". 20 short answers a day per network, no wallet, no key; resets at midnight UTC.
+2. API key: in the SingIt app (https://app.singitai.app/app/), Settings → API keys. The wallet signs the key's limits (per day, per request, how many days); top up $1 to $50 at a time in USDC. With a key, OpenAI SDK, Anthropic SDK and Claude Code work at https://app.singitai.app/v1 (cost + 30%, no per-call fee).
+3. MCP: https://app.singitai.app/mcp (Streamable HTTP), official MCP Registry name app.singitai/singit.
+   - Free, no key: get_price, list_price_symbols, list_models.
+   - Free with a key: get_balance.
+   - Paid per call from the key's limits (USDC on Base or Solana): web_search, read_page.
+   - Paid, Base accounts for now: get_x_profile, get_crypto_news, get_hyperliquid_market, get_funding_rates, resolve_ens, get_token_price; demo calls get_weather, get_singit_risk_check.
+   - Claude Code: claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer sk_singit_..."
+   - Install guide: https://github.com/bubon-ik/SingItAI/blob/main/llms-install.md
+
+Agents with their own wallet can skip the key: pay per answer over x402 at https://ask.singitai.app (USDC on Base or Solana).
+
+## First paid x402 call
+
+1. POST https://ask.singitai.app/v1/chat/completions with no payment, e.g. {"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Hello"}]}. The answer is HTTP 402 with a PAYMENT-REQUIRED header: base64 JSON, x402Version 2.
+2. Its accepts list `upto` first (Base, then Solana): you sign a ceiling and pay the answer's actual cost + 30% + a 0.001 USDC fee on Base (0.002 on Solana). `exact` follows on both networks: a flat price for a typical-length answer (about 30% of max_tokens), for wallets that sign only exact. USDC on Base needs no ETH (gas is sponsored).
+3. Sign one offer and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200: choices[0].message.content, billing.totalAtomic (what was settled, in USDC micro-units) and a PAYMENT-RESPONSE header.
+- Walkthrough with code (x402 fetch, Coinbase Bazaar MCP, Coinbase agentic wallet): https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md
+
 ## For developers
 
 - Docs: https://singitai.app/developers/

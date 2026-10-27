@@ -17,7 +17,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css?v=bb7061fc">
-<link rel="stylesheet" href="/dev.css?v=1">
+<link rel="stylesheet" href="/dev.css?v=2">
 <!-- Umami, self-hosted and cookieless (docs/analytics.md) -->
 <script defer src="https://stats.singitai.app/s.js" data-website-id="6eab5805-b9b8-4f04-aa73-df64a8ce096e" data-domains="singitai.app,app.singitai.app"></script>
 </head>
@@ -129,11 +129,11 @@
         <h2 class="section-title" data-reveal>Your first answer <em>in one request.</em></h2>
         <p class="quick-who" data-reveal>For your own code or agent. To chat, <a href="https://app.singitai.app/app/">open SingIt</a> instead.</p>
         <ol class="quick-steps" data-batch>
-          <li><b>Start free</b><span>Model <span class="mono">free/deepseek-v4.1-flash</span> answers with no wallet and no key: 20 answers a day.</span></li>
-          <li><b>Get a key</b><span>In <a href="https://app.singitai.app/app/">the SingIt app</a>, Settings → API keys. Your wallet signs the key's limits: a day, a request, how many days.</span></li>
-          <li><b>Top up</b><span>Buy a balance for your keys, $1 to $50 at a time, in USDC from your wallet. Each request costs what it used + 30%, with no fee per call.</span></li>
-          <li><b>Use it anywhere</b><span>The OpenAI SDK, the Anthropic SDK or Claude Code, at <span class="mono">app.singitai.app/v1</span>, with any id from <a href="/models/">the model list</a>. Agents with a wallet can skip the key and pay per answer over x402.</span></li>
+          <li><b>Try free <span class="status is-live">Live · free</span></b><span>Call a model at <span class="mono">ask.singitai.app</span> with no wallet and no key: <span class="mono">free/deepseek-v4.1-flash</span>, 20 free answers a day, resetting at midnight UTC.</span></li>
+          <li><b>Get a key</b><span>In <a href="https://app.singitai.app/app/">the SingIt app</a> under Settings → API keys, your wallet signs the key's limits (per day, per request, how many days), and you top up $1 to $50 at a time in USDC. Each request costs what it used + 30%, with no fee per call, in the OpenAI SDK, the Anthropic SDK or Claude Code at <span class="mono">app.singitai.app/v1</span>, with any id from <a href="/models/">the model list</a>.</span></li>
+          <li><b>Plug in MCP <span class="status is-live">Live</span></b><span>Use Add to Cursor in the MCP tab, or one command in Claude Code. Prices work without a key; your key unlocks web search, page reading and market data.</span></li>
         </ol>
+        <p class="tab-note" data-reveal>No key at all? Agents with a wallet pay per answer over x402: <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md" target="_blank" rel="noopener">first paid call in 60 seconds</a>.</p>
       </div>
 
       <div data-reveal>
@@ -144,6 +144,7 @@
           <button type="button" class="tab" role="tab" id="tab-cc" aria-controls="panel-cc" aria-selected="false" tabindex="-1">Claude Code</button>
           <button type="button" class="tab" role="tab" id="tab-mcp" aria-controls="panel-mcp" aria-selected="false" tabindex="-1">MCP</button>
           <button type="button" class="tab" role="tab" id="tab-ts" aria-controls="panel-ts" aria-selected="false" tabindex="-1">x402 · no key</button>
+          <button type="button" class="tab" role="tab" id="tab-paid" aria-controls="panel-paid" aria-selected="false" tabindex="-1">First paid call · 60s</button>
           <button type="button" class="tab" role="tab" id="tab-find" aria-controls="panel-find" aria-selected="false" tabindex="-1">Discovery</button>
           <button type="button" class="tab" role="tab" id="tab-frameworks" aria-controls="panel-frameworks" aria-selected="false" tabindex="-1">Frameworks</button>
         </div>
@@ -255,6 +256,26 @@ console.log(answer.choices[0].message.content, answer.billing.totalAtomic);</cod
               </button>
             </div>
             <p class="tab-note">For agents with their own wallet: no account and no key, just a little USDC on Base. The payment is <span class="mono">upto</span>: you sign a ceiling, and Coinbase's facilitator settles only what the answer used (<span class="mono">billing.totalAtomic</span>, in USDC micro-units). A failed answer is never settled.</p>
+          </section>
+
+          <section class="tab-panel" role="tabpanel" id="panel-paid" aria-labelledby="tab-paid" tabindex="0" hidden>
+            <h3>First paid call in 60s</h3>
+            <div class="code">
+<pre><code id="code-paid"><span class="c"># 1. Ask with no payment: HTTP 402 and a PAYMENT-REQUIRED header (base64 JSON, x402 v2)</span>
+curl -i https://ask.singitai.app/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Hello"}]}'
+
+<span class="c"># 2. Sign an offer: upto on Base comes first, a ceiling of 0.0015 USDC here, no ETH needed.</span>
+<span class="c">#    The "x402 · no key" tab signs it for you; so do Coinbase's Bazaar MCP and agentic wallet.</span>
+<span class="c"># 3. Retry with PAYMENT-SIGNATURE: HTTP 200 with choices[0].message.content,</span>
+<span class="c">#    billing.totalAtomic (what was settled) and a PAYMENT-RESPONSE header.</span></code></pre>
+              <button type="button" class="copy-btn" data-copy="code-paid" aria-label="Copy the first paid call steps">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <p class="tab-note">You pay the answer's actual cost + 30% + $0.001 on Base; <span class="mono">exact</span> offers follow for wallets that sign only a flat price. Step by step, with the x402 fetch, Bazaar MCP and agentic wallet variants: <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md" target="_blank" rel="noopener">the first paid call guide</a>. The free 402 step is checked live; we have not yet run the paid step of the guide end to end.</p>
           </section>
 
           <section class="tab-panel" role="tabpanel" id="panel-find" aria-labelledby="tab-find" tabindex="0" hidden>
@@ -419,13 +440,14 @@ npm install ./SingItAI/integrations/elizaos-plugin</code></pre>
 
   <section class="cta">
     <div class="shell">
-      <h2 data-reveal>One key for every model. <em>Start free.</em></h2>
-      <p data-reveal>Try the free model with no key, then get a key in the SingIt app and top it up from your wallet.</p>
+      <h2 data-reveal>Try free. Get a key. <em>Plug in MCP.</em></h2>
+      <p data-reveal>Start with 20 free answers a day, add a wallet-signed key with limits you control, then connect the MCP server to Cursor or Claude Code.</p>
       <div class="hero-cta" data-reveal>
         <a class="btn btn-primary btn-lg" href="https://app.singitai.app/app/">
           Get an API key
           <span class="btn-arrow" aria-hidden="true">&#8599;</span>
         </a>
+        <a class="btn btn-outline btn-lg" href="cursor://anysphere.cursor-deeplink/mcp/install?name=singit&amp;config=eyJ1cmwiOiJodHRwczovL2FwcC5zaW5naXRhaS5hcHAvbWNwIn0%3D">Add to Cursor</a>
         <a class="btn btn-outline btn-lg" href="#quickstart">Try it free</a>
       </div>
     </div>
