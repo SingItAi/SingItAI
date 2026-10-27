@@ -15,7 +15,7 @@ import { modelRoutePaths } from "../src/model-routes.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
-  model: "deepseek-v4.1-flash" };
+  model: "deepseek-v4.1-flash", videoSold: true };
 const unknown = () => { throw new UnknownModel("That model is not available."); };
 const never = () => { throw new Error("no upstream in this test"); };
 const catalogue = { async resolve() { never(); }, async canAnswer() { return true; }, async list() { return []; },
