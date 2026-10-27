@@ -43,7 +43,7 @@ from eth_utils import keccak, to_checksum_address
 
 from . import analytics
 from .base_balances import BaseBalanceError
-from .base_builder_code import append_suffix, load_data_suffix
+from .base_builder_code import append_suffix, has_attribution_suffix, load_data_suffix
 
 logger = logging.getLogger(__name__)
 
@@ -1471,6 +1471,10 @@ class AllowanceService:
             raise AllowanceError(f"{refused}: it is not a call to USDC. Nothing counted.")
         if tx.get("chainId") is not None and int(str(tx["chainId"]), 16) != BASE_CHAIN_ID:
             raise AllowanceError(f"{refused}: it is not on Base. Nothing counted.")
+        # A wallet may append an ERC-8021 attribution suffix (our own Base Builder Code from the page, or
+        # the wallet's own): contracts ignore those trailing bytes, so the approve is the first 138 chars.
+        if len(data) > 138 and has_attribution_suffix(data[138:]):
+            data = data[:138]
         if len(data) != 138 or not data.startswith(selector("approve(address,uint256)")):
             raise AllowanceError(f"{refused}: it is not an approve. Nothing counted.")
         if "0x" + data[34:74] != op["limiter_address"].lower():

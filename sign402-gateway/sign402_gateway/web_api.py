@@ -56,6 +56,7 @@ from typing import Any, Callable, Mapping
 from urllib.parse import parse_qsl
 
 from . import analytics
+from .base_builder_code import page_builder_code
 from .agent_allowance import AllowanceError, AllowanceService, AllowanceUnavailable, _usdc_atomic
 from .web_accounts import (
     DEFAULT_WEB_DB, SESSION_SECONDS, WEB_DB_ENV, WebAccountStore, WebAuth, WebAuthError, account_id_for, chain_of_account,
@@ -597,6 +598,21 @@ def page_version(app_dir: Path) -> str:
     return digest.hexdigest()[:12]
 
 
+PAGE_BUILDER_CODE_SLOT = b'baseBuilderCode: ""'
+
+
+def with_page_builder_code(config_js: bytes, env: Any = None) -> bytes:
+    """config.js with the Base Builder Code from SIGN402_BASE_BUILDER_CODE filled in.
+
+    The code stays out of git: the committed config.js keeps an empty slot and the server fills
+    it when serving the page. Unset or invalid leaves the file as it is (no attribution).
+    """
+    code = page_builder_code(env)
+    if not code or config_js.count(PAGE_BUILDER_CODE_SLOT) != 1:
+        return config_js
+    return config_js.replace(PAGE_BUILDER_CODE_SLOT, b'baseBuilderCode: "' + code.encode("ascii") + b'"')
+
+
 def versioned(text: str, version: str) -> str:
     return PAGE_ASSET.sub(lambda m: f'{m.group(1)}{m.group(2)}?v={version}"', text)
 
@@ -969,6 +985,8 @@ class WebHandler(BaseHTTPRequestHandler):
         app_dir = (root / "app").resolve()
         if target.parent == app_dir and target.suffix in (".html", ".js"):
             data = versioned(data.decode("utf-8"), page_version(app_dir)).encode("utf-8")
+        if target == app_dir / "config.js":
+            data = with_page_builder_code(data)
         self.send_response(200)
         self.send_header("Content-Type", STATIC_TYPES.get(target.suffix, "application/octet-stream"))
         self.send_header("Cache-Control", "no-cache")
