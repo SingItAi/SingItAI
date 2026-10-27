@@ -206,9 +206,6 @@ class SolanaVeniceTests(unittest.TestCase):
         self.assertIn("sold on Base only", agent.message(ACCOUNT, None, "resolve vitalik.eth ens")["messages"][1]["text"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
     def test_a_paused_solana_agent_is_told_only_a_new_wallet_approval_resumes_it(self):
         # SI-98: new limits alone never lift a Solana emergency stop, so the chat must not offer them (Base's wording);
         # it offers the wallet approval that does resume it.
@@ -225,6 +222,9 @@ if __name__ == "__main__":
                 self.assertNotIn("Новые лимиты — это новый лимитер", text)
                 self.assertEqual([(c["type"], c["kind"], c["amount"], c["limiter"]) for c in cards],
                                  [("wallet", "grant", "20", self.lane.agent_key(ACCOUNT)[0])])
+
+if __name__ == "__main__":
+    unittest.main()
 
 
 class SolanaRoutesTests(unittest.TestCase):
