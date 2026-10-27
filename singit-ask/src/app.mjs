@@ -123,26 +123,45 @@ export class UpstreamError extends Error {
 // not on the list), everything is sent as before.
 //
 // A long non-streamed request can come back as HTTP 200 with an error body, so the body is read for every status.
+//
+// REASONING_OFF (SI-110): extra body fields, per model, that switch thinking off where the listed spelling does
+// not. deepseek-v4-pro lists `reasoning` only, and `reasoning: {effort: "none"}` (the Responses-wire spelling,
+// docs/reference/reasoning) was ignored on 27 October: the answer still spent max_tokens thinking. Its cheapest
+// trusted seller, the one `si_route: price` picks, is Alibaba DashScope (99% off list on 27 October), whose
+// OpenAI-compatible API turns thinking off with `enable_thinking: false` (Model Studio, "DeepSeek" and "Deep
+// thinking"); DeepSeek's own API does it with `thinking: {type: "disabled"}` (api-docs.deepseek.com, Thinking
+// Mode); OpenRouter sellers read `reasoning.effort: "none"`, still sent. Surplus forwards fields it does not strip
+// (a deny-list), so each reaches the seller that understands it. They are sent only with "none": the "low" retry
+// asks for some thinking. Any 400 to them (an unknown field, or thinking it will not turn off) costs nothing, so the
+// question is asked once more without them, and only that answer decides on the "low" fallback.
+export const REASONING_OFF = Object.freeze({
+  "deepseek-v4-pro": Object.freeze({ enable_thinking: false, thinking: Object.freeze({ type: "disabled" }) }),
+});
+
 export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params } = {}) {
   const sends = (name) => !params || params.includes(name);
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
-  const ask = (reasoning) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
+  const off = Object.hasOwn(REASONING_OFF, model) ? REASONING_OFF[model] : null;
+  const ask = (reasoning, extra = {}) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
     body: JSON.stringify({ model, messages, max_tokens: maxTokens, ...(sends("temperature") ? { temperature: 0.4 } : {}),
                            ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
                              : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
-                           si_route: { objective: "price" } }),
+                           ...extra, si_route: { objective: "price" } }),
     signal: AbortSignal.timeout(LIMITS.timeoutMs),
   });
+  const refusedReasoning = async (response) => {
+    if (response.status !== 400) return false;
+    const refusal = await response.clone().json().catch(() => null);
+    return refusal?.error?.code === "request_rejected" && /reasoning|thinking/i.test(refusal.error.message ?? "");
+  };
   let response;
   try {
-    response = await ask("none");
-    if (response.status === 400 && (sends("reasoning_effort") || nestedReasoning)) {
-      const refusal = await response.clone().json().catch(() => null);
-      if (refusal?.error?.code === "request_rejected" && /reasoning/i.test(refusal.error.message ?? "")) response = await ask("low");
-    }
+    response = await ask("none", off ?? {});
+    if (off && response.status === 400) response = await ask("none");
+    if ((sends("reasoning_effort") || nestedReasoning || off) && await refusedReasoning(response)) response = await ask("low");
   } catch (error) {
     throw new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" });
   }
