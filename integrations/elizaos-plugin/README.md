@@ -1,39 +1,65 @@
 # @singitai/plugin-singit
 
-An [ElizaOS](https://github.com/elizaOS/eliza) plugin that gives an agent [SingIt](../../README.md)'s
-tools: free crypto/metal/FX prices and model listing through SingIt's MCP server, optional paid web
-search and page reading with a SingIt API key, and optional x402-paid chat on
-[SingIt Ask](../../singit-ask) (Base) when the agent has a funded wallet key and explicit spending
-caps.
+An [ElizaOS](https://github.com/elizaOS/eliza) plugin that gives an agent [SingIt](https://singitai.app/developers/)'s tools:
 
-**Not on npm yet.** Version `0.1.0` is ready to publish as `@singitai/plugin-singit`. The
-[elizaOS community plugin registry is retired](https://plugins.eliza.app/index.json) (`410
-registry_retired`) and no longer accepts third-party registry submissions, so until this is
-published to npm, install it from a local path or a Git checkout:
+- free crypto, metal and FX prices and model listing through SingIt's MCP server (no key),
+- paid web search and page reading with a SingIt API key,
+- optional x402-paid chat on SingIt Ask, paid in USDC on **Base**, from an EVM key you provide.
 
-```bash
-git clone https://github.com/bubon-ik/SingItAI.git
-npm install ./SingItAI/integrations/elizaos-plugin
-```
+Requires Node >= 20 and `@elizaos/core` `^1.7.0` (tested with 1.7.2; the 2.x prereleases are not targeted).
 
-Once the project owner publishes it, this becomes:
+## Install
 
 ```bash
-npm install @singitai/plugin-singit
+npm install @singitai/plugin-singit @elizaos/core
 ```
 
-## Add it to an agent
+That is all you need for the free and API-key actions.
+
+### Extra step for paid chat (`SINGIT_PAID_CHAT`)
+
+x402 payment signing uses the official `@x402/evm` package, which this plugin declares as an **optional peer dependency**. It is not installed with the plugin. Reason: every published `@x402/evm` / `@x402/core` release (latest 2.28.0) depends on `zod ^3.24.2`, which `npm audit` flags as high severity (GHSA-mrhx-c7xc-m3w5, fixed in zod 4.6.6). Making it optional keeps that advisory out of the dependency tree of everyone who does not use paid chat.
+
+To enable paid chat, install it and force zod to a fixed version in **your** `package.json` (the `overrides` field of a dependency is ignored by npm, so this has to live in your project):
+
+```json
+{
+  "dependencies": {
+    "@singitai/plugin-singit": "^0.1.1",
+    "@x402/evm": "^2.28.0"
+  },
+  "overrides": {
+    "zod": "^4.6.7"
+  }
+}
+```
+
+The plugin's own test suite runs the real `@x402/evm` signing path against zod 4.6.7. Without `@x402/evm`, `SINGIT_PAID_CHAT` is not offered, the `SINGIT_TOOLS` provider says why, and invoking the handler directly returns an "install @x402/evm" message without sending any request or signing anything.
+
+### Known advisories not from this plugin
+
+`npm audit` on a project with `@elizaos/core@1.7.2` still reports advisories that come from `@elizaos/core` itself and that this plugin cannot fix: `pdfjs-dist` (high, GHSA-hq66-cqwq-w95j) and `crypto-browserify` → `elliptic` (low, GHSA-848j-6mx2-7j84). Checked on 2026-10-27 in a fresh project with `npm install @singitai/plugin-singit @elizaos/core@1.7.2`: 7 advisories (6 low, 1 high), all from `@elizaos/core`; none from this plugin's own dependencies (`viem`).
+
+## Configuration
+
+Settings are read with `runtime.getSetting()` and fall back to `process.env`. Put secrets in `character.settings.secrets` or the environment, never in the character file itself.
+
+| Name | Used by | Notes |
+| --- | --- | --- |
+| `SINGIT_API_KEY` | `SINGIT_WEB_SEARCH`, `SINGIT_READ_PAGE` | Secret. Needs the `search` scope. |
+| `SINGIT_EVM_PRIVATE_KEY` | `SINGIT_PAID_CHAT` | Secret. `0x`-prefixed EVM key holding USDC on Base. |
+| `SINGIT_MAX_PER_CALL_USD` | `SINGIT_PAID_CHAT` | Required. Per-call ceiling in USD. |
+| `SINGIT_MAX_PER_DAY_USD` | `SINGIT_PAID_CHAT` | Required. Rolling UTC-day ceiling in USD. |
+| `SINGIT_MCP_URL` | MCP actions | Optional. Default `https://app.singitai.app/mcp`. |
+| `SINGIT_ASK_BASE_URL` | `SINGIT_PAID_CHAT` | Optional. Default `https://ask.singitai.app`. |
 
 ```ts
 export const character = {
   name: "MyAgent",
-  // character.plugins takes package names (strings); the package must be installed in the project.
   plugins: ["@elizaos/plugin-sql", "@elizaos/plugin-bootstrap", "@singitai/plugin-singit"],
   settings: {
     secrets: {
-      // Optional: paid MCP tools (web_search, read_page).
       SINGIT_API_KEY: process.env.SINGIT_API_KEY,
-      // Optional: x402-paid chat on SingIt Ask (Base). All three are required together.
       SINGIT_EVM_PRIVATE_KEY: process.env.SINGIT_EVM_PRIVATE_KEY,
     },
     SINGIT_MAX_PER_CALL_USD: "0.01",
@@ -42,102 +68,67 @@ export const character = {
 };
 ```
 
-Or pass the plugin object to the runtime directly (the runtime's `plugins` option takes `Plugin[]`):
+Or pass the plugin object directly: `new AgentRuntime({ character, plugins: [singitPlugin] })` with `import { singitPlugin } from "@singitai/plugin-singit"`.
 
-```ts
-import { AgentRuntime } from "@elizaos/core";
-import { singitPlugin } from "@singitai/plugin-singit";
+## Actions and provider
 
-const runtime = new AgentRuntime({ character, plugins: [singitPlugin] });
+| Name | Needs | What it does |
+| --- | --- | --- |
+| `SINGIT_GET_PRICE` | nothing | MCP `get_price`: crypto, metal or FX price. Symbol is extracted from the message by regex, not an LLM. |
+| `SINGIT_LIST_PRICE_SYMBOLS` | nothing | MCP `list_price_symbols`: every symbol `get_price` supports. |
+| `SINGIT_LIST_MODELS` | nothing | MCP `list_models`: available models and prices. |
+| `SINGIT_WEB_SEARCH` | `SINGIT_API_KEY` | MCP `web_search`. Billed per call against that key's own SingIt limits. |
+| `SINGIT_READ_PAGE` | `SINGIT_API_KEY` | MCP `read_page` for one URL in the message. Same billing. |
+| `SINGIT_PAID_CHAT` | `@x402/evm`, `SINGIT_EVM_PRIVATE_KEY`, both caps | One chat completion on SingIt Ask, paid over x402 on Base. |
+| provider `SINGIT_TOOLS` | nothing | Tells the model which of the above are currently available. |
+
+`validate()` returns `false` for the API-key actions without a key, and for `SINGIT_PAID_CHAT` unless the key, both caps and `@x402/evm` are all present, so unconfigured actions are simply not offered.
+
+## x402 payment example
+
+Character settings as above (`SINGIT_MAX_PER_CALL_USD: "0.01"`, `SINGIT_MAX_PER_DAY_USD: "1"`). A user says "ask singit ask: what is x402?". One paid call is:
+
+1. `POST /v1/chat/completions` to SingIt Ask with no payment, which answers **402** with a `PAYMENT-REQUIRED` challenge.
+2. The plugin checks the offer (see Safety) and reserves its ceiling against the daily cap. Only if every check passes does it sign (via `@x402/evm`) and retry once with a `PAYMENT-SIGNATURE` header.
+3. Ask answers **200** with the completion and the billed amount. The call is settled for the amount actually billed, and the action returns `data: { answer, payment }`.
+
+```js
+payment = {
+  scheme: "upto",          // or "exact"
+  network: "base",
+  amountAtomic: "4500",    // USDC, 6 decimals: 4500 = $0.0045
+  txHash: "0x…"            // from the settlement receipt, when present
+}
 ```
 
-Settings are read through `runtime.getSetting()` with a `process.env` fallback
-([`src/settings.js`](src/settings.js)); none of them are ever logged or included in a thrown error
-message.
+The paid request is never retried automatically; if it fails after signing, its ceiling stays counted against the daily cap.
 
-## What's included
+## Safety
 
-### Free actions — SingIt's MCP server, no key needed
+**What this plugin enforces, and where.**
 
-Talk to `https://app.singitai.app/mcp` directly over JSON-RPC
-([`src/mcp-client.js`](src/mcp-client.js); see
-[`sign402-gateway/README.md#mcp-server-remote-for-claude-code-cursor-codex`](../../sign402-gateway/README.md)
-for the full server). The server is stateless Streamable HTTP (JSON responses only, no session), so
-every call is a single POST — no `initialize` handshake is needed first.
+- Spending caps are enforced **in-process by this plugin** ([`src/x402/guards.js`](src/x402/guards.js)): one cap per call and one per rolling UTC day. The daily total is held **in memory** and resets when the process restarts. The caps are **not on-chain** and **not enforced by SingIt's servers**.
+- The plugin signs from the **raw EVM private key** you give it. Anything that can read that key, or that can run code in the agent process, can spend whatever the key holds. **Fund that key with only what you can afford to lose.**
+- Before signing, the plugin pins the offer: network must be Base (`eip155:8453`), asset must be Base USDC, payee must be SingIt Ask's address, and the amount must be within the per-call ceiling and the remaining daily cap. Any mismatch is refused before anything is signed.
+- Payment signing is delegated to the official `@x402/evm`; this plugin does not implement its own signing.
+- Settings are never logged or put in thrown error messages: [`src/settings.js`](src/settings.js) only returns values, `src/` contains no logging calls, and the tests assert the API key does not appear in error text.
 
-| Action | MCP tool | Does |
-| --- | --- | --- |
-| `SINGIT_GET_PRICE` | `get_price` | A crypto, metal or FX price. Symbol/kind is extracted from the message with a small regex ([`src/price-args.js`](src/price-args.js)), not an LLM call. |
-| `SINGIT_LIST_PRICE_SYMBOLS` | `list_price_symbols` | Every symbol `get_price` supports. |
-| `SINGIT_LIST_MODELS` | `list_models` | SingIt's available chat/image/audio models and prices. |
-
-### Paid actions — need `SINGIT_API_KEY`
-
-Call the same MCP server with `Authorization: Bearer $SINGIT_API_KEY`, billed per call from that
-key's own SingIt limits (needs the key's `search` scope). `validate()` returns `false` without a
-key, so these actions are simply absent from an unconfigured agent rather than failing loudly:
-
-| Action | MCP tool | Does |
-| --- | --- | --- |
-| `SINGIT_WEB_SEARCH` | `web_search` | Searches the web (Exa). |
-| `SINGIT_READ_PAGE` | `read_page` | Reads one web page's text (Exa). |
-
-### Optional x402-paid chat — needs a wallet key and explicit caps
-
-`SINGIT_PAID_CHAT` pays [SingIt Ask](../../singit-ask) over x402 on **Base** for one OpenAI-shaped
-chat completion (`POST https://ask.singitai.app/v1/chat/completions`), the same protocol
-[`sdk/typescript`](../../sdk/typescript) speaks. It needs all three settings — `validate()` returns
-`false` if any is missing, so an agent never pays without an explicitly funded, explicitly capped
-wallet:
-
-- `SINGIT_EVM_PRIVATE_KEY` — a `0x`-prefixed EVM private key funded with USDC on Base.
-- `SINGIT_MAX_PER_CALL_USD` — hard ceiling per call, in whole USD (e.g. `"0.01"`).
-- `SINGIT_MAX_PER_DAY_USD` — hard ceiling per rolling UTC day across all calls, in whole USD,
-  tracked in memory per process (not durable — see [`src/x402/guards.js`](src/x402/guards.js)).
-
-Before signing anything, [`src/x402/guards.js`](src/x402/guards.js) and
-[`src/x402/pay.js`](src/x402/pay.js) — trimmed from `sdk/typescript/src/{guards,pins,signers,singit}.js`
-— check that the merchant's offer is on Base, pays the pinned SingIt Ask address in the pinned USDC
-contract, and is within both ceilings. A merchant asking for a different network, asset, payee or a
-higher amount is refused before anything is signed. This plugin does **not** depend on the
-unpublished `@singit/sdk` package by path (so it installs standalone); it vendors the minimal guard
-logic instead. For the full SDK — Solana, the per-model route, wallet reconciliation — see
-[`sdk/typescript`](../../sdk/typescript).
-
-### Provider
-
-`SINGIT_TOOLS` tells the agent which of the actions above are currently available, based on which
-settings are configured, so the model does not attempt `SINGIT_WEB_SEARCH` or `SINGIT_PAID_CHAT`
-when they are not set up.
-
-## Settings reference
-
-| Setting | Required for | Notes |
-| --- | --- | --- |
-| `SINGIT_MCP_URL` | all MCP actions | Default `https://app.singitai.app/mcp`. Override to test against a local gateway. |
-| `SINGIT_API_KEY` | `SINGIT_WEB_SEARCH`, `SINGIT_READ_PAGE` | `sk_singit_...`, from the SingIt app's API Keys page. Needs the `search` scope. |
-| `SINGIT_EVM_PRIVATE_KEY` | `SINGIT_PAID_CHAT` | `0x`-prefixed EVM private key, funded with USDC on Base. |
-| `SINGIT_MAX_PER_CALL_USD` | `SINGIT_PAID_CHAT` | Required together with the key and the per-day cap. |
-| `SINGIT_MAX_PER_DAY_USD` | `SINGIT_PAID_CHAT` | In-memory per process; resets on restart. |
-| `SINGIT_ASK_BASE_URL` | `SINGIT_PAID_CHAT` | Default `https://ask.singitai.app`. Override to test against a local mock merchant. |
+**Context about SingIt in general (not what this plugin does).** This plugin pays on Base only and does **not** use the `AgentAllowance` contract and has no Solana support. In the SingIt app, on Base, spending limits are enforced on-chain by the `AgentAllowance` contract only if you deploy your own limiter there. On Solana, limits are enforced by the SingIt gateway, not on-chain. Pausing: on Base the guardian `pause()` is permanent (a paused limiter cannot be unpaused; you need a new limiter); on Solana a pause is lifted only by a new owner-signed approve (new limits alone do not lift it).
 
 ## Tests
-
-Fully offline: a local mock MCP server (`test/helpers/mock-mcp-server.mjs`, implementing
-`initialize`/`tools/list`/`tools/call`) and a local mock x402 merchant
-(`test/helpers/mock-merchant.mjs`, issuing a real x402 v2 402 challenge and verifying the signed
-EIP-712 payload with viem — no facilitator, no chain, no network access). Covers the free actions,
-API-key gating (absent/refused without a key, `Authorization` header sent with one, the key never
-appearing in logs or thrown errors), and the x402 guards (network/asset/payTo mismatch refused, a
-per-call or per-day cap exceeded refused).
 
 ```bash
 npm ci --ignore-scripts
 npm test
 ```
 
-## Status
+Fully offline: a local mock MCP server and a local mock x402 merchant that issues a real x402 v2 challenge and verifies the signed EIP-712 payload with viem (no facilitator, no chain). Covers the free actions, API-key gating, the x402 guards (network, asset, payee and cap violations refused), and the optional-peer behavior: with `@x402/evm` absent, in a real tree that has none, paid chat is not offered and fails closed with zero requests and no signing.
 
-Ships the free MCP actions, the API-key-gated paid MCP actions, and x402-paid chat on Base, as
-scoped by [SI-50](../../docs). Solana x402 chat is not included here (see `sdk/typescript` for that
-path); it would need a `@solana/kit` signer setting analogous to `SINGIT_EVM_PRIVATE_KEY`.
+## Changelog
+
+- **0.1.1**: `@x402/evm` is now an optional peer dependency, so installing the plugin no longer pulls in the zod < 4.6.6 advisory (GHSA-mrhx-c7xc-m3w5); paid chat fails closed with an install message when it is missing. README rewritten.
+- **0.1.0**: initial release: free MCP actions, API-key actions, x402 paid chat on Base.
+
+## License
+
+MIT
