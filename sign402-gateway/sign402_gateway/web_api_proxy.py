@@ -19,6 +19,10 @@ balance. A stream that ends without its cost (Surplus's Anthropic skin reports n
 read back from Surplus's request log by the answer's `x-request-id`; the hold waits for it. A failed request costs
 nothing. While the answer is being read the hold is refreshed, and the read stops after twelve minutes, so a slow
 stream cannot outlive the hold and let another request spend the same deposit.
+
+Starter credit (starter_credit.py, OFF unless SIGN402_STARTER_CREDIT=1): a request whose ceiling is at most $0.05 is
+held on the account's approved starter grant first, when it has room today; the balance is not touched then, and the
+charge goes to the starter tables. Otherwise the request goes the balance's way, unchanged.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from collections import defaultdict
 from typing import Any, Callable, Iterable, Iterator, Mapping
 
 from . import ask_catalogue
+from .starter_credit import MAX_REQUEST_ATOMIC as STARTER_MAX_REQUEST
 from .web_balance import DEFAULT_TOPUP, MAX_TOPUP, TOPUP_STEP, Balances, new_topup_id
 
 logger = logging.getLogger(__name__)
@@ -306,8 +311,9 @@ def shape(record: Any, depth: int = 0) -> Any:
 class Proxy:
     """The paid part of /v1, for ApiKeys.public."""
 
-    def __init__(self, keys: Any, upstream: Upstream, balances: Balances):
+    def __init__(self, keys: Any, upstream: Upstream, balances: Balances, starter: Any = None):
         self.keys, self.upstream, self.balances = keys, upstream, balances
+        self.starter = starter  # starter_credit.StarterCredit when SIGN402_STARTER_CREDIT=1: spent before the balance
         self._funding: dict[str, threading.Lock] = defaultdict(threading.Lock)
 
     # -- money --
@@ -420,13 +426,20 @@ class Proxy:
         ceiling = min(per, most) if most is not None else per  # the most this request is ever charged
         done = reserve(ceiling)  # the key's own daily cap, counting requests in flight
         hold_id = "hold_" + secrets.token_hex(10)
+        # Who pays: a small request from the account's starter credit when it has some, else the balance. Both
+        # have the same hold / touch / release / bill shape; the starter credit holds the whole ceiling.
+        wallet: Any = self.balances
         try:
-            self.fund(account, hold, error)
-            if not self.balances.hold(account, hold_id, hold, int(self.keys.now())):
-                self.fund(account, hold, error)  # another request took what was there
+            if (self.starter is not None and ceiling <= STARTER_MAX_REQUEST
+                    and self.starter.hold(account, hold_id, ceiling, int(self.keys.now()))):
+                wallet, hold = self.starter, ceiling
+            else:
+                self.fund(account, hold, error)
                 if not self.balances.hold(account, hold_id, hold, int(self.keys.now())):
-                    raise error(402, "Your SingIt balance is in use by other requests. Try again in a moment.",
-                                type_="insufficient_quota", code="balance_low")
+                    self.fund(account, hold, error)  # another request took what was there
+                    if not self.balances.hold(account, hold_id, hold, int(self.keys.now())):
+                        raise error(402, "Your SingIt balance is in use by other requests. Try again in a moment.",
+                                    type_="insufficient_quota", code="balance_low")
         except BaseException:
             done(0)
             raise
@@ -434,14 +447,14 @@ class Proxy:
             response = (self.upstream.send_raw(upstream_path, *raw) if raw is not None
                         else self.upstream.send(upstream_path, request, forward))
         except Exception:
-            self.balances.release(hold_id)
+            wallet.release(hold_id)
             done(0)
             raise error(502, "The model could not be reached. You were not charged.", type_="api_error",
                         code="upstream_unreachable") from None
         status = int(response.status)
         if status in (401, 402, 403):  # SingIt's own key or prepaid balance upstream, not the caller's fault
             response.close()
-            self.balances.release(hold_id)
+            wallet.release(hold_id)
             done(0)
             logger.error("web api: Surplus refused SingIt's key with HTTP %s; check its key and prepaid balance", status)
             raise error(503, "Answers are unavailable right now. You were not charged; try again later.",
@@ -452,7 +465,7 @@ class Proxy:
 
         def settle() -> int:
             if status >= 400:
-                self.balances.release(hold_id)
+                wallet.release(hold_id)
                 done(0)
                 return 0
             if meter.cost is None:
@@ -492,7 +505,7 @@ class Proxy:
                 asked = hold
             else:
                 asked = min(charge_for(cost), ceiling)
-            charged, after = self.balances.bill(account, hold_id, asked, int(self.keys.now()),
+            charged, after = wallet.bill(account, hold_id, asked, int(self.keys.now()),
                                                 beyond_hold=ceiling - hold, key_id=key_id, model=model_id,
                                                 ref=request_id, cost=cost, input_tokens=meter.input_tokens,
                                                 output_tokens=meter.output_tokens)
@@ -500,11 +513,12 @@ class Proxy:
                 logger.warning("web api: %s cost %s micro-USD; charged %s (hold %s, at most %s)",
                                model_id, cost, charged, hold, ceiling)
             done(charged)
-            self.refill_later(account, after)
+            if wallet is self.balances:
+                self.refill_later(account, after)
             return charged
 
         answer_id = "chatcmpl-singit-" + secrets.token_hex(12) if path == "/chat/completions" else None
-        watch = HoldWatch(self.balances, hold_id, lambda: int(self.keys.now()),
+        watch = HoldWatch(wallet, hold_id, lambda: int(self.keys.now()),
                           deadline=time.monotonic() + ANSWER_DEADLINE_SECONDS)
 
         def stop_if_late() -> bool:
@@ -566,7 +580,8 @@ class Proxy:
             raw = json.dumps(data).encode()
         if isinstance(data, dict) and status < 400:
             data["billing"] = {"chargedAtomic": charged, "costAtomic": meter.cost, "markupBps": MARKUP_BPS,
-                               "currency": "USDC", "paidFrom": "your SingIt balance"}
+                               "currency": "USDC", "paidFrom": "your SingIt balance" if wallet is self.balances
+                               else "your SingIt starter credit"}
             raw = json.dumps(data).encode()
         return Relay(status, {"Content-Type": "application/json" if data is not None else content_type,
                               "X-SingIt-Charged-Atomic": str(charged)}, [raw], len(raw))

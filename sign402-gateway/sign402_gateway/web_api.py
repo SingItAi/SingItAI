@@ -30,6 +30,9 @@ Environment:
     SIGN402_WEB_FREE_PER_ACCOUNT_PER_DAY, SIGN402_WEB_FREE_PER_NETWORK_PER_DAY, SIGN402_WEB_FREE_PER_DAY,
     SIGN402_WEB_FREE_MAX_TOKENS          the free limits: 20, 40, 1000 and 400 by default
     SINGIT_RECONCILIATION_PER_MINUTE     per client IP, GET /v1/wallet/{address}/reconciliation, the owner's spend report (30)
+    SIGN402_STARTER_CREDIT               "1" turns on starter credit (starter_credit.py); OFF by default. With it:
+    SIGN402_GITHUB_CLIENT_ID, SIGN402_GITHUB_CLIENT_SECRET, SIGN402_STARTER_CREDIT_REDIRECT
+                                         the GitHub OAuth app and the app page its callback returns to
     SINGIT_STATUS_DIR                    where scripts/singit-uptime.py writes status.json and status.html, served
                                          as GET /status.json and /status (~/.sign402/status)
 plus everything SIGN402_ALLOWANCE_* the lane itself needs.
@@ -229,6 +232,7 @@ class WebApi:
         self.numbers_by_ip = RateLimit(60, 60)  # generous: almost every hit is served from _numbers_cache
         self._numbers_cache: dict[str, Any] | None = None
         self._numbers_cache_at: float = 0.0
+        self.starter = None  # starter_credit.StarterWeb when SIGN402_STARTER_CREDIT=1; its routes answer 404 otherwise
 
     def wallet_reconciliation(self, address: str, query: Mapping[str, str], client: str, *,
                               authorization: str | None = None, api_key: str | None = None) -> dict[str, Any]:
@@ -319,6 +323,12 @@ class WebApi:
             analytics.emit("sign_in", signed["account"], chain=signed["chain"], new_account=bool(signed["newAccount"]),
                            client_ip=client, user_agent=user_agent)
             return 200, out, {"Set-Cookie": cookie}
+        if method == "GET" and path == "/starter-credit/github/callback":
+            # GitHub's redirect back carries no session cookie (SameSite=Strict): its single-use OAuth state
+            # names the account instead.
+            if self.starter is None:
+                raise WebError(404, "starter_credit_off", "Starter credit is not available.")
+            return self.starter.callback(body, client)
         session = self.auth.session(token, None if method == "GET" and expected_account is None else (csrf or ""))
         account, owner = session["account_id"], session["address"]
         # The HTTP client pins the identity displayed in that tab. A cookie can
@@ -362,6 +372,10 @@ class WebApi:
             return self._chats(method, path, account, body)
         if method == "GET" and path == "/usage":
             return 200, self._usage(account), {}
+        if path == "/starter-credit" or path.startswith("/starter-credit/"):
+            if self.starter is None:
+                raise WebError(404, "starter_credit_off", "Starter credit is not available.")
+            return self.starter.handle(method, path, account)
         if method == "GET" and path == "/shop/progress":
             if self.shop is None:
                 raise WebError(503, "shop_unavailable", "The shop is not enabled on this server.")
@@ -669,7 +683,10 @@ class WebHandler(BaseHTTPRequestHandler):
         return bytes(raw)
 
     def log_message(self, fmt: str, *args: Any) -> None:  # no request lines with cookies or tokens
-        logger.debug("web %s", fmt % args)
+        line = fmt % args
+        if "/starter-credit/" in line:  # GitHub's callback carries an OAuth code and state in its query
+            line = re.sub(r"\?[^\s\"]*", "?…", line)
+        logger.debug("web %s", line)
 
     def _client(self) -> str:
         peer = self.client_address[0]
@@ -1185,6 +1202,11 @@ def build_web_api_from_env(allowance: AllowanceService, env: Mapping[str, str] |
     elif str(values.get("SIGN402_WEB_FREE_MODELS", "")).strip():
         logger.warning("web api: SIGN402_WEB_FREE_MODELS is ignored: free answers need SIGN402_WEB_SURPLUS_API_KEY "
                        "and SIGN402_WEB_INTERNAL_TOKEN")
+    from .starter_credit import web_from_env as starter_from_env
+
+    api.starter = starter_from_env(store.path, allowance, values, uri, PREFIX)
+    if api.starter is not None and api.keys.proxy is not None:
+        api.keys.proxy.starter = api.starter.credit  # spent before the balance, on small requests only
     from .web_push import from_env as push_from_env
 
     try:
