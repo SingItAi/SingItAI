@@ -311,3 +311,19 @@ merged tree, separate from the imported Base scanning behavior.
 For each completed feature, add the date, commit or pull-request link, user-visible behavior, verification results and remaining limitations. Keep feature commits focused and push completed milestones regularly. Preserve published history and the baseline tag. Do not change timestamps or describe planned behavior as implemented.
 
 Record mainnet transaction links only after actual execution and add short demo recordings for completed agent flows. Do not publish private keys, auth tokens, payment payloads or redemption data. At submission, link a fixed final commit or release and its comparison with the baseline, and copy the prior-work disclosure into the submission form. Git history, public progress updates, tests and demos provide complementary evidence; commit dates alone do not establish when every line was developed.
+
+## October 27, 2026 — SingIt Ask settlement safety and reasoning controls
+
+Draft pull request on `fix/settle-race-reasoning` (not merged, not deployed):
+[permit guard](singit-ask/src/permit-guard.mjs), [payment hooks](singit-ask/src/metered.mjs),
+[reasoning controls](singit-ask/src/app.mjs), and [regression tests](singit-ask/test/permit-guard.test.mjs).
+This maintains the imported SingIt Ask service; it adds no new Solana wallet or payment lane.
+
+Successful settlements now remember consumed EIP-2612 permit nonces across routes, rejecting stale permits before
+verification and inference. Failure hooks redact payment identifiers, overrun diagnostics report token usage and
+cost without changing pricing, and reasoning-only models receive the nested effort control with the existing
+low-effort retry. Pre-settlement answer logs now describe settlement as pending.
+
+Verification: `npm test` under Node 22: 217 of 218 pass; the one failure (`test/solana-direct.test.mjs`, module
+link error) fails the same way on `main` without this change. No live payments were sent. The nonce memory is local to one process, bounded to 10,000 owner/asset pairs and
+expires after ten minutes; it does not coordinate concurrent requests or replicas and does not replace chain validation.

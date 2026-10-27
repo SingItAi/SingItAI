@@ -192,7 +192,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
     serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
     extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
       output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }),
-  }])), server);
+  }])), server, { log });
   for (const [route, exaPath] of Object.entries(SEARCH_ROUTES)) {
     app.post(route, async (req, res) => {
       const header = req.get("payment-signature") ?? req.get("x-payment");

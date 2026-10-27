@@ -8,6 +8,7 @@
 // only the answer's actual cost.
 import { ExpressAdapter, paymentMiddlewareFromHTTPServer, x402HTTPResourceServer, x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
+import { permitGuard as defaultPermitGuard } from "./permit-guard.mjs";
 import { withBuilderCode } from "./builder-code.mjs";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
@@ -157,10 +158,27 @@ function discoveryChallenge(httpServer) {
 // challenge: `routes` is `paymentMiddleware`'s own shape, `{ "POST /the/route": { accepts, mimeType, ... } }`.
 // `discoverable` should mirror whichever check already grants that route's empty-POST probe the same 402 (see
 // `isDiscoveryProbe` above) — a route that does not offer that probe should not advertise itself over GET either.
-export function addPaymentRoute(app, routes, server, { discoverable = true } = {}) {
+export function addPaymentRoute(app, routes, server,
+  { discoverable = true, log = console.log, permitGuard = defaultPermitGuard } = {}) {
+  server.onAfterSettle(ctx => { permitGuard.record(ctx.paymentPayload); });
+  // Only diagnostic fields are logged: facilitator errors can embed payer addresses or signatures, so redact
+  // long encoded values even in the reason string rather than serializing any part of the payment payload.
+  const failure = phase => ctx => {
+    const { network, scheme, amount } = ctx.requirements ?? {};
+    const reason = String(ctx.error?.errorReason ?? ctx.error?.message ?? "unknown")
+      .replace(/0x[a-fA-F0-9]+|[A-Za-z0-9+/=_-]{32,}/g, "[redacted]").replace(/[\r\n]/g, " ");
+    log(`singit-ask: ${Object.keys(routes).join(",")} ${phase}`
+      + ` network=${network} scheme=${scheme} amount=${amount} reason=${reason}`);
+  };
+  server.onSettleFailure(failure("settle failed"));
+  server.onVerifyFailure(failure("verify failed"));
   if (!server.hasExtension("bazaar")) server.registerExtension(bazaarResourceServerExtension);
   routes = withBuilderCode(routes, server);
   const httpServer = new x402HTTPResourceServer(server, routes);
+  for (const pattern of Object.keys(routes)) {
+    const [verb, route] = pattern.split(" ");
+    if (verb === "POST") app.post(route, permitGuard.middleware);
+  }
   app.use(paymentMiddlewareFromHTTPServer(httpServer));
   if (discoverable) {
     for (const pattern of Object.keys(routes)) {
@@ -235,7 +253,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     }
   });
   addPaymentRoute(app, { [`POST ${route}`]: { accepts: offers, mimeType: "application/json", ...details } }, server,
-    { discoverable: offerEmptyProbe });
+    { discoverable: offerEmptyProbe, log });
   app.post(route, async (req, res) => {
     const started = Date.now();
     try {
@@ -244,7 +262,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       const exact = paid.scheme === "exact";
       const answer = await upstream(config, req.askInput.messages, req.askInput.maxTokens, fetchImpl, req.askInput.model,
         { minDiscount: minDiscountFor(req.askInput, paid.terms), params: req.askInput.info?.params });
-      const usage = billUsage(answer.usage, paid.terms, { allowOverrun: exact });
+      const usage = billWithDiagnostics(answer.usage, paid.terms, exact, route, req.askInput.model, log);
       // `exact` already settled the full ceiling it was offered: there is no lower amount to settle to, and no
       // way to refund the unused part, so the override below is only ever for `upto`. Its actual cost may run
       // over that flat ceiling (usage.overrunAtomic): the payer is never charged more than they signed for, this
@@ -252,7 +270,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: paid.terms.maxChargeAtomic } : usage;
       if (exact && usage.overrunAtomic) log(`singit-ask: exact overrun ${usage.overrunAtomic} micro-USDC`);
       if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
-      log(`singit-ask: answered in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
+      log(`singit-ask: answer ready in ${Date.now() - started} ms, settling ${billing.totalAtomic} micro-USDC`);
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: "singit-ask", choices: [{ index: 0, message: { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing });
@@ -268,4 +286,19 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         message: "No billable answer was produced. You were not charged; try again." } });
     }
   });
+}
+
+// Preserve the provider's usage only for an overrun diagnostic: no prompt, answer or payment payload belongs
+// in this log. Centralizing it keeps both API formats equally observable without changing their pricing.
+export function billWithDiagnostics(usage, terms, exact, route, model, log) {
+  try { return billUsage(usage, terms, { allowOverrun: exact }); }
+  catch (error) {
+    if (error.code === "ceiling_exceeded") {
+      log(`singit-ask: ${route} ${model} ceiling exceeded ${JSON.stringify({
+        prompt_tokens: usage?.prompt_tokens, completion_tokens: usage?.completion_tokens,
+        reasoning_tokens: usage?.completion_tokens_details?.reasoning_tokens, buyer_cost_micro: usage?.buyer_cost_micro,
+        totalAtomic: error.totalAtomic, ceiling: terms.maxChargeAtomic })}`);
+    }
+    throw error;
+  }
 }

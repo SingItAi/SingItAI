@@ -881,3 +881,25 @@ test("ModelCatalogue throws away a pass of order books that would empty the pick
   await catalogue.loadServed(0);
   assert.equal(catalogue.served.size, 8, "a pass offering under half of the last is thrown away");
 });
+
+test("reasoning uses the listed spelling and falls back to low", async () => {
+  for (const params of [["reasoning"], ["reasoning_effort"], ["reasoning", "reasoning_effort"]]) {
+    const calls = [];
+    const fetchImpl = async (_url, init) => {
+      calls.push(JSON.parse(init.body));
+      return calls.length === 1
+        ? new Response(JSON.stringify({ error: { code: "request_rejected", message: "Reasoning is mandatory" } }),
+          { status: 400 })
+        : new Response(JSON.stringify({ choices: [{ message: { content: "answer" } }], usage: {} }));
+    };
+    await askSurplus(CONFIG, QUESTION.messages, 300, fetchImpl, CONFIG.model, { params });
+    assert.equal(calls.length, 2);
+    if (params.includes("reasoning_effort")) {
+      assert.deepEqual(calls.map(call => call.reasoning_effort), ["none", "low"]);
+      assert.ok(calls.every(call => !("reasoning" in call)));
+    } else {
+      assert.deepEqual(calls.map(call => call.reasoning), [{ effort: "none" }, { effort: "low" }]);
+      assert.ok(calls.every(call => !("reasoning_effort" in call)));
+    }
+  }
+});
