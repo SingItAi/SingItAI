@@ -12,7 +12,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const IMAGE_ROUTE = "/v1/images/generations";
 export const IMAGE_MODELS_ROUTE = "/v1/images/models";
@@ -75,10 +75,11 @@ export function imagePrice(listAtomic, network) {
            totalAtomic: (list + markup + BigInt(FEES[network])).toString() };
 }
 
-// <=300 characters with the "SingIt Images: " prefix (see app.mjs's DISCOVERY_DESCRIPTION for why).
-const DESCRIPTION = "Images from 36 models (Nano Banana, GPT Image, Flux, Seedream, Recraft, Qwen and more; list at GET "
-  + "/v1/images/models), no API key needed. Call it when an agent needs an image made from a text prompt. OpenAI "
-  + "images request format.";
+// <=300 characters, opening with the category words and naming the brand once, later, and no prices (see app.mjs's
+// DISCOVERY_DESCRIPTION for why; prices are in openapi.json).
+const DESCRIPTION = "Image generation API, text to image: images from 36 models (Nano Banana, GPT Image, Flux, Seedream, "
+  + "Recraft, Qwen and more; list at GET /v1/images/models), no API key needed. Call it when an agent needs an image "
+  + "made from a text prompt. OpenAI images request format. Served by SingIt.";
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["venice-seedream-v5-lite"], description: "An image model id from GET /v1/images/models." },
@@ -167,8 +168,9 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
       { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 180, price: price(BASE) },
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 180, price: price(SOLANA) },
     ],
-    mimeType: "application/json", description: `SingIt Images: ${DESCRIPTION}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
-    tags: ["image", "image-generation", "text-to-image", "openai-compatible", "flux", "pay-per-use", "solana", "base", "singit"],
+    mimeType: "application/json", description: DESCRIPTION, serviceName: SERVICE_NAMES[IMAGE_ROUTE], iconUrl: ICON_URL,
+    tags: discoveryTags("image-generation", "text-to-image", "image", "openai-compatible", "flux", "pay-per-use", "solana",
+                        "base", "singit"),
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),

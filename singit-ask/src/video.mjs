@@ -12,7 +12,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const VIDEO_ROUTE = "/v1/video/generations";
 export const VIDEO_MODELS_ROUTE = "/v1/video/models";
@@ -66,11 +66,12 @@ export function publicJob(job, origin) {
     ...(job.created_at ? { created_at: job.created_at } : {}), ...(job.completed_at ? { completed_at: job.completed_at } : {}) };
 }
 
-// <=300 characters with the "SingIt Video: " prefix and no billing talk (see app.mjs's DISCOVERY_DESCRIPTION for why);
-// prices, the job flow and the no-refund rule are in openapi.json and on GET /v1/video/models.
-const DESCRIPTION = "Video clips from 30+ text-to-video models (LongCat, Grok Imagine, Wan, PixVerse, Seedance and more; "
-  + "list at GET /v1/video/models), no API key needed. Call it when an agent needs a short video from a text prompt: "
-  + "it answers with a job to poll.";
+// <=300 characters, opening with the category words, the brand once, later, and no billing talk (see app.mjs's
+// DISCOVERY_DESCRIPTION for why); prices, the job flow and the no-refund rule are in openapi.json and on
+// GET /v1/video/models.
+const DESCRIPTION = "Video generation API, text to video: clips from 30+ models (LongCat, Grok Imagine, Wan, PixVerse, "
+  + "Seedance and more; list at GET /v1/video/models), no API key needed. Call it when an agent needs a short video from a text prompt: "
+  + "it answers with a job to poll. Served by SingIt.";
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["longcat-distilled-text-to-video"], description: "A video model id from GET /v1/video/models." },
@@ -195,8 +196,8 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
       { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120, price: price(BASE) },
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
     ],
-    mimeType: "application/json", description: `SingIt Video: ${DESCRIPTION}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
-    tags: ["video", "video-generation", "text-to-video", "pay-per-use", "solana", "base", "singit"],
+    mimeType: "application/json", description: DESCRIPTION, serviceName: SERVICE_NAMES[VIDEO_ROUTE], iconUrl: ICON_URL,
+    tags: discoveryTags("video-generation", "text-to-video", "video", "pay-per-use", "solana", "base", "singit"),
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: { model: "longcat-distilled-text-to-video", prompt: "a small green robot waves hello", duration_seconds: 5 },
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),

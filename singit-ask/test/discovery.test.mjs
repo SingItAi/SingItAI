@@ -14,7 +14,7 @@ import { SEARCH_ROUTES } from "../src/search.mjs";
 import { VIDEO_ROUTE } from "../src/video.mjs";
 import { CREDIT_ROUTE } from "../src/credit.mjs";
 import { METERED_ROUTE } from "../src/pricing.mjs";
-import { modelRoutePaths } from "../src/model-routes.mjs";
+import { MODEL_ROUTES, modelRoutePaths, routePath } from "../src/model-routes.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -55,9 +55,9 @@ const catalogue = { async resolve() { neverAsked(); }, async canAnswer() { retur
   async voiceModels() { return { speech: new Map(), transcription: new Map() }; }, async resolveSpeech() { neverAsked(); },
   async videoModels() { return new Map(); }, async resolveVideo() { neverAsked(); } };
 
-async function serve(t) {
+async function serve(t, config = CONFIG) {
   const facilitator = fakeFacilitator();
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue, exaKey: "exa_test_key",
+  const app = createApp(config, { facilitatorClient: facilitator, catalogue, exaKey: "exa_test_key",
     fetchImpl: neverAsked, exaFetch: neverAsked, log: () => {}, upstream: neverAsked });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
@@ -183,6 +183,46 @@ test("every discoverable route's resource carries a PNG icon and a service name"
     const required = decode((await fetch(`${url}${route}`, { method: "GET" })).headers.get("payment-required"));
     assert.match(required.resource.iconUrl ?? "", /\.png$/, route);
     assert.ok(required.resource.serviceName, route);
+  }
+});
+
+// SI-90: CDP's Bazaar search is semantic, and its top results for a generic query ("chat completions", "web search",
+// "text to speech") have a serviceName that says what the service is and a description that opens with those words.
+// Bazaar keeps only the first 5 tags, so the category tag has to be among them. Video is checked too, with its
+// discovery switched on.
+const EXPECTED = {
+  [ROUTE]: { serviceName: "SingIt LLM Chat Completions", category: "chat-completions", opens: /^LLM chat completions\b/ },
+  "/v1/messages": { serviceName: "SingIt Anthropic Messages API", category: "anthropic-messages", opens: /^Anthropic Messages API\b/ },
+  "/v1/responses": { serviceName: "SingIt OpenAI Responses API", category: "openai-responses", opens: /^OpenAI Responses API\b/ },
+  "/v1/exa/search": { serviceName: "SingIt Web Search (Exa)", category: "web-search", opens: /^Web search\b/ },
+  "/v1/exa/answer": { serviceName: "SingIt Web Answers (Exa)", category: "web-search", opens: /^Web answers\b/ },
+  "/v1/exa/contents": { serviceName: "SingIt Web Page Contents (Exa)", category: "web-page-contents", opens: /^Web page contents\b/ },
+  [SPEECH_ROUTE]: { serviceName: "SingIt Text to Speech", category: "text-to-speech", opens: /^Text to speech\b/ },
+  [IMAGE_ROUTE]: { serviceName: "SingIt Image Generation", category: "image-generation", opens: /^Image generation\b/ },
+  [VIDEO_ROUTE]: { serviceName: "SingIt Video Generation", category: "video-generation", opens: /^Video generation\b/ },
+  ...Object.fromEntries(MODEL_ROUTES.map((m) => [routePath(m.id), { serviceName: `SingIt ${m.name} Chat`,
+    category: "chat-completions", also: [m.id], opens: new RegExp(`^${m.name.replace(/[.]/g, "\\.")} \\(`) }])),
+};
+
+test("every discoverable route is named and described by what it is, with its category among the first 5 tags", async (t) => {
+  const { url } = await serve(t, { ...CONFIG, videoDiscoverable: true });
+  const routes = [...DISCOVERABLE, VIDEO_ROUTE];
+  assert.deepEqual(new Set(routes), new Set(Object.keys(EXPECTED)), "every discoverable route has an expectation");
+  for (const route of routes) {
+    const required = decode((await fetch(`${url}${route}`, { method: "GET" })).headers.get("payment-required"));
+    const { serviceName, description, tags } = required.resource;
+    const expected = EXPECTED[route];
+    assert.equal(serviceName, expected.serviceName, route);
+    assert.ok(serviceName.length <= 60, `${route}: serviceName is ${serviceName.length} chars`);
+    assert.ok(description.length <= 300, `${route}: description is ${description.length} chars, over 300`);
+    assert.ok(!description.startsWith("SingIt "), `${route}: description opens with the brand (${description})`);
+    assert.match(description, expected.opens, route);
+    assert.match(description, /SingIt/, `${route}: the brand is named once, later`);
+    assert.ok(tags.length <= 10, `${route}: ${tags.length} tags`);
+    assert.equal(new Set(tags).size, tags.length, `${route}: duplicate tags`);
+    for (const tag of [expected.category, ...(expected.also ?? [])]) {
+      assert.ok(tags.slice(0, 5).includes(tag), `${route}: "${tag}" is not among the first 5 tags (${tags})`);
+    }
   }
 });
 

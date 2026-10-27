@@ -25,7 +25,7 @@ import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, addFormatRoutes } from "./formats.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, SERVICE_NAME, ICON_URL, usd, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 
 export const BASE = "eip155:8453";
@@ -347,17 +347,18 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const origin = req => `${req.protocol}://${req.get("host")}`;
   // Public, read-only documents: the website reads them straight from the browser.
   const open = (_req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); next(); };
-  // At most 500 characters with the "SingIt Ask: " prefix: Coinbase's facilitator rejects longer descriptions.
+  // At most 500 characters: Coinbase's facilitator rejects longer descriptions.
   const DESCRIPTION = "Ask a language model without an API key: any model listed at GET /v1/models (Claude, GPT, Gemini, "
     + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
     + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
     + "price; nothing is charged without an answer. Exact payers instead pay a flat price for a typical-length answer.";
-  // <=300 characters with the "SingIt Ask: " prefix: Coinbase's Bazaar ranks listings by metadata completeness, and a
-  // description that is half about billing reads as incomplete on what the endpoint does. Billing stays in
-  // DESCRIPTION above (openapi.json, /.well-known/x402) for the humans/agents that read terms there.
-  const DISCOVERY_DESCRIPTION = "OpenAI-compatible chat completions from 100+ models (Claude, GPT, Gemini, Grok, "
-    + "DeepSeek, Qwen) with no API key or account. Call it when an agent needs an LLM answer, a second opinion from "
-    + "another model, or a model it has no key for. List models at GET /v1/models.";
+  // <=300 characters: Coinbase's Bazaar ranks listings by metadata completeness, and a description that is half
+  // about billing reads as incomplete on what the endpoint does. Billing stays in DESCRIPTION above (openapi.json,
+  // /.well-known/x402) for the humans/agents that read terms there. It opens with the category words a buyer
+  // searches for and names the brand once, later, not as a prefix (SI-90: Bazaar's search is semantic).
+  const DISCOVERY_DESCRIPTION = "LLM chat completions API, OpenAI-compatible: one endpoint for 100+ models (Claude, "
+    + "GPT, Gemini, Grok, DeepSeek, Qwen), no API key or account, pay per call in USDC. Call it when an agent needs an "
+    + "LLM answer, a second opinion, or a model it has no key for. SingIt Ask; models at GET /v1/models.";
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
@@ -701,11 +702,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   addUsageRoute(app, ROUTE, (quotes, probe) => [baseOffer(config, quotes, probe("upto", BASE)),
     solanaOffer(config, quotes, probe("upto", SOLANA)), exactBaseOffer(config, quotes, probe("exact", BASE)),
     exactSolanaOffer(config, quotes, probe("exact", SOLANA))], {
-    description: `SingIt Ask: ${DISCOVERY_DESCRIPTION}`,
-    serviceName: SERVICE_NAME,
+    description: DISCOVERY_DESCRIPTION,
+    serviceName: SERVICE_NAMES[ROUTE],
     iconUrl: ICON_URL,
-    tags: ["llm", "chat", "openai-compatible", "inference", "claude", "gpt", "gemini", "deepseek", "pay-per-use",
-           "solana", "base", "singit"],
+    tags: discoveryTags("llm", "chat-completions", "inference", "openai-compatible", "chat", "claude", "gpt", "gemini",
+                        "deepseek", "singit"),
     extensions: {
       ...declareEip2612GasSponsoringExtension(),
       ...declareDiscoveryExtension({

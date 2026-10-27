@@ -11,7 +11,7 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addUsageRoute, baseOffer, exactBaseOffer, exactSolanaOffer, solanaOffer } from "./metered.mjs";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, SERVICE_NAME, ICON_URL, ceilingAtomic, usd } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, ICON_URL, ceilingAtomic, discoveryTags, modelServiceName, usd } from "./pricing.mjs";
 
 // The id is Surplus's own model id (catalogue.mjs's ModelCatalogue.resolve), and must be URL-safe: it becomes
 // `/v1/chat/<id>` verbatim (see test/model-routes.test.mjs's id-shape assertion). None of these may ever be
@@ -80,18 +80,19 @@ export async function chooseModelRoute(catalogue, id, bufferPp, input) {
   return { ...input, model: id, info, isDefault: false, ...priceGuard(catalogue, info.id, bufferPp) };
 }
 
-// <=300 characters with the "SingIt Ask: " prefix (see app.mjs's DISCOVERY_DESCRIPTION for why): what the model
-// does and when to call it, not what it costs.
+// <=300 characters, opening with the model and the category words and naming the brand once, later (see app.mjs's
+// DISCOVERY_DESCRIPTION for why): what the model does and when to call it, not what it costs.
 export function discoveryDescription(model) {
-  return `SingIt Ask: ${model.name} (${model.provider}) chat completions with no API key or account, `
-    + `OpenAI-compatible. ${model.blurb}. Call it when an agent needs ${model.name} specifically.`;
+  return `${model.name} (${model.provider}) LLM chat completions, OpenAI-compatible, with no API key or account. `
+    + `${model.blurb}. Call it when an agent needs ${model.name} specifically. Served by SingIt.`;
 }
 
 const providerTag = (provider) => provider.toLowerCase().replace(/\s+/g, "");
 
+// The model's own id and provider inside the first 5 (Bazaar keeps no more), after the category.
 export function modelTags(model) {
-  return ["llm", "chat", "openai-compatible", "inference", "pay-per-use", "solana", "base", "singit",
-    model.id, providerTag(model.provider), ...model.family];
+  return discoveryTags("llm", "chat-completions", model.id, providerTag(model.provider), "openai-compatible",
+    ...model.family, "inference", "chat", "singit");
 }
 
 // Bazaar's discovery extension wants a realistic example body; the model is named explicitly, matching this
@@ -134,7 +135,7 @@ export function addModelRoutes(app, config, { facilitatorClient, catalogue, read
       exactSolanaOffer(config, quotes, fallback("exact", SOLANA)),
     ], {
       description: discoveryDescription(model),
-      serviceName: SERVICE_NAME,
+      serviceName: modelServiceName(model.name),
       iconUrl: ICON_URL,
       tags: modelTags(model),
       extensions: {

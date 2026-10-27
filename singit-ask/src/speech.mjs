@@ -11,7 +11,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAME, ICON_URL } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const SPEECH_ROUTE = "/v1/audio/speech";
 export const AUDIO_MODELS_ROUTE = "/v1/audio/models";
@@ -56,10 +56,11 @@ export function speechPrice(listAtomic, network) {
            totalAtomic: (list + markup + BigInt(FEES[network])).toString() };
 }
 
-// <=300 characters with the "SingIt Speech: " prefix (see app.mjs's DISCOVERY_DESCRIPTION for why).
-const DESCRIPTION = "Text read aloud by 11 voice models (Kokoro, ElevenLabs, Gemini, xAI, MiniMax and more; list at GET "
-  + "/v1/audio/models), no API key needed. Call it when an agent needs spoken audio made from text. OpenAI speech "
-  + "request format, mp3 by default.";
+// <=300 characters, opening with the category words and naming the brand once, later (see app.mjs's
+// DISCOVERY_DESCRIPTION for why).
+const DESCRIPTION = "Text to speech (TTS) API: text read aloud by 11 voice models (Kokoro, ElevenLabs, Gemini, xAI, "
+  + "MiniMax and more; list at GET /v1/audio/models), no API key needed. Call it when an agent needs spoken audio made "
+  + "from text. OpenAI speech request format, mp3 by default. Served by SingIt.";
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["venice-kokoro-tts"], description: "A speech model id from GET /v1/audio/models." },
@@ -131,8 +132,9 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
       { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120, price: price(BASE) },
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
     ],
-    mimeType: "audio/mpeg", description: `SingIt Speech: ${DESCRIPTION}`, serviceName: SERVICE_NAME, iconUrl: ICON_URL,
-    tags: ["speech", "text-to-speech", "tts", "audio", "openai-compatible", "pay-per-use", "solana", "base", "singit"],
+    mimeType: "audio/mpeg", description: DESCRIPTION, serviceName: SERVICE_NAMES[SPEECH_ROUTE], iconUrl: ICON_URL,
+    tags: discoveryTags("text-to-speech", "tts", "speech", "audio", "openai-compatible", "pay-per-use", "solana", "base",
+                        "singit"),
     // The answer is audio bytes, not JSON, so there is no JSON output example to give.
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
