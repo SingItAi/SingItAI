@@ -137,6 +137,9 @@ const INPUT_SCHEMAS = {
     userLocation: { type: "string", description: "Two-letter country code." },
   }, required: ["query"] },
 };
+// A route's request body as openapi.json documents it: the same schema and example the Bazaar listing declares.
+export const exaRequestBody = (route) => ({ required: true, content: { "application/json": {
+  schema: { type: "object", ...INPUT_SCHEMAS[route] }, example: EXAMPLES[route] } } });
 // A real answer's shape and charge (Base): Exa's list price, 30% markup, 1000 micro-USD settlement fee.
 const billing = (exa, markup) => ({ exaAtomic: String(exa), markupAtomic: String(markup), feeAtomic: "1000",
   totalAtomic: String(exa + markup + 1000), currency: "USDC" });

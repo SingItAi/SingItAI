@@ -177,6 +177,14 @@ Free answers have no wallet, so there is no per-wallet limit here: the network a
 
 The service listens on 127.0.0.1 only. Configure a Cloudflare tunnel hostname to publish it. Only loopback proxies are trusted for the forwarded HTTPS scheme.
 
+## Catalogue check (pay-skills)
+
+`node scripts/generate-openapi.mjs > openapi.json` prints the `openapi.json` this service serves, built offline
+(a stub facilitator and a catalogue of the 14 pinned models stand in for Coinbase and Surplus). Put it next to a
+`PAY.md` and run `npx @solana/pay catalog check <PAY.md>` to see what the Solana Foundation's catalogue linter says;
+`test/openapi-lint.test.mjs` holds its offline rules (verb-first summaries of 24 to 63 characters, documented
+request bodies) so a change to a summary or a schema cannot silently break a listing.
+
 ## On the VPS
 
 Use the dedicated user service in `deploy/singit-ask.service`. It runs as

@@ -91,6 +91,9 @@ const INPUT_SCHEMA = { properties: {
   style: { type: "string", maxLength: 40, description: "Only for models that take it." },
   response_format: { type: "string", enum: ["b64_json", "url"], description: "How the image comes back." },
 }, required: ["model", "prompt"] };
+// The request body as openapi.json documents it: the schema and example the Bazaar listing declares.
+export const IMAGE_REQUEST_BODY = () => ({ required: true, content: { "application/json": {
+  schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
 // Shape and charge of a real answer: a 10000 micro-USD list price, 3000 markup, 1000 settlement fee (Base).
 const OUTPUT_EXAMPLE = { created: 1791932400, model: "venice-seedream-v5-lite",
   data: [{ b64_json: "iVBORw0KGgoAAAANSUhEUgAA…" }],

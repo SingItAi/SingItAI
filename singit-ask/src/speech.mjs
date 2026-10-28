@@ -72,6 +72,9 @@ const INPUT_SCHEMA = { properties: {
 
 // The example body declared to Bazaar, and what the discovery probes are priced as (see `probeList`).
 const EXAMPLE = Object.freeze({ model: "venice-kokoro-tts", input: "Hello from SingIt.", voice: "af_heart", response_format: "mp3" });
+// The request body as openapi.json documents it: the schema and example the Bazaar listing declares.
+export const SPEECH_REQUEST_BODY = () => ({ required: true, content: { "application/json": {
+  schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
 
 export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
