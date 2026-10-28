@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { UnknownModel, parseVideoModels } from "../src/catalogue.mjs";
-import { VIDEO_ROUTE, publicJob, readVideoRequest, videoPrice, videoListAtomic, pickFallbacks, isSoldVideoModel } from "../src/video.mjs";
+import { VIDEO_ROUTE, publicJob, readVideoRequest, safeLog, videoPrice, videoListAtomic, pickFallbacks, isSoldVideoModel } from "../src/video.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -548,4 +548,114 @@ test("a submit whose outcome is unknown never starts a second model for the same
     assert.equal(calls.filter((c) => c.method === "POST").length, 1, mode);
     assert.deepEqual(service.facilitator.calls.settle, [], mode);
   }
+});
+
+// A paid test on 28.10 answered video_failed after 65 s with nothing in the log saying why: every video job that
+// does not give a clip now writes one JSON line with the reason.
+const failLines = (service) => service.logs.filter((l) => l.startsWith("singit-ask: video job not delivered "))
+  .map((l) => JSON.parse(l.slice("singit-ask: video job not delivered ".length)));
+
+test("a job Surplus fails is logged with its id, status, error fields, elapsed time and the reason upstream_failed", async (t) => {
+  let time = 0;
+  const failure = { status: "failed", error: { type: "provider_unavailable", code: "provider_unavailable",
+    message: "No provider could accept this job right now. Please retry.", retryable: true } };
+  const service = await serve(t, { config: { ...CONFIG, videoPollMs: 10_000, videoNow: () => time,
+    videoSleep: async (ms) => { time += ms; } }, surplus: fakeSurplus({ scripts: [[...Array(5).fill("running"), failure]] }) });
+  assert.equal((await paidVideo(service)).status, 503);
+  assert.deepEqual(failLines(service), [{ reason: "upstream_failed", job_id: "vj_123456", model: VIDEO.model, status: "failed",
+    http_status: 200, error_code: "provider_unavailable", error_type: "provider_unavailable",
+    error_message: "No provider could accept this job right now. Please retry.", retryable: true, results: 0,
+    elapsed_s: 60, remaining_s: 25, next: "none" }]);
+  assert.deepEqual(service.facilitator.calls.settle, []);
+});
+
+test("the 20 s retry guard is logged as window_cutoff and only ever applies to a job that already failed", async (t) => {
+  const models = new Map([model(VIDEO.model), model("fallback")].map((m) => [m.id, m]));
+  const service = await serve(t, { models, health: new Map([[VIDEO.model, 2], ["fallback", 2]]),
+    config: { ...CONFIG, videoPollMs: 70_000 }, surplus: fakeSurplus({ scripts: [[unavailable]] }) });
+  assert.equal((await paidVideo(service)).status, 503);
+  const [line] = failLines(service);
+  assert.deepEqual([line.reason, line.cause, line.elapsed_s, line.remaining_s, line.next], ["window_cutoff", "upstream_failed", 70, 15, "none"]);
+  assert.equal(submissions(service.surplus).length, 1);
+});
+
+test("a job that is still running at 70 s is not cut by the retry guard: it is polled to the end of the window", async (t) => {
+  let time = 0;
+  const service = await serve(t, { config: { ...CONFIG, videoPollMs: 10_000, videoNow: () => time,
+    videoSleep: async (ms) => { time += ms; } }, surplus: fakeSurplus({ scripts: [[...Array(6).fill("running"), "succeeded"]] }) });
+  assert.equal((await paidVideo(service)).status, 200);
+  assert.equal(time, 70_000);
+  assert.deepEqual(failLines(service), []);
+});
+
+test("a job still running at the end of the window is logged as poll_timeout", async (t) => {
+  const service = await serve(t, { surplus: fakeSurplus({ jobStatus: "running" }) });
+  assert.equal((await paidVideo(service)).status, 503);
+  const [line] = failLines(service);
+  assert.deepEqual([line.reason, line.status, line.job_id, line.elapsed_s], ["poll_timeout", "running", "vj_123456", 85]);
+});
+
+test("a succeeded job with no file is logged as no_result_file", async (t) => {
+  const service = await serve(t, { surplus: fakeSurplus({ scripts: [[{ status: "succeeded", results: [] }]] }) });
+  assert.equal((await paidVideo(service)).status, 503);
+  assert.deepEqual([failLines(service)[0].reason, failLines(service)[0].status, failLines(service)[0].results], ["no_result_file", "succeeded", 0]);
+});
+
+test("poll errors are counted in the log line, and secrets in Surplus's text never reach it", async (t) => {
+  const key = "inf_" + "k".repeat(20);
+  const service = await serve(t, { surplus: fakeSurplus({ scripts: [["throw", 500, { status: "failed", error: { type: "provider_error",
+    message: `Bearer ${key} rejected token tok_secret jt_abcdef123456 ` + "x".repeat(400), retryable: true } }]] }) });
+  assert.equal((await paidVideo(service)).status, 503);
+  const raw = service.logs.join("\n");
+  for (const secret of [key, "jt_abcdef123456", "Bearer"]) assert.ok(!raw.includes(secret), secret);
+  assert.ok(!raw.includes("PAYMENT-SIGNATURE") && !raw.toLowerCase().includes("0xsigned"));
+  const [line] = failLines(service);
+  assert.equal(line.poll_errors, 2);
+  assert.ok(line.error_message.length <= 200);
+  assert.match(line.error_message, /\[redacted\]/);
+});
+
+test("safeLog blanks token-, key- and header-shaped text and caps its length", () => {
+  assert.equal(safeLog(undefined), undefined);
+  assert.equal(safeLog("a\n b", 10), "a b");
+  assert.equal(safeLog("Authorization: Bearer abc.def xyz"), "[redacted] xyz");
+  assert.equal(safeLog("job mjt_abc123XYZ and inf_secretkey1"), "job [redacted] and [redacted]");
+  assert.equal(safeLog("word ".repeat(100), 50).length, 50);
+  assert.equal(safeLog("x".repeat(300), 50), "[redacted]");
+});
+
+test("log fields are validated: odd status or retryable values and echoed prompt, token or key never reach the log", async (t) => {
+  const service = await serve(t, { config: { ...CONFIG, surplusKey: "inf_realsurpluskey1234" }, surplus: fakeSurplus({
+    scripts: [[{ status: "failed", error: { type: "provider_error", code: { job_token: "jt_leak", prompt: "p" },
+      retryable: { job_token: "jt_leak" }, message: "bad prompt a green robot waves; X-Job-Token: shortone; tok_secret; inf_realsurpluskey1234" } }]] }) });
+  assert.equal((await paidVideo(service)).status, 503);
+  const raw = service.logs.join("\n");
+  for (const leak of ["jt_leak", "tok_secret", "a green robot waves", "shortone", "realsurpluskey"]) assert.ok(!raw.includes(leak), leak);
+  const [line] = failLines(service);
+  assert.deepEqual([line.error_code, line.retryable, line.status], [undefined, undefined, "failed"]);
+});
+
+test("an unknown job status is not copied into the log", async (t) => {
+  const service = await serve(t, { surplus: fakeSurplus({ scripts: [[{ status: "weird-jt_secret123" }]], jobStatus: "running" }),
+    config: { ...CONFIG, videoHoldMs: 4000, videoPollMs: 2000 } });
+  assert.equal((await paidVideo(service)).status, 503);
+  const raw = service.logs.join("\n");
+  assert.ok(!raw.includes("weird") && !raw.includes("jt_secret123"));
+});
+
+test("a logger that throws cannot change the answer or settle a failed job", async (t) => {
+  // the same wiring as serve(), with a logger that throws
+  const facilitator = fakeFacilitator();
+  const app = createApp({ videoNow: () => 0, videoSleep: async () => {}, ...CONFIG }, { facilitatorClient: facilitator,
+    catalogue: { ...catalogue, async videoHealth() { return 2; }, async videoServed() { return new Map([[VIDEO.model, 2]]); } },
+    fetchImpl: fakeSurplus({ scripts: [[unavailable]] }).fetchImpl, log: () => { throw new Error("log sink down"); },
+    upstream: async () => { throw new Error("no answer is asked"); } });
+  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
+  t.after(() => listener.close());
+  const url = `http://127.0.0.1:${listener.address().port}`;
+  const required = decode((await post(`${url}${VIDEO_ROUTE}`, VIDEO)).headers.get("payment-required"));
+  const response = await post(`${url}${VIDEO_ROUTE}`, VIDEO, pay(required, BASE));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, "video_failed");
+  assert.deepEqual(facilitator.calls.settle, []);
 });

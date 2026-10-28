@@ -19,6 +19,20 @@ export const VIDEO_TERMS = Object.freeze({ markupBps: 3000, minListAtomic: 200_0
 const FEES = { [BASE]: TERMS.settlementFeeAtomic, [SOLANA]: SOLANA_TERMS.settlementFeeAtomic };
 const JOB_ID = /^[A-Za-z0-9_-]{6,80}$/;
 
+// Text from Surplus that goes to the log: capped, one line, token-, key- and header-shaped strings blanked.
+export function safeLog(value, max = 80, exact = []) {
+  if (value === undefined || value === null || typeof value === "object") return undefined;
+  let text = String(value);
+  // Values this request itself holds (job token, Surplus key, the prompt's opening) are blanked wherever they appear,
+  // in case Surplus echoes them back in an error message.
+  for (const secret of exact) if (typeof secret === "string" && secret.length >= 4) text = text.split(secret).join("[redacted]");
+  return text.replace(/\s+/g, " ")
+    .replace(/\b(?:Bearer|Basic)\s+\S+/gi, "[redacted]")
+    .replace(/\b(?:token|key|secret|authorization|signature|password)\b\s*[:=]\s*\S+/gi, "[redacted]")
+    .replace(/\b(?:mjt|jt|inf|sk|bc)_[A-Za-z0-9_-]{4,}/g, "[redacted]")
+    .replace(/0x[0-9a-fA-F]{40,}/g, "[redacted]").replace(/\b[A-Za-z0-9+/_-]{40,}={0,2}/g, "[redacted]").slice(0, max);
+}
+
 export class VideoError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
@@ -261,6 +275,27 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     const invalid = (error) => res.status(400).json({ error: { type: "invalid_request_error",
       message: typeof error?.message === "string" ? error.message : "The video request was refused." } });
     const { request, listAtomic } = priced.get(req.body);
+    // One line per job that did not give a clip: which job, what Surplus said, how long, and WHY we stopped. On 28.10
+    // a paid test answered video_failed after 65 s and nothing in the log said whether Surplus failed the job, it
+    // finished without a file, or the retry guard cut in. Only the job id (not its token), HTTP status, Surplus's own
+    // error fields (truncated, token- and key-shaped strings blanked) and the model are written: never a header,
+    // payment payload, seller or prompt.
+    const lastHttp = {};
+    // A failing logger must never change what the payer gets (a 503 that settles nothing, or a 200 that does).
+    const note = (line) => { try { log(line); } catch { /* logging is best effort */ } };
+    const exactSecrets = () => [token, config.surplusKey, String(req.body?.prompt ?? "").slice(0, 24)];
+    const STATUSES = ["queued", "submitted", "running", "succeeded", "failed", "canceled", "expired"];
+    const logFail = (reason, attempt, job, extra = {}) => {
+      // Strings are scrubbed of this request's own secrets; status and retryable are only ever a known word / a boolean.
+      const exact = exactSecrets();
+      note(`singit-ask: video job not delivered ${JSON.stringify({
+        reason, job_id: safeLog(job?.id, 80, exact), model: attempt?.model, status: STATUSES.includes(job?.status) ? job.status : undefined,
+        http_status: lastHttp.status, poll_errors: lastHttp.errors || undefined, error_code: safeLog(job?.error?.code, 80, exact),
+        error_type: safeLog(job?.error?.type, 80, exact), error_message: safeLog(job?.error?.message, 200, exact),
+        retryable: typeof job?.error?.retryable === "boolean" ? job.error.retryable : undefined,
+        results: Array.isArray(job?.results) ? job.results.length : undefined,
+        elapsed_s: Math.round((now() - started) / 100) / 10, remaining_s: Math.round(remaining() / 100) / 10, ...extra })}`);
+    };
     // Re-read health after payment verification: a seller may disappear between the offer and submission.
     // Distinct idempotency keys isolate rejected attempts, and a terminal retryable failure may use a cheaper healthy model.
     // Catalogue reads share the request's own deadline (a cold health pass reads every book and can take minutes):
@@ -288,6 +323,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
         token = job?.job_token ?? job?.token;
         if ((response.status === 200 || response.status === 202) && job?.id && token) {
           accepted = true;
+          lastHttp.status = response.status; lastHttp.errors = 0;
           const id = job.id;
           // @x402/express cancels settlement for >=400; a 200 must mean a finished clip, since exact payments
           // cannot be refunded after settlement. A transient poll failure leaves the job pending, never billable.
@@ -297,13 +333,21 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
               break;
             }
             if (["failed", "canceled", "expired", "succeeded"].includes(job.status)) {
+              // The job is already terminal here, so the retry guard below never ends a job that is still running:
+              // a running one is polled until the window closes. It only decides whether a next model may start.
+              const reason = job.status === "succeeded" ? "no_result_file" : "upstream_failed";
               // A request Surplus refuses is the payer's problem only on the model they asked for; a substitute
               // that refuses it (a parameter it does not take) just ends that attempt.
               if (job.error?.type === "invalid_request" || job.error?.retryable === false) {
+                logFail(reason, attempt, job, { next: attempt.model !== request.model ? "next_model" : "none" });
                 if (attempt.model !== request.model) break;
                 return job.error?.type === "invalid_request" ? invalid(job.error) : failed("video_failed");
               }
-              if (remaining() < (config.videoMinRetryMs ?? 20_000)) return failed("video_failed");
+              if (remaining() < (config.videoMinRetryMs ?? 20_000)) {
+                logFail("window_cutoff", attempt, job, { cause: reason, next: "none" });
+                return failed("video_failed");
+              }
+              logFail(reason, attempt, job, { next: n + 1 < attempts.length ? "next_model" : "none" });
               break;
             }
             await sleep(Math.min(config.videoPollMs ?? 2000, remaining()));
@@ -313,10 +357,12 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
                 headers: { "X-Job-Token": token },
                 signal: AbortSignal.timeout(Math.max(1, Math.min(20_000, remaining()))) });
               const update = await poll.json().catch(() => null);
-              if (poll.ok && update) job = { ...update, id };
-            } catch { /* Keep holding: a network failure says nothing about whether the clip finished. */ }
+              lastHttp.status = poll.status;
+              if (poll.ok && update) job = { ...update, id }; else lastHttp.errors = (lastHttp.errors ?? 0) + 1;
+            } catch { lastHttp.errors = (lastHttp.errors ?? 0) + 1; /* Keep holding: a network failure says nothing about whether the clip finished. */ }
           }
           if (!actual && remaining() <= 0) {
+            logFail("poll_timeout", attempt, job, { next: "none" });
             try {
               await fetchImpl(`${config.surplusUrl}${VIDEO_ROUTE}/${id}`, { method: "DELETE",
                 headers: { "X-Job-Token": token }, signal: AbortSignal.timeout(10_000) });
@@ -331,12 +377,13 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
         // A submit whose answer we cannot read (5xx other than Surplus's own 503, or a 2xx with no job) may still
         // have started a job: a second model would fund two clips for one payment, so the chain stops here.
         if (response.status >= 500 && response.status !== 503 || response.status < 400 && response.status >= 200) {
-          log(`singit-ask: video submit for ${attempt.model} answered HTTP ${response.status} with no usable job`);
+          note(`singit-ask: video submit for ${attempt.model} answered HTTP ${response.status} with no usable job ${JSON.stringify({
+            error_code: safeLog(job?.error?.code, 80, exactSecrets()), elapsed_s: Math.round((now() - started) / 100) / 10 })}`);
           return failed("video_failed");
         }
       } catch (error) {
         // Unreachable or timed out: the job may exist upstream under this Idempotency-Key; never start another.
-        log(`singit-ask: video submit unreachable (${error.name})`);
+        note(`singit-ask: video submit unreachable (${error.name}) after ${Math.round((now() - started) / 100) / 10} s`);
         return failed("video_failed");
       }
     }
