@@ -193,3 +193,36 @@ test("an answer that is not settled (>= 400) has no receipt", async (t) => {
 test("receiptFor ignores a failed settlement", () => {
   assert.equal(receiptFor({ get: () => undefined }, { locals: {} }, { success: false }), null);
 });
+
+test("a route that only sets x402's settlement override (formats.mjs, Messages) still reports the amount actually billed", async (t) => {
+  const fetchImpl = async () => new Response(JSON.stringify({ id: "msg_1", type: "message", role: "assistant",
+    content: [{ type: "text", text: "hi" }], usage: { input_tokens: 12, output_tokens: 30, buyer_cost_micro: 2000, is_byok: true } }),
+    { status: 200, headers: { "content-type": "application/json" } });
+  const SONNET = { id: "claude-sonnet-5.5", name: "Sonnet", provider: "anthropic", contextLength: 1e6, promptUsdPerToken: 3e-6, completionUsdPerToken: 15e-6 };
+  const formatsCatalogue = { async resolve(id) { if (id !== SONNET.id) throw new UnknownModel("no"); return SONNET; },
+    async canAnswer() { return true; }, async list() { return [SONNET]; }, async imageModels() { return new Map(); } };
+  const app = createApp(CONFIG, { facilitatorClient: fakeFacilitator(), catalogue: formatsCatalogue, fetchImpl, log: () => {}, spendLimits: null,
+    upstream: async () => { throw new Error("the chat route is not asked"); } });
+  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
+  t.after(() => listener.close());
+  const url = `http://127.0.0.1:${listener.address().port}`;
+  const body = JSON.stringify({ model: "claude-sonnet-5.5", max_tokens: 300, messages: [{ role: "user", content: "What is x402?" }] });
+  const call = (headers = {}) => fetch(`${url}/v1/messages`, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body });
+  const required = decode((await call()).headers.get("payment-required"));
+  const response = await call(pay(required));
+  assert.equal(response.status, 200);
+  const answer = await response.json();
+  const receipt = JSON.parse(response.headers.get(RECEIPT_HEADER));
+  const ceiling = required.accepts.find((a) => a.scheme === "upto" && a.network === BASE).amount;
+  assert.equal(receipt.ceilingAtomic, ceiling);
+  assert.equal(receipt.chargedAtomic, answer.billing.totalAtomic);
+  assert.notEqual(receipt.chargedAtomic, ceiling, "the receipt is the billed amount, not the signed ceiling");
+});
+
+test("the limit block in a receipt is only used while the read is fresh (60 s)", async () => {
+  let clock = NOW * 1000;
+  const r = new SpendLimitReader({ publicClient: fakeChain(), now: () => clock });
+  await r.read(LIMITER);
+  clock += 59_000; assert.ok(r.peek(LIMITER));
+  clock += 2_000; assert.equal(r.peek(LIMITER), null);
+});

@@ -11,6 +11,7 @@
 // server's extensions into the signed payload, and an unknown key there is not ours to risk. The limiter address is
 // supplied by the caller and is never logged or stored beyond a short in-memory cache.
 import { parseAbi } from "viem";
+import { SETTLEMENT_OVERRIDES_HEADER } from "@x402/core/server";
 
 export const LIMITER_HEADER = "x-singit-limiter";
 export const LIMIT_HEADER = "X-SingIt-Spend-Limit";
@@ -42,7 +43,7 @@ export class SpendLimitReader {
   }
 
   // A cached read at most `maxAgeMs` old, or null. Never touches the network.
-  peek(address, maxAgeMs = 300_000) {
+  peek(address, maxAgeMs = 60_000) {
     const hit = this.cache.get(String(address).toLowerCase());
     return hit && !hit.value.error && this.now() - hit.at <= maxAgeMs ? hit.value : null;
   }
@@ -135,6 +136,11 @@ export function spendLimitMiddleware({ reader = null, log = () => {} } = {}) {
         if (key === "payment-required" && limit) {
           seen = decodeHeader(value)?.accepts ?? [];
           setHeader(LIMIT_HEADER, JSON.stringify(offersAgainstLimit(limit, seen)));
+        } else if (key === SETTLEMENT_OVERRIDES_HEADER.toLowerCase() && paid) {
+          // A route that settles actual usage (`upto`) says so through x402's own override header: that amount, not
+          // the signed ceiling, is what the receipt reports as charged.
+          const amount = JSON.parse(String(value)).amount;
+          if (/^[0-9]+$/.test(String(amount ?? ""))) res.locals.singitSettledAmount = String(amount);
         } else if (key === "payment-response" && paid) {
           const receipt = receiptFor(req, res, decodeHeader(value), peeked);
           if (receipt) setHeader(RECEIPT_HEADER, JSON.stringify(receipt));
@@ -162,7 +168,7 @@ export function receiptFor(req, res, settlement, peeked = null) {
   const own = res.locals?.singitReceipt ?? {};
   const receipt = { v: 1, ref: own.ref ?? settlement.transaction, tx: settlement.transaction,
     network: settlement.network ?? accepted.network, scheme: accepted.scheme, payer: settlement.payer,
-    asset: "USDC", chargedAtomic: String(own.chargedAtomic ?? accepted.amount ?? ""), ceilingAtomic: String(accepted.amount ?? "") };
+    asset: "USDC", chargedAtomic: String(own.chargedAtomic ?? res.locals?.singitSettledAmount ?? accepted.amount ?? ""), ceilingAtomic: String(accepted.amount ?? "") };
   if (peeked && !peeked.error) receipt.limit = { limiter: peeked.limiter, asOf: peeked.asOf,
     remainingTodayBeforeAtomic: peeked.remainingTodayAtomic, spendableNowBeforeAtomic: peeked.spendableNowAtomic };
   return receipt;
