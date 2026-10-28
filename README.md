@@ -1,4 +1,18 @@
+<p align="center">
+  <img src="website/assets/singit-social-preview-v3.png" alt="SingIt: your agent spends, your wallet keeps the money" width="720">
+</p>
+<!-- A wider 1280x320 banner (assets/banner.png) can replace the image above when one is made. -->
+
 # SingIt
+
+<p>
+  <a href="https://github.com/bubon-ik/SingItAI/actions/workflows/security-gate.yml"><img alt="Security gate" src="https://github.com/bubon-ik/SingItAI/actions/workflows/security-gate.yml/badge.svg?branch=main"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://www.npmjs.com/package/@singitai/plugin-singit"><img alt="npm: @singitai/plugin-singit" src="https://img.shields.io/npm/v/@singitai/plugin-singit?label=elizaos%20plugin"></a>
+  <a href="https://registry.modelcontextprotocol.io/v0/servers?search=app.singitai"><img alt="MCP Registry: app.singitai/singit" src="https://img.shields.io/badge/MCP%20Registry-app.singitai%2Fsingit-informational"></a>
+  <a href="https://singitai.app"><img alt="Website: singitai.app" src="https://img.shields.io/badge/website-singitai.app-black"></a>
+  <a href="https://x.com/SingItAgent"><img alt="X: @SingItAgent" src="https://img.shields.io/badge/X-%40SingItAgent-black"></a>
+</p>
 
 **Your agent spends. Your wallet keeps the money.**
 
@@ -10,7 +24,36 @@ and the agent takes only what each purchase needs, inside those limits.
 
 [Website](https://singitai.app) · [Open the app](https://app.singitai.app/app/) · [Documentation](docs/README.md)
 
-[![Security gate](https://github.com/bubon-ik/SingItAI/actions/workflows/security-gate.yml/badge.svg?branch=main)](https://github.com/bubon-ik/SingItAI/actions/workflows/security-gate.yml)
+## Quick start
+
+Three commands. The first needs no account, key or wallet.
+
+**1. Call SingIt Ask, the x402 endpoint.** An unpaid request gets the `402 Payment Required`
+challenge with its USDC offers (`payment-required` header, base64 JSON):
+
+```bash
+curl -i https://ask.singitai.app/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Say hello in five words."}]}'
+```
+
+Use the model `free/deepseek-v4.1-flash` in the same request to get an answer with no payment
+(20 a day per network). To pay for an answer from your own wallet, see
+[Your first paid x402 call](docs/first-paid-call.md).
+
+**2. Add the MCP server** to Claude Code. Price and model lookups work without a key; add
+`--header "Authorization: Bearer $SINGIT_API_KEY"` for the paid tools. Other clients:
+[`llms-install.md`](llms-install.md).
+
+```bash
+claude mcp add --transport http singit https://app.singitai.app/mcp
+```
+
+**3. Install the ElizaOS plugin** ([`integrations/elizaos-plugin`](integrations/elizaos-plugin)):
+
+```bash
+npm install @singitai/plugin-singit @elizaos/core
+```
 
 ## How it works
 
