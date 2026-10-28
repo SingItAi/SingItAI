@@ -84,7 +84,7 @@ class EncryptionTests(unittest.TestCase):
         sealed = wp.encrypt(plain, browser.public, browser.auth)
         self.assertEqual(browser.decrypt(sealed), {"body": "hi"})
         # The plaintext is not sent as it is. Not a two-byte substring such as b"hi": random ciphertext contains any
-        # two bytes about once in 650 runs (that made this test flaky); the whole 14-byte message cannot by chance.
+        # two bytes about once in 650 runs (that made this test flaky); the whole message cannot by chance (2^-100 and below).
         self.assertNotIn(plain, sealed)
         # aes128gcm record: 86-byte header (salt 16, record size 4, key id length 1, sender key 65), the plaintext,
         # one delimiter byte and the 16-byte tag; nothing else is appended.
