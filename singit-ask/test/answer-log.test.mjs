@@ -107,6 +107,13 @@ test("the log resumes when room or the disk comes back: full is not permanent, a
   try { partial.record({ model: "m" }); await partial.flush(); } finally { fs.promises.appendFile = real; }
   assert.equal(partial.size, 50);
   assert.equal(partial.queued, 0);
+  // and when the file cannot be re-read either, the failed line is still counted (it may have been written)
+  const blind = new AnswerLog({ file: tmp(), log: () => {} });
+  const realStat = fs.promises.stat;
+  fs.promises.appendFile = async () => { throw Object.assign(new Error("io"), { code: "EIO" }); };
+  fs.promises.stat = async () => { throw Object.assign(new Error("io"), { code: "EIO" }); };
+  try { blind.record({ model: "m" }); await blind.flush(); } finally { fs.promises.appendFile = real; fs.promises.stat = realStat; }
+  assert.ok(blind.size > 0);
 });
 
 test("recordWhenSettled records on the facilitator's success result, even if the client is gone, and never on a failure", async () => {

@@ -82,7 +82,8 @@ export class AnswerLog {
           } catch (error) {
             this.log(`singit-ask: answer log write failed (${error.code ?? error.name})`);
             // A failed append may still have written part of the line: take the file's real size, not a guess.
-            try { this.size = (await fs.promises.stat(this.file)).size; } catch { /* no file: nothing was written */ }
+            try { this.size = (await fs.promises.stat(this.file)).size; }
+            catch (statError) { if (statError.code !== "ENOENT") this.size += text.length; }   // unreadable: assume the worst
           }
         })
         .finally(() => { this.queued -= text.length; this.pending--; });
