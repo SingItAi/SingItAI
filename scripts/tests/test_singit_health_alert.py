@@ -317,10 +317,12 @@ class MainTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.state_path = Path(self.tmp.name) / "state.json"
 
-    def run_main(self, argv, *, env=None):
+    def run_main(self, argv, *, env=None, now=1_000.0, price=False):
+        # The Opus share check is its own test class below; the tests here feed only the ask/app/rpc responses.
+        argv = argv if price else [*argv, "--no-opus-share"]
         captured = io.StringIO()
         with redirect_stdout(captured):
-            code = self.ha.main(argv, env=env or {}, now=lambda: 1_000.0)
+            code = self.ha.main(argv, env=env or {}, now=lambda: now)
         return code, captured.getvalue()
 
     def test_all_checks_passing_exits_zero(self):
@@ -403,6 +405,139 @@ class MainTests(unittest.TestCase):
             code, out = self.run_main(["--state", str(self.state_path), "--rpc-url", "https://rpc.test/SUPER-SECRET"])
         self.assertNotIn("SUPER-SECRET", out)
         self.assertNotIn("SUPER-SECRET", self.state_path.read_text())
+
+
+def book(*offers):
+    return json.dumps({"data": {"offers": list(offers)}}).encode()
+
+
+def offer(discount, *, trusted=True, healthy=True, available=True, provider="capminal"):
+    return {"discount_pct": discount, "trusted": trusted, "healthy": healthy, "available": available,
+            "provider_id": provider}
+
+
+class OpusShareTests(unittest.TestCase):
+    def setUp(self):
+        self.ha = load_health_alert()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state_path = Path(self.tmp.name) / "state.json"
+        self.sent = []
+
+    def run_main(self, responses, *, now, env=None):
+        """One run of the whole script: ask ok, app ok, then the order book `responses` (status, body)."""
+        sequence = [(200, b'{"ok": true}'), (200, b"<html>app</html>"), *responses]
+        captured = io.StringIO()
+        with patch.object(self.ha.urllib.request, "urlopen", fake_urlopen(sequence)), \
+                patch.object(self.ha, "send_webhook", lambda url, message, timeout: self.sent.append(message)), \
+                redirect_stdout(captured):
+            code = self.ha.main(["--state", str(self.state_path)], now=lambda: now,
+                                env={"SINGIT_ALERT_WEBHOOK_URL": "https://hooks.test/x", **(env or {})})
+        return code, captured.getvalue()
+
+    def test_cheapest_trusted_share_ignores_untrusted_unhealthy_unavailable_and_blocked(self):
+        offers = book(offer(90, trusted=False), offer(90, healthy=False), offer(90, available=False),
+                      offer(80, provider="Blocked"), offer(75, provider="capminal"), offer(70))
+        self.assertEqual(self.ha.cheapest_trusted_share(json.loads(offers), {"blocked"}), 0.25)
+        self.assertIsNone(self.ha.cheapest_trusted_share(json.loads(book(offer(75, trusted=False))), set()))
+        for junk in ({}, [], None, {"data": {"offers": "x"}}, {"data": {"offers": [None, 3, {"discount_pct": "75"}]}}):
+            self.assertIsNone(self.ha.cheapest_trusted_share(junk, set()))
+
+    def test_share_at_or_below_the_limit_is_quiet(self):
+        for discount in (75, 71):  # 0.25 and exactly the 0.29 limit
+            with self.subTest(discount=discount):
+                self.state_path.unlink(missing_ok=True)
+                code, out = self.run_main([(200, book(offer(discount)))], now=1_000.0)
+                self.assertEqual((code, self.sent, out.strip()), (0, [], ""))
+
+    def test_share_above_the_limit_alerts_once_and_not_again_while_it_stays_high(self):
+        code, _ = self.run_main([(200, book(offer(70)))], now=1_000.0)
+        self.assertEqual(code, 0)  # a price alert is not an outage
+        self.assertEqual(len(self.sent), 1)
+        self.assertTrue(self.sent[0].startswith("SingIt price alert:"))
+        self.assertIn("0.30 of list", self.sent[0])
+        # Hours later, still high (and even higher): no new message. The 60-minute repeat does not apply.
+        self.run_main([(200, book(offer(70)))], now=1_000.0 + 3 * 3600)
+        self.run_main([(200, book(offer(21)))], now=1_000.0 + 30 * 3600)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_one_recovery_message_when_it_comes_back_and_a_new_alert_after_that(self):
+        self.run_main([(200, book(offer(70)))], now=1_000.0)
+        self.run_main([(200, book(offer(75)))], now=2_000.0)
+        self.assertEqual(len(self.sent), 2)
+        self.assertTrue(self.sent[1].startswith("Recovered:"))
+        self.assertIn("0.25 of list", self.sent[1])
+        self.run_main([(200, book(offer(75)))], now=3_000.0)  # still fine: silent
+        self.assertEqual(len(self.sent), 2)
+        self.run_main([(200, book(offer(50)))], now=4_000.0)
+        self.assertEqual(len(self.sent), 3)
+        self.assertTrue(self.sent[2].startswith("SingIt price alert:"))
+
+    def test_an_unreadable_order_book_changes_nothing(self):
+        self.run_main([(200, book(offer(70)))], now=1_000.0)
+        for response in ((503, b""), (200, b"not json")):
+            code, out = self.run_main([response], now=2_000.0)
+            self.assertEqual(code, 0)
+            self.assertIn("skip: opus-share", out)
+        self.assertEqual(len(self.sent), 1)  # no recovery from a blip
+        self.run_main([(200, book(offer(70)))], now=3_000.0)
+        self.assertEqual(len(self.sent), 1)  # and the alert was not forgotten, so it does not repeat
+
+    def test_no_qualifying_offer_is_an_alert_too(self):
+        self.run_main([(200, book(offer(75, trusted=False)))], now=1_000.0)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("no trusted, healthy, available claude-opus-5.5 offer", self.sent[0])
+
+    def test_an_undelivered_price_alert_is_retried(self):
+        env = {"SINGIT_ALERT_WEBHOOK_URL": "https://hooks.test/SECRET"}
+        sequence = [(200, b'{"ok": true}'), (200, b"<html>app</html>"), (200, book(offer(70))), (500, b"")]
+        captured = io.StringIO()
+        with patch.object(self.ha.urllib.request, "urlopen", fake_urlopen(sequence)), redirect_stdout(captured):
+            self.ha.main(["--state", str(self.state_path)], env=env, now=lambda: 1_000.0)
+        self.assertIn("could not deliver", captured.getvalue())
+        self.run_main([(200, book(offer(70)))], now=2_000.0)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_limit_model_url_and_blocked_providers_come_from_the_environment(self):
+        seen = []
+
+        def opener(request, timeout=None):
+            seen.append(request.full_url)
+            if "markets" in request.full_url:
+                return FakeResponse(200, book(offer(75, provider="capminal"), offer(70, provider="venice")))
+            return FakeResponse(200, b'{"ok": true}')
+        env = {"SINGIT_ALERT_SURPLUS_URL": "https://surplus.test/", "SINGIT_ALERT_PRICE_MODEL": "claude-opus-9",
+               "SINGIT_ALERT_SHARE_MAX": "0.2", "SINGIT_ALERT_BLOCKED_PROVIDERS": "Capminal, x"}
+        with patch.object(self.ha.urllib.request, "urlopen", opener), \
+                patch.object(self.ha, "send_webhook", lambda url, message, timeout: self.sent.append(message)), \
+                redirect_stdout(io.StringIO()):
+            self.ha.main(["--state", str(self.state_path)], now=lambda: 1_000.0,
+                         env={"SINGIT_ALERT_WEBHOOK_URL": "https://hooks.test/x", **env})
+        self.assertIn("https://surplus.test/api/markets/claude-opus-9", seen)
+        self.assertEqual(len(self.sent), 1)  # capminal blocked, so the best is venice at 0.30, above 0.2
+        self.assertIn("0.30 of list, above 0.20", self.sent[0])
+
+    def test_it_can_be_switched_off(self):
+        captured = io.StringIO()
+        with patch.object(self.ha.urllib.request, "urlopen",
+                          fake_urlopen([(200, b'{"ok": true}'), (200, b"<html>app</html>")])), redirect_stdout(captured):
+            code = self.ha.main(["--state", str(self.state_path), "--no-opus-share"], env={}, now=lambda: 1_000.0)
+        self.assertEqual(code, 0)
+
+    def test_a_health_failure_and_a_price_alert_share_one_message_but_keep_their_headers(self):
+        message = self.ha.format_message(
+            [{"name": "ask", "message": "HTTP 503"},
+             {"name": "opus-share", "message": "0.30 of list", "kind": "price"}], [])
+        self.assertEqual(message.splitlines(), ["SingIt health alert:", "- ask: HTTP 503",
+                                                "SingIt price alert:", "- opus-share: 0.30 of list"])
+
+    def test_ntfy_titles_a_price_alert_as_one(self):
+        with patch.object(self.ha.urllib.request, "urlopen") as opener:
+            opener.return_value.__enter__.return_value.read.return_value = b""
+            self.ha.send_ntfy("https://ntfy.test/t", "SingIt price alert:\n- opus-share: x", token=None, timeout=5)
+        headers = {k.lower(): v for k, v in opener.call_args.args[0].header_items()}
+        self.assertEqual(headers["title"], "SingIt price alert")
+        self.assertEqual(headers["priority"], "high")
 
 
 def tearDownModule():

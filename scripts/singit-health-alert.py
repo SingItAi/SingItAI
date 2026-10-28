@@ -23,6 +23,15 @@ Checks (each has an env var and a CLI flag; defaults are sensible):
 
 Any 5xx, timeout, connection error, non-200 status, or ok != true is a failure.
 
+  * Opus purchase share (price check, on by default): GET the public Surplus order book for
+    $SINGIT_ALERT_PRICE_MODEL (default claude-opus-5.5) and take the cheapest trusted + healthy + available offer,
+    as a fraction of list price - the same number singit-ask's price guard starts from (catalogue.mjs
+    `cheapestShare`). Above $SINGIT_ALERT_SHARE_MAX (default 0.29) it is a price alert: Opus upto/exact prices
+    follow that share. This check alerts only when its state CHANGES (ok -> over, over -> ok), never repeats while
+    the share stays high, and a book that cannot be read changes nothing. $SINGIT_ALERT_SURPLUS_URL
+    (default https://api.surplusintelligence.ai) and $SINGIT_ALERT_BLOCKED_PROVIDERS (comma-separated provider ids
+    singit-ask blocks, same as SINGIT_ASK_BLOCKED_PROVIDERS) mirror the service. --no-opus-share switches it off.
+
 Alert channel is chosen only by what is set in the environment - the operator picks this later:
   SINGIT_ALERT_TELEGRAM_BOT_TOKEN + SINGIT_ALERT_TELEGRAM_CHAT_ID -> a Telegram message
   SINGIT_ALERT_NTFY_URL (and no Telegram token)                   -> a push through ntfy: the message as
@@ -95,6 +104,11 @@ NTFY_URL_ENV = "SINGIT_ALERT_NTFY_URL"
 NTFY_TOKEN_ENV = "SINGIT_ALERT_NTFY_TOKEN"
 STATE_ENV, DEFAULT_STATE = "SINGIT_ALERT_STATE", "~/.sign402/health-alert-state.json"
 REPEAT_MINUTES_ENV, DEFAULT_REPEAT_MINUTES = "SINGIT_ALERT_REPEAT_MINUTES", 60
+SURPLUS_URL_ENV, DEFAULT_SURPLUS_URL = "SINGIT_ALERT_SURPLUS_URL", "https://api.surplusintelligence.ai"
+PRICE_MODEL_ENV, DEFAULT_PRICE_MODEL = "SINGIT_ALERT_PRICE_MODEL", "claude-opus-5.5"
+SHARE_MAX_ENV, DEFAULT_SHARE_MAX = "SINGIT_ALERT_SHARE_MAX", 0.29
+BLOCKED_ENV = "SINGIT_ALERT_BLOCKED_PROVIDERS"
+SHARE_CHECK_NAME = "opus-share"
 
 RPC_QUOTA_CODES = (-32005, -32029)
 RPC_QUOTA_WORDS = re.compile(r"limit|quota", re.I)
@@ -180,9 +194,60 @@ def check_journal(unit: str, *, minutes: int, threshold: int) -> dict[str, Any]:
             "message": f"{hits} 5xx/Traceback line(s) in the last {minutes} min (threshold {threshold})"}
 
 
+def cheapest_trusted_share(book: Any, blocked: set[str]) -> float | None:
+    """Cheapest share of list price among trusted, healthy, available, unblocked offers, or None when none
+    qualifies. Mirrors singit-ask/src/catalogue.mjs `qualifies` + `cheapestShare` (share = (100 - discount) / 100)."""
+    data = book.get("data") if isinstance(book, dict) else None
+    offers = (data.get("offers") if isinstance(data, dict) else None) or (book.get("offers") if isinstance(book, dict) else None) or []
+    best: float | None = None
+    for offer in offers if isinstance(offers, list) else []:
+        if not isinstance(offer, dict):
+            continue
+        if not (offer.get("trusted") is True and offer.get("healthy") is True and offer.get("available") is True):
+            continue
+        if str(offer.get("provider_id") or "").lower() in blocked:
+            continue
+        discount = offer.get("discount_pct")
+        if isinstance(discount, bool) or not isinstance(discount, (int, float)) or not 0 <= discount <= 100:
+            continue
+        share = (100 - discount) / 100
+        if best is None or share < best:
+            best = share
+    return best
+
+
+def check_price_share(base_url: str, model: str, *, max_share: float, blocked: set[str],
+                      timeout: float) -> dict[str, Any]:
+    """Opus's purchase share, from Surplus's public order book (no key, no payment). A price alert, not a health
+    one: `once` makes triage alert on the change only. A book that cannot be read is skipped, so a network blip
+    neither alerts nor clears an alert already raised."""
+    name = SHARE_CHECK_NAME
+    url = f"{base_url.rstrip('/')}/api/markets/{urllib.parse.quote(model, safe='')}"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            status, raw = response.status, response.read(READ_CAP * 16)
+        if status != 200:
+            raise ValueError(f"HTTP {status}")
+        book = json.loads(raw)
+    except Exception as exc:  # unreadable book: say so, change nothing
+        return {"name": name, "ok": True, "skipped": True,
+                "message": f"order book for {model} unreadable ({type(exc).__name__}); skipped"}
+    share = cheapest_trusted_share(book, blocked)
+    if share is None:
+        return {"name": name, "ok": False, "once": True, "kind": "price",
+                "message": f"no trusted, healthy, available {model} offer: the guard prices at list"}
+    if share > max_share:
+        return {"name": name, "ok": False, "once": True, "kind": "price",
+                "message": f"cheapest trusted {model} offer is {share:.2f} of list, above {max_share:.2f}: "
+                           "Opus prices follow it up"}
+    return {"name": name, "ok": True, "kind": "price",
+            "message": f"cheapest trusted {model} offer is {share:.2f} of list (limit {max_share:.2f})"}
+
+
 def run_checks(*, ask_url: str, app_url: str, extra_urls: list[str], rpc_url: str | None,
                journal_units: list[str], journal_minutes: int, threshold: int,
-               timeout: float) -> list[dict[str, Any]]:
+               timeout: float, price_share: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     results = [
         _http_check("ask", ask_url, timeout=timeout, require_ok=True),
         _http_check("app", app_url, timeout=timeout, require_ok=False),
@@ -191,6 +256,8 @@ def run_checks(*, ask_url: str, app_url: str, extra_urls: list[str], rpc_url: st
     if rpc_url:
         results.append(check_rpc(rpc_url, timeout=timeout))
     results += [check_journal(unit, minutes=journal_minutes, threshold=threshold) for unit in journal_units]
+    if price_share:
+        results.append(check_price_share(timeout=timeout, **price_share))
     return results
 
 
@@ -223,7 +290,13 @@ def triage(results: list[dict[str, Any]], state: dict[str, Any], *, now: float,
             next_state[name] = {"failing": False, "last_alert": None}
             continue
         last_alert = previous.get("last_alert")
-        if last_alert is None or now - last_alert >= repeat_seconds:
+        if result.get("once"):  # a state-change alert: said once when it starts failing, not repeated while it does
+            if previous.get("failing"):
+                next_state[name] = {"failing": True, "last_alert": last_alert}
+            else:
+                to_alert.append(result)
+                next_state[name] = {"failing": True, "last_alert": now}
+        elif last_alert is None or now - last_alert >= repeat_seconds:
             to_alert.append(result)
             next_state[name] = {"failing": True, "last_alert": now}
         else:
@@ -233,12 +306,17 @@ def triage(results: list[dict[str, Any]], state: dict[str, Any], *, now: float,
 
 def format_message(to_alert: list[dict[str, Any]], recovered: list[dict[str, Any]]) -> str:
     lines = []
-    if to_alert:
+    health = [r for r in to_alert if r.get("kind") != "price"]
+    price = [r for r in to_alert if r.get("kind") == "price"]
+    if health:
         lines.append("SingIt health alert:")
-        lines += [f"- {r['name']}: {r['message']}" for r in to_alert]
+        lines += [f"- {r['name']}: {r['message']}" for r in health]
+    if price:
+        lines.append("SingIt price alert:")
+        lines += [f"- {r['name']}: {r['message']}" for r in price]
     if recovered:
         lines.append("Recovered:")
-        lines += [f"- {r['name']}: ok" for r in recovered]
+        lines += [f"- {r['name']}: {r['message'] if r.get('kind') == 'price' else 'ok'}" for r in recovered]
     return "\n".join(lines)
 
 
@@ -261,9 +339,10 @@ def send_webhook(url: str, text: str, *, timeout: float) -> None:
 def send_ntfy(url: str, text: str, *, token: str | None, timeout: float) -> None:
     """One push through ntfy: plain text to the topic URL. A message that is only recoveries is sent at
     normal priority; anything still failing is high priority, so the phone makes a sound."""
-    alerting = text.startswith("SingIt health alert:")
+    alerting = text.startswith("SingIt health alert:") or text.startswith("SingIt price alert:")
+    down = text.startswith("SingIt health alert:")
     headers = {"Content-Type": "text/plain; charset=utf-8", "User-Agent": USER_AGENT,
-               "Title": "SingIt is down" if alerting else "SingIt recovered",
+               "Title": ("SingIt is down" if down else "SingIt price alert") if alerting else "SingIt recovered",
                "Priority": "high" if alerting else "default",
                "Tags": "warning" if alerting else "white_check_mark"}
     if token:
@@ -306,6 +385,7 @@ def _build_parser() -> argparse.ArgumentParser:
                         help=f"default: ${REPEAT_MINUTES_ENV} or {DEFAULT_REPEAT_MINUTES}")
     parser.add_argument("--state", default=None, help=f"default: ${STATE_ENV} or {DEFAULT_STATE}")
     parser.add_argument("--timeout", type=float, default=10.0, help="HTTP timeout per check, seconds (default 10)")
+    parser.add_argument("--no-opus-share", action="store_true", help="skip the Opus purchase-share price check")
     parser.add_argument("--dry-run", action="store_true", help="print what would be sent; send and save nothing")
     return parser
 
@@ -326,10 +406,16 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None,
         _int_env(values, REPEAT_MINUTES_ENV, DEFAULT_REPEAT_MINUTES)
     state_path = Path(args.state or values.get(STATE_ENV) or DEFAULT_STATE).expanduser()
 
+    price_share = None if args.no_opus_share else {
+        "base_url": values.get(SURPLUS_URL_ENV) or DEFAULT_SURPLUS_URL,
+        "model": values.get(PRICE_MODEL_ENV) or DEFAULT_PRICE_MODEL,
+        "max_share": _float_env(values, SHARE_MAX_ENV, DEFAULT_SHARE_MAX),
+        "blocked": {p.strip().lower() for p in (values.get(BLOCKED_ENV) or "").split(",") if p.strip()}}
     results = run_checks(ask_url=ask_url, app_url=app_url, extra_urls=extra_urls, rpc_url=rpc_url,
                          journal_units=args.journal_units, journal_minutes=journal_minutes,
-                         threshold=threshold, timeout=args.timeout)
-    any_failing = any(not r["ok"] for r in results if not r.get("skipped"))
+                         threshold=threshold, timeout=args.timeout, price_share=price_share)
+    # A price alert is information, not an outage: it does not make the unit exit 1.
+    any_failing = any(not r["ok"] for r in results if not r.get("skipped") and r.get("kind") != "price")
 
     state = load_state(state_path)
     to_alert, recovered, next_state = triage(results, state, now=now(), repeat_seconds=repeat_minutes * 60)
@@ -352,6 +438,14 @@ def main(argv: list[str] | None = None, *, env: dict[str, str] | None = None,
         if result.get("skipped"):
             print(f"skip: {result['name']}: {result['message']}")
     return 1 if any_failing else 0
+
+
+def _float_env(values: dict[str, str], name: str, default: float) -> float:
+    try:
+        value = float(values[name])
+    except (KeyError, ValueError, TypeError):
+        return default
+    return value if 0 < value <= 1 else default
 
 
 def _int_env(values: dict[str, str], name: str, default: int) -> int:
