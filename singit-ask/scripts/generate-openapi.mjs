@@ -1,9 +1,10 @@
-// Prints the openapi.json that singit-ask serves, built offline: no network, no keys, no payment. A stub facilitator
-// and a catalogue of every pinned model route stand in for Coinbase and Surplus, so the document has every route.
+// Prints the openapi.json that singit-ask serves, built offline: no network, no keys, no payment. A stub facilitator,
+// a price book that is never read, and a catalogue of every pinned model route stand in for Coinbase and Surplus, so the document has every route.
 // Used to check the spec against the pay-skills catalogue linter (`pay catalog check`) and by test/openapi-lint.test.mjs.
 //   node scripts/generate-openapi.mjs > openapi.json
 import http from "node:http";
 import { createApp, BASE, SOLANA } from "../src/app.mjs";
+import { PriceBook } from "../src/prices.mjs";
 import { MODEL_ROUTES } from "../src/model-routes.mjs";
 
 const stubFacilitator = {
@@ -26,7 +27,7 @@ export async function generateOpenapi(overrides = {}) {
   const config = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", payToBase: "0x1111111111111111111111111111111111111111",
     surplusKey: "inf_stub", surplusUrl: "https://surplus.invalid", model: "deepseek-v4.1-flash", exaKey: "stub", videoSold: false,
     observedFile: "/nonexistent/observed.json", ...overrides };
-  const app = createApp(config, { facilitatorClient: stubFacilitator, catalogue, log: () => {} });
+  const app = createApp(config, { facilitatorClient: stubFacilitator, catalogue, priceBook: new PriceBook({ publicClient: null }), log: () => {} });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   try {
     // Asked as the public site is (https, its host name), so `servers` names the production origin. fetch() cannot set Host.
