@@ -126,7 +126,25 @@ export const REASONING_HEADROOM = Object.freeze({
   "gemini-3.1-pro-preview": 1024,
   "claude-opus-5.5": 256,
 });
-export const reasoningHeadroom = (id) => (typeof id === "string" && Object.hasOwn(REASONING_HEADROOM, id) ? REASONING_HEADROOM[id] : 0);
+// A measurement knob (28 October), not a price change: SINGIT_ASK_REASONING_HEADROOM="claude-opus-5.5=128" (server.mjs)
+// replaces a model's headroom above for this process, so a paid test can see whether `reasoning_effort: low` lets Opus
+// get by with less. It moves the ceiling the 402 offers and the max_tokens sent upstream together. Unset, nothing differs.
+let headroomOverrides = Object.freeze({});
+export function setReasoningHeadroomOverrides(map) { headroomOverrides = Object.freeze({ ...map }); }
+export function parseReasoningHeadroom(text) {
+  const out = {};
+  for (const part of String(text ?? "").split(",").map((p) => p.trim()).filter(Boolean)) {
+    const [id, value, ...rest] = part.split("=").map((p) => p.trim());
+    const n = Number(value);
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id ?? "") || rest.length || value === "" || !Number.isInteger(n) || n < 0 || n > 2048)
+      throw new Error(`SINGIT_ASK_REASONING_HEADROOM: cannot read "${part}" (want model=tokens, 0 to 2048)`);
+    out[id] = n;
+  }
+  return out;
+}
+export const reasoningHeadroom = (id) => (typeof id !== "string" ? 0
+  : Object.hasOwn(headroomOverrides, id) ? headroomOverrides[id]
+  : Object.hasOwn(REASONING_HEADROOM, id) ? REASONING_HEADROOM[id] : 0);
 export const costOverhead = (model) => {
   const id = typeof model?.id === "string" ? model.id : "";
   const extra = Object.hasOwn(MODEL_COST_OVERHEAD, id) ? MODEL_COST_OVERHEAD[id] : null;
