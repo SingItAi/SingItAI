@@ -75,7 +75,10 @@ export class AnswerLog {
       this.pending++;
       this.chain = this.chain
         .then(() => fs.promises.appendFile(this.file, text, { mode: 0o600 }))
-        .catch((error) => { this.log(`singit-ask: answer log write failed (${error.code ?? error.name})`); })
+        .catch((error) => {
+          this.bytes -= text.length;   // nothing was written: a failing disk must not use up the size budget
+          this.log(`singit-ask: answer log write failed (${error.code ?? error.name})`);
+        })
         .finally(() => { this.pending--; });
       return true;
     } catch (error) {
@@ -87,13 +90,22 @@ export class AnswerLog {
   flush() { return this.chain; }
 }
 
-// Record once the payment has really settled: the x402 middleware sends the answer only after a successful settlement
-// (a failed one becomes a 402 and no PAYMENT-RESPONSE), so a line exists only for an answer that was paid for.
+// Record once the payment has really settled. The x402 middleware sets PAYMENT-RESPONSE with the facilitator's
+// result after settling: `success: true` and a transaction, or (failure) `success: false`. That moment does not depend
+// on the client still being connected, unlike `finish`.
 export function recordWhenSettled(res, log, entry) {
   if (!log) return;
-  res.once("finish", () => {
-    try { if (res.statusCode === 200 && res.getHeader("payment-response")) log.record(entry); } catch { /* never into the answer */ }
-  });
+  const setHeader = res.setHeader.bind(res);
+  let done = false;
+  res.setHeader = (name, value) => {
+    if (!done && String(name).toLowerCase() === "payment-response") {
+      try {
+        const settlement = JSON.parse(Buffer.from(String(value), "base64").toString("utf8"));
+        if (settlement?.success === true && settlement.transaction) { done = true; log.record(entry); }
+      } catch { /* never into the answer */ }
+    }
+    return setHeader(name, value);
+  };
 }
 
 const logs = new Map();

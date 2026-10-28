@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
 import { createApp } from "../src/app.mjs";
-import { AnswerLog, acceptedOf, tokensOf, answerLogFor } from "../src/answer-log.mjs";
+import { AnswerLog, acceptedOf, recordWhenSettled, tokensOf, answerLogFor } from "../src/answer-log.mjs";
 import { BASE, PAY_TO, METERED_ROUTE } from "../src/pricing.mjs";
 
 const SOL = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -80,6 +80,28 @@ test("record returns before the disk is touched, and a backlog is bounded", asyn
   for (let i = 0; i < 1000; i++) if (log.record({ model: "m" })) accepted++;
   assert.ok(accepted <= 200, `${accepted} queued`);
   await log.flush();
+});
+
+test("a failing disk does not use up the size budget", async () => {
+  const log = new AnswerLog({ file: "/etc/hostname/nope/answers.jsonl", maxBytes: 400, log: () => {} });
+  for (let i = 0; i < 30; i++) { log.record({ model: "m" }); await log.flush(); }
+  assert.equal(log.full, false);
+  assert.equal(log.bytes, 0);
+});
+
+test("recordWhenSettled records on the facilitator's success result, even if the client is gone, and never on a failure", async () => {
+  const file = tmp();
+  const log = new AnswerLog({ file });
+  const make = () => { const headers = {}; return { res: { setHeader: (k, v) => { headers[k] = v; } }, headers }; };
+  const ok = Buffer.from(JSON.stringify({ success: true, transaction: "0xtx" })).toString("base64");
+  const bad = Buffer.from(JSON.stringify({ success: false, errorReason: "x", transaction: "" })).toString("base64");
+  const a = make(); recordWhenSettled(a.res, log, { model: "settled" });
+  a.res.setHeader("Content-Type", "application/json"); a.res.setHeader("PAYMENT-RESPONSE", ok); a.res.setHeader("payment-response", ok);
+  const b = make(); recordWhenSettled(b.res, log, { model: "failed" });
+  b.res.setHeader("PAYMENT-RESPONSE", bad); b.res.setHeader("PAYMENT-RESPONSE", "not base64 json");
+  await log.flush();
+  assert.deepEqual(read(file).map((l) => l.model), ["settled"], "once, and only the settled one");
+  assert.equal(a.headers["PAYMENT-RESPONSE"], ok, "the header still goes out unchanged");
 });
 
 test("acceptedOf reads the signed scheme and network, and tolerates junk", () => {
