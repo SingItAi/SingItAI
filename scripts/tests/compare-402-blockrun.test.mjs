@@ -117,3 +117,12 @@ test("the tolerance boundary is exact: 13% over at tolerance 0.13 is not an aler
   assert.equal(compareModel("m", { offers: [offer("exact", 114)] }, theirs, { tolerance: 0.13 }).alert, true);
   assert.equal(compareModel("m", { offers: [offer("exact", 2152)] }, { offers: [offer("exact", 2152)] }, { tolerance: 0 }).alert, false);
 });
+
+test("a tolerance finer than a millionth is refused, not rounded", () => {
+  const ours = { offers: [offer("exact", 1000001)] };
+  const theirs = { offers: [offer("exact", 1000000)] };
+  assert.throws(() => compareModel("m", ours, theirs, { tolerance: 0.0000006 }), RangeError);
+  assert.throws(() => compareModel("m", ours, theirs, { tolerance: -0.1 }), RangeError);
+  assert.equal(compareModel("m", ours, theirs, { tolerance: 0.000001 }).alert, false);
+  assert.equal(compareModel("m", ours, theirs, { tolerance: 0 }).alert, true);
+});

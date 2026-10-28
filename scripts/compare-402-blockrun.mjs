@@ -77,7 +77,10 @@ export function compareModel(model, ours, theirs, { tolerance = 0 } = {}) {
   const ratio = (a, b) => (a && b ? Number(a.atomic) / Number(b.atomic) : null);
   const r = ratio(o, t);
   // Integer maths: 1.13 × 100 is 112.99999999999999 in floating point, which would alert at exactly the tolerance.
-  const alert = BigInt(o.atomic) * 1_000_000n > BigInt(t.atomic) * BigInt(1_000_000 + Math.round(tolerance * 1_000_000));
+  // The tolerance is held in millionths; a finer one is refused instead of being silently rounded.
+  const ppm = Math.round(tolerance * 1_000_000);
+  if (!Number.isFinite(tolerance) || tolerance < 0 || Math.abs(ppm - tolerance * 1_000_000) > 1e-6) throw new RangeError("tolerance must be a non-negative number with at most 6 decimals");
+  const alert = BigInt(o.atomic) * 1_000_000n > BigInt(t.atomic) * BigInt(1_000_000 + ppm);
   return { ...row, oursCheapestUsd: usd(o.atomic), oursScheme: o.scheme, theirsCheapestUsd: usd(t.atomic), theirsScheme: t.scheme,
     ratio: Number(r.toFixed(4)), exactVsExact: oExact && tExact ? { oursUsd: usd(oExact.atomic), theirsUsd: usd(tExact.atomic), ratio: Number(ratio(oExact, tExact).toFixed(4)) } : null,
     verdict: Number(o.atomic) < Number(t.atomic) ? "cheaper" : Number(o.atomic) === Number(t.atomic) ? "same" : "dearer", alert };
@@ -135,7 +138,7 @@ async function main() {
   const args = process.argv.slice(2);
   const tolerance = Number(flag(args, "tolerance", "0"));
   const maxTokens = Number(flag(args, "max-tokens", "500"));
-  if (!(tolerance >= 0 && tolerance < 10) || !Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 4096) {
+  if (!(tolerance >= 0 && tolerance < 10 && Math.abs(Math.round(tolerance * 1e6) - tolerance * 1e6) <= 1e-6) || !Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 4096) {
     process.stderr.write("usage: compare-402-blockrun.mjs [--tolerance 0.02] [--max-tokens 500] [--append file.jsonl] [--json] [--strict]\n");
     process.exit(1);
   }
