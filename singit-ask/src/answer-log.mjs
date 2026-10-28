@@ -44,13 +44,14 @@ export class AnswerLog {
     this.now = now;
     this.maxBytes = maxBytes;
     this.log = log;
-    this.full = false;
-    this.bytes = 0;      // what the file holds plus what is queued to it
+    this.warned = false;
+    this.size = 0;       // what the file holds (re-read after a failed append: it may have been written in part)
+    this.queued = 0;     // bytes waiting to be appended
     this.pending = 0;
     this.chain = Promise.resolve();
     if (file) try {
       fs.mkdirSync(path.dirname(file), { recursive: true });   // once, at start-up, never on the answer path
-      try { this.bytes = fs.statSync(file).size; } catch { /* a new file */ }
+      try { this.size = fs.statSync(file).size; } catch { /* a new file */ }
     } catch { /* record() reports it once */ }
   }
 
@@ -58,28 +59,33 @@ export class AnswerLog {
   // the line is queued and appended in order, so a slow or stalled disk cannot hold up an answer or its settlement.
   // Resolves nothing; `flush()` waits for the queue (tests, shutdown).
   record({ route, model, scheme, network, maxTokens, usage, billing } = {}) {
-    if (!this.file || this.full) return false;
+    if (!this.file) return false;
     try {
       const hour = new Date(Math.floor(this.now() / 3_600_000) * 3_600_000).toISOString().slice(0, 13) + ":00Z";
       const line = { hour, route: word(route), model: word(model), scheme: word(scheme), network: word(network), maxTokens: int(maxTokens),
         ...tokensOf(usage), upstreamMicro: int(billing?.providerCostAtomic ?? usage?.buyer_cost_micro),
         billedAtomic: int(billing?.totalAtomic), ceilingAtomic: int(billing?.maxChargeAtomic), overrunAtomic: int(billing?.overrunAtomic) ?? 0 };
       const text = `${JSON.stringify(line)}\n`;
-      if (this.bytes + text.length > this.maxBytes) {
-        this.full = true;
-        this.log(`singit-ask: answer log full (${this.maxBytes} bytes), no more answers are recorded`);
+      if (this.size + this.queued + text.length > this.maxBytes) {
+        if (!this.warned) this.log(`singit-ask: answer log full (${this.maxBytes} bytes), answers are not recorded`);
+        this.warned = true;
         return false;
       }
       if (this.pending >= MAX_PENDING) return false;
-      this.bytes += text.length;
+      this.queued += text.length;
       this.pending++;
       this.chain = this.chain
-        .then(() => fs.promises.appendFile(this.file, text, { mode: 0o600 }))
-        .catch((error) => {
-          this.bytes -= text.length;   // nothing was written: a failing disk must not use up the size budget
-          this.log(`singit-ask: answer log write failed (${error.code ?? error.name})`);
+        .then(async () => {
+          try {
+            await fs.promises.appendFile(this.file, text, { mode: 0o600 });
+            this.size += text.length;
+          } catch (error) {
+            this.log(`singit-ask: answer log write failed (${error.code ?? error.name})`);
+            // A failed append may still have written part of the line: take the file's real size, not a guess.
+            try { this.size = (await fs.promises.stat(this.file)).size; } catch { /* no file: nothing was written */ }
+          }
         })
-        .finally(() => { this.pending--; });
+        .finally(() => { this.queued -= text.length; this.pending--; });
       return true;
     } catch (error) {
       this.log(`singit-ask: answer log failed (${error.code ?? error.name})`);

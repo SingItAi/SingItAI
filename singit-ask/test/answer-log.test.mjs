@@ -85,8 +85,28 @@ test("record returns before the disk is touched, and a backlog is bounded", asyn
 test("a failing disk does not use up the size budget", async () => {
   const log = new AnswerLog({ file: "/etc/hostname/nope/answers.jsonl", maxBytes: 400, log: () => {} });
   for (let i = 0; i < 30; i++) { log.record({ model: "m" }); await log.flush(); }
-  assert.equal(log.full, false);
-  assert.equal(log.bytes, 0);
+  assert.equal(log.warned, false);
+  assert.equal(log.size + log.queued, 0);
+});
+
+test("the log resumes when room or the disk comes back: full is not permanent, and a partial write is counted from the real size", async () => {
+  const file = tmp();
+  const log = new AnswerLog({ file, maxBytes: 600, log: () => {} });
+  while (log.record({ model: "m" })) { /* fill to the cap */ }
+  await log.flush();
+  assert.equal(log.record({ model: "m" }), false);
+  fs.truncateSync(file, 0);                 // room appears (rotation by an operator)
+  log.size = 0;
+  assert.equal(log.record({ model: "m" }), true, "not permanently disabled");
+  await log.flush();
+  // a rejected append that wrote part of a line: the size is re-read from the file
+  const partial = new AnswerLog({ file: tmp(), log: () => {} });
+  fs.writeFileSync(partial.file, "x".repeat(50));
+  const real = fs.promises.appendFile;
+  fs.promises.appendFile = async () => { throw Object.assign(new Error("disk full"), { code: "ENOSPC" }); };
+  try { partial.record({ model: "m" }); await partial.flush(); } finally { fs.promises.appendFile = real; }
+  assert.equal(partial.size, 50);
+  assert.equal(partial.queued, 0);
 });
 
 test("recordWhenSettled records on the facilitator's success result, even if the client is gone, and never on a failure", async () => {
