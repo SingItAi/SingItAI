@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BASE_NETWORK, MODELS, compareModel, parseAccepts, renderText, run } from "../compare-402-blockrun.mjs";
+import { BASE_NETWORK, BASE_USDC, MODELS, compareModel, parseAccepts, renderText, run } from "../compare-402-blockrun.mjs";
 
-const offer = (scheme, atomic, network = BASE_NETWORK) => ({ scheme, network, amount: String(atomic), atomic: String(atomic) });
+const offer = (scheme, atomic, network = BASE_NETWORK, asset = BASE_USDC) => ({ scheme, network, asset, amount: String(atomic), atomic: String(atomic) });
 const encode = (v) => Buffer.from(JSON.stringify(v)).toString("base64");
 const header = (accepts) => new Headers({ "payment-required": encode({ x402Version: 2, accepts }) });
 
@@ -10,10 +10,10 @@ test("accepts are read from the PAYMENT-REQUIRED header, the X- form, or the JSO
   const accepts = [offer("upto", 3767), offer("exact", 1500)];
   assert.deepEqual(parseAccepts({ status: 402, headers: header(accepts) }).offers.map((o) => o.atomic), ["3767", "1500"]);
   assert.equal(parseAccepts({ status: 402, headers: new Headers({ "x-payment-required": encode({ accepts }) }) }).offers.length, 2);
-  assert.equal(parseAccepts({ status: 402, headers: new Headers(), body: { accepts: [{ scheme: "exact", network: BASE_NETWORK, maxAmountRequired: "2152" }] } }).offers[0].atomic, "2152");
+  assert.equal(parseAccepts({ status: 402, headers: new Headers(), body: { accepts: [{ scheme: "exact", network: BASE_NETWORK, asset: BASE_USDC, maxAmountRequired: "2152" }] } }).offers[0].atomic, "2152");
   assert.equal(parseAccepts({ status: 200, headers: new Headers() }).error, "http_200");
   assert.equal(parseAccepts({ status: 402, headers: new Headers(), body: { nope: 1 } }).error, "no_accepts");
-  assert.equal(parseAccepts({ status: 402, headers: header([{ scheme: "exact", network: BASE_NETWORK, amount: "12.5" }]) }).error, "no_amounts");
+  assert.equal(parseAccepts({ status: 402, headers: header([{ scheme: "exact", network: BASE_NETWORK, asset: BASE_USDC, amount: "12.5" }]) }).error, "no_amounts");
 });
 
 test("the cheapest Base offer of each side is compared; a dearer SingIt alerts", () => {
@@ -94,4 +94,26 @@ test("run reports which models cost more and which probes failed", async () => {
 test("a host that is not on the list is refused", async () => {
   const report = await run({ fetchImpl: fakeFetch({}), oursBase: "https://evil.example", models: [MODELS[0]] });
   assert.equal(report.errors[0].ours, "host_not_allowed");
+});
+
+test("an x402 v1 challenge (network \"base\", maxAmountRequired) is compared, not skipped", () => {
+  const v1 = parseAccepts({ status: 402, headers: new Headers(), body: { x402Version: 1, accepts: [{ scheme: "exact", network: "base", asset: BASE_USDC.toUpperCase().replace("0X", "0x"), maxAmountRequired: "3767" }] } });
+  const row = compareModel("m", v1, { offers: [offer("exact", 2152)] });
+  assert.equal(row.verdict, "dearer");
+  assert.equal(row.alert, true);
+});
+
+test("an offer in another token on Base is never taken as a dollar price", () => {
+  const other = { offers: [offer("exact", 1, BASE_NETWORK, "0x4200000000000000000000000000000000000006"), offer("exact", 2000)] };
+  assert.equal(compareModel("m", other, { offers: [offer("exact", 2000)] }).oursCheapestUsd, 0.002);
+  const onlyOther = { offers: [offer("exact", 1, BASE_NETWORK, "0x4200000000000000000000000000000000000006")] };
+  assert.equal(compareModel("m", onlyOther, { offers: [offer("exact", 2000)] }).verdict, "unknown");
+  assert.equal(compareModel("m", { offers: [{ scheme: "exact", network: BASE_NETWORK, asset: "", atomic: "1" }] }, { offers: [offer("exact", 2000)] }).verdict, "unknown");
+});
+
+test("the tolerance boundary is exact: 13% over at tolerance 0.13 is not an alert, one atomic more is", () => {
+  const theirs = { offers: [offer("exact", 100)] };
+  assert.equal(compareModel("m", { offers: [offer("exact", 113)] }, theirs, { tolerance: 0.13 }).alert, false);
+  assert.equal(compareModel("m", { offers: [offer("exact", 114)] }, theirs, { tolerance: 0.13 }).alert, true);
+  assert.equal(compareModel("m", { offers: [offer("exact", 2152)] }, { offers: [offer("exact", 2152)] }, { tolerance: 0 }).alert, false);
 });

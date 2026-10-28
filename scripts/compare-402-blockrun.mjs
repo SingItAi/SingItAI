@@ -23,6 +23,8 @@ import { appendFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 export const BASE_NETWORK = "eip155:8453";
+export const BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";   // native USDC on Base, 6 decimals
+const NETWORK_ALIASES = { base: BASE_NETWORK };                          // x402 v1 names the network "base"
 export const OURS_BASE = "https://ask.singitai.app";
 export const THEIRS_BASE = "https://blockrun.ai";
 export const ALLOWED_HOSTS = new Set(["ask.singitai.app", "blockrun.ai"]);
@@ -51,13 +53,15 @@ export function parseAccepts({ status, headers, body }) {
   const accepts = Array.isArray(challenge?.accepts) ? challenge.accepts : null;
   if (!accepts) return { error: "no_accepts" };
   const offers = accepts
-    .map((a) => ({ scheme: String(a.scheme), network: String(a.network), atomic: String(a.amount ?? a.maxAmountRequired ?? "") }))
+    .map((a) => ({ scheme: String(a.scheme), network: NETWORK_ALIASES[String(a.network)] ?? String(a.network),
+      asset: String(a.asset ?? "").toLowerCase(), atomic: String(a.amount ?? a.maxAmountRequired ?? "") }))
     .filter((a) => /^[0-9]+$/.test(a.atomic));
   return offers.length ? { offers } : { error: "no_amounts" };
 }
 
+// Only Base USDC offers are prices in dollars: another token's amount is not comparable.
 const cheapest = (offers, predicate = () => true) =>
-  offers.filter((o) => o.network === BASE_NETWORK && predicate(o)).reduce((best, o) => (best === null || BigInt(o.atomic) < BigInt(best.atomic) ? o : best), null);
+  offers.filter((o) => o.network === BASE_NETWORK && o.asset === BASE_USDC && predicate(o)).reduce((best, o) => (best === null || BigInt(o.atomic) < BigInt(best.atomic) ? o : best), null);
 
 const usd = (atomic) => (atomic === null ? null : Number(atomic) / 1e6);
 
@@ -72,7 +76,8 @@ export function compareModel(model, ours, theirs, { tolerance = 0 } = {}) {
   const tExact = cheapest(theirs.offers, (x) => x.scheme === "exact");
   const ratio = (a, b) => (a && b ? Number(a.atomic) / Number(b.atomic) : null);
   const r = ratio(o, t);
-  const alert = Number(o.atomic) > Number(t.atomic) * (1 + tolerance);
+  // Integer maths: 1.13 × 100 is 112.99999999999999 in floating point, which would alert at exactly the tolerance.
+  const alert = BigInt(o.atomic) * 1_000_000n > BigInt(t.atomic) * BigInt(1_000_000 + Math.round(tolerance * 1_000_000));
   return { ...row, oursCheapestUsd: usd(o.atomic), oursScheme: o.scheme, theirsCheapestUsd: usd(t.atomic), theirsScheme: t.scheme,
     ratio: Number(r.toFixed(4)), exactVsExact: oExact && tExact ? { oursUsd: usd(oExact.atomic), theirsUsd: usd(tExact.atomic), ratio: Number(ratio(oExact, tExact).toFixed(4)) } : null,
     verdict: Number(o.atomic) < Number(t.atomic) ? "cheaper" : Number(o.atomic) === Number(t.atomic) ? "same" : "dearer", alert };
