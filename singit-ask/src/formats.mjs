@@ -13,7 +13,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel, priceGuard } from "./catalogue.mjs";
-import { acceptedOf, answerLogFor } from "./answer-log.mjs";
+import { acceptedOf, answerLogFor, recordWhenSettled } from "./answer-log.mjs";
 import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
@@ -283,9 +283,8 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
         const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
         if (exact && usage.overrunAtomic) log(`singit-ask: ${route} exact overrun ${usage.overrunAtomic} micro-USDC`);
-        const asked = req.format.request;
-        answerLog?.record({ route, model: req.format.model, ...acceptedOf(req), usage: data.usage, billing,
-          maxTokens: asked?.max_tokens ?? asked?.max_output_tokens ?? asked?.max_completion_tokens });
+        recordWhenSettled(res, answerLog, { route, model: req.format.model, ...acceptedOf(req), usage: data.usage, billing,
+          maxTokens: req.format.maxTokens });  // the normalised limit the ceiling was priced from
         if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
         log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms,`
           + ` settling ${billing.totalAtomic} micro-USDC`);

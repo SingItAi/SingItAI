@@ -10,6 +10,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+const MAX_PENDING = 200;  // appends waiting on a slow disk; beyond this a line is dropped rather than queued without bound
+
 const MAX_BYTES = 50 * 1024 * 1024;   // one file never grows past this: logging stops rather than fill the disk
 const WORD = /^[A-Za-z0-9._:/-]{1,80}$/;
 
@@ -43,10 +45,18 @@ export class AnswerLog {
     this.maxBytes = maxBytes;
     this.log = log;
     this.full = false;
-    if (file) try { fs.mkdirSync(path.dirname(file), { recursive: true }); } catch { /* record() reports it once */ }
+    this.bytes = 0;      // what the file holds plus what is queued to it
+    this.pending = 0;
+    this.chain = Promise.resolve();
+    if (file) try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });   // once, at start-up, never on the answer path
+      try { this.bytes = fs.statSync(file).size; } catch { /* a new file */ }
+    } catch { /* record() reports it once */ }
   }
 
-  // `entry`: { route, model, scheme, network, maxTokens, usage, billing }. Never throws: a log must not cost an answer.
+  // `entry`: { route, model, scheme, network, maxTokens, usage, billing }. Never throws and never waits for the disk:
+  // the line is queued and appended in order, so a slow or stalled disk cannot hold up an answer or its settlement.
+  // Resolves nothing; `flush()` waits for the queue (tests, shutdown).
   record({ route, model, scheme, network, maxTokens, usage, billing } = {}) {
     if (!this.file || this.full) return false;
     try {
@@ -55,20 +65,35 @@ export class AnswerLog {
         ...tokensOf(usage), upstreamMicro: int(billing?.providerCostAtomic ?? usage?.buyer_cost_micro),
         billedAtomic: int(billing?.totalAtomic), ceilingAtomic: int(billing?.maxChargeAtomic), overrunAtomic: int(billing?.overrunAtomic) ?? 0 };
       const text = `${JSON.stringify(line)}\n`;
-      let size = 0;
-      try { size = fs.statSync(this.file).size; } catch { /* a new file */ }
-      if (size + text.length > this.maxBytes) {
+      if (this.bytes + text.length > this.maxBytes) {
         this.full = true;
         this.log(`singit-ask: answer log full (${this.maxBytes} bytes), no more answers are recorded`);
         return false;
       }
-      fs.appendFileSync(this.file, text, { mode: 0o600 });
+      if (this.pending >= MAX_PENDING) return false;
+      this.bytes += text.length;
+      this.pending++;
+      this.chain = this.chain
+        .then(() => fs.promises.appendFile(this.file, text, { mode: 0o600 }))
+        .catch((error) => { this.log(`singit-ask: answer log write failed (${error.code ?? error.name})`); })
+        .finally(() => { this.pending--; });
       return true;
     } catch (error) {
-      this.log(`singit-ask: answer log write failed (${error.code ?? error.name})`);
+      this.log(`singit-ask: answer log failed (${error.code ?? error.name})`);
       return false;
     }
   }
+
+  flush() { return this.chain; }
+}
+
+// Record once the payment has really settled: the x402 middleware sends the answer only after a successful settlement
+// (a failed one becomes a 402 and no PAYMENT-RESPONSE), so a line exists only for an answer that was paid for.
+export function recordWhenSettled(res, log, entry) {
+  if (!log) return;
+  res.once("finish", () => {
+    try { if (res.statusCode === 200 && res.getHeader("payment-response")) log.record(entry); } catch { /* never into the answer */ }
+  });
 }
 
 const logs = new Map();

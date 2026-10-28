@@ -13,16 +13,23 @@ const encode = (v) => Buffer.from(JSON.stringify(v)).toString("base64");
 const decode = (v) => JSON.parse(Buffer.from(v, "base64").toString());
 const account = privateKeyToAccount("0x" + "11".repeat(32));  // public unfunded fixture
 const tmp = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), "answer-log-")), "answers.jsonl");
-const lines = (file) => fs.readFileSync(file, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+const read = (file) => fs.readFileSync(file, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+// The log is written after the response and off the answer path: wait for it (up to 2 s) instead of racing it.
+async function lines(file, count = 1) {
+  for (let i = 0; i < 100 && !(fs.existsSync(file) && fs.readFileSync(file, "utf8").trim().split("\n").length >= count); i++) await new Promise((r) => setTimeout(r, 20));
+  await answerLogFor({ answerLogFile: file })?.flush();
+  return fs.existsSync(file) ? read(file) : [];
+}
 
-test("a line keeps tokens, money and an hour; nothing else", () => {
+test("a line keeps tokens, money and an hour; nothing else", async () => {
   const file = tmp();
   const log = new AnswerLog({ file, now: () => Date.parse("2026-10-28T15:47:31Z") });
   const usage = { prompt_tokens: 40, completion_tokens: 210, buyer_cost_micro: 1700, completion_tokens_details: { reasoning_tokens: 12 },
     content: "SECRET ANSWER", payer: "0xPAYER" };
   assert.equal(log.record({ route: "/v1/chat/claude-opus-5.5", model: "claude-opus-5.5", scheme: "upto", network: BASE, maxTokens: 500, usage,
     billing: { totalAtomic: "3350", maxChargeAtomic: "3767", providerCostAtomic: "1700", payTo: "0xDEST" } }), true);
-  const [line] = lines(file);
+  await log.flush();
+  const [line] = read(file);
   assert.deepEqual(line, { hour: "2026-10-28T15:00Z", route: "/v1/chat/claude-opus-5.5", model: "claude-opus-5.5", scheme: "upto", network: BASE,
     maxTokens: 500, promptTokens: 40, completionTokens: 210, reasoningTokens: 12, upstreamMicro: 1700, billedAtomic: 3350, ceilingAtomic: 3767, overrunAtomic: 0 });
   const raw = fs.readFileSync(file, "utf8");
@@ -30,11 +37,13 @@ test("a line keeps tokens, money and an hour; nothing else", () => {
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 });
 
-test("free-form or hostile values are dropped to null, never written", () => {
+test("free-form or hostile values are dropped to null, never written", async () => {
   const file = tmp();
-  new AnswerLog({ file }).record({ route: "/v1/chat/x\nINJECT", model: "a b <script>", scheme: { x: 1 }, network: "e".repeat(200), maxTokens: -5,
+  const log = new AnswerLog({ file });
+  log.record({ route: "/v1/chat/x\nINJECT", model: "a b <script>", scheme: { x: 1 }, network: "e".repeat(200), maxTokens: -5,
     usage: { prompt_tokens: "12abc", completion_tokens: 1.5 }, billing: { totalAtomic: "NaN" } });
-  const [line] = lines(file);
+  await log.flush();
+  const [line] = read(file);
   for (const key of ["route", "model", "scheme", "network", "maxTokens", "promptTokens", "completionTokens", "billedAtomic"]) assert.equal(line[key], null, key);
 });
 
@@ -43,18 +52,34 @@ test("both usage shapes give the token counts", () => {
   assert.deepEqual(tokensOf(undefined), { promptTokens: null, completionTokens: null, reasoningTokens: null });
 });
 
-test("off without a file; never throws; stops at the size cap instead of filling a disk", () => {
+test("off without a file; never throws; stops at the size cap instead of filling a disk", async () => {
   assert.equal(new AnswerLog({}).record({ model: "m" }), false);
   assert.equal(answerLogFor({}), null);
-  const bad = new AnswerLog({ file: "/etc/hostname/nope/answers.jsonl", log: () => {} });
-  assert.equal(bad.record({ model: "m" }), false);
   const messages = [];
-  const small = new AnswerLog({ file: tmp(), maxBytes: 300, log: (m) => messages.push(m) });
+  const bad = new AnswerLog({ file: "/etc/hostname/nope/answers.jsonl", log: (m) => messages.push(m) });
+  assert.doesNotThrow(() => bad.record({ model: "m" }));
+  await bad.flush();
+  assert.match(messages.join(), /write failed/);
+  const capMessages = [];
+  const small = new AnswerLog({ file: tmp(), maxBytes: 300, log: (m) => capMessages.push(m) });
   let written = 0;
   for (let i = 0; i < 10; i++) if (small.record({ model: "m", usage: { prompt_tokens: i } })) written++;
+  await small.flush();
   assert.ok(written >= 1 && written < 10);
-  assert.equal(messages.length, 1);
+  assert.equal(capMessages.length, 1);
   assert.ok(fs.statSync(small.file).size <= 300);
+});
+
+test("record returns before the disk is touched, and a backlog is bounded", async () => {
+  const log = new AnswerLog({ file: tmp() });
+  assert.equal(log.record({ model: "m" }), true);
+  assert.equal(fs.existsSync(log.file), false, "nothing is written synchronously");
+  await log.flush();
+  assert.equal(fs.existsSync(log.file), true);
+  let accepted = 0;
+  for (let i = 0; i < 1000; i++) if (log.record({ model: "m" })) accepted++;
+  assert.ok(accepted <= 200, `${accepted} queued`);
+  await log.flush();
 });
 
 test("acceptedOf reads the signed scheme and network, and tolerates junk", () => {
@@ -64,14 +89,15 @@ test("acceptedOf reads the signed scheme and network, and tolerates junk", () =>
   assert.deepEqual(acceptedOf(req(undefined)), {});
 });
 
-async function paidAnswer(t, { scheme, answerLogFile, maxTokens = 500, upstreamUsage }) {
+async function paidAnswer(t, { scheme, answerLogFile, maxTokens = 500, upstreamUsage, settleOk = true }) {
   const facilitator = {
     getSupported: async () => ({ kinds: [{ x402Version: 2, scheme: "exact", network: BASE }, { x402Version: 2, scheme: "exact", network: SOL, extra: { feePayer: "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu" } },
       { x402Version: 2, scheme: "upto", network: BASE, extra: { facilitatorAddress: "0x2A89407a98A0732b7fD578c4E156B7166540EB5A" } },
       { x402Version: 2, scheme: "upto", network: SOL, extra: { feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88", receiverAuthorizer: "9dpHxn3XFZMZv59vE5MKxhfwGUCCgkcCUzYZLpdEm7ox" } }],
       extensions: ["eip2612GasSponsoring"], signers: {} }),
     verify: async () => ({ isValid: true, payer: account.address }),
-    settle: async () => ({ success: true, network: BASE, transaction: "0x" + "aa".repeat(32), payer: account.address }) };
+    settle: async () => (settleOk ? { success: true, network: BASE, transaction: "0x" + "aa".repeat(32), payer: account.address }
+      : { success: false, errorReason: "insufficient_funds", network: BASE, transaction: "" }) };
   const app = createApp({ payToBase: PAY_TO, payToSolana: "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu", model: "test", answerLogFile },
     { facilitatorClient: facilitator, upstream: async () => ({ content: "Hello", finishReason: "stop", usage: upstreamUsage }), log: () => {} });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
@@ -90,7 +116,7 @@ for (const scheme of ["upto", "exact"]) {
     const file = tmp();
     const { paid, accepted } = await paidAnswer(t, { scheme, answerLogFile: file, upstreamUsage: { prompt_tokens: 20, completion_tokens: 31, buyer_cost_micro: 100 } });
     assert.equal(paid.status, 200);
-    const [line] = lines(file);
+    const [line] = await lines(file);
     assert.equal(line.scheme, scheme);
     assert.equal(line.network, BASE);
     assert.equal(line.maxTokens, 500);
@@ -101,11 +127,19 @@ for (const scheme of ["upto", "exact"]) {
   });
 }
 
+test("an answer whose payment did not settle leaves no line", async (t) => {
+  const file = tmp();
+  const { paid } = await paidAnswer(t, { scheme: "upto", answerLogFile: file, settleOk: false, upstreamUsage: { prompt_tokens: 20, completion_tokens: 31, buyer_cost_micro: 100 } });
+  assert.notEqual(paid.status, 200);
+  await new Promise((r) => setTimeout(r, 150));
+  assert.deepEqual(await lines(file, 0), []);
+});
+
 test("an answer that could not be billed leaves no line, and no log file means no change", async (t) => {
   const file = tmp();
   const { paid } = await paidAnswer(t, { scheme: "upto", answerLogFile: file, upstreamUsage: { buyer_cost_micro: undefined } });
   assert.equal(paid.status, 503);
-  assert.equal(fs.existsSync(file), false);
+  assert.deepEqual(await lines(file, 0), []);
   const off = await paidAnswer(t, { scheme: "upto", answerLogFile: null, upstreamUsage: { buyer_cost_micro: 100 } });
   assert.equal(off.paid.status, 200);
 });
@@ -134,7 +168,7 @@ test("the Messages route logs its settled answer with the Anthropic-style token 
   const accepted = required.accepts.find((a) => a.scheme === "upto" && a.network === BASE);
   const paid = await call({ "PAYMENT-SIGNATURE": encode({ x402Version: 2, resource: required.resource, accepted, payload: { signature: "0xsigned" }, extensions: required.extensions }) });
   assert.equal(paid.status, 200);
-  const [line] = lines(file);
+  const [line] = await lines(file);
   assert.deepEqual([line.route, line.model, line.scheme, line.maxTokens, line.promptTokens, line.completionTokens, line.upstreamMicro],
     ["/v1/messages", "claude-sonnet-5.5", "upto", 300, 12, 30, 2000]);
   assert.equal(line.billedAtomic, Number((await paid.json()).billing.totalAtomic));
