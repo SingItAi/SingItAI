@@ -82,6 +82,26 @@ python3 scripts/singit-health-alert.py --rpc-url "$SIGN402_BASE_RPC_URL" --journ
 See the script's own docstring for every check, env var, and a sample systemd user timer /
 crontab line (every 5 minutes). Tests: `python3 -m unittest discover -s scripts/tests`.
 
+## Daily 402 price comparison (SingIt vs BlockRun)
+
+```bash
+node scripts/compare-402-blockrun.mjs                         # text table, exit 2 when SingIt costs more
+node scripts/compare-402-blockrun.mjs --json                  # the full report
+node scripts/compare-402-blockrun.mjs --append compare.jsonl  # also append one line per run (a daily history)
+node scripts/compare-402-blockrun.mjs --tolerance 0.02 --max-tokens 500 --strict
+```
+
+For Opus 5.5, Sonnet 5.5, GPT-5.5 and DeepSeek V4.1 Flash it sends one unpaid chat request to each side
+(`ask.singitai.app/v1/chat/{model}` and `blockrun.ai/api/v1/chat/completions`) and reads the `accepts` of the
+402 challenge each returns. No payment header, no key and no wallet is ever sent, so it costs nothing, and only those
+two hosts can be contacted. Per model it compares the cheapest Base offer on each side (SingIt's is usually its `upto`
+ceiling, settled for the actual usage, so it overstates what a customer pays) and also SingIt's flat `exact` offer with
+BlockRun's `exact` price. Exit code 2 means SingIt is dearer than BlockRun, beyond `--tolerance` (default 0), for at
+least one model; a probe that failed is listed under `errors` and only fails the run with `--strict`.
+
+`deploy/systemd/singit-compare-402.{service,timer}` are user-unit templates for a daily run; nothing installs them.
+Tests: `node --test scripts/tests/compare-402-blockrun.test.mjs`.
+
 ## BlockRun Prices Snapshot
 
 The website's `/pricing/` page (SingIt vs BlockRun) compares SingIt's live `GET

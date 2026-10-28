@@ -1,0 +1,12 @@
+# TEMPLATE ONLY. See singit-compare-402.service: nothing installs or enables this without the owner's OK.
+
+[Unit]
+Description=Run the SingIt vs BlockRun 402 price comparison once a day
+
+[Timer]
+OnCalendar=*-*-* 07:15:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
