@@ -316,11 +316,17 @@ class LimitsAndReceiptsTests(Fixture):
 
     def test_get_receipts_stops_scanning_a_ledger_with_none_of_this_keys_rows(self):
         made = self.make_key()
-        ledger = Mock(side_effect=lambda account, limit, before: [self.ledger_row(i, key_id="OTHER") for i in range(1000, 800, -1)])
+        ledger = Mock(side_effect=lambda account, limit, before: [self.ledger_row(i, key_id="OTHER") for i in range(1000, 800, -1)])  # 200 rows each time
         self.api.keys.proxy = Mock(balances=Mock(ledger=ledger))
         status, out, _ = self.call_tool(made["key"], "get_receipts")
-        self.assertEqual(out["result"]["structuredContent"]["data"], [])
+        data = out["result"]["structuredContent"]
+        self.assertEqual(data["data"], [])
         self.assertLessEqual(ledger.call_count, 2)
+        # older receipts may still exist: the page says where to continue instead of claiming the end (Codex)
+        self.assertEqual(data["next"], 801)
+        ledger.side_effect = lambda account, limit, before: [self.ledger_row(9, key_id="K")] if before == 801 else []
+        status, out, _ = self.call_tool(made["key"], "get_receipts", {"before": 801})
+        self.assertEqual(out["result"]["structuredContent"]["data"], [])
 
 
 class KeylessTests(Fixture):

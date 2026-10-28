@@ -708,12 +708,13 @@ class McpServer:
         if before is not None and (type(before) is not int or before < 1):
             raise _BadArgs("before must be a receipt id (a positive whole number).")
         data: list[dict[str, Any]] = []
-        cursor, scanned = before, 0
+        cursor, scanned, end = before, 0, False
         # The ledger is the account's; a charge belongs to one key. Page until `limit` of this key's are found
         # (or a bounded number of rows has been read, so an idle key cannot make this scan a whole ledger).
-        while len(data) < limit and scanned < 400:
+        while len(data) < limit and scanned < 400 and not end:
             rows = self.keys.proxy.balances.ledger(row["account_id"], limit=200, before=cursor)
             if not rows:
+                end = True
                 break
             scanned += len(rows)
             for entry in rows:
@@ -731,10 +732,12 @@ class McpServer:
                 data.append(item)
                 if len(data) == limit:
                     break
-            if len(rows) < 200:
-                break
+            else:
+                end = len(rows) < 200   # the whole batch was read and the ledger had no more
+                continue
+            break
         return {"object": "list", "currency": "USDC", "kind": kind, "data": data,
-                "next": data[-1]["id"] if len(data) == limit else None}
+                "next": None if end else cursor}
 
     def _get_price(self, args: dict[str, Any]) -> Any:
         kind = args.get("kind")
