@@ -145,6 +145,10 @@ Historical activation scripts have version-specific manifests; refresh them
 against production before reusing them. Do not run old activation commands over
 this update.
 
+When video is enabled, a free order-book read checks seller health (cached for 60 seconds). A model with no
+qualifying seller returns 503 `no_healthy_sellers` before any 402; unhealthy models are hidden from
+`/v1/video/models`. Unreadable books keep the last known health; unknown health is allowed.
+
 ## Run
 
 ```bash

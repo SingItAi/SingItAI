@@ -122,9 +122,11 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     app.post(VIDEO_ROUTE, open, disabled);
   } else app.get(VIDEO_MODELS_ROUTE, open, async (_req, res) => {
     const models = await catalogue.videoModels().catch(() => new Map());
+    const served = await catalogue.videoServed?.();
     res.json({ object: "list", endpoint: VIDEO_ROUTE, fees: { markupPct: VIDEO_TERMS.markupBps / 100,
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
-      data: [...models.values()].map((m) => ({ id: m.id, object: "model", name: m.name, owned_by: m.provider || "surplus",
+      data: [...models.values()].filter((m) => !served || !served.size || served.get(m.id) > 0)
+        .map((m) => ({ ...(served ? { healthySellers: served.get(m.id) ?? null } : {}), id: m.id, object: "model", name: m.name, owned_by: m.provider || "surplus",
         durations: m.durations, resolutions: m.resolutions, aspect_ratios: m.aspectRatios, audio: m.audio,
         listUsdPerJob: m.usdPerJob, singitUsdPerJob: Number(videoPrice(videoListAtomic(m), BASE).totalAtomic) / 1e6 }))
         .sort((a, b) => a.listUsdPerJob - b.listUsdPerJob) });
@@ -190,6 +192,11 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     if (config.videoDiscoverable && isDiscoveryProbe(req)) return next();
     try {
       const model = await catalogue.resolveVideo(req.body?.model);
+      if (await catalogue.videoHealth?.(model.id) === 0) {
+        log(`singit-ask: video no healthy sellers for ${model.id}`);
+        return res.set("Retry-After", "60").status(503).json({ error: { type: "upstream_error",
+          code: "no_healthy_sellers", message: "No seller can run this video model right now. Nothing was charged." } });
+      }
       const request = readVideoRequest(req.body, model);
       const listAtomic = videoListAtomic(model);
       if (listAtomic > VIDEO_TERMS.maxListAtomic) throw new VideoError(400, "This model costs more than is sold here.");

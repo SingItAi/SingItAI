@@ -560,7 +560,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio. Paid per clip "
               + "over x402: the model's list price + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), charged "
               + "once the job is accepted. Answers with the job id and job_token; poll GET /v1/video/generations/{id} "
-              + "with header X-Job-Token for free, then GET /v1/video/generations/{id}/content. Models: GET /v1/video/models.",
+              + "with header X-Job-Token for free, then GET /v1/video/generations/{id}/content. Models: GET /v1/video/models. "
+              + "Returns 503 no_healthy_sellers before any 402 when no qualifying seller is available.",
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.105", max: "1.302" }, protocols: [{ x402: {} }] },
             requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "prompt"],
               properties: { model: { type: "string" }, prompt: { type: "string", maxLength: 2000 }, duration_seconds: { type: "integer" },

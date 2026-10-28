@@ -4,6 +4,7 @@
 const TTL_MS = 6 * 60 * 60 * 1000;
 // The marketplace's cheapest offers move; the page showing them is public and large (about 1.7 MB), so ten minutes.
 const MARKET_TTL_MS = 10 * 60 * 1000;
+const VIDEO_HEALTH_TTL_MS = 60 * 1000;
 
 export class UnknownModel extends Error {}
 
@@ -170,6 +171,11 @@ export class ModelCatalogue {
     this.images = null;   // image models, from the same list
     this.voice = null;    // { speech, transcription } models, from the same list
     this.videos = null;   // text-to-video models, from the same list
+    this.videoBooks = new Map();  // per-model counts, including unknown reads, so an outage is not hammered
+    this.loadingVideoBooks = new Map();
+    this.videoSellers = null;
+    this.videoSellersAt = 0;
+    this.loadingVideoServed = null;
     this.loadedAt = 0;
     this.prices = null;
     this.pricesAt = 0;
@@ -247,6 +253,61 @@ export class ModelCatalogue {
     return this.loadingServed;
   }
 
+  // Health is a free public read, shared with the slow listing pass so a buyer and the picker do not race two
+  // reads of the same book. Unknown is different from zero: an outage must keep the last answer, not invent a
+  // seller shortage. Cache failed attempts too, so repeated buyers cannot turn an outage into a request storm.
+  async videoHealth(id) {
+    const cached = this.videoBooks.get(id);
+    if (cached && this.now() - cached.at < VIDEO_HEALTH_TTL_MS) return cached.count;
+    if (!this.loadingVideoBooks.has(id)) {
+      const pending = (async () => {
+        let count = cached?.count ?? null;
+        try {
+          const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`,
+                                                { signal: AbortSignal.timeout(10_000) });
+          const book = response.ok ? await response.json() : null;
+          const offers = book?.data?.offers ?? book?.offers;
+          if (Array.isArray(offers)) count = offers.filter((o) => qualifies(o, this.blocked)).length;
+        } catch { /* keep the last count; unreadable is not the same as no qualifying offers */ }
+        this.videoBooks.set(id, { count, at: this.now() });
+        return count;
+      })();
+      this.loadingVideoBooks.set(id, pending);
+    }
+    try { return await this.loadingVideoBooks.get(id); }
+    finally { this.loadingVideoBooks.delete(id); }
+  }
+
+  // Like the chat pass, two workers pause between books to avoid Surplus's rate limit. Publish a complete pass
+  // at once: readers keep the old map while it refreshes, and an unreadable first book stays absent (unknown).
+  loadVideoServed(pauseMs = 400) {
+    this.loadingVideoServed ??= (async () => {
+      try {
+        const ids = [...(await this.videoModels()).keys()];
+        const served = new Map();
+        let next = 0;
+        const worker = async () => {
+          while (next < ids.length) {
+            const id = ids[next++];
+            const count = await this.videoHealth(id);
+            if (count !== null) served.set(id, count);
+            if (pauseMs) await new Promise((resolve) => setTimeout(resolve, pauseMs));
+          }
+        };
+        await Promise.all(Array.from({ length: 2 }, worker));
+        this.videoSellers = served;
+      } catch { /* keep the last map if even the model list cannot be read */ }
+      finally { this.videoSellersAt = this.now(); this.loadingVideoServed = null; }
+    })();
+    return this.loadingVideoServed;
+  }
+
+  async videoServed(pauseMs = 400) {
+    if (!this.videoSellers) await this.loadVideoServed(pauseMs);
+    else if (this.now() - this.videoSellersAt >= VIDEO_HEALTH_TTL_MS) this.loadVideoServed(pauseMs);
+    return this.videoSellers ?? new Map();
+  }
+
   // Whether a model can be answered now: true until the order books have been read once.
   async canAnswer(id) {
     if (this.served && this.now() - this.servedAt >= MARKET_TTL_MS) this.loadServed();
@@ -278,9 +339,11 @@ export class ModelCatalogue {
   async warm(everyMs = MARKET_TTL_MS / 2) {
     await Promise.all([this.loadModels(), this.loadPrices()]);
     await this.loadServed();
+    await this.videoServed();
     this.timer ??= setInterval(() => {
       this.loadModels(); this.loadPrices();
       if (this.now() - this.servedAt >= MARKET_TTL_MS) this.loadServed();
+      if (this.now() - this.videoSellersAt >= VIDEO_HEALTH_TTL_MS) this.loadVideoServed();
     }, everyMs);
     this.timer.unref?.();
   }

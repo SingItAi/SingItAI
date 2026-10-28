@@ -63,10 +63,12 @@ function fakeSurplus({ submitStatus = 202, jobStatus = "running" } = {}) {
   return { calls, fetchImpl };
 }
 
-async function serve(t, { surplus = fakeSurplus(), config = CONFIG } = {}) {
+async function serve(t, { surplus = fakeSurplus(), config = CONFIG, health = new Map([["venice-seedance-2-fast-t2v", 2]]) } = {}) {
   const facilitator = fakeFacilitator();
   const logs = [];
-  const app = createApp(config, { facilitatorClient: facilitator, catalogue, fetchImpl: surplus.fetchImpl,
+  const app = createApp(config, { facilitatorClient: facilitator,
+    catalogue: { ...catalogue, async videoHealth(id) { return health.get(id) ?? null; },
+      async videoServed() { return health; } }, fetchImpl: surplus.fetchImpl,
     log: (line) => logs.push(line), upstream: async () => { throw new Error("no answer is asked"); } });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
@@ -228,4 +230,31 @@ test("with video off, nothing is offered or started; already-paid jobs can still
   assert.equal(facilitator.calls.settle.length, 0);
   const poll = await fetch(`${url}${VIDEO_ROUTE}/01M5STJCFTVSC5588N9YGQCPQW`, { headers: { "X-Job-Token": "jt_x" } });
   assert.notEqual(poll.status, 503, "polling a paid job still reaches Surplus");
+});
+
+test("video health refuses zero sellers before payment and allows unknown health", async (t) => {
+  for (const count of [0, null, 2]) {
+    const { url, surplus, facilitator, logs } = await serve(t, { health: new Map([[VIDEO.model, count]]) });
+    const response = await post(`${url}${VIDEO_ROUTE}`, VIDEO);
+    assert.equal(response.status, count === 0 ? 503 : 402);
+    if (count === 0) {
+      assert.equal(response.headers.get("payment-required"), null);
+      assert.equal(response.headers.get("retry-after"), "60");
+      assert.deepEqual((await response.json()).error, { type: "upstream_error", code: "no_healthy_sellers",
+        message: "No seller can run this video model right now. Nothing was charged." });
+      assert.equal(logs.length, 1);
+    }
+    assert.deepEqual(surplus.calls, []);
+    assert.deepEqual(facilitator.calls.settle, []);
+  }
+});
+
+test("video listing hides zero sellers and reports counts, failing open only for an empty health map", async (t) => {
+  for (const [health, expected] of [[new Map([[VIDEO.model, 0]]), []],
+    [new Map([[VIDEO.model, 3]]), [[VIDEO.model, 3]]], [new Map([["other", 1]]), []],
+    [new Map(), [[VIDEO.model, null]]]]) {
+    const { url } = await serve(t, { health });
+    const list = await (await fetch(`${url}/v1/video/models`)).json();
+    assert.deepEqual(list.data.map((m) => [m.id, m.healthySellers]), expected);
+  }
 });
