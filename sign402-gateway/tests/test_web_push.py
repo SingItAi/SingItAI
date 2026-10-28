@@ -80,11 +80,21 @@ class EncryptionTests(unittest.TestCase):
 
     def test_only_the_subscribed_browser_reads_it(self):
         browser = Browser()
-        sealed = wp.encrypt(b'{"body": "hi"}', browser.public, browser.auth)
+        plain = b'{"body": "hi"}'
+        sealed = wp.encrypt(plain, browser.public, browser.auth)
         self.assertEqual(browser.decrypt(sealed), {"body": "hi"})
-        self.assertNotIn(b"hi", sealed)
+        # The plaintext is not sent as it is. Not a two-byte substring such as b"hi": random ciphertext contains any
+        # two bytes about once in 650 runs (that made this test flaky); the whole 14-byte message cannot by chance.
+        self.assertNotIn(plain, sealed)
+        # aes128gcm record: 86-byte header (salt 16, record size 4, key id length 1, sender key 65), the plaintext,
+        # one delimiter byte and the 16-byte tag; nothing else is appended.
+        self.assertEqual(len(sealed), 86 + len(plain) + 1 + 16)
+        # Only the subscribed browser reads it, and a changed byte is refused (GCM tag).
         with self.assertRaises(Exception):
             Browser().decrypt(sealed)
+        tampered = sealed[:-1] + bytes([sealed[-1] ^ 1])
+        with self.assertRaises(Exception):
+            browser.decrypt(tampered)
 
     def test_vapid_names_the_push_service_and_verifies_with_our_public_key(self):
         key = wp.private_key_from(wp.generate_key())
