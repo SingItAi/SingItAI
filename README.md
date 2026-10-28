@@ -174,6 +174,8 @@ See the [security model](sign402-gateway/SECURITY.md) for trust boundaries.
 
 ## Architecture
 
+The components and the x402 payment flows are drawn in more detail in [docs/architecture.md](docs/architecture.md).
+
 ```mermaid
 flowchart TB
     Web["Web app<br/>website/app"] --> API["Web API<br/>sign-in, chat, limits"]

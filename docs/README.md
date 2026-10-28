@@ -6,6 +6,7 @@ plan is not evidence that a feature is deployed.
 
 ## Operations and current integrations
 
+- [Architecture and x402 flows](architecture.md): components, the payment sequence for Base and Solana.
 - [Operations](operations.md): observed server revision, deployment and tests.
 - [Recovery](recovery-runbook.md) and [release checks](production-beta-checklist.md).
 - [Verification record](checks.md): dated test and live-payment evidence.
