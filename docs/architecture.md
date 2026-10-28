@@ -16,9 +16,11 @@ flowchart TB
     GW -->|"Base: x402 payments, swaps"| CDPSvc["cdp-x402-service"]
     GW -->|"Solana: delegated USDC, x402"| SolSvc["solana-x402-service"]
 
-    Lim -->|"transferFrom within caps"| User
-    GW -->|"x402 requests"| Ask["SingIt Ask<br/>singit-ask<br/>x402 model endpoint"]
-    GW -->|"x402 requests"| Sellers["Other sellers<br/>Bitrefill, data, Venice, email, calls"]
+    User -->|"approves a USDC allowance"| Lim
+    Lim -->|"spend: USDC from the user's wallet<br/>to the agent key, within the caps"| AgentKey["User's agent key"]
+    AgentKey -->|"x402 payments"| Ask["SingIt Ask<br/>singit-ask<br/>x402 model endpoint"]
+    GW -->|"x402 payments"| Sellers["Other x402 sellers<br/>data, Venice, email, calls"]
+    GW -->|"guest invoices,<br/>paid by a USDC transfer"| Bitrefill["Bitrefill<br/>gift cards, eSIMs, top-ups"]
 
     Ask -->|"verify / settle"| Fac["Facilitator<br/>Coinbase CDP"]
     Ask -->|"model call"| Up["Upstream model marketplace<br/>(Surplus Intelligence)"]
@@ -51,7 +53,7 @@ sequenceDiagram
 
     Agent->>Ask: POST /v1/chat/completions
     Ask-->>Agent: 402 Payment Required + offers (upto / exact, USDC)
-    Agent->>Agent: sign the offer (spending ceiling, not the final price)
+    Agent->>Agent: sign the upto offer (a spending ceiling, not the final price)
     Agent->>Ask: same request + PAYMENT-SIGNATURE header
     Ask->>Fac: verify the signed payment
     Fac-->>Ask: valid
@@ -69,6 +71,8 @@ sequenceDiagram
     end
 ```
 
+Buyers whose wallet signs only the `exact` offer pay that offer's flat amount instead: no metering and no refund.
+
 ## x402 flow: the SingIt agent pays from a spending limit (Base)
 
 The user's USDC stays in their wallet. The user approves a USDC allowance to their own
@@ -80,24 +84,31 @@ sequenceDiagram
     autonumber
     actor User
     participant GW as Payment gateway
+    participant USDC as USDC token
     participant Lim as Allowance contract
     participant Agent as User's agent key
     participant Ask as Seller (e.g. singit-ask)
     participant Fac as Facilitator (Coinbase CDP)
 
-    User->>Lim: one-time: set the caps and expiry, approve a USDC allowance to the contract
+    GW->>Lim: one-time: deploy the user's limiter, caps and expiry fixed in it
+    User->>USDC: approve(limiter, amount)
     User->>GW: ask for something
     GW->>GW: check price, remaining daily limit, seller binding, spending policy
-    GW->>Lim: agent calls spend(...): per-purchase cap, daily cap, expiry, unique ref
-    Lim-->>Agent: USDC moved from the user's wallet (transferFrom)
+    Agent->>Lim: spend(payee, amount, ref): per-purchase cap, daily cap, expiry, unique ref
+    Lim->>USDC: transferFrom(user, agent, amount)
+    USDC-->>Agent: USDC moved from the user's wallet to the agent
     Agent->>Ask: request, answered with 402
     Agent->>Ask: retry with a signed payment (seller address, asset and ceiling pinned)
     Ask->>Fac: verify, then settle after the answer
     Fac-->>Ask: settled
     Ask-->>Agent: answer
     GW-->>User: receipt - spend counted against the limits
-    User-->>Lim: revoke any time: one signature, or pause the limiter
+    User->>USDC: revoke any time: approve(limiter, 0)
+    User->>Lim: or pause() - spending stops for good
 ```
+
+Bitrefill orders (gift cards, eSIMs, top-ups) are not x402: the gateway creates a guest invoice and the
+agent pays it with a USDC transfer, after the same limit checks.
 
 A spend that breaks a cap, arrives after expiry, reuses a reference, or comes after a pause
 reverts on chain, whatever the gateway or the agent asks for.
