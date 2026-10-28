@@ -18,7 +18,7 @@ SingIt lets you connect the wallet you already use, set a daily and a per-purcha
 2. API key: in the SingIt app (https://app.singitai.app/app/), Settings → API keys. The wallet signs the key's limits (per day, per request, how many days); top up $1 to $50 at a time in USDC. With a key, OpenAI SDK, Anthropic SDK and Claude Code work at https://app.singitai.app/v1 (cost + 30%, no per-call fee).
 3. MCP: https://app.singitai.app/mcp (Streamable HTTP), official MCP Registry name app.singitai/singit.
    - Free, no key: get_price, list_price_symbols, list_models.
-   - Free with a key: get_balance.
+   - Free with a key (read-only): get_balance, get_limits, get_receipts.
    - Paid per call from the key's limits (USDC on Base or Solana): web_search, read_page.
    - Paid, Base accounts for now: get_x_profile, get_crypto_news, get_hyperliquid_market, get_funding_rates, resolve_ens, get_token_price; demo calls get_weather, get_singit_risk_check.
    - Claude Code: claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer sk_singit_..."
