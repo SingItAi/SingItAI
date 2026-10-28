@@ -25,7 +25,7 @@ import { SPEECH_ROUTE, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 
 export const BASE = "eip155:8453";
@@ -223,6 +223,11 @@ const OUTPUT_SCHEMA = {
   },
 };
 
+// Which scheme to sign for a model, when one is clearly better (pricing.mjs's isUptoPrimary): spread into a model's
+// /pricing.json and /v1/models entries, nothing for the others. Advice only: every offer stays in the 402.
+const schemeAdvice = (id) => (isUptoPrimary(id)
+  ? { recommendedScheme: UPTO_PRIMARY.recommended, recommendedSchemeWhy: UPTO_PRIMARY.why } : {});
+
 // The one question /pricing.json prices every model against: a single short message, and the max_tokens a
 // request gets when it omits the field (LIMITS.defaultTokens), the same default readRequest applies.
 const PRICING_REFERENCE = Object.freeze({ content: "What is the capital of France?", maxTokens: LIMITS.defaultTokens });
@@ -412,6 +417,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           const ours = share === null || !listed ? null : share * (1 + TERMS.markupBps / 10_000);
           return { id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name, contextLength: m.contextLength,
             tags: m.tags ?? [],
+            ...schemeAdvice(m.id),
             usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
             ...(share === null ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
               output: m.completionUsdPerToken * 1e6 * share, basis: seen === null ? "trusted" : "observed" } }),
@@ -441,7 +447,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       let p;
       try { p = await pricingFor(config, catalogue, m.id); } catch { continue; } // not resolvable right now; omit it
       const perMillion = perMillionFor(m, observed, market);
-      priced.push({ id: m.id, name: m.name, ...p, ...(perMillion ? { perMillion } : {}) });
+      priced.push({ id: m.id, name: m.name, ...p, ...(perMillion ? { perMillion } : {}), ...schemeAdvice(m.id) });
     }
     const chars = PRICING_REFERENCE.content.length;
     res.json({
@@ -457,7 +463,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + "authorize, and a real answer normally settles for less once it comes back. exact pays the amount "
         + "shown, flat, with no metering and no refund: a price for a typical-length answer (about "
         + `${Math.round((config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION) * 100)}% of max_tokens), `
-        + "and the whole answer is still returned.",
+        + "and the whole answer is still returned. A model with recommendedScheme upto (Claude Opus) is best paid with "
+        + "upto: its exact price carries room for thinking tokens, so it is usually dearer than the answer used.",
       models: priced,
     });
   });
@@ -634,7 +641,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           operationId: "listPricing", summary: "Get per-model upto/exact prices for one reference question",
           description: "What GET/HEAD discovery and a real paid request would be offered for each model that can be "
             + "asked for now, computed by the same chooseModel/ceilingAtomic functions, for a documented reference "
-            + "question. No payment, no model call.",
+            + "question. No payment, no model call. A model entry with recommendedScheme upto (Claude Opus) is best "
+            + "paid with the upto offer; its exact price carries room for thinking tokens.",
           responses: { 200: { description: "Price by model" },
                        503: { description: "The model catalogue has never loaded yet; see Retry-After" } }, security: [],
         } },
@@ -690,7 +698,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + "offers: `upto`, listed first (metered to actual cost, up to the ceiling it names), or `exact` (a flat price for "
         + `a typical-length answer, about ${exactShare}% of max_tokens), in USDC on Base or Solana. Sign one `
         + "and retry with the signature in the PAYMENT-SIGNATURE header. Live prices and models: "
-        + `${base}/openapi.json and ${base}/v1/models. Step by step: ${FIRST_PAID_CALL_DOC}`, "",
+        + `${base}/openapi.json and ${base}/v1/models. For Claude Opus, sign \`upto\`: its \`exact\` price carries room `
+        + "for thinking tokens and is usually dearer than the answer used (recommendedScheme in "
+        + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC}`, "",
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `
           + `${freeOffer.perVisitorPerDay} answers a day per network (IPv4 /24, IPv6 /64), up to ${freeOffer.maxTokens} `
