@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { UnknownModel } from "../src/catalogue.mjs";
-import { SpendLimitReader, describeLimiter, offersAgainstLimit, receiptFor, BASE_USDC, LIMIT_HEADER, RECEIPT_HEADER } from "../src/spend-limit.mjs";
+import { SpendLimitReader, spendLimitMiddleware, describeLimiter, offersAgainstLimit, receiptFor, BASE_USDC, LIMIT_HEADER, RECEIPT_HEADER } from "../src/spend-limit.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -225,4 +225,26 @@ test("the limit block in a receipt is only used while the read is fresh (60 s)",
   await r.read(LIMITER);
   clock += 59_000; assert.ok(r.peek(LIMITER));
   clock += 2_000; assert.equal(r.peek(LIMITER), null);
+});
+
+test("a snapshot that was fresh at the request but is older than 60 s at settlement is left out of the receipt", async () => {
+  let clock = NOW * 1000;
+  const r = new SpendLimitReader({ publicClient: fakeChain(), now: () => clock });
+  await r.read(LIMITER);
+  const payment = Buffer.from(JSON.stringify({ accepted: { amount: "10", network: BASE, scheme: "exact" } })).toString("base64");
+  const settled = Buffer.from(JSON.stringify({ success: true, transaction: "0xtx" })).toString("base64");
+  const run = async (elapsedMs) => {
+    const headers = {};
+    const req = { method: "POST", get: (k) => ({ "x-singit-limiter": LIMITER, "payment-signature": payment })[k] };
+    const res = { locals: {}, setHeader: (k, v) => { headers[k] = v; } };
+    await spendLimitMiddleware({ reader: r })(req, res, () => {});
+    clock += elapsedMs;
+    res.setHeader("PAYMENT-RESPONSE", settled);
+    return JSON.parse(headers[RECEIPT_HEADER]);
+  };
+  assert.ok((await run(10_000)).limit, "a quick answer keeps the snapshot");
+  clock = NOW * 1000 + 59_000 - 1_000;   // 59 s old when the request arrives, 120 s old at settlement
+  const slow = await run(61_000);
+  assert.equal(slow.limit, undefined);
+  assert.equal(slow.tx, "0xtx");
 });

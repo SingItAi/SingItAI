@@ -42,6 +42,13 @@ export class SpendLimitReader {
     this.fresh = [];            // timestamps of fresh reads in the last minute
   }
 
+  // Is this snapshot still at most `maxAgeMs` old? Checked again when the receipt is written: a long answer must not
+  // carry a snapshot that was fresh only when the request came in.
+  isFresh(value, maxAgeMs = 60_000) {
+    const at = Date.parse(value?.asOf);
+    return Number.isFinite(at) && this.now() - at <= maxAgeMs;
+  }
+
   // A cached read at most `maxAgeMs` old, or null. Never touches the network.
   peek(address, maxAgeMs = 60_000) {
     const hit = this.cache.get(String(address).toLowerCase());
@@ -142,7 +149,7 @@ export function spendLimitMiddleware({ reader = null, log = () => {} } = {}) {
           const amount = JSON.parse(String(value)).amount;
           if (/^[0-9]+$/.test(String(amount ?? ""))) res.locals.singitSettledAmount = String(amount);
         } else if (key === "payment-response" && paid) {
-          const receipt = receiptFor(req, res, decodeHeader(value), peeked);
+          const receipt = receiptFor(req, res, decodeHeader(value), peeked && reader.isFresh(peeked) ? peeked : null);
           if (receipt) setHeader(RECEIPT_HEADER, JSON.stringify(receipt));
         }
       } catch (error) { log(`singit-ask: spend-limit header skipped (${error.name})`); }
