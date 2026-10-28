@@ -145,6 +145,17 @@ Historical activation scripts have version-specific manifests; refresh them
 against production before reusing them. Do not run old activation commands over
 this update.
 
+When video is enabled, a free order-book read checks seller health (cached for 60 seconds). A model with no
+qualifying seller and no compatible healthy substitute returns 503 `no_healthy_sellers` before any 402; unhealthy models are hidden from
+`/v1/video/models`. Unreadable books keep the last known health; unknown health is allowed for the requested model.
+Clips have a $0.20 list floor: with 30% markup and settlement fee the minimum is $0.261 on Base or $0.262 on Solana.
+The paid response waits for a finished clip: up to about 85 seconds on Base, 35 seconds on Solana to leave
+time for settlement before the signed transaction blockhash expires. Failed or late jobs return 503 `video_failed`
+or `video_timeout` without settlement; late jobs are canceled best effort. Polling and downloads stay free.
+By default, failed submissions or retryable jobs can try up to two compatible healthy models at the same or lower list quote;
+`fallback:false` refuses substitution. Billing always uses the signed requested quote. The response's `model` is
+what ran; substitutions also include `requested_model` and `substituted: true`. Uncensored models are never sold.
+
 ## Run
 
 ```bash
@@ -162,7 +173,7 @@ node --env-file=.env src/server.mjs
 | `SURPLUS_API_KEY` | Surplus buyer key (`inf_…`) with access to the configured model. Fund its workspace's deposited USDC balance; USDC in the linked wallet alone is not a prepaid balance. |
 | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` | Coinbase CDP facilitator credentials, required. The service reuses the `cdp-x402-service` installation of `@coinbase/x402`. |
 | `SINGIT_ASK_DIRECT_SOLANA` | Set `1` to enable the private direct Solana route with CDP metering. |
-| `SINGIT_ASK_VIDEO_SOLD` | Set `1` to sell `/v1/video/generations`. Unset (default): video is off. `POST` answers 503 `video_disabled` with no payment offer, `GET /v1/video/models` answers 503, and video is left out of openapi, discovery and `llms.txt`. Jobs that were already paid can still be polled. Off since 27.10.2026: a paid job can fail after it was settled, and nothing refunds it. |
+| `SINGIT_ASK_VIDEO_SOLD` | Set `1` to sell `/v1/video/generations`. Unset (default): video is off. `POST` answers 503 `video_disabled` with no payment offer, `GET /v1/video/models` answers 503, and video is left out of openapi, discovery and `llms.txt`. Jobs that were already paid can still be polled. Off since the provider failures on 27.10.2026; enabling sales remains an operator decision. |
 | `SINGIT_ASK_VIDEO_DISCOVERABLE` | Only with `SINGIT_ASK_VIDEO_SOLD=1`: set `1` to list `/v1/video/generations` for x402 discovery (402 on GET/HEAD and the empty probe, `/.well-known/x402`, `llms.txt`). Unset (default): sold (if on), but not listed. |
 | `SINGIT_ASK_QUOTE_TOKEN` | Dedicated server-only authentication secret, shared by merchant and gateway (at least 32 characters). |
 | `SINGIT_ASK_QUOTE_DB` | Private writable SQLite path for prepared answers and settlement claims. |
