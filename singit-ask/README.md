@@ -152,6 +152,10 @@ Clips have a $0.20 list floor: with 30% markup and settlement fee the minimum is
 The paid response waits for a finished clip: up to about 85 seconds on Base, 35 seconds on Solana to leave
 time for settlement before the signed transaction blockhash expires. Failed or late jobs return 503 `video_failed`
 or `video_timeout` without settlement; late jobs are canceled best effort. Polling and downloads stay free.
+Every job that does not deliver a clip writes one server-log line `video job not delivered {…}` with the Surplus job id, HTTP status,
+Surplus's error code/type/message (truncated, token- and key-shaped text blanked), elapsed seconds and a `reason`:
+`upstream_failed`, `poll_timeout`, `window_cutoff` (job failed with under 20 s left, so no next model starts) or `no_result_file`
+(job `succeeded` without a file). Nothing is stored in a database: video keeps no state.
 By default, failed submissions or retryable jobs can try up to two compatible healthy models at the same or lower list quote;
 `fallback:false` refuses substitution. Billing always uses the signed requested quote. The response's `model` is
 what ran; substitutions also include `requested_model` and `substituted: true`. Uncensored models are never sold.
