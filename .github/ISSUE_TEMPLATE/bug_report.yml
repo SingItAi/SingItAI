@@ -1,0 +1,52 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security problems: do not file them here.** Email contact@singitai.app (see SECURITY.md).
+        Please do not paste private keys, API keys or full wallet addresses.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Payment gateway (sign402-gateway)
+        - Allowance contract (agent-allowance)
+        - SingIt Ask (x402 endpoint)
+        - MCP server
+        - ElizaOS plugin
+        - SDK
+        - Web app / website
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: network
+    attributes:
+      label: Network and endpoint
+      description: Base or Solana, and the request URL if relevant.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or response
+      description: Remove any secrets first.
+      render: shell
