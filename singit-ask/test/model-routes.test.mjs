@@ -180,7 +180,7 @@ test("GET /openapi.json and /.well-known/x402 list all 14 model routes", async (
     const op = doc.paths[routePath(model.id)]?.post;
     assert.ok(op, routePath(model.id));
     assert.equal(op.operationId, operationId(model), model.id);
-    assert.equal(op.summary, `${model.name} chat completion`, model.id);
+    assert.equal(op.summary, `Generate a ${model.name} chat completion`, model.id);
     assert.ok(op["x-payment-info"].price.max, model.id);
   }
   // PRICEY is resolvable: its own ceiling, not the generic fallback, is quoted.

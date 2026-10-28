@@ -172,6 +172,9 @@ const INPUT_SCHEMAS = {
     stream: STREAM_FIELD,
   }, required: ["model", "input"] },
 };
+// A route's request body as openapi.json documents it: the schema and example the Bazaar listing declares.
+export const formatRequestBody = (route) => ({ required: true, content: { "application/json": {
+  schema: { type: "object", ...INPUT_SCHEMAS[route] }, example: EXAMPLES[route] } } });
 // A real answer's shape and charge (Base, `upto`): 6 micro-USD of tokens, 2 markup, 1000 settlement fee.
 const BILLING_EXAMPLE = { ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" };
 const OUTPUT_EXAMPLES = {

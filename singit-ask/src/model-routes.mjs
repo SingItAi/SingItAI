@@ -159,7 +159,7 @@ export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, 
   const entries = await Promise.all(MODEL_ROUTES.map(async (model) => {
     const own = await modelPriceRange(catalogue, model);
     return [routePath(model.id), { post: {
-      operationId: operationId(model), summary: `${model.name} chat completion`, description: discoveryDescription(model),
+      operationId: operationId(model), summary: `Generate a ${model.name} chat completion`, description: discoveryDescription(model),
       "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...(own ?? fallbackPrice) }, protocols: [{ x402: {} }] },
       requestBody: { required: true, content: { "application/json": {
         schema: { type: "object", ...inputSchema }, example: modelExample(model) } } },

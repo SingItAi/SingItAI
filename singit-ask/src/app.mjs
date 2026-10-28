@@ -19,12 +19,12 @@ import { LIMITS } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { addCreditRoute } from "./credit.mjs";
-import { SEARCH_ROUTES, addSearchRoutes } from "./search.mjs";
-import { IMAGE_ROUTE, addImageRoutes } from "./images.mjs";
-import { SPEECH_ROUTE, addSpeechRoutes } from "./speech.mjs";
+import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody } from "./search.mjs";
+import { IMAGE_ROUTE, IMAGE_REQUEST_BODY, addImageRoutes } from "./images.mjs";
+import { SPEECH_ROUTE, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
-import { FORMAT_ROUTES, addFormatRoutes } from "./formats.mjs";
+import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 
@@ -479,7 +479,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       servers: [{ url: origin(req) }],
       paths: {
         [ROUTE]: { post: {
-          operationId: "createChatCompletion", summary: "One answer from a language model",
+          operationId: "createChatCompletion", summary: "Generate an answer from a language model",
           description: DESCRIPTION + (freeOffer ? ` Models prefixed ${FREE_PREFIX} (${freeOffer.models.join(", ")}) answer `
             + `with no payment, within ${freeOffer.perVisitorPerDay} answers a day per network, ${freeOffer.maxTokens} tokens `
             + `and ${freeOffer.maxChars} characters each.` : ""),
@@ -498,12 +498,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } },
         ...(exaKey ? Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [route, { post: {
           operationId: { "/v1/exa/search": "exaSearch", "/v1/exa/contents": "exaContents", "/v1/exa/answer": "exaAnswer" }[route],
-          summary: { "/v1/exa/search": "Web search from Exa", "/v1/exa/contents": "Page contents from Exa, by URL",
-                     "/v1/exa/answer": "An answer with cited sources, from Exa" }[route],
+          summary: { "/v1/exa/search": "Search the web with Exa and return ranked results",
+                     "/v1/exa/contents": "Fetch page contents from Exa for up to 10 URLs",
+                     "/v1/exa/answer": "Generate a cited answer with Exa" }[route],
           description: "Exa's own request and answer, paid per request over x402: Exa's list price + 30% + a settlement fee "
             + "(0.001 USDC on Base, 0.002 on Solana). Nothing is charged without an answer.",
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.0023", max: "0.067" }, protocols: [{ x402: {} }] },
-          requestBody: { required: true, content: { "application/json": { schema: { type: "object" } } } },
+          requestBody: exaRequestBody(route),
           responses: { 200: { description: "Exa's answer, with billing" },
                        ...paidErrors({ duplicate: true, unavailable: "Exa did not answer; nothing charged. Retry after Retry-After" }) },
           security: [{ x402: [] }],
@@ -517,46 +518,41 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                             noAnswer: "No billable answer came back; nothing was charged", reasoning: true }) } } }])) : {}),
         ...(catalogue ? Object.fromEntries(Object.keys(FORMAT_ROUTES).map((route) => [route, { post: {
           operationId: route === "/v1/messages" ? "createMessage" : "createResponse",
-          summary: route === "/v1/messages" ? "Anthropic's Messages API, any listed model" : "OpenAI's Responses API, any listed model",
+          summary: route === "/v1/messages" ? "Create a message in Anthropic's format, any listed model" : "Create a response in OpenAI's format, any listed model",
           description: "The request in that API's own format, without streaming. Pays actual token cost + 30% + a settlement "
             + "fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's price and the request's "
             + "size; nothing is charged without an answer. Models: GET /v1/models.",
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
-          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model"] } } } },
+          requestBody: formatRequestBody(route),
           responses: { 200: { description: "The answer in that API's format, with billing" },
                        ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged", reasoning: true,
                                        schema: route === "/v1/messages" ? ANTHROPIC_ERROR_SCHEMA : ERROR_SCHEMA }) },
           security: [{ x402: [] }],
         } }])) : {}),
         ...(catalogue ? { [IMAGE_ROUTE]: { post: {
-          operationId: "createImage", summary: "Images from any of 36 image models",
+          operationId: "createImage", summary: "Generate images with any of 36 image models",
           description: "OpenAI images request (model, prompt, n, size). Paid per request over x402: the model's list price "
             + "+ 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models and prices: GET /v1/images/models. "
             + "Nothing is charged without an image.",
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.014", max: "2.602" }, protocols: [{ x402: {} }] },
-          requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "prompt"],
-            properties: { model: { type: "string" }, prompt: { type: "string" }, n: { type: "integer", minimum: 1, maximum: 4 },
-                          size: { type: "string", examples: ["1024x1024"] }, response_format: { type: "string", enum: ["b64_json", "url"] } } } } } },
+          requestBody: IMAGE_REQUEST_BODY(),
           responses: { 200: { description: "The images, with billing" },
                        ...paidErrors({ notFound: "No such image model; nothing was charged", duplicate: true, noAnswer: "No image; nothing charged" }) },
           security: [{ x402: [] }],
-        } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "Image models and their prices",
+        } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
           [SPEECH_ROUTE]: { post: {
-            operationId: "createSpeech", summary: "Text read aloud by any of 11 voice models",
+            operationId: "createSpeech", summary: "Generate speech with any of 11 voice models",
             description: "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: the "
               + "model's list price for the text + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models: "
               + "GET /v1/audio/models. Nothing is charged without audio.",
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
-            requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "input"],
-              properties: { model: { type: "string" }, input: { type: "string", maxLength: 4096 }, voice: { type: "string" },
-                            response_format: { type: "string", enum: ["mp3", "opus", "aac", "flac", "wav", "pcm"] },
-                            speed: { type: "number" } } } } } },
+            requestBody: SPEECH_REQUEST_BODY(),
             responses: { 200: { description: "The audio", content: { "audio/mpeg": {} } },
                          ...paidErrors({ notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },
-          "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "Voice models and their prices",
+          "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "List voice models and their prices",
             responses: { 200: { description: "Model list" } }, security: [] } },
           ...(config.videoSold ? {
           [VIDEO_ROUTE]: { post: {
@@ -602,7 +598,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         "/v1/wallet/{address}/reconciliation": { servers: [{ url: config.walletReportOrigin || "https://app.singitai.app" }],
           get: {
             operationId: "walletReconciliation", security: [{ singitApiKey: [] }],
-            summary: "Free, owner only: a wallet's SingIt spend over the last 1 to 90 days, and its allowance (Base or Solana)",
+            summary: "Get a wallet's SingIt spend and allowance (owner only)",
             description: "No payment, but private: send a SingIt API key (Authorization: Bearer sk_singit_...) of the account "
               + "that signs in with this wallet; no key or a wrong key is 401, another account's key is 403. Settled spend "
               + "by category (chat_answer, data_tool, gift_card, other), by day, credit top-ups apart, and the owner's daily "
@@ -610,7 +606,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             parameters: [
               { name: "address", in: "path", required: true, schema: { type: "string" },
                 description: "A Base address (0x + 40 hex) or a Solana address (base58)" },
-              { name: "days", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 90, default: 30 } }],
+              { name: "days", in: "query", required: false, description: "How many days back, 1 to 90.",
+                schema: { type: "integer", minimum: 1, maximum: 90, default: 30 } }],
             responses: {
               200: { description: "The report; known:false with zeros for an address SingIt has never seen",
                      content: { "application/json": { schema: RECONCILIATION_SCHEMA } } },
@@ -618,11 +615,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               429: { description: "Too many requests; see Retry-After" } },
           } },
         "/v1/models": { get: {
-          operationId: "listModels", summary: "Models that can be asked for now, with their prices",
+          operationId: "listModels", summary: "List models that can be asked for now, with prices",
           responses: { 200: { description: "Model list" } }, security: [],
         } },
         "/pricing.json": { get: {
-          operationId: "listPricing", summary: "Free: per-model upto/exact 402 prices for one reference question",
+          operationId: "listPricing", summary: "Get per-model upto/exact prices for one reference question",
           description: "What GET/HEAD discovery and a real paid request would be offered for each model that can be "
             + "asked for now, computed by the same chooseModel/ceilingAtomic functions, for a documented reference "
             + "question. No payment, no model call.",
