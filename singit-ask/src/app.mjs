@@ -17,6 +17,7 @@ import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue, priceGuard } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
+import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody } from "./search.mjs";
@@ -340,7 +341,8 @@ const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, sch
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
                                     exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [] }) : null,
-                                    observed = new ObservedPrices({ file: config.observedFile }) }) {
+                                    observed = new ObservedPrices({ file: config.observedFile }),
+                                    spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
   const app = express();
   app.locals.catalogue = catalogue;  // server.mjs warms it
   app.disable("x-powered-by");
@@ -356,6 +358,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       ? { type: "error", error: { type: "invalid_request_error", message } }
       : { error: { type: "invalid_request_error", message } });
   });
+
+  // The caller's own spend limit in the 402 (X-SingIt-Limiter) and a receipt on every settled answer: only headers
+  // and the 402's body; no price, offer or settlement changes. Before every paid route below.
+  app.use(spendLimitMiddleware({ reader: spendLimits, log }));
 
   const pricing = { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS };
   const free = freeTerms(config);

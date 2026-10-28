@@ -160,6 +160,27 @@ By default, failed submissions or retryable jobs can try up to two compatible he
 `fallback:false` refuses substitution. Billing always uses the signed requested quote. The response's `model` is
 what ran; substitutions also include `requested_model` and `substituted: true`. Uncensored models are never sold.
 
+## Your spend limit in the 402, and a receipt (plan item 3)
+
+Both are headers only: no price, offer or settlement changes, and nothing is added to x402's `extensions`.
+
+- **Limit before you sign.** Send `X-SingIt-Limiter: 0x<your AgentAllowance on Base>` on an unpaid request. The 402 then
+  carries `X-SingIt-Spend-Limit` (JSON, also in the 402's body as `singitSpendLimit`): `paused`, `expired`,
+  `expiresAt`, `dailyCapAtomic`, `perPurchaseCapAtomic`, `remainingTodayAtomic`, `allowanceLeftAtomic`,
+  `spendableNowAtomic` (the smaller of the three limits) and, for every offer, `fits` (`true`, `false` with a `reason`,
+  or `null` for Solana, which is not checked). The owner's USDC balance is not read. Read from Base (cached 15 s,
+  at most 60 fresh reads a minute); an address that is not an AgentAllowance on USDC gets an `error` instead.
+  The address is never logged.
+- **Receipt.** Every answer that settled carries `X-SingIt-Receipt` (JSON): `ref` (the answer's id), `tx`, `network`,
+  `scheme`, `payer`, `chargedAtomic`, `ceilingAtomic` and, when the same limiter header was sent, a `limit` block with
+  the figures read just before (`remainingTodayBeforeAtomic`). An unsettled answer (>= 400) has none.
+
+```sh
+curl -si https://ask.singitai.app/v1/chat/completions -H 'Content-Type: application/json' \
+  -H 'X-SingIt-Limiter: 0xYourLimiter' -d '{"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Hi"}]}' \
+  | grep -i x-singit-spend-limit
+```
+
 ## Run
 
 ```bash
