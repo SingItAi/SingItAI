@@ -49,7 +49,7 @@ export function matchModels(pricingJson, snapshot) {
     const blockrunUsd = blockrunPrice(bm, referenceRequest, snapshot.transactionFeeUsd);
     rows.push({
       id, name: sm.name || bm.name || id, provider: providerOf(bm.id),
-      singitUptoUsd: sm.upto.base.usd, singitExactUsd: sm.exact.base.usd,
+      singitUptoUsd: sm.upto.base.usd, singitExactUsd: sm.exact.base.usd, recommendedScheme: sm.recommendedScheme,
       blockrunUsd, differenceUsd: blockrunUsd - sm.upto.base.usd,
     });
   }
@@ -72,7 +72,7 @@ export function rowHtml(row) {
     <th scope="row"><span class="model-name">${escape(row.name)}</span><span class="model-id">${escape(row.id)}</span></th>
     <td class="hide-sm">${escape(row.provider)}</td>
     <td class="num">${formatUsd(row.singitUptoUsd)}</td>
-    <td class="num hide-sm">${formatUsd(row.singitExactUsd)}</td>
+    <td class="num hide-sm">${formatUsd(row.singitExactUsd)}${row.recommendedScheme === "upto" ? ' <span class="fine">sign upto</span>' : ""}</td>
     <td class="num">${formatUsd(row.blockrunUsd)}</td>
     <td class="num">${saving ? `<span class="saving">&minus;${formatUsd(row.differenceUsd).replace("$", "")} vs BlockRun</span>` : formatUsd(row.differenceUsd)}</td>
   </tr>`;
