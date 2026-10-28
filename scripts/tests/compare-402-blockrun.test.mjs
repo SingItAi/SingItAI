@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BASE_NETWORK, BASE_USDC, MODELS, compareModel, parseAccepts, renderText, run } from "../compare-402-blockrun.mjs";
+import { BASE_NETWORK, BASE_USDC, MODELS, toPpm, compareModel, parseAccepts, renderText, run } from "../compare-402-blockrun.mjs";
 
 const offer = (scheme, atomic, network = BASE_NETWORK, asset = BASE_USDC) => ({ scheme, network, asset, amount: String(atomic), atomic: String(atomic) });
 const encode = (v) => Buffer.from(JSON.stringify(v)).toString("base64");
@@ -122,7 +122,10 @@ test("a tolerance finer than a millionth is refused, not rounded", () => {
   const ours = { offers: [offer("exact", 1000001)] };
   const theirs = { offers: [offer("exact", 1000000)] };
   assert.throws(() => compareModel("m", ours, theirs, { tolerance: 0.0000006 }), RangeError);
+  assert.throws(() => compareModel("m", ours, theirs, { tolerance: 0.0000009999999 }), RangeError);
   assert.throws(() => compareModel("m", ours, theirs, { tolerance: -0.1 }), RangeError);
+  assert.throws(() => compareModel("m", ours, theirs, { tolerance: NaN }), RangeError);
+  for (const ok of [0, 0.02, 0.13, 0.07, 0.000001, 1.5]) assert.notEqual(toPpm(ok), null, String(ok));
   assert.equal(compareModel("m", ours, theirs, { tolerance: 0.000001 }).alert, false);
   assert.equal(compareModel("m", ours, theirs, { tolerance: 0 }).alert, true);
 });

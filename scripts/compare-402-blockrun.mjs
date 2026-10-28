@@ -60,6 +60,14 @@ export function parseAccepts({ status, headers, body }) {
 }
 
 // Only Base USDC offers are prices in dollars: another token's amount is not comparable.
+// A tolerance in millionths, or null when it is negative, not a number, or has more than six decimals (rounding
+// 0.0000009999999 to 1 ppm would silently change what alerts). n/1e6 is the double nearest the decimal, so the round
+// trip is exact for every valid input.
+export const toPpm = (tolerance) => {
+  const ppm = Math.round(tolerance * 1_000_000);
+  return Number.isFinite(tolerance) && tolerance >= 0 && tolerance < 10 && ppm / 1_000_000 === tolerance ? ppm : null;
+};
+
 const cheapest = (offers, predicate = () => true) =>
   offers.filter((o) => o.network === BASE_NETWORK && o.asset === BASE_USDC && predicate(o)).reduce((best, o) => (best === null || BigInt(o.atomic) < BigInt(best.atomic) ? o : best), null);
 
@@ -78,8 +86,8 @@ export function compareModel(model, ours, theirs, { tolerance = 0 } = {}) {
   const r = ratio(o, t);
   // Integer maths: 1.13 × 100 is 112.99999999999999 in floating point, which would alert at exactly the tolerance.
   // The tolerance is held in millionths; a finer one is refused instead of being silently rounded.
-  const ppm = Math.round(tolerance * 1_000_000);
-  if (!Number.isFinite(tolerance) || tolerance < 0 || Math.abs(ppm - tolerance * 1_000_000) > 1e-6) throw new RangeError("tolerance must be a non-negative number with at most 6 decimals");
+  const ppm = toPpm(tolerance);
+  if (ppm === null) throw new RangeError("tolerance must be a non-negative number with at most 6 decimals");
   const alert = BigInt(o.atomic) * 1_000_000n > BigInt(t.atomic) * BigInt(1_000_000 + ppm);
   return { ...row, oursCheapestUsd: usd(o.atomic), oursScheme: o.scheme, theirsCheapestUsd: usd(t.atomic), theirsScheme: t.scheme,
     ratio: Number(r.toFixed(4)), exactVsExact: oExact && tExact ? { oursUsd: usd(oExact.atomic), theirsUsd: usd(tExact.atomic), ratio: Number(ratio(oExact, tExact).toFixed(4)) } : null,
@@ -138,7 +146,7 @@ async function main() {
   const args = process.argv.slice(2);
   const tolerance = Number(flag(args, "tolerance", "0"));
   const maxTokens = Number(flag(args, "max-tokens", "500"));
-  if (!(tolerance >= 0 && tolerance < 10 && Math.abs(Math.round(tolerance * 1e6) - tolerance * 1e6) <= 1e-6) || !Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 4096) {
+  if (toPpm(tolerance) === null || !Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 4096) {
     process.stderr.write("usage: compare-402-blockrun.mjs [--tolerance 0.02] [--max-tokens 500] [--append file.jsonl] [--json] [--strict]\n");
     process.exit(1);
   }
