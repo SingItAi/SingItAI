@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { UnknownModel, parseVideoModels } from "../src/catalogue.mjs";
-import { VIDEO_ROUTE, publicJob, readVideoRequest, videoPrice } from "../src/video.mjs";
+import { VIDEO_ROUTE, publicJob, readVideoRequest, videoPrice, videoListAtomic, pickFallbacks, isSoldVideoModel } from "../src/video.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -63,11 +63,13 @@ function fakeSurplus({ submitStatus = 202, jobStatus = "running" } = {}) {
   return { calls, fetchImpl };
 }
 
-async function serve(t, { surplus = fakeSurplus(), config = CONFIG, health = new Map([["venice-seedance-2-fast-t2v", 2]]) } = {}) {
+async function serve(t, { surplus = fakeSurplus(), config = CONFIG, health = new Map([["venice-seedance-2-fast-t2v", 2]]), models = VIDEOS } = {}) {
   const facilitator = fakeFacilitator();
   const logs = [];
   const app = createApp(config, { facilitatorClient: facilitator,
-    catalogue: { ...catalogue, async videoHealth(id) { return health.get(id) ?? null; },
+    catalogue: { ...catalogue, async videoModels() { return models; },
+      async resolveVideo(id) { const m = models.get(id); if (!m) throw new UnknownModel("Unknown model"); return m; },
+      async videoHealth(id) { return health.get(id) ?? null; },
       async videoServed() { return health; } }, fetchImpl: surplus.fetchImpl,
     log: (line) => logs.push(line), upstream: async () => { throw new Error("no answer is asked"); } });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
@@ -91,7 +93,7 @@ test("a clip is offered at its list price + 30% + the fee; nothing is started be
   const unpaid = await post(`${url}${VIDEO_ROUTE}`, VIDEO);
   assert.equal(unpaid.status, 402);
   const required = decode(unpaid.headers.get("payment-required"));
-  assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[BASE, "105000"], [SOLANA, "106000"]]);
+  assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[BASE, "261000"], [SOLANA, "262000"]]);
   assert.ok(required.extensions?.bazaar);
   assert.deepEqual(surplus.calls, []);
 });
@@ -103,13 +105,13 @@ test("a paid clip starts one job, the payer is settled once it is accepted, and 
   assert.equal(paid.status, 200);
   const job = await paid.json();
   assert.deepEqual([job.id, job.status, job.job_token, job.poll, job.billing.totalAtomic],
-    ["vj_123456", "queued", "tok_secret", "/v1/video/generations/vj_123456", "105000"]);
+    ["vj_123456", "queued", "tok_secret", "/v1/video/generations/vj_123456", "261000"]);
   assert.equal(job.provider, undefined, "no seller shown");
   const submit = surplus.calls[0];
   assert.deepEqual([submit.method, submit.headers.Authorization, submit.body],
     ["POST", "Bearer inf_test", { model: "venice-seedance-2-fast-t2v", prompt: "a green robot waves", resolution: "480p", aspect_ratio: "16:9" }]);
   assert.match(submit.headers["Idempotency-Key"], /^singit-[0-9a-f]{64}$/);
-  assert.deepEqual(facilitator.calls.settle, [[BASE, "105000"]]);
+  assert.deepEqual(facilitator.calls.settle, [[BASE, "261000"]]);
   assert.equal((await post(`${url}${VIDEO_ROUTE}`, VIDEO, pay(required, BASE))).status, 409);
 });
 
@@ -197,7 +199,7 @@ test("prices, the request and the free model list", async (t) => {
   assert.equal(publicJob({ id: "a", status: "failed", error: { code: "provider_error", message: "no" } }, "o").error.code, "provider_error");
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/video/models`)).json();
-  assert.deepEqual(list.data.map((m) => [m.id, m.singitUsdPerJob]), [["venice-seedance-2-fast-t2v", 0.105]]);
+  assert.deepEqual(list.data.map((m) => [m.id, m.listUsdPerJob, m.singitUsdPerJob]), [["venice-seedance-2-fast-t2v", 0.08, 0.261]]);
 });
 
 // Video is off unless SINGIT_ASK_VIDEO_SOLD=1: a paid job could fail after settlement (27.10.2026). Off, a new job is
@@ -256,5 +258,93 @@ test("video listing hides zero sellers and reports counts, failing open only for
     const { url } = await serve(t, { health });
     const list = await (await fetch(`${url}/v1/video/models`)).json();
     assert.deepEqual(list.data.map((m) => [m.id, m.healthySellers]), expected);
+  }
+});
+
+const model = (id, usdPerJob = 0.2, extra = {}) => ({ ...VIDEOS.get(VIDEO.model), id, usdPerJob, ...extra });
+
+test("price floor and fallback selection respect price, health, compatibility, ordering and limit", () => {
+  assert.equal(videoPrice(videoListAtomic(model("cheap", 0.08)), BASE).totalAtomic, "261000");
+  assert.equal(videoPrice(videoListAtomic(model("higher", 0.4)), BASE).totalAtomic, "521000");
+  assert.equal(isSoldVideoModel("UnCeNsOrEd-t2v"), false);
+  const models = [model("requested", 0.4), model("b", 0.3), model("a", 0.3), model("c", 0.3),
+    model("cheap", 0.08), model("expensive", 0.5), model("unknown"), model("dead"),
+    model("incompatible", 0.4, { durations: [10] }), model("uncensored-t2v-turbo")];
+  const health = new Map(models.filter((m) => m.id !== "unknown").map((m) => [m.id, m.id === "dead" ? 0 : 2]));
+  health.set("c", 3);
+  const args = { models, health, requested: "requested", signedListAtomic: 400000,
+    body: { ...VIDEO, duration_seconds: 5 } };
+  assert.deepEqual(pickFallbacks(args).map((m) => m.id), ["c", "a"]);
+  assert.deepEqual(pickFallbacks({ ...args, models: new Map(models.map((m) => [m.id, m])), max: 4 })
+    .map((m) => m.id), ["c", "a", "b", "cheap"]);
+});
+
+test("unhealthy requested model substitutes at its signed quote and settles exactly once", async (t) => {
+  const models = new Map([model(VIDEO.model, 0.4), model("fallback", 0.2)].map((m) => [m.id, m]));
+  const { url, surplus, facilitator, logs } = await serve(t, { models,
+    health: new Map([[VIDEO.model, 0], ["fallback", 2]]) });
+  const offer = await post(`${url}${VIDEO_ROUTE}`, VIDEO);
+  assert.equal(offer.status, 402);
+  const required = decode(offer.headers.get("payment-required"));
+  assert.equal(required.accepts[0].amount, "521000");
+  const response = await post(`${url}${VIDEO_ROUTE}`, VIDEO, pay(required, BASE));
+  assert.equal(response.status, 200);
+  const job = await response.json();
+  assert.deepEqual([job.model, job.requested_model, job.substituted, job.billing.totalAtomic],
+    ["fallback", VIDEO.model, true, "521000"]);
+  assert.deepEqual(surplus.calls.map((c) => c.body.model), ["fallback"]);
+  assert.equal(surplus.calls[0].body.fallback, undefined);
+  assert.deepEqual(facilitator.calls.settle, [[BASE, "521000"]]);
+  assert.equal(logs.filter((line) => line.includes("substitution")).length, 1);
+});
+
+test("pricier and uncensored candidates cannot open payment; fallback opt-out and type are checked", async (t) => {
+  for (const [candidate, body, status] of [[model("expensive", 0.4), VIDEO, 503],
+    [model("uncensored-t2v-turbo", 0.08), VIDEO, 503],
+    [model("fallback"), { ...VIDEO, fallback: false }, 503],
+    [model("fallback"), { ...VIDEO, fallback: "yes" }, 400],
+    [model("uncensored-t2v-turbo"), { ...VIDEO, model: "uncensored-t2v-turbo" }, 404]]) {
+    const models = new Map([model(VIDEO.model), candidate].map((m) => [m.id, m]));
+    const { url, surplus } = await serve(t, { models, health: new Map([[VIDEO.model, 0], [candidate.id, 2]]) });
+    const response = await post(`${url}${VIDEO_ROUTE}`, body);
+    assert.equal(response.status, status);
+    assert.equal(response.headers.get("payment-required"), null);
+    const error = (await response.json()).error;
+    if (status === 503) assert.equal(error.code, "no_healthy_sellers");
+    if (status === 404) assert.equal(error.code, "model_not_found");
+    assert.deepEqual(surplus.calls, []);
+  }
+});
+
+test("submit failures retry within the quote; exhaustion and invalid requests never settle", async (t) => {
+  for (const outcome of ["success", "exhausted", "invalid", "unreachable"]) {
+    const calls = [];
+    const surplus = { calls, async fetchImpl(_url, init) {
+      calls.push({ body: JSON.parse(init.body), key: init.headers["Idempotency-Key"] });
+      if (calls.length === 1 && outcome === "unreachable") throw new TypeError("offline");
+      if (outcome === "invalid") return Response.json({ error: { code: "invalid_request" } }, { status: 400 });
+      if (calls.length === 1 || outcome === "exhausted") {
+        return Response.json({ error: { code: "no_healthy_sellers" } }, { status: 503 });
+      }
+      return Response.json({ id: "vj_123456", status: "queued", job_token: "tok_secret" }, { status: 202 });
+    } };
+    const models = new Map([model(VIDEO.model), model("fallback")].map((m) => [m.id, m]));
+    const { url, facilitator } = await serve(t, { models, surplus,
+      health: new Map([[VIDEO.model, 2], ["fallback", 2]]) });
+    const required = decode((await post(`${url}${VIDEO_ROUTE}`, VIDEO)).headers.get("payment-required"));
+    const response = await post(`${url}${VIDEO_ROUTE}`, VIDEO, pay(required, BASE));
+    const success = outcome === "success" || outcome === "unreachable";
+    assert.equal(response.status, success ? 200 : 503);
+    assert.equal(calls.length, outcome === "invalid" ? 1 : 2);
+    assert.equal(calls[0].body.model, VIDEO.model);
+    if (calls.length === 2) {
+      assert.equal(calls[1].body.model, "fallback");
+      assert.equal(calls[1].key, `${calls[0].key}-1`);
+    }
+    assert.deepEqual(facilitator.calls.settle, success ? [[BASE, "261000"]] : []);
+    if (!success) {
+      assert.equal(response.headers.get("retry-after"), "30");
+      assert.equal((await response.json()).error.code, "no_healthy_sellers");
+    }
   }
 });

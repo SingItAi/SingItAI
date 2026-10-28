@@ -557,15 +557,19 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           ...(config.videoSold ? {
           [VIDEO_ROUTE]: { post: {
             operationId: "createVideo", summary: "Generate a video clip with any of 30+ text-to-video models",
-            description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio. Paid per clip "
-              + "over x402: the model's list price + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), charged "
+            description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio, fallback. "
+              + "Paid per clip over x402: the model's list price (minimum $0.20) + 30% + a settlement fee "
+              + "(0.001 USDC on Base, 0.002 on Solana), charged "
               + "once the job is accepted. Answers with the job id and job_token; poll GET /v1/video/generations/{id} "
               + "with header X-Job-Token for free, then GET /v1/video/generations/{id}/content. Models: GET /v1/video/models. "
-              + "Returns 503 no_healthy_sellers before any 402 when no qualifying seller is available.",
-            "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.105", max: "1.302" }, protocols: [{ x402: {} }] },
+              + "Returns 503 no_healthy_sellers before any 402 when neither the requested model nor a compatible substitute is healthy.",
+            "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.261", max: "1.302" }, protocols: [{ x402: {} }] },
             requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "prompt"],
               properties: { model: { type: "string" }, prompt: { type: "string", maxLength: 2000 }, duration_seconds: { type: "integer" },
-                            resolution: { type: "string" }, aspect_ratio: { type: "string" }, audio: { type: "boolean" } } } } } },
+                            resolution: { type: "string" }, aspect_ratio: { type: "string" }, audio: { type: "boolean" },
+                            fallback: { type: "boolean", default: true,
+                              description: "Set false to refuse a substitute model when the chosen one has no healthy seller; "
+                                + "the price never rises." } } } } } },
             responses: { 200: { description: "The accepted job, its token and billing" },
                          ...paidErrors({ notFound: "No such video model; nothing was charged", duplicate: true, noAnswer: "Not started; nothing charged" }) },
             security: [{ x402: [] }],

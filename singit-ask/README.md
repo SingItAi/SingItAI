@@ -146,8 +146,12 @@ against production before reusing them. Do not run old activation commands over
 this update.
 
 When video is enabled, a free order-book read checks seller health (cached for 60 seconds). A model with no
-qualifying seller returns 503 `no_healthy_sellers` before any 402; unhealthy models are hidden from
-`/v1/video/models`. Unreadable books keep the last known health; unknown health is allowed.
+qualifying seller and no compatible healthy substitute returns 503 `no_healthy_sellers` before any 402; unhealthy models are hidden from
+`/v1/video/models`. Unreadable books keep the last known health; unknown health is allowed for the requested model.
+Clips have a $0.20 list floor: with 30% markup and settlement fee the minimum is $0.261 on Base or $0.262 on Solana.
+By default, failed submissions can try up to two compatible healthy models at the same or lower list quote;
+`fallback:false` refuses substitution. Billing always uses the signed requested quote. The response's `model` is
+what ran; substitutions also include `requested_model` and `substituted: true`. Uncensored models are never sold.
 
 ## Run
 
