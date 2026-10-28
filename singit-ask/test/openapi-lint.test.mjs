@@ -13,6 +13,7 @@ test("every operation summary is verb-first and 24 to 63 characters", async () =
     for (const [method, op] of Object.entries(item)) {
       if (!op || typeof op !== "object" || Array.isArray(op)) continue;   // `servers` on a path item
       assert.match(op.summary, VERBS, `${method} ${path}: ${op.summary}`);
+      assert.doesNotMatch(op.summary, /\bfree\b/i, `${method} ${path}: the linter calls "free" marketing language`);
       assert.ok(op.summary.length >= 24 && op.summary.length <= 63, `${method} ${path}: ${op.summary.length} chars`);
     }
   }
