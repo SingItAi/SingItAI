@@ -103,7 +103,8 @@ class InitializeAndListTests(Fixture):
         self.assertEqual(status, 200)
         tools = out["result"]["tools"]
         names = {t["name"] for t in tools}
-        expected = {"get_price", "list_price_symbols", "list_models", "get_balance", "web_search", "read_page"} | PAID_TOOL_NAMES
+        expected = {"get_price", "list_price_symbols", "list_models", "get_balance", "get_limits", "get_receipts",
+                    "web_search", "read_page"} | PAID_TOOL_NAMES
         self.assertEqual(names, expected)
         for tool in tools:
             self.assertEqual(tool["inputSchema"]["type"], "object")
@@ -114,12 +115,12 @@ class InitializeAndListTests(Fixture):
         status, out, _ = self.rpc(key, "ping")
         self.assertEqual((status, out["result"]), (200, {}))
 
-    def test_every_tool_has_a_title_and_boolean_annotations_and_there_are_exactly_fourteen(self):
+    def test_every_tool_has_a_title_and_boolean_annotations_and_there_are_exactly_sixteen(self):
         key = self.make_key()["key"]
         status, out, _ = self.rpc(key, "tools/list")
         listed = out["result"]["tools"]
         self.assertEqual(len(listed), len(OWN_TOOLS) + len(PAID_TOOL_NAMES))
-        self.assertEqual(len(listed), 14)
+        self.assertEqual(len(listed), 16)
         for tool in listed:
             self.assertTrue(tool.get("title"), tool["name"])
             annotations = tool["annotations"]
@@ -186,6 +187,142 @@ class ToolCatalogueTests(Fixture):
         self.assertIn("not available", out["result"]["content"][0]["text"])
 
 
+class LimitsAndReceiptsTests(Fixture):
+    """get_limits and get_receipts: the key's own limits and charges, read-only (plan item 4, 28.10.2026)."""
+
+    def ledger_row(self, id_, kind="charge", key_id="K", amount=-1500, **extra):
+        row = {"id": id_, "account_id": self.account, "at": NOW - id_, "kind": kind, "amount_atomic": amount,
+               "balance_after": 4_000_000 - id_, "ref": f"ref-{id_}", "key_id": key_id, "model": "claude-opus-5.5",
+               "cost_atomic": 1000, "input_tokens": 12, "output_tokens": 30, "tx_id": None, "network": None}
+        row.update(extra)
+        return row
+
+    def test_both_tools_are_listed_read_only_and_idempotent_with_schemas(self):
+        tools = {t["name"]: t for t in self.rpc(None, "tools/list")[1]["result"]["tools"]}
+        for name in ("get_limits", "get_receipts"):
+            annotations = tools[name]["annotations"]
+            self.assertTrue(annotations["readOnlyHint"])
+            self.assertFalse(annotations["destructiveHint"])
+            self.assertTrue(annotations["idempotentHint"])
+            self.assertFalse(annotations["openWorldHint"])
+        self.assertEqual(tools["get_receipts"]["inputSchema"]["properties"]["limit"]["maximum"], 50)
+
+    def test_both_need_a_key_and_touch_nothing_without_one(self):
+        for name in ("get_limits", "get_receipts"):
+            status, out, _ = self.call_tool(None, name)
+            self.assertTrue(out["result"]["isError"])
+            self.assertIn("needs your API key", out["result"]["content"][0]["text"])
+        self.assertEqual(self.shop.calls, [])
+
+    def test_get_limits_reports_the_keys_caps_and_what_is_left_today(self):
+        made = self.make_key(dailyUsd=3, perRequestUsd=0.5)
+        row = self.store.api_key(made["key"], NOW)
+        self.store.record_key_spend(row["key_id"], NOW // 86400, 1_250_000, NOW)
+        self.api.keys.proxy = None
+        self.api.allowance.store.active_limiter.return_value = None
+        status, out, _ = self.call_tool(made["key"], "get_limits")
+        self.assertFalse(out["result"].get("isError"), out)
+        data = out["result"]["structuredContent"]
+        key = data["key"]
+        self.assertEqual((key["id"], key["state"]), (row["key_id"], "active"))
+        self.assertEqual((key["dailyCapUsd"], key["perRequestCapUsd"]), (3.0, 0.5))
+        self.assertEqual((key["spentTodayUsd"], key["remainingTodayUsd"], key["answersToday"]), (1.25, 1.75, 1))
+        self.assertEqual(key["resetsAt"], (NOW // 86400 + 1) * 86400)
+        self.assertNotIn("balance", data)
+        self.assertNotIn(made["key"], json.dumps(data), "the secret key is never echoed")
+
+    def test_get_limits_includes_the_balance_and_never_changes_anything(self):
+        made = self.make_key()
+        self.api.keys.proxy = Mock()
+        self.api.keys._balance = lambda account: {"availableUsd": 2.0, "heldUsd": 0.1, "autoTopup": False, "topupUsd": 9}
+        self.api.allowance.store.active_limiter.return_value = None
+        status, out, _ = self.call_tool(made["key"], "get_limits")
+        data = out["result"]["structuredContent"]
+        self.assertEqual(data["balance"], {"availableUsd": 2.0, "heldUsd": 0.1, "autoTopup": False})
+        self.assertEqual(data["allowance"], {"configured": False, "chain": "base"})
+        self.api.allowance.advance.assert_not_called()
+        self.api.allowance.status.assert_not_called()
+
+    def test_get_limits_shows_the_base_limiter_without_owner_agent_or_guardian_addresses(self):
+        made = self.make_key()
+        self.api.keys.proxy = None
+        self.api.allowance.store.active_limiter.return_value = {"limiter": "0xLIMITER"}
+        self.api.allowance._describe.return_value = {
+            "limiter": "0x" + "ab" * 20, "owner": "0xOWNER", "agent": "0xAGENT", "guardian": "0xGUARD",
+            "dailyCapAtomic": 5_000_000, "perPurchaseCapAtomic": 2_000_000, "expiry": NOW + 86400,
+            "remainingTodayAtomic": 4_000_000, "allowanceAtomic": 0, "paused": True, "floatAtomic": 7, "ownerUsdcAtomic": 9,
+            "state": "paused", "telegramText": "x"}
+        status, out, _ = self.call_tool(made["key"], "get_limits")
+        allowance = out["result"]["structuredContent"]["allowance"]
+        self.assertEqual((allowance["state"], allowance["paused"], allowance["approvedUsd"]), ("paused", True, 0.0))
+        self.assertEqual((allowance["dailyCapUsd"], allowance["perPurchaseCapUsd"], allowance["remainingTodayUsd"]), (5.0, 2.0, 4.0))
+        text = json.dumps(allowance)
+        for hidden in ("0xOWNER", "0xAGENT", "0xGUARD", "ownerUsdc", "float"):
+            self.assertNotIn(hidden, text)
+
+    def test_get_limits_survives_an_unreadable_allowance_and_a_solana_account(self):
+        made = self.make_key()
+        self.api.keys.proxy = None
+        self.api.allowance.store.active_limiter.side_effect = RuntimeError("rpc down")
+        status, out, _ = self.call_tool(made["key"], "get_limits")
+        self.assertFalse(out["result"].get("isError"))
+        self.assertEqual(out["result"]["structuredContent"]["allowance"]["available"], False)
+        with patch.object(wm, "chain_of_account", return_value="solana"):
+            status, out, _ = self.call_tool(made["key"], "get_limits")
+        self.assertEqual(out["result"]["structuredContent"]["allowance"]["chain"], "solana")
+        self.assertFalse(out["result"]["structuredContent"]["allowance"]["configured"])
+
+    def test_get_receipts_lists_only_this_keys_charges_newest_first(self):
+        made = self.make_key()
+        key_id = self.store.api_key(made["key"], NOW)["key_id"]
+        ledger = Mock(return_value=[self.ledger_row(5, key_id=key_id), self.ledger_row(4, key_id="OTHER"),
+                                    self.ledger_row(3, kind="topup", amount=5_000_000, key_id=None, tx_id="0xtx", network="eip155:8453"),
+                                    self.ledger_row(2, key_id=key_id, amount=-2500)])
+        self.api.keys.proxy = Mock(balances=Mock(ledger=ledger))
+        status, out, _ = self.call_tool(made["key"], "get_receipts")
+        data = out["result"]["structuredContent"]
+        self.assertEqual([r["id"] for r in data["data"]], [5, 2])
+        self.assertEqual(data["data"][0], {"id": 5, "at": NOW - 5, "kind": "charge", "amountUsd": 0.0015,
+                                            "model": "claude-opus-5.5", "reference": "ref-5", "inputTokens": 12,
+                                            "outputTokens": 30, "balanceAfterUsd": (4_000_000 - 5) / 1e6})
+        self.assertIsNone(data["next"])
+        self.assertEqual(ledger.call_args.args[0], self.account, "only the key's own account is read")
+
+    def test_get_receipts_topups_carry_the_transaction_and_pages_continue_with_before(self):
+        made = self.make_key()
+        rows = [self.ledger_row(9, kind="topup", amount=5_000_000, key_id=None, tx_id="0xabc", network="eip155:8453"),
+                self.ledger_row(8, kind="topup", amount=1_000_000, key_id=None, tx_id="0xdef", network="eip155:8453")]
+        ledger = Mock(return_value=rows)
+        self.api.keys.proxy = Mock(balances=Mock(ledger=ledger))
+        status, out, _ = self.call_tool(made["key"], "get_receipts", {"kind": "topup", "limit": 2})
+        data = out["result"]["structuredContent"]
+        self.assertEqual([(r["id"], r["transaction"], r["network"], r["amountUsd"]) for r in data["data"]],
+                         [(9, "0xabc", "eip155:8453", 5.0), (8, "0xdef", "eip155:8453", 1.0)])
+        self.assertEqual(data["next"], 8)
+        ledger.reset_mock(); ledger.return_value = []
+        self.call_tool(made["key"], "get_receipts", {"kind": "topup", "before": 8})
+        self.assertEqual(ledger.call_args.kwargs["before"], 8)
+
+    def test_get_receipts_validates_arguments_and_needs_balances(self):
+        made = self.make_key()
+        self.api.keys.proxy = Mock(balances=Mock(ledger=Mock(return_value=[])))
+        for bad in ({"limit": 0}, {"limit": 51}, {"limit": "5"}, {"kind": "withdraw"}, {"before": 0}, {"before": "x"}):
+            status, out, _ = self.call_tool(made["key"], "get_receipts", bad)
+            self.assertEqual(out["error"]["code"], -32602, bad)
+        self.api.keys.proxy = None
+        status, out, _ = self.call_tool(made["key"], "get_receipts")
+        self.assertTrue(out["result"]["isError"])
+        self.assertIn("not available", out["result"]["content"][0]["text"])
+
+    def test_get_receipts_stops_scanning_a_ledger_with_none_of_this_keys_rows(self):
+        made = self.make_key()
+        ledger = Mock(side_effect=lambda account, limit, before: [self.ledger_row(i, key_id="OTHER") for i in range(1000, 800, -1)])
+        self.api.keys.proxy = Mock(balances=Mock(ledger=ledger))
+        status, out, _ = self.call_tool(made["key"], "get_receipts")
+        self.assertEqual(out["result"]["structuredContent"]["data"], [])
+        self.assertLessEqual(ledger.call_count, 2)
+
+
 class KeylessTests(Fixture):
     def test_initialize_ping_and_tools_list_work_without_a_key(self):
         status, out, _ = self.rpc(None, "initialize", {"protocolVersion": "2025-06-18"})
@@ -194,7 +331,7 @@ class KeylessTests(Fixture):
         self.assertEqual(self.rpc(None, "ping")[:2], (200, {"jsonrpc": "2.0", "id": 1, "result": {}}))
         status, out, _ = self.rpc(None, "tools/list")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 14)  # the full catalogue, paid tools included
+        self.assertEqual(len(out["result"]["tools"]), 16)  # the full catalogue, paid tools included
         self.assertEqual(self.shop.calls, [])
 
     def test_free_tools_work_without_a_key_and_touch_no_account(self):
@@ -305,7 +442,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
                 self.assertEqual(status, 200)
                 status, out, _ = self.raw_rpc("tools/list", authorization=header)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 14)
+                self.assertEqual(len(out["result"]["tools"]), 16)
                 status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
                                               authorization=header)
                 self.assertFalse(out["result"].get("isError"))
@@ -320,7 +457,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
             with self.subTest(api_key=repr(header)):
                 status, out, _ = self.raw_rpc("tools/list", api_key=header)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 14)
+                self.assertEqual(len(out["result"]["tools"]), 16)
 
     def test_unexpanded_template_placeholder_in_authorization_is_served_keyless(self):
         self.api.mcp.fetch_json = lambda url: {"ok": True}
@@ -329,7 +466,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
             with self.subTest(authorization=placeholder):
                 status, out, _ = self.raw_rpc("tools/list", authorization=placeholder)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 14)
+                self.assertEqual(len(out["result"]["tools"]), 16)
                 status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
                                               authorization=placeholder)
                 self.assertFalse(out["result"].get("isError"))
@@ -342,7 +479,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
     def test_unexpanded_template_placeholder_in_x_api_key_is_served_keyless(self):
         status, out, _ = self.raw_rpc("tools/list", api_key="${SINGIT_API_KEY}")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 14)
+        self.assertEqual(len(out["result"]["tools"]), 16)
 
     def test_a_real_but_wrong_key_still_gets_401(self):
         status, out, _ = self.raw_rpc("tools/list", authorization=f"Bearer {BAD_KEY}")
@@ -413,7 +550,7 @@ class TrustedOriginTests(Fixture):
     def test_a_trusted_scanner_origin_without_a_key_reads_the_catalogue(self):
         status, out, headers = self.rpc(None, "tools/list", origin="https://glama.ai")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 14)
+        self.assertEqual(len(out["result"]["tools"]), 16)
         self.assertEqual(headers["Access-Control-Allow-Origin"], "https://glama.ai")
 
     def test_a_trusted_scanner_origin_with_a_valid_key_gets_cors_headers_back(self):
@@ -701,7 +838,7 @@ class HttpTests(Fixture):
             {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode(), headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(request, timeout=10) as response:
             self.assertEqual(response.status, 200)
-            self.assertEqual(len(json.loads(response.read())["result"]["tools"]), 14)
+            self.assertEqual(len(json.loads(response.read())["result"]["tools"]), 16)
 
         request = urllib.request.Request(self.base, data=json.dumps(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize"}).encode(),
@@ -761,7 +898,7 @@ class HttpTests(Fixture):
         self.assertEqual(card["transport"], {"type": "streamable-http", "url": URI + "/mcp"})
         self.assertFalse(card["authentication"]["required"])  # free tools work keyless; paid ones need a key
         self.assertEqual(card["authentication"]["schemes"], ["bearer"])
-        self.assertEqual(len(card["tools"]), 14)
+        self.assertEqual(len(card["tools"]), 16)
         self.assertLessEqual(len(card["description"]), 200)
         self.assertEqual(card, server_card(URI))
 
