@@ -10,6 +10,7 @@ import { ExpressAdapter, paymentMiddlewareFromHTTPServer, x402HTTPResourceServer
 import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { permitGuard as defaultPermitGuard } from "./permit-guard.mjs";
 import { withBuilderCode } from "./builder-code.mjs";
+import { acceptedOf, answerLogFor } from "./answer-log.mjs";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -235,6 +236,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     .register(SOLANA, new ExactSvmScheme());
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
+  const answerLog = answerLogFor(config, log);
   app.post(route, async (req, res, next) => {
     // It gets the standing offer; paying it with no question is still refused below.
     if (offerEmptyProbe && isDiscoveryProbe(req)) {
@@ -269,6 +271,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       // service absorbs the difference instead of discarding an otherwise-good answer.
       const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: paid.terms.maxChargeAtomic } : usage;
       if (exact && usage.overrunAtomic) log(`singit-ask: exact overrun ${usage.overrunAtomic} micro-USDC`);
+      answerLog?.record({ route, model: req.askInput.model, ...acceptedOf(req), maxTokens: req.askInput.maxTokens, usage: answer.usage, billing });
       if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
       log(`singit-ask: answer ready in ${Date.now() - started} ms, settling ${billing.totalAtomic} micro-USDC`);
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
