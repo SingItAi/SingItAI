@@ -1,10 +1,8 @@
 // SingIt video: a clip from any of Surplus's text-to-video models, sold over x402 at the model's list price per job +
 // 30% + the network's settlement fee, made on Surplus with this service's own key.
 //
-// A clip takes minutes, so it is a job. The payment is verified, the job is submitted, and the payer is settled once
-// Surplus has accepted the job: they get its id and its job token. Polling and the finished file are free and need
-// only that token, which Surplus itself checks; nothing is kept here. A job that fails after it was accepted is not
-// refunded over x402 (there is no way back for an exact payment), which the description says.
+// Payment is verified first, but settlement waits for a finished clip within one bounded window across attempts.
+// Failed or late jobs answer >=400 so x402 cancels settlement; polling and downloads remain free with the job token.
 import crypto from "node:crypto";
 import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -85,11 +83,11 @@ export function publicJob(job, origin) {
 }
 
 // <=300 characters, opening with the category words, the brand once, later, and no billing talk (see app.mjs's
-// DISCOVERY_DESCRIPTION for why); prices, the job flow and the no-refund rule are in openapi.json and on
+// DISCOVERY_DESCRIPTION for why); prices, the job flow and the completion window are in openapi.json and on
 // GET /v1/video/models.
 const DESCRIPTION = "Video generation API, text to video: clips from 30+ models (LongCat, Grok Imagine, Wan, PixVerse, "
   + "Seedance and more; list at GET /v1/video/models), no API key needed. Call it when an agent needs a short video from a text prompt: "
-  + "it answers with a job to poll. Served by SingIt.";
+  + "it answers once the clip is ready. Served by SingIt.";
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["wan-2-2-a14b-text-to-video"], description: "A video model id from GET /v1/video/models." },
@@ -102,10 +100,12 @@ const INPUT_SCHEMA = { properties: {
   fallback: { type: "boolean", default: true,
     description: "Set false to refuse a substitute model when the chosen one has no healthy seller; the price never rises." },
 }, required: ["model", "prompt"] };
-// Shape and charge of a real answer: an accepted job (poll it for free with job_token), 200000 micro-USD list price,
+// Shape and charge of a real answer: a finished clip (download for free with job_token), 200000 micro-USD list price,
 // 60000 markup, 1000 settlement fee (Base).
-const OUTPUT_EXAMPLE = { id: "01M5STJCFTVSC5588N9YGQCPQW", object: "video.generation", status: "queued",
-  model: "wan-2-2-a14b-text-to-video", results: [], job_token: "jt_…", poll: "/v1/video/generations/01M5STJCFTVSC5588N9YGQCPQW",
+const OUTPUT_EXAMPLE = { id: "01M5STJCFTVSC5588N9YGQCPQW", object: "video.generation", status: "succeeded",
+  model: "wan-2-2-a14b-text-to-video",
+  results: [{ index: 0, url: "/v1/video/generations/01M5STJCFTVSC5588N9YGQCPQW/content?index=0" }],
+  job_token: "jt_…", poll: "/v1/video/generations/01M5STJCFTVSC5588N9YGQCPQW",
   billing: { listAtomic: "200000", markupAtomic: "60000", feeAtomic: "1000", totalAtomic: "261000", currency: "USDC" } };
 const OUTPUT_SCHEMA = { type: "object", required: ["id", "status", "job_token", "billing"], properties: {
   id: { type: "string", description: "The job id" }, object: { type: "string", const: "video.generation" },
@@ -131,10 +131,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
   const origin = (req) => `${req.protocol}://${req.get("host")}`;
   const tokenOf = (req) => String(req.get("x-job-token") ?? req.query.token ?? "").slice(0, 400);
 
-  // Off unless config.videoSold (SINGIT_ASK_VIDEO_SOLD=1): Surplus accepted a paid job on 27.10.2026 and failed it
-  // moments later (provider_unavailable), and a payment settled on acceptance is not refunded. Until settlement waits
-  // for a finished clip, a new job is refused before any payment offer, with no 402; jobs already paid for can still be
-  // polled and downloaded below.
+  // Remain off by default after the 27.10.2026 provider failures; enabling sales is a separate operator decision.
   const sold = Boolean(config.videoSold);
   const disabled = (_req, res) => res.set("Retry-After", "86400").status(503).json({ error: { type: "upstream_error",
     code: "video_disabled", message: "Video generation is switched off for now. Nothing was charged." } });
@@ -234,10 +231,11 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     }
   });
   addPaymentRoute(app, { [`POST ${VIDEO_ROUTE}`]: {
+    // The offer allows Base hold + verification + settlement; Solana's blockhash still requires a shorter hold.
     // exact on Base first: the simplest offer for a buyer that only inspects accepts[0].
     accepts: [
-      { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120, price: price(BASE) },
-      { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
+      { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 150, price: price(BASE) },
+      { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 150, price: price(SOLANA) },
     ],
     mimeType: "application/json", description: DESCRIPTION, serviceName: SERVICE_NAMES[VIDEO_ROUTE], iconUrl: ICON_URL,
     tags: discoveryTags("video-generation", "text-to-video", "video", "pay-per-use", "solana", "base", "singit"),
@@ -245,45 +243,110 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
       input: { model: "wan-2-2-a14b-text-to-video", prompt: "a small green robot waves hello", duration_seconds: 5 },
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
   } }, server, { discoverable: Boolean(config.videoDiscoverable), log });  // undefined would mean the default, true
+  const now = config.videoNow ?? Date.now;
+  const sleep = config.videoSleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   app.post(VIDEO_ROUTE, async (req, res) => {
+    const started = now();
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;
     const seen = digest(header);
     if (used.has(seen)) return res.status(409).json({ error: { type: "invalid_request_error", message: "This payment was already used." } });
     used.set(seen, Date.now());
     for (const [k, at] of used) if (Date.now() - at > 3_600_000) used.delete(k);
+    const deadline = started + (network === SOLANA ? config.videoHoldSolanaMs ?? 35_000 : config.videoHoldMs ?? 85_000);
+    const remaining = () => deadline - now();
+    const failed = (code) => res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code,
+      message: code === "video_timeout" ? "The video was not ready in time. You were not charged; try again."
+        : "The video could not be made. You were not charged." } });
+    const invalid = (error) => res.status(400).json({ error: { type: "invalid_request_error",
+      message: typeof error?.message === "string" ? error.message : "The video request was refused." } });
     const { request, listAtomic } = priced.get(req.body);
     // Re-read health after payment verification: a seller may disappear between the offer and submission.
-    // Distinct idempotency keys isolate rejected attempts, while the first accepted job ends the chain forever.
-    const health = await catalogue.videoServed?.();
-    const fallbacks = req.body.fallback === false ? [] : pickFallbacks({ models: await catalogue.videoModels(),
-      health, requested: request.model, signedListAtomic: listAtomic, body: req.body });
-    const attempts = [...(await catalogue.videoHealth?.(request.model) === 0 ? [] : [request]),
+    // Distinct idempotency keys isolate rejected attempts, and a terminal retryable failure may use a cheaper healthy model.
+    // Catalogue reads share the request's own deadline (a cold health pass reads every book and can take minutes):
+    // past 5 s or the window, health is "unknown", so no substitute is chosen and the requested model is tried as is.
+    const within = (promise, fallback) => Promise.race([Promise.resolve(promise).catch(() => fallback),
+      new Promise((resolve) => { setTimeout(() => resolve(fallback), Math.max(1, Math.min(5000, remaining()))).unref?.(); })]);
+    const health = await within(catalogue.videoServed?.(), undefined);
+    const fallbacks = req.body.fallback === false || !health ? [] : pickFallbacks({
+      models: await within(catalogue.videoModels(), new Map()), health, requested: request.model,
+      signedListAtomic: listAtomic, body: req.body });
+    const attempts = [...(await within(catalogue.videoHealth?.(request.model), null) === 0 ? [] : [request]),
       ...fallbacks.map((m) => readVideoRequest(req.body, m))];
     let job, token, actual;
+    let accepted = false;
     for (const [n, attempt] of attempts.entries()) {
-      if (attempt.model !== request.model && !(await catalogue.videoHealth?.(attempt.model) > 0)) continue;
+      if (remaining() <= 0) return failed("video_timeout");
+      if (accepted && remaining() < (config.videoMinRetryMs ?? 20_000)) return failed("video_failed");
+      if (attempt.model !== request.model && !(await within(catalogue.videoHealth?.(attempt.model), null) > 0)) continue;
       try {
         const response = await fetchImpl(`${config.surplusUrl}${VIDEO_ROUTE}`, { method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
             "Idempotency-Key": `singit-${seen}${n ? `-${n}` : ""}` },
-          body: JSON.stringify(attempt), signal: AbortSignal.timeout(60_000) });
+          body: JSON.stringify(attempt), signal: AbortSignal.timeout(Math.max(1, Math.min(60_000, remaining()))) });
         job = await response.json().catch(() => null);
         token = job?.job_token ?? job?.token;
         if ((response.status === 200 || response.status === 202) && job?.id && token) {
-          actual = attempt.model;
-          break;
+          accepted = true;
+          const id = job.id;
+          // @x402/express cancels settlement for >=400; a 200 must mean a finished clip, since exact payments
+          // cannot be refunded after settlement. A transient poll failure leaves the job pending, never billable.
+          while (remaining() > 0) {
+            if (job.status === "succeeded" && Array.isArray(job.results) && job.results.some((r) => typeof r?.url === "string" && r.url)) {
+              actual = attempt.model;
+              break;
+            }
+            if (["failed", "canceled", "expired", "succeeded"].includes(job.status)) {
+              // A request Surplus refuses is the payer's problem only on the model they asked for; a substitute
+              // that refuses it (a parameter it does not take) just ends that attempt.
+              if (job.error?.type === "invalid_request" || job.error?.retryable === false) {
+                if (attempt.model !== request.model) break;
+                return job.error?.type === "invalid_request" ? invalid(job.error) : failed("video_failed");
+              }
+              if (remaining() < (config.videoMinRetryMs ?? 20_000)) return failed("video_failed");
+              break;
+            }
+            await sleep(Math.min(config.videoPollMs ?? 2000, remaining()));
+            if (remaining() <= 0) break;
+            try {
+              const poll = await fetchImpl(`${config.surplusUrl}${VIDEO_ROUTE}/${id}`, {
+                headers: { "X-Job-Token": token },
+                signal: AbortSignal.timeout(Math.max(1, Math.min(20_000, remaining()))) });
+              const update = await poll.json().catch(() => null);
+              if (poll.ok && update) job = { ...update, id };
+            } catch { /* Keep holding: a network failure says nothing about whether the clip finished. */ }
+          }
+          if (!actual && remaining() <= 0) {
+            try {
+              await fetchImpl(`${config.surplusUrl}${VIDEO_ROUTE}/${id}`, { method: "DELETE",
+                headers: { "X-Job-Token": token }, signal: AbortSignal.timeout(10_000) });
+            } catch { /* Cancellation is best effort; its outcome must never turn a late clip into a charge. */ }
+            return failed("video_timeout");
+          }
+          if (actual) break;
+          continue;
         }
         if (response.status === 400 && (job?.error?.code === "invalid_request"
-          || job?.error?.type === "invalid_request")) break;
-      } catch (error) { log(`singit-ask: video submit unreachable (${error.name})`); }
+          || job?.error?.type === "invalid_request") && attempt.model === request.model) return invalid(job.error);
+        // A submit whose answer we cannot read (5xx other than Surplus's own 503, or a 2xx with no job) may still
+        // have started a job: a second model would fund two clips for one payment, so the chain stops here.
+        if (response.status >= 500 && response.status !== 503 || response.status < 400 && response.status >= 200) {
+          log(`singit-ask: video submit for ${attempt.model} answered HTTP ${response.status} with no usable job`);
+          return failed("video_failed");
+        }
+      } catch (error) {
+        // Unreachable or timed out: the job may exist upstream under this Idempotency-Key; never start another.
+        log(`singit-ask: video submit unreachable (${error.name})`);
+        return failed("video_failed");
+      }
     }
+    if (!actual && accepted) return failed("video_failed");
     if (!actual) return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error",
       code: "no_healthy_sellers", message: "The video was not started. You were not charged." } });
     if (actual !== request.model) log(`singit-ask: video substitution ${request.model} -> ${actual}`);
     const billing = { ...videoPrice(listAtomic, network), currency: "USDC" };
-    log(`singit-ask: video job ${job.id} for ${actual} accepted for ${billing.totalAtomic} micro-USDC`);
-    // 200, not 202: the accepted job is what was paid for, and buyers that take only a 200 as delivered settle cleanly.
+    log(`singit-ask: video job ${job.id} for ${actual} finished for ${billing.totalAtomic} micro-USDC`);
+    // The middleware settles once, after this completed response, at the original signed quote.
     res.json({ ...publicJob({ ...job, model: actual }, origin(req)), job_token: token,
       ...(actual !== request.model ? { requested_model: request.model, substituted: true } : {}),
       poll: `${VIDEO_ROUTE}/${job.id}`, billing });
