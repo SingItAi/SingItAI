@@ -141,10 +141,26 @@ export const REASONING_OFF = Object.freeze({
 
 // REASONING_HEADROOM (pricing.mjs, SI-112): a model that thinks inside max_tokens and will not stop gets that much
 // more room upstream; its ceiling already prices it.
+// REASONING_EFFORTS: what SINGIT_ASK_REASONING_EFFORT="claude-opus-5.5=low" (server.mjs, config.reasoningEffort) may
+// ask a model for instead of the default "none" (a measurement knob: see pricing.mjs's setReasoningHeadroomOverrides).
+export const REASONING_EFFORTS = Object.freeze(["none", "minimal", "low", "medium", "high"]);
+export function parseReasoningEffort(text) {
+  const out = {};
+  for (const part of String(text ?? "").split(",").map((p) => p.trim()).filter(Boolean)) {
+    const [id, effort, ...rest] = part.split("=").map((p) => p.trim());
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id ?? "") || rest.length || !REASONING_EFFORTS.includes(effort))
+      throw new Error(`SINGIT_ASK_REASONING_EFFORT: cannot read "${part}" (want model=${REASONING_EFFORTS.join("|")})`);
+    out[id] = effort;
+  }
+  return out;
+}
+
 export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params } = {}) {
   const sends = (name) => !params || params.includes(name);
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
   const off = Object.hasOwn(REASONING_OFF, model) ? REASONING_OFF[model] : null;
+  // "none" unless this process was told to measure another effort for the model (config.reasoningEffort).
+  const wanted = config.reasoningEffort && Object.hasOwn(config.reasoningEffort, model) ? config.reasoningEffort[model] : "none";
   const ask = (reasoning, extra = {}) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
@@ -162,9 +178,10 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
   };
   let response;
   try {
-    response = await ask("none", off ?? {});
-    if (off && response.status === 400) response = await ask("none");
-    if ((sends("reasoning_effort") || nestedReasoning || off) && await refusedReasoning(response)) response = await ask("low");
+    response = await ask(wanted, wanted === "none" ? off ?? {} : {});
+    if (off && wanted === "none" && response.status === 400) response = await ask("none");
+    // Only a refusal of "none" falls back to "low": a model refusing the effort it was asked for is an error.
+    if (wanted === "none" && (sends("reasoning_effort") || nestedReasoning || off) && await refusedReasoning(response)) response = await ask("low");
   } catch (error) {
     throw new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" });
   }

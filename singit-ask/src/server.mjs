@@ -23,6 +23,10 @@
 //   SINGIT_ASK_BASE_RPC        the Base RPC free prices read Chainlink from (https://mainnet.base.org)
 //   SINGIT_ASK_PRICE_BUFFER_PP percentage points added to a model's cheapest known Surplus share before it is
 //                              turned into the X-Min-Discount header (src/catalogue.mjs's priceGuard), default 1
+//   SINGIT_ASK_REASONING_EFFORT   measurement only, default unset: "model=effort,..." (none|minimal|low|medium|high)
+//                              asks that model for this reasoning effort instead of "none" (e.g. claude-opus-5.5=low)
+//   SINGIT_ASK_REASONING_HEADROOM measurement only, default unset: "model=tokens,..." replaces the model's thinking
+//                              headroom (pricing.mjs REASONING_HEADROOM) in the ceiling and upstream max_tokens
 //   SINGIT_ASK_EXACT_OUTPUT_FRACTION  fraction (0,1] of max_tokens that `exact` offers price their output at;
 //                              `upto` always prices the whole budget. Default 0.3
 
@@ -30,9 +34,9 @@ import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
-import { createApp } from "./app.mjs";
+import { createApp, parseReasoningEffort } from "./app.mjs";
 import { PriceBook } from "./prices.mjs";
-import { DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
+import { DEFAULT_EXACT_OUTPUT_FRACTION, parseReasoningHeadroom, setReasoningHeadroomOverrides } from "./pricing.mjs";
 
 function required(name) {
   const value = String(process.env[name] || "").trim();
@@ -70,6 +74,9 @@ const config = {
   const fraction = Number(process.env.SINGIT_ASK_EXACT_OUTPUT_FRACTION);
   config.exactOutputFraction = fraction > 0 && fraction <= 1 ? fraction : DEFAULT_EXACT_OUTPUT_FRACTION;
 }
+// A bad value stops the process at start, never prices a request with a guess.
+config.reasoningEffort = parseReasoningEffort(process.env.SINGIT_ASK_REASONING_EFFORT);
+setReasoningHeadroomOverrides(parseReasoningHeadroom(process.env.SINGIT_ASK_REASONING_HEADROOM));
 const model = config.model;
 config.freeModels = process.env.SINGIT_ASK_FREE_MODELS === undefined ? [model]
   : process.env.SINGIT_ASK_FREE_MODELS.split(",").map((m) => m.trim()).filter(Boolean);
