@@ -105,9 +105,16 @@ For Opus 5.5, Sonnet 5.5, GPT-5.5 and DeepSeek V4.1 Flash it sends one unpaid ch
 two hosts can be contacted. Per model it compares the cheapest Base offer on each side (SingIt's is usually its `upto`
 ceiling, settled for the actual usage, so it overstates what a customer pays) and also SingIt's flat `exact` offer with
 BlockRun's `exact` price. Exit code 2 means SingIt is dearer than BlockRun, beyond `--tolerance` (default 0), for at
-least one model; a probe that failed is listed under `errors` and only fails the run with `--strict`.
+least one model; a probe that failed is listed under `errors` and only fails the run with `--strict`, with exit code 3
+(it wins over 2). Exit code 1 is a usage error or a crash.
 
 `deploy/systemd/singit-compare-402.{service,timer}` are user-unit templates for a daily run; nothing installs them.
+The service lists `SuccessExitStatus=2`, so a price alert is a successful run and the unit is not left in the `failed`
+state; the alert is the `← ALERT` line in `journalctl --user -u singit-compare-402` and the `alerts` array of the line
+appended to the history file. A unit in `failed` therefore means the script itself broke (crash, usage error, exit 3,
+timeout). To get the old behaviour (a price alert marks the unit failed), delete the `SuccessExitStatus=2` line. After
+a change to the template, copy it again to `~/.config/systemd/user/`, run `systemctl --user daemon-reload`, and clear
+the old failed mark once with `systemctl --user reset-failed singit-compare-402.service`.
 Tests: `node --test scripts/tests/compare-402-blockrun.test.mjs`.
 
 ## BlockRun Prices Snapshot

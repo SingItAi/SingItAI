@@ -4,8 +4,12 @@
 # then `systemctl --user enable --now singit-compare-402.timer`.
 #
 # One run sends 8 unpaid POSTs (four models, ours and BlockRun's), no payment header, no key, no wallet; it appends
-# one JSON line to the history file. It exits 2 when SingIt's cheapest Base price is above BlockRun's for any model:
-# a failed unit is the alert (`systemctl --user is-failed`, or OnFailure= to a notifier you choose).
+# one JSON line to the history file. It exits 2 when SingIt's cheapest Base price is above BlockRun's for any model.
+# That is a price alert, not a failure: SuccessExitStatus=2 below keeps the unit out of the systemd `failed` state, so
+# `failed` means the script itself broke (exit 1 crash or usage error, 3 with --strict and a failed probe, a timeout).
+# The alert is in the journal ("← ALERT" on the model's line; `journalctl --user -u singit-compare-402`) and in the
+# `alerts` array of the history line. After a change to this file, re-copy it to ~/.config/systemd/user/ and
+# `systemctl --user daemon-reload`, then `systemctl --user reset-failed singit-compare-402.service` once.
 
 [Unit]
 Description=SingIt vs BlockRun: compare the unpaid x402 402 prices for one short chat answer
@@ -15,6 +19,6 @@ Documentation=file://%h/SingItAI/scripts/README.md
 Type=oneshot
 # Placeholder paths: point them at the real checkout and a state directory.
 ExecStart=/usr/bin/node %h/SingItAI/scripts/compare-402-blockrun.mjs --append %h/.local/state/singit/compare-402.jsonl
-SuccessExitStatus=0
+SuccessExitStatus=2
 TimeoutStartSec=120
 Nice=10
