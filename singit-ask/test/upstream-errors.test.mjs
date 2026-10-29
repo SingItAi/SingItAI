@@ -89,7 +89,8 @@ test("a floor that excludes every seller is a 503 with Retry-After and JSON, and
   assert.equal(s.calls[0].headers["X-Min-Discount"], "59");
   assert.deepEqual(s.settled, []);
   assert.ok(s.logs.some((l) => /claude-opus-5\.5 no billable answer .*HTTP 404 \(minimum_discount_not_met\)/.test(l)), s.logs.join("\n"));
-  assert.ok(!s.logs.some((l) => /lower the floor/.test(l)), "Surplus's message text is never logged");
+  assert.ok(!s.logs.filter((l) => /no billable answer/.test(l)).some((l) => /lower the floor/.test(l)), "the 'no billable answer' line stays free of Surplus's text");
+  assert.ok(s.logs.some((l) => l.startsWith("singit-ask: surplus_reject ") && /"code":"minimum_discount_not_met"/.test(l)), "the refusal has its own structured line (reject-log.test.mjs)");
 });
 
 test("no floor is sent when the model's worst case at list price fits what was paid", async (t) => {

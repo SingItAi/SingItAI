@@ -26,6 +26,7 @@ import { SPEECH_ROUTE, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
+import { withRejectLog } from "./reject-log.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 
@@ -365,6 +366,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                                     catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [] }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }),
                                     spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
+  // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
+  fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log });
   const app = express();
   app.locals.catalogue = catalogue;  // server.mjs warms it
   app.disable("x-powered-by");

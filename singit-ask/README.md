@@ -222,6 +222,10 @@ Free answers have no wallet, so there is no per-wallet limit here: the network a
 
 The service listens on 127.0.0.1 only. Configure a Cloudflare tunnel hostname to publish it. Only loopback proxies are trusted for the forwarded HTTPS scheme.
 
+## Surplus refusals in the log
+
+Every non-2xx answer to a POST to Surplus (any route) is logged once as `singit-ask: surplus_reject {...}`, a JSON object with `model`, `status`, `code` (Surplus's error code, e.g. `minimum_discount_not_met`), `bestDiscountPct` (the number from "Best otherwise-eligible estimated discount is X%" when the message has it, else `null`), `minDiscountSent` (the `X-Min-Discount` floor this request carried, a number) and `body` (Surplus's error message or body, whitespace squeezed, anything shaped like a key, token or address replaced, cut to 240 characters). Never logged: headers, the Surplus key, the question, the payer. Read it with `journalctl --user -u singit-ask | grep surplus_reject`. It is how the price guard is compared with the share Surplus can really buy at.
+
 ## Catalogue check (pay-skills)
 
 `node scripts/generate-openapi.mjs > openapi.json` prints the `openapi.json` this service serves, built offline
