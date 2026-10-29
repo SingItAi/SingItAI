@@ -82,6 +82,14 @@ python3 scripts/singit-health-alert.py --rpc-url "$SIGN402_BASE_RPC_URL" --journ
 See the script's own docstring for every check, env var, and a sample systemd user timer /
 crontab line (every 5 minutes). Tests: `python3 -m unittest discover -s scripts/tests`.
 
+It also watches Opus's purchase share: the cheapest trusted, healthy, available offer for `claude-opus-5.5` in
+Surplus's public order book, as a fraction of list price (the number singit-ask's price guard starts from). Opus
+`upto` and `exact` prices follow it. Above `SINGIT_ALERT_SHARE_MAX` (default 0.29) it sends one "SingIt price
+alert" message through the same channel; it sends nothing more while the share stays high, one "Recovered"
+message when it drops back, and nothing when the order book cannot be read. A price alert does not make the unit
+exit 1. Set `SINGIT_ALERT_BLOCKED_PROVIDERS` to the service's `SINGIT_ASK_BLOCKED_PROVIDERS`; `--no-opus-share`
+turns the check off. The production timer already runs this script, so a deploy of this change starts the check.
+
 ## Daily 402 price comparison (SingIt vs BlockRun)
 
 ```bash
