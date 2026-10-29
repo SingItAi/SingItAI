@@ -271,6 +271,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       if (exact && usage.overrunAtomic) log(`singit-ask: exact overrun ${usage.overrunAtomic} micro-USDC`);
       if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
       log(`singit-ask: answer ready in ${Date.now() - started} ms, settling ${billing.totalAtomic} micro-USDC`);
+      res.locals.singitReceipt = { ref: `singit-ask-${started}`, chargedAtomic: billing.totalAtomic };
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: "singit-ask", choices: [{ index: 0, message: { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing });
