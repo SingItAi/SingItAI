@@ -78,7 +78,8 @@ for (const [route, body, ok] of [["/v1/messages", message, MSG_OK], ["/v1/respon
     assert.match(JSON.stringify(await paid.json()), /not charged/);
     assert.deepEqual(s.settled, []);
     assert.ok(s.logs.some((l) => l.includes(`${route} claude-opus-5.5 no billable answer`) && l.includes("(minimum_discount_not_met)")), s.logs.join("\n"));
-    assert.ok(!s.logs.some((l) => l.includes("lower it")));
+    assert.ok(!s.logs.filter((l) => l.includes("no billable answer")).some((l) => l.includes("lower it")));
+    assert.ok(s.logs.some((l) => l.startsWith("singit-ask: surplus_reject ") && l.includes('"status":404')), s.logs.join("\n"));
   });
 
   test(`${route}: HTTP 200 with an error body is a 503, not an answer that gets charged`, async (t) => {
