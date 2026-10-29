@@ -64,6 +64,9 @@ exact  solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp  ...  atomic USDC
   model's actual cost + 30% + a 0.001 USDC fee on Base (0.002 on Solana). A failed answer is not settled.
 - **`exact`** is a flat price: the cost of an answer about 30% of `max_tokens` long, + 30% + the fee, with no metering
   and no refund. For buyers whose wallet signs only `exact`.
+- **Claude Opus: sign `upto`.** Opus's thinking cannot be switched off, so its `exact` price includes room for thinking
+  tokens (256 on top of the `max_tokens` share) and is usually dearer than the answer used. `upto` charges what the
+  answer really cost. `https://ask.singitai.app/pricing.json` marks such a model with `recommendedScheme: "upto"`.
 - Base asset: USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`.
 
 ## Step 2: pay

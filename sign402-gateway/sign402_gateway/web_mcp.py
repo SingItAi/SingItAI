@@ -5,8 +5,8 @@ JSON responses only, no SSE stream and no sessions, so one request is one answer
 between calls. Built on plain JSON-RPC 2.0 dicts, since this process is http.server, not ASGI.
 
 Tools:
-  * Free: get_price, list_price_symbols, list_models (no key needed), and get_balance (the key's own balance,
-    so it needs the key).
+  * Free: get_price, list_price_symbols, list_models (no key needed), and get_balance, get_limits and
+    get_receipts (the key's own balance, limits and charges, so they need the key; read-only).
   * Paid from the key's own limits, needing the "search" scope: web_search, read_page (Exa, through
     ApiKeys._search, exactly as /v1/exa/… is billed).
   * Paid from the key's own limits, needing the "tools" scope: every entry of server.PAID_TOOLS, under
@@ -65,6 +65,7 @@ from typing import Any, Callable, Mapping
 from urllib.parse import quote
 
 from . import analytics
+from .web_accounts import chain_of_account
 from .web_api_keys import ASK_URL, ApiError, ApiKeys
 
 logger = logging.getLogger(__name__)
@@ -106,9 +107,11 @@ def _env_requests_per_minute() -> int:
 SEARCH_TOOLS = frozenset({"web_search", "read_page"})
 # The only tools that read SingIt's own data for free; every other tool bills the key per call and, except
 # for these three, reaches third-party data.
-FREE_TOOL_NAMES = frozenset({"get_price", "list_price_symbols", "list_models", "get_balance"})
+FREE_TOOL_NAMES = frozenset({"get_price", "list_price_symbols", "list_models", "get_balance", "get_limits", "get_receipts"})
 # Free, but about the caller's own account, so it needs a key even though it bills nothing.
-KEYED_FREE_TOOLS = frozenset({"get_balance"})
+KEYED_FREE_TOOLS = frozenset({"get_balance", "get_limits", "get_receipts"})
+RECEIPT_KINDS = ("charge", "topup", "refund")
+RECEIPTS_DEFAULT, RECEIPTS_MAX = 10, 50
 # server.PAID_TOOLS entries kept out of MCP: get_sign402_report's upstream is a local demo service
 # (SIGN402_BASE_REPORT_URL, 127.0.0.1:4021) that is not running in production, so it could only fail.
 MCP_HIDDEN_TOOLS = frozenset({"get_sign402_report"})
@@ -141,6 +144,8 @@ TOOL_TITLES: dict[str, str] = {
     "read_page": "Read page",
     "get_weather": "Get weather",
     "get_balance": "Get balance",
+    "get_limits": "Get limits",
+    "get_receipts": "Get receipts",
     "get_singit_risk_check": "SingIt risk check",
     "get_x_profile": "Get X profile",
     "get_crypto_news": "Get crypto news",
@@ -271,6 +276,14 @@ GET_PRICE_SCHEMA = {
     },
     "required": ["kind"],
 }
+GET_RECEIPTS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "limit": {"type": "integer", "minimum": 1, "maximum": RECEIPTS_MAX, "description": f"How many, newest first. Defaults to {RECEIPTS_DEFAULT}."},
+        "kind": {"type": "string", "enum": list(RECEIPT_KINDS), "description": "charge (default): what this key spent; topup: money added to the account; refund."},
+        "before": {"type": "integer", "minimum": 1, "description": "Only entries older than this receipt id: pass the last id of the previous page."},
+    },
+}
 LIST_MODELS_SCHEMA = {
     "type": "object",
     "properties": {"kind": {"type": "string", "enum": list(MODEL_KINDS), "description": "Defaults to chat."}},
@@ -304,6 +317,15 @@ OWN_TOOLS: list[dict[str, Any]] = [_annotated(entry) for entry in (
     {"name": "get_balance", "description": "Your SingIt API balance: available and held USDC, auto top-up and "
      "pending top-ups. Use to check funds before paid calls. Free, but needs your API key.",
      "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "get_limits", "description": "What your API key may still spend: its daily and per-request caps, spent and "
+     "remaining today, scopes and expiry, plus your account's balance and, on Base, your allowance limiter (caps, "
+     "left today, approved from your wallet, paused = emergency stop, expired). Read-only: it cannot change a limit. "
+     "Use before a paid call to see whether it fits. Free, but needs your API key.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "get_receipts", "description": "Your recent receipts, newest first: for each, its id, time, model, USDC "
+     "charged, tokens and the upstream reference (kind charge, this key only), or the account's top-ups and refunds "
+     "with their transaction and network. Read-only; page back with `before`. Free, but needs your API key.",
+     "inputSchema": GET_RECEIPTS_SCHEMA},
     {"name": "web_search", "description": "Searches the web through Exa and returns titles, URLs and snippets of "
      "matching pages. Use for current or niche information, then read_page for a full page. Paid per call from "
      "your key's SingIt limits in USDC on Base or Solana; needs the key's \"search\" scope.",
@@ -610,6 +632,10 @@ class McpServer:
             if getattr(self.keys, "proxy", None) is None:
                 raise ApiError(503, "Balances are not available on this server.", type_="api_error", code="unavailable")
             return self.keys._balance(row["account_id"])
+        if name == "get_limits":
+            return self._get_limits(row)
+        if name == "get_receipts":
+            return self._get_receipts(row, args)
         if name == "web_search":
             return self._web_search(row, args)
         if name == "read_page":
@@ -619,6 +645,99 @@ class McpServer:
             raise _BadArgs(f"Unknown tool '{name}'.")
         _status, data, _headers = self.keys.tool(row, tool_id, args)
         return data
+
+    def _get_limits(self, row) -> dict[str, Any]:
+        """The key's own caps and today's spend, the account's balance, and the account's allowance limiter on Base.
+        Read-only: nothing here writes, advances a pending grant, or reveals an address other than the limiter's."""
+        now = int(self.keys.now())
+        spent, answers = self.keys.store.key_spent(row["key_id"], int(self.keys.now()) // 86400)
+        daily, per_request = int(row["daily_cap_atomic"]), int(row["per_request_cap_atomic"])
+        held = int(getattr(self.keys, "_reserved", {}).get(row["key_id"], 0))  # answers still running
+        revoked = row["revoked_at"] is not None
+        out: dict[str, Any] = {"object": "limits", "currency": "USDC", "key": {
+            "id": row["key_id"], "name": row["name"], "prefix": row["prefix"],
+            "state": "revoked" if revoked else ("expired" if row["expires_at"] <= now else "active"),
+            "dailyCapUsd": daily / 1e6, "perRequestCapUsd": per_request / 1e6, "spentTodayUsd": spent / 1e6,
+            "heldNowUsd": held / 1e6, "remainingTodayUsd": max(0, daily - spent - held) / 1e6, "answersToday": answers,
+            "scopes": str(row["scopes"]).split(), "expiresAt": row["expires_at"],
+            "resetsAt": (int(self.keys.now()) // 86400 + 1) * 86400,
+            "note": "Caps are per key and reset at 00:00 UTC; answers still running are held against the daily cap (heldNowUsd)."}}
+        if getattr(self.keys, "proxy", None) is not None:
+            try:
+                balance = self.keys._balance(row["account_id"])
+                out["balance"] = {k: balance[k] for k in ("availableUsd", "heldUsd", "autoTopup") if k in balance}
+            except Exception as exc:  # noqa: BLE001 - one unreadable part must not hide the key's own limits
+                logger.warning("get_limits: balance unreadable (%s)", type(exc).__name__)
+                out["balance"] = {"available": False}
+        out["allowance"] = self._allowance_view(row["account_id"])
+        return out
+
+    def _allowance_view(self, account: str) -> dict[str, Any]:
+        """The account's active Base allowance limiter, as the owner would read it (no owner, agent or guardian
+        address). `paused` is the emergency stop; `approvedUsd` 0 means the owner's approval is revoked or not granted."""
+        if chain_of_account(account) == "solana":
+            return {"configured": False, "chain": "solana",
+                    "note": "Allowance limits are on Base only for now. Solana limits are checked by SingIt's server."}
+        allowance = getattr(self.keys.api, "allowance", None)
+        try:
+            active = allowance.store.active_limiter(account)
+            if active is None:
+                return {"configured": False, "chain": "base"}
+            seen = allowance._describe(active)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("get_limits: allowance unreadable (%s)", type(exc).__name__)
+            return {"available": False, "chain": "base", "note": "The allowance could not be read right now."}
+        usd = lambda atomic: int(atomic) / 1e6  # noqa: E731
+        state = str(seen.get("state", ""))
+        return {"configured": True, "chain": "base", "limiter": seen["limiter"], "state": state if state in (
+                    "paused", "expired", "granted") else "waiting_for_grant",
+                "dailyCapUsd": usd(seen["dailyCapAtomic"]), "perPurchaseCapUsd": usd(seen["perPurchaseCapAtomic"]),
+                "remainingTodayUsd": usd(seen["remainingTodayAtomic"]), "approvedUsd": usd(seen["allowanceAtomic"]),
+                "paused": bool(seen["paused"]), "expiresAt": int(seen["expiry"])}
+
+    def _get_receipts(self, row, args: dict[str, Any]) -> dict[str, Any]:
+        if getattr(self.keys, "proxy", None) is None:
+            raise ApiError(503, "Receipts are not available on this server.", type_="api_error", code="unavailable")
+        limit = args.get("limit", RECEIPTS_DEFAULT)
+        if type(limit) is not int or not 1 <= limit <= RECEIPTS_MAX:
+            raise _BadArgs(f"limit must be a whole number from 1 to {RECEIPTS_MAX}.")
+        kind = args.get("kind", "charge")
+        if kind not in RECEIPT_KINDS:
+            raise _BadArgs("kind must be charge, topup or refund.")
+        before = args.get("before")
+        if before is not None and (type(before) is not int or before < 1):
+            raise _BadArgs("before must be a receipt id (a positive whole number).")
+        data: list[dict[str, Any]] = []
+        cursor, scanned, end = before, 0, False
+        # The ledger is the account's; a charge belongs to one key. Page until `limit` of this key's are found
+        # (or a bounded number of rows has been read, so an idle key cannot make this scan a whole ledger).
+        while len(data) < limit and scanned < 400 and not end:
+            rows = self.keys.proxy.balances.ledger(row["account_id"], limit=200, before=cursor)
+            if not rows:
+                end = True
+                break
+            scanned += len(rows)
+            for entry in rows:
+                cursor = entry["id"]
+                if entry["kind"] != kind or (kind == "charge" and entry["key_id"] != row["key_id"]):
+                    continue
+                item: dict[str, Any] = {"id": entry["id"], "at": int(entry["at"]), "kind": kind,
+                                        "amountUsd": abs(int(entry["amount_atomic"])) / 1e6}
+                if kind == "charge":
+                    item.update({"model": entry["model"], "reference": entry["ref"],
+                                 "inputTokens": entry["input_tokens"] or 0, "outputTokens": entry["output_tokens"] or 0,
+                                 "balanceAfterUsd": int(entry["balance_after"]) / 1e6})
+                else:
+                    item.update({"transaction": entry["tx_id"], "network": entry["network"], "reference": entry["ref"]})
+                data.append(item)
+                if len(data) == limit:
+                    break
+            else:
+                end = len(rows) < 200   # the whole batch was read and the ledger had no more
+                continue
+            break
+        return {"object": "list", "currency": "USDC", "kind": kind, "data": data,
+                "next": None if end else cursor}
 
     def _get_price(self, args: dict[str, Any]) -> Any:
         kind = args.get("kind")

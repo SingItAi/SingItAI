@@ -32,6 +32,12 @@ what it actually cost; nothing is charged without an answer.
   completions, `/v1/chat/{model}`, Messages, Responses) `accepts` leads with `upto` (Base, then
   Solana), the actual-cost offer, followed by `exact` on Base and Solana; routes sold only at a
   fixed price (images, speech, search, video) offer `exact` alone, Base first.
+  For Claude Opus the recommended offer is `upto`: Opus's thinking cannot be switched off, so its `exact` price
+  carries `max_tokens`' share plus 256 tokens of thinking headroom at the purchase price, which is usually well
+  above what the answer used. `GET /pricing.json` and `GET /v1/models` mark such a model with
+  `recommendedScheme: "upto"` (and `recommendedSchemeWhy`). Both offers stay in the 402 and no price changes;
+  this only says which to sign. If the cheapest trusted Opus offer on Surplus rises above 0.29 of list, the
+  health-alert timer sends one price alert (`scripts/README.md`).
 - **Per-model routes:** when a catalogue is configured, `POST /v1/chat/{model}` is a
   separate x402 resource for each of 14 popular models (`claude-opus-5.5`,
   `claude-sonnet-5.5`, `claude-haiku-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.5`,
@@ -160,6 +166,27 @@ By default, failed submissions or retryable jobs can try up to two compatible he
 `fallback:false` refuses substitution. Billing always uses the signed requested quote. The response's `model` is
 what ran; substitutions also include `requested_model` and `substituted: true`. Uncensored models are never sold.
 
+## Your spend limit in the 402, and a receipt (plan item 3)
+
+Both are headers only: no price, offer or settlement changes, and nothing is added to x402's `extensions`.
+
+- **Limit before you sign.** Send `X-SingIt-Limiter: 0x<your AgentAllowance on Base>` on an unpaid request. The 402 then
+  carries `X-SingIt-Spend-Limit` (JSON, also in the 402's body as `singitSpendLimit`): `paused`, `expired`,
+  `expiresAt`, `dailyCapAtomic`, `perPurchaseCapAtomic`, `remainingTodayAtomic`, `allowanceLeftAtomic`,
+  `spendableNowAtomic` (the smaller of the three limits) and, for every offer, `fits` (`true`, `false` with a `reason`,
+  or `null` for Solana, which is not checked). The owner's USDC balance is not read. Read from Base (cached 15 s,
+  at most 60 fresh reads a minute); an address that is not an AgentAllowance on USDC gets an `error` instead.
+  The address is never logged.
+- **Receipt.** Every answer that settled carries `X-SingIt-Receipt` (JSON): `ref` (the answer's id), `tx`, `network`,
+  `scheme`, `payer`, `chargedAtomic`, `ceilingAtomic` and, when the same limiter header was sent, a `limit` block with
+  the figures read just before (`remainingTodayBeforeAtomic`). An unsettled answer (>= 400) has none.
+
+```sh
+curl -si https://ask.singitai.app/v1/chat/completions -H 'Content-Type: application/json' \
+  -H 'X-SingIt-Limiter: 0xYourLimiter' -d '{"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Hi"}]}' \
+  | grep -i x-singit-spend-limit
+```
+
 ## Run
 
 ```bash
@@ -183,7 +210,10 @@ node --env-file=.env src/server.mjs
 | `SINGIT_ASK_QUOTE_DB` | Private writable SQLite path for prepared answers and settlement claims. |
 | `SINGIT_ASK_MODEL` | Upstream model. Default: `deepseek-v4.1-flash`. |
 | `SINGIT_ASK_PORT` | Loopback port. Default: `8140`. |
+| `SINGIT_ASK_REASONING_EFFORT` | Measurement only; unset (default) changes nothing. `model=effort,...` (`none`, `minimal`, `low`, `medium`, `high`) asks that model for that reasoning effort instead of `none`, e.g. `claude-opus-5.5=low`. A value that cannot be read stops the process at start. |
+| `SINGIT_ASK_REASONING_HEADROOM` | Measurement only; unset (default) changes nothing. `model=tokens,...` replaces the model's thinking headroom (`REASONING_HEADROOM` in `src/pricing.mjs`: 256 for Opus) in both the ceiling the 402 offers and the `max_tokens` sent upstream, e.g. `claude-opus-5.5=128`. Use only on a temporary loopback process for a paid test; it does not change the price formula. |
 | `SINGIT_ASK_WALLET_REPORT_ORIGIN` | Public origin of the sign402 gateway's web API, named in `/openapi.json` for the free `GET /v1/wallet/{address}/reconciliation` (served by the gateway, not here). Default: `https://app.singitai.app`. |
+| `SINGIT_ASK_ANSWER_LOG` | Optional file. Unset (default): nothing is recorded. When set, every settled chat answer (`/v1/chat/*`, `/v1/messages`, `/v1/responses`) appends one JSON line: UTC hour, route, model, scheme, network, `maxTokens`, prompt/completion/reasoning tokens, `upstreamMicro` (model cost), `billedAtomic`, `ceilingAtomic`, `overrunAtomic`. Never the question, the answer, the payer, a transaction, a header, an address or a finer time. File mode `0600`; logging stops at 50 MB. Its purpose: the real p50/p90/p99 of output tokens against `max_tokens`, which decides an `exact` ceiling. |
 | `SINGIT_ASK_FREE_MODELS` | Models answered free as `free/<id>` on the public route, comma-separated. Unset: the default model. Empty: free answers off. |
 | `SINGIT_ASK_FREE_PER_VISITOR`, `SINGIT_ASK_FREE_PER_DAY` | Free answers a day per visitor and for everyone together. Defaults: 20 and 1000. A visitor is a network, not an address: the Cloudflare client address's IPv4 /24 or IPv6 /64 (an IPv4-mapped IPv6 address counts as its IPv4 network), so rotating addresses in one subnet does not multiply the allowance. Free answers are capped at 400 tokens and 4000 characters of question. |
 | `SINGIT_ASK_FREE_BUDGET_USD_PER_DAY` | Optional daily dollar budget for free answers. Unset (default): no budget is checked. When set, each free answer is counted at the model cost Surplus reports for it (`usage.buyer_cost_micro`, validated like a paid answer's, with no markup or fee); with no usable report it counts at the model's list price for its worst case (400 output tokens, input at 4 characters per token). Once the day's spend reaches the budget, free answers are refused with `429` and `Retry-After` until midnight UTC. While a budget is set, a model whose price is not known is not answered free (`503`). Counters are in memory and restart with the service. |

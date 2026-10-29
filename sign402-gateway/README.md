@@ -541,6 +541,8 @@ Tools:
 | `list_price_symbols` | Free | Every symbol `get_price` knows |
 | `list_models` | Free | Models available through the SingIt API (chat, images, audio), with their SingIt prices |
 | `get_balance` | Free, needs a key | The key's account balance: available and held USDC, auto top-up |
+| `get_limits` | Free, needs a key | The key's daily and per-request caps, spent and left today, the account's balance and (Base) its allowance limiter: caps, left today, approved, paused, expiry. Read-only |
+| `get_receipts` | Free, needs a key | Recent receipts, newest first: this key's charges (model, USDC, tokens, upstream reference) or the account's top-ups and refunds (`kind`), paged with `before`. Read-only |
 | `web_search` | Paid, needs `search` scope | Search the web (Exa) |
 | `read_page` | Paid, needs `search` scope | Read a web page's text (Exa) |
 | `get_weather` | Paid, needs `tools` scope | A sample forecast from GoPlausible's x402 demo (no location) |
@@ -558,12 +560,12 @@ running in production. MCP descriptions of the paid tools live in `web_mcp.PAID_
 Every paid call is billed exactly like `/v1`: from the key's own daily and per-request caps, out of
 its account's own SingIt limits, in USDC on Base or Solana. The market data tools (`tools` scope) are
 Base-only for now: a Solana account's key gets a clear refusal. Nothing here can move funds, change limits, or buy goods
-(no Bitrefill, no wallet/allowance tools — that stays out of MCP for now, v2 at the earliest).
+(no Bitrefill, no wallet/allowance tools beyond the read-only `get_limits` — changing them stays out of MCP for now, v2 at the earliest).
 
 Every `tools/list` entry carries a `title` and MCP annotations (`readOnlyHint`, `destructiveHint`,
-`idempotentHint`, `openWorldHint`). All 14 tools are read-only and non-destructive: paid ones debit the
-key's limits but never touch external state. `get_price`, `list_price_symbols`, `list_models` and
-`get_balance` read SingIt's own data, so they are idempotent and not open-world; every other tool bills again on each call
+`idempotentHint`, `openWorldHint`). All 16 tools are read-only and non-destructive: paid ones debit the
+key's limits but never touch external state. `get_price`, `list_price_symbols`, `list_models`,
+`get_balance`, `get_limits` and `get_receipts` read SingIt's own data, so they are idempotent and not open-world; every other tool bills again on each call
 (not idempotent) and reaches third-party data (open-world).
 
 Install:

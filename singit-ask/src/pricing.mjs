@@ -126,7 +126,37 @@ export const REASONING_HEADROOM = Object.freeze({
   "gemini-3.1-pro-preview": 1024,
   "claude-opus-5.5": 256,
 });
-export const reasoningHeadroom = (id) => (typeof id === "string" && Object.hasOwn(REASONING_HEADROOM, id) ? REASONING_HEADROOM[id] : 0);
+// A measurement knob (28 October), not a price change: SINGIT_ASK_REASONING_HEADROOM="claude-opus-5.5=128" (server.mjs)
+// replaces a model's headroom above for this process, so a paid test can see whether `reasoning_effort: low` lets Opus
+// get by with less. It moves the ceiling the 402 offers and the max_tokens sent upstream together. Unset, nothing differs.
+let headroomOverrides = Object.freeze({});
+export function setReasoningHeadroomOverrides(map) { headroomOverrides = Object.freeze({ ...map }); }
+export function parseReasoningHeadroom(text) {
+  const out = {};
+  for (const part of String(text ?? "").split(",").map((p) => p.trim()).filter(Boolean)) {
+    const [id, value, ...rest] = part.split("=").map((p) => p.trim());
+    const n = Number(value);
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(id ?? "") || rest.length || value === "" || !Number.isInteger(n) || n < 0 || n > 2048)
+      throw new Error(`SINGIT_ASK_REASONING_HEADROOM: cannot read "${part}" (want model=tokens, 0 to 2048)`);
+    out[id] = n;
+  }
+  return out;
+}
+export const reasoningHeadroom = (id) => (typeof id !== "string" ? 0
+  : Object.hasOwn(headroomOverrides, id) ? headroomOverrides[id]
+  : Object.hasOwn(REASONING_HEADROOM, id) ? REASONING_HEADROOM[id] : 0);
+// Which scheme a buyer should sign (28 October): for Claude Opus, `upto`. Opus's thinking cannot be switched off, so
+// an `exact` price has to carry max_tokens' share plus REASONING_HEADROOM at the purchase price, and that flat amount
+// is usually well above what the answer used (a three-word answer was 26 tokens, about 20 of them thinking); `upto`
+// charges what the answer really cost. Both offers stay in the 402 (`upto` first); this only says which to pick. The
+// price formula is untouched. Shown by GET /pricing.json and GET /v1/models, in openapi.json and in the docs.
+export const isUptoPrimary = (id) => typeof id === "string" && /^claude-opus-/.test(id);
+export const UPTO_PRIMARY = Object.freeze({
+  recommended: "upto",
+  why: "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. "
+    + "exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer "
+    + "used, with no metering and no refund.",
+});
 export const costOverhead = (model) => {
   const id = typeof model?.id === "string" ? model.id : "";
   const extra = Object.hasOwn(MODEL_COST_OVERHEAD, id) ? MODEL_COST_OVERHEAD[id] : null;
