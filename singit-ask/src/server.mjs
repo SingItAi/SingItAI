@@ -63,6 +63,8 @@ const config = {
   // Where the gateway's free wallet report lives (listed in /openapi.json only; this service does not serve it).
   walletReportOrigin: (process.env.SINGIT_ASK_WALLET_REPORT_ORIGIN || "https://app.singitai.app").replace(/\/$/, ""),
   blockedProviders: String(process.env.SINGIT_ASK_BLOCKED_PROVIDERS || "").split(",").map((p) => p.trim()).filter(Boolean),
+  // Off unless set: one anonymous line per paid answer (tokens against max_tokens, cost); see src/answer-log.mjs.
+  answerLogFile: String(process.env.SINGIT_ASK_ANSWER_LOG || "").trim() || null,
   observedFile: process.env.SINGIT_ASK_OBSERVED_PRICES
     || `${process.env.HOME}/.config/singit-ask/observed-prices.json`,
 };
