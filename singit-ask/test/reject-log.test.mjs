@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { UnknownModel } from "../src/catalogue.mjs";
 import { routePath } from "../src/model-routes.mjs";
-import { MAX_BODY, describeReject, parseBestDiscount, sanitizeBody, withRejectLog } from "../src/reject-log.mjs";
+import { BODY_CODES, MAX_BODY, describeReject, parseBestDiscount, sanitizeBody, withRejectLog } from "../src/reject-log.mjs";
 
 const MESSAGE = "No seller met the minimum discount of 59%. Best otherwise-eligible estimated discount is 25.5%. Lower X-Min-Discount to buy.";
 
@@ -17,16 +17,26 @@ test("parseBestDiscount: the percentage from Surplus's message, null when absent
   assert.equal(parseBestDiscount(undefined), null);
 });
 
-test("describeReject: JSON error bodies and plain text", () => {
+test("describeReject: the text is kept only for price and seller codes; anything else is a code and a length", () => {
   const body = JSON.stringify({ error: { type: "not_found", code: "minimum_discount_not_met", message: MESSAGE } });
+  assert.deepEqual(BODY_CODES, ["minimum_discount_not_met", "no_healthy_sellers"]);
   assert.deepEqual(describeReject({ model: "claude-opus-5.5", status: 404, bodyText: body, minDiscountSent: "59" }),
-    { model: "claude-opus-5.5", status: 404, code: "minimum_discount_not_met", bestDiscountPct: 25.5, minDiscountSent: 59, body: MESSAGE });
+    { model: "claude-opus-5.5", status: 404, code: "minimum_discount_not_met", bestDiscountPct: 25.5, minDiscountSent: 59, body: MESSAGE,
+      bodyChars: body.length });
   const typed = describeReject({ model: "m", status: 503, bodyText: JSON.stringify({ error: { type: "service_unavailable", message: "none" } }) });
   assert.equal(typed.code, "service_unavailable");
-  const html = describeReject({ model: undefined, status: 502, bodyText: "<html>\n  Bad gateway </html>" });
-  assert.deepEqual(html, { model: null, status: 502, code: null, bestDiscountPct: null, minDiscountSent: null, body: "<html> Bad gateway </html>" });
+  assert.equal(typed.body, null, "not a price or seller code: no text");
+  const echo = JSON.stringify({ error: { code: "invalid_request", message: "Invalid prompt: my medical diagnosis. Cookie: sid=secret. Best otherwise-eligible estimated discount is 25%" } });
+  const echoed = describeReject({ model: "m", status: 400, bodyText: echo });
+  assert.equal(echoed.body, null);
+  assert.equal(echoed.bestDiscountPct, null, "the number is only read for the price codes");
+  assert.ok(!JSON.stringify(echoed).includes("diagnosis"));
+  const html = describeReject({ model: undefined, status: 502, bodyText: "<html>\n  Bad gateway my question </html>" });
+  assert.deepEqual(html, { model: null, status: 502, code: null, bestDiscountPct: null, minDiscountSent: null, body: null, bodyChars: 40 });
   assert.equal(describeReject({ model: "x y\nz", status: 400, bodyText: "" }).model, null, "an odd model string is not echoed");
   assert.equal(describeReject({ model: "m", status: 404, bodyText: "{}", minDiscountSent: "59; rm" }).minDiscountSent, null);
+  assert.equal(describeReject({ model: "m", status: 400, bodyText: JSON.stringify({ error: { code: "my secret sentence here" } }) }).code, null,
+    "a code that is not identifier-shaped is dropped");
 });
 
 test("sanitizeBody: truncated, one line, and anything shaped like a key or address is replaced", () => {
@@ -57,16 +67,32 @@ test("withRejectLog logs a refused POST to Surplus once, hands the response back
   const first = await f("https://surplus.test/v1/chat/completions", init);
   assert.equal(first.status, 404);
   assert.equal((await first.json()).error.code, "minimum_discount_not_met", "the caller can still read the body");
+  await f.idle();
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^singit-ask: surplus_reject \{/);
   assert.deepEqual(JSON.parse(lines[0].slice("singit-ask: surplus_reject ".length)),
-    { model: "claude-opus-5.5", status: 404, code: "minimum_discount_not_met", bestDiscountPct: 25.5, minDiscountSent: 59, body: MESSAGE });
+    { model: "claude-opus-5.5", status: 404, code: "minimum_discount_not_met", bestDiscountPct: 25.5, minDiscountSent: 59, body: MESSAGE,
+      bodyChars: JSON.stringify({ error: { code: "minimum_discount_not_met", message: MESSAGE } }).length });
   assert.ok(!/inf_secret|Authorization|private question|Bearer/.test(lines[0]));
   await f("https://surplus.test/v1/chat/completions", init);                         // 200: nothing
   await f("https://other.test/v1/chat/completions", init);                           // another host: nothing
   await f("https://surplus.test/v1/video/generations/abc", { method: "GET" });        // a GET (polling): nothing
+  await f.idle();
   assert.equal(lines.length, 1);
   assert.equal(withRejectLog(fetch, { surplusUrl: "", log }), fetch, "no Surplus URL: nothing to wrap");
+});
+
+test("the response is handed back before the body is read, and an endless body is cut at MAX_READ bytes", async () => {
+  const lines = [];
+  let pulls = 0;
+  const endless = new Response(new ReadableStream({ pull(controller) { pulls++; controller.enqueue(new TextEncoder().encode("x".repeat(1024))); } }), { status: 500 });
+  const f = withRejectLog(async () => endless, { surplusUrl: "https://surplus.test", log: (l) => lines.push(l) });
+  const response = await f("https://surplus.test/v1/chat/completions", { method: "POST", body: "{}" });
+  assert.equal(response.status, 500, "the caller has the response without waiting for the log");
+  await f.idle();
+  assert.equal(lines.length, 1);
+  assert.ok(pulls < 50, `read ${pulls} chunks of an endless body`);
+  assert.equal(JSON.parse(lines[0].slice("singit-ask: surplus_reject ".length)).bodyChars, 4096);
 });
 
 test("a logging failure never reaches the caller", async () => {
@@ -74,6 +100,9 @@ test("a logging failure never reaches the caller", async () => {
     { surplusUrl: "https://surplus.test", log: () => { throw new Error("log down"); } });
   const response = await f("https://surplus.test/v1/chat/completions", { method: "POST", body: "{}" });
   assert.equal(response.status, 500);
+  const throwing = withRejectLog(async () => new Response("{}", { status: 500 }), { surplusUrl: "https://surplus.test", log: () => { throw new Error("log down"); } });
+  assert.equal((await throwing("https://surplus.test/v1/x", { method: "POST", body: "{}" })).status, 500);
+  await throwing.idle();
 });
 
 // End to end: a paid Opus question whose floor excludes every seller.
@@ -112,6 +141,7 @@ test("end to end: a 404 minimum_discount_not_met on a paid Opus question logs mo
   const paid = await post({ "PAYMENT-SIGNATURE": Buffer.from(JSON.stringify({ x402Version: 2, resource: required.resource, accepted,
     payload: { signature: "0xsigned" }, extensions: required.extensions })).toString("base64") });
   assert.equal(paid.status, 503);
+  for (let i = 0; i < 100 && !logs.some((l) => l.startsWith("singit-ask: surplus_reject ")); i++) await new Promise((r) => setTimeout(r, 10));
   const line = logs.find((l) => l.startsWith("singit-ask: surplus_reject "));
   assert.ok(line, logs.join("\n"));
   const entry = JSON.parse(line.slice("singit-ask: surplus_reject ".length));
