@@ -129,3 +129,24 @@ test("build output contains /pricing/, the snapshot data file, and the sitemap l
     await rm(out, { recursive: true, force: true });
   }
 });
+
+test("a model the API recommends upto for says so next to its exact price; others do not", () => {
+  const withAdvice = { ...PRICING_JSON, models: PRICING_JSON.models.map((m) =>
+    (m.id === "claude-opus-5.5" ? { ...m, recommendedScheme: "upto" } : m)) };
+  const [opus, deepseek] = matchModels(withAdvice, SNAPSHOT);
+  assert.equal(opus.recommendedScheme, "upto");
+  assert.equal(deepseek.recommendedScheme, undefined);
+  assert.match(rowHtml(opus), /\$0\.036 <span class="fine">sign upto<\/span>/);
+  assert.doesNotMatch(rowHtml(deepseek), /sign upto/);
+  // Nothing about the numbers moves: the advice is a label, the figures still come from pricing.json.
+  assert.equal(opus.singitUptoUsd, 0.054);
+  assert.equal(opus.singitExactUsd, 0.036);
+});
+
+test("the pricing page, llms.txt and the developers first-paid-call tab tell Opus buyers to sign upto", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const read = (p) => readFile(new URL(`../${p}`, import.meta.url), "utf8");
+  assert.match(await read("pricing/index.html"), /for Claude Opus it carries room for the model's thinking tokens, so sign upto there/);
+  assert.match(await read("llms.txt"), /For Claude Opus, sign `upto`/);
+  assert.match(await read("developers/index.html"), /For Claude Opus sign <span class="mono">upto<\/span>/);
+});

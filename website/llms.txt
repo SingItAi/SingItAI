@@ -29,7 +29,7 @@ Agents with their own wallet can skip the key: pay per answer over x402 at https
 ## First paid x402 call
 
 1. POST https://ask.singitai.app/v1/chat/completions with no payment, e.g. {"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Hello"}]}. The answer is HTTP 402 with a PAYMENT-REQUIRED header: base64 JSON, x402Version 2.
-2. Its accepts list `upto` first (Base, then Solana): you sign a ceiling and pay the answer's actual cost + 30% + a 0.001 USDC fee on Base (0.002 on Solana). `exact` follows on both networks: a flat price for a typical-length answer (about 30% of max_tokens), for wallets that sign only exact. USDC on Base needs no ETH (gas is sponsored).
+2. Its accepts list `upto` first (Base, then Solana): you sign a ceiling and pay the answer's actual cost + 30% + a 0.001 USDC fee on Base (0.002 on Solana). `exact` follows on both networks: a flat price for a typical-length answer (about 30% of max_tokens), for wallets that sign only exact. For Claude Opus, sign `upto`: its `exact` price carries room for thinking tokens and is usually dearer than the answer used (recommendedScheme in https://ask.singitai.app/pricing.json). USDC on Base needs no ETH (gas is sponsored).
 3. Sign one offer and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200: choices[0].message.content, billing.totalAtomic (what was settled, in USDC micro-units) and a PAYMENT-RESPONSE header.
 - Walkthrough with code (x402 fetch, Coinbase Bazaar MCP, Coinbase agentic wallet): https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md
 
