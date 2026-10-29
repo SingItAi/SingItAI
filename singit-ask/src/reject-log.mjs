@@ -45,14 +45,14 @@ export function describeReject({ model, status, bodyText, minDiscountSent = null
   const pick = (v) => (typeof v === "string" && CODE_SHAPE.test(v) ? v : null);
   const code = pick(error?.code) ?? pick(error?.type);
   const message = typeof error?.message === "string" ? error.message : null;
-  const text = message ?? bodyText;
+  const text = message;  // never the raw body: it can carry other fields
   return {
     model: typeof model === "string" && /^[A-Za-z0-9._:/-]{1,80}$/.test(model) ? model : null,
     status, code,
     // The one number the message is read for; it is a number, never text.
     bestDiscountPct: code !== null && BODY_CODES.includes(code) ? parseBestDiscount(text) : null,
     minDiscountSent: minDiscountSent !== null && /^[0-9]{1,3}(\.[0-9]+)?$/.test(String(minDiscountSent)) ? Number(minDiscountSent) : null,
-    body: code !== null && BODY_CODES.includes(code) ? sanitizeBody(text) : null,
+    body: code !== null && BODY_CODES.includes(code) && text !== null ? sanitizeBody(text) : null,
     bodyChars: String(bodyText ?? "").length,
   };
 }

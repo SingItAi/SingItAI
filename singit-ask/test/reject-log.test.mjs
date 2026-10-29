@@ -31,6 +31,11 @@ test("describeReject: the text is kept only for price and seller codes; anything
   assert.equal(echoed.body, null);
   assert.equal(echoed.bestDiscountPct, null, "the number is only read for the price codes");
   assert.ok(!JSON.stringify(echoed).includes("diagnosis"));
+  const noMessage = describeReject({ model: "m", status: 503, bodyText: JSON.stringify({ error: { code: "no_healthy_sellers" },
+    request: { messages: [{ content: "my private medical question" }] } }) });
+  assert.equal(noMessage.code, "no_healthy_sellers");
+  assert.equal(noMessage.body, null, "an allowlisted code without a message logs no body text, never the raw JSON");
+  assert.ok(!JSON.stringify(noMessage).includes("medical"));
   const html = describeReject({ model: undefined, status: 502, bodyText: "<html>\n  Bad gateway my question </html>" });
   assert.deepEqual(html, { model: null, status: 502, code: null, bestDiscountPct: null, minDiscountSent: null, body: null, bodyChars: 40 });
   assert.equal(describeReject({ model: "x y\nz", status: 400, bodyText: "" }).model, null, "an odd model string is not echoed");
