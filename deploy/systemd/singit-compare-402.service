@@ -1,0 +1,20 @@
+# TEMPLATE ONLY. This unit is NOT installed or enabled by anything in this repository.
+# Installing it (and singit-compare-402.timer) on a host needs the owner's OK. It is a USER unit:
+# copy both to ~/.config/systemd/user/, point ExecStart at the real checkout, `systemctl --user daemon-reload`,
+# then `systemctl --user enable --now singit-compare-402.timer`.
+#
+# One run sends 8 unpaid POSTs (four models, ours and BlockRun's), no payment header, no key, no wallet; it appends
+# one JSON line to the history file. It exits 2 when SingIt's cheapest Base price is above BlockRun's for any model:
+# a failed unit is the alert (`systemctl --user is-failed`, or OnFailure= to a notifier you choose).
+
+[Unit]
+Description=SingIt vs BlockRun: compare the unpaid x402 402 prices for one short chat answer
+Documentation=file://%h/SingItAI/scripts/README.md
+
+[Service]
+Type=oneshot
+# Placeholder paths: point them at the real checkout and a state directory.
+ExecStart=/usr/bin/node %h/SingItAI/scripts/compare-402-blockrun.mjs --append %h/.local/state/singit/compare-402.jsonl
+SuccessExitStatus=0
+TimeoutStartSec=120
+Nice=10
