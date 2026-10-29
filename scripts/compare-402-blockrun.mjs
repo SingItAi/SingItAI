@@ -15,9 +15,13 @@
 // charges. `exactVsExact` also compares SingIt's flat `exact` offer with BlockRun's, because that is the like-for-like
 // number for a client that cannot sign `upto`.
 //
-// Exit codes: 0 = no alert (a probe that failed is listed under `errors` and does not alert unless --strict);
-// 2 = SingIt is more expensive than BlockRun (beyond --tolerance) for at least one model; 1 = usage error.
-// A sample systemd user timer is in deploy/systemd/singit-compare-402.{service,timer}; nothing installs it.
+// Exit codes: 0 = no alert (a probe that failed is listed under `errors` and does not fail the run unless --strict);
+// 2 = ALERT_EXIT: SingIt is more expensive than BlockRun (beyond --tolerance) for at least one model;
+// 3 = ERROR_EXIT: --strict and a probe failed (wins over 2: a run that could not look is not a clean alert);
+// 1 = usage error, or any crash (Node's own exit code for an uncaught error).
+// A sample systemd user timer is in deploy/systemd/singit-compare-402.{service,timer}; nothing installs it. Its service
+// lists 2 under SuccessExitStatus, so a price alert is a normal, successful run (the alert is in the journal and in the
+// `alerts` of the history line) and a unit in the `failed` state means the script itself broke.
 
 import { appendFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -140,6 +144,14 @@ export function renderText(report) {
   return `${lines.join("\n")}\n`;
 }
 
+export const ALERT_EXIT = 2;
+export const ERROR_EXIT = 3;
+// The process exit code for a finished run (0 when nothing needs attention).
+export function exitCodeFor(report, { strict = false } = {}) {
+  if (strict && report.errors.length) return ERROR_EXIT;
+  return report.alerts.length ? ALERT_EXIT : 0;
+}
+
 const flag = (args, name, fallback) => { const i = args.indexOf(`--${name}`); return i === -1 ? fallback : args[i + 1]; };
 
 async function main() {
@@ -154,7 +166,8 @@ async function main() {
   const append = flag(args, "append", null);
   if (append) await appendFile(append, `${JSON.stringify(report)}\n`);
   process.stdout.write(args.includes("--json") ? `${JSON.stringify(report, null, 2)}\n` : renderText(report));
-  if (report.alerts.length || (args.includes("--strict") && report.errors.length)) process.exit(2);
+  const code = exitCodeFor(report, { strict: args.includes("--strict") });
+  if (code) process.exit(code);
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) await main();

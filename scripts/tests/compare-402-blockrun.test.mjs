@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BASE_NETWORK, BASE_USDC, MODELS, toPpm, compareModel, parseAccepts, renderText, run } from "../compare-402-blockrun.mjs";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { BASE_NETWORK, BASE_USDC, MODELS, ALERT_EXIT, ERROR_EXIT, exitCodeFor, toPpm, compareModel, parseAccepts, renderText, run } from "../compare-402-blockrun.mjs";
 
 const offer = (scheme, atomic, network = BASE_NETWORK, asset = BASE_USDC) => ({ scheme, network, asset, amount: String(atomic), atomic: String(atomic) });
 const encode = (v) => Buffer.from(JSON.stringify(v)).toString("base64");
@@ -128,4 +131,35 @@ test("a tolerance finer than a millionth is refused, not rounded", () => {
   for (const ok of [0, 0.02, 0.13, 0.07, 0.000001, 1.5]) assert.notEqual(toPpm(ok), null, String(ok));
   assert.equal(compareModel("m", ours, theirs, { tolerance: 0.000001 }).alert, false);
   assert.equal(compareModel("m", ours, theirs, { tolerance: 0 }).alert, true);
+});
+
+// A price alert must not leave the systemd unit in the `failed` state; a broken script still must.
+test("exitCodeFor: 0 clean, 2 for a price alert, 3 only for a failed probe under --strict (it wins over 2)", () => {
+  const clean = { alerts: [], errors: [] };
+  assert.equal(ALERT_EXIT, 2);
+  assert.equal(ERROR_EXIT, 3);
+  assert.equal(exitCodeFor(clean), 0);
+  assert.equal(exitCodeFor(clean, { strict: true }), 0);
+  assert.equal(exitCodeFor({ alerts: ["claude-opus-5.5"], errors: [] }), 2);
+  assert.equal(exitCodeFor({ alerts: [], errors: [{ model: "gpt-5.5" }] }), 0, "a failed probe alone is not an alert unless --strict");
+  assert.equal(exitCodeFor({ alerts: [], errors: [{ model: "gpt-5.5" }] }, { strict: true }), 3);
+  assert.equal(exitCodeFor({ alerts: ["claude-opus-5.5"], errors: [{ model: "gpt-5.5" }] }, { strict: true }), 3);
+  assert.equal(exitCodeFor({ alerts: ["claude-opus-5.5"], errors: [{ model: "gpt-5.5" }] }), 2);
+});
+
+test("a usage error still exits 1, before any request is sent", () => {
+  const script = fileURLToPath(new URL("../compare-402-blockrun.mjs", import.meta.url));
+  const result = spawnSync(process.execPath, [script, "--tolerance", "abc"], { encoding: "utf8", timeout: 15_000 });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /usage: compare-402-blockrun/);
+});
+
+test("the systemd service template treats exit 2 (the alert) as success, and only that: crashes, usage errors and exit 3 still fail", () => {
+  const unit = readFileSync(new URL("../../deploy/systemd/singit-compare-402.service", import.meta.url), "utf8");
+  const lines = unit.split("\n").filter((l) => !l.startsWith("#"));
+  assert.deepEqual(lines.filter((l) => l.startsWith("SuccessExitStatus")), ["SuccessExitStatus=2"]);
+  assert.ok(lines.includes("Type=oneshot"));
+  assert.ok(lines.some((l) => l.startsWith("ExecStart=") && l.includes("compare-402-blockrun.mjs")));
+  assert.ok(!lines.some((l) => /^(SuccessExitStatus|RestartForceExitStatus)=.*\b[13]\b/.test(l)), "1 and 3 must stay failures");
+  assert.match(unit, /re-copy it to ~\/\.config\/systemd\/user\//);
 });
