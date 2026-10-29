@@ -145,6 +145,36 @@ export function parseReasoningHeadroom(text) {
 export const reasoningHeadroom = (id) => (typeof id !== "string" ? 0
   : Object.hasOwn(headroomOverrides, id) ? headroomOverrides[id]
   : Object.hasOwn(REASONING_HEADROOM, id) ? REASONING_HEADROOM[id] : 0);
+// EXACT_RESERVE (29 October): what `exact` prices of the thinking headroom. The whole headroom still goes upstream
+// (askSurplus sends max_tokens + REASONING_HEADROOM, so Opus cannot spend a small max_tokens thinking) and still
+// bounds `upto`'s ceiling, but a flat `exact` price that carried all 256 tokens at 1.3x was 46% of the price of a
+// short answer. For Claude Opus, `exact` now prices R = clamp(round(factor * max_tokens), min, max) of it (default
+// 0.25, 32, 256: 125 tokens at max_tokens 500), never more than the headroom itself. An answer that thinks past R
+// is still delivered and settled at the flat price (`allowOverrun`), the same as one longer than the output
+// fraction; `upto` and every other model are untouched. SINGIT_ASK_EXACT_RESERVE (server.mjs) sets "factor,min,max"
+// or "full" (the old behaviour: the whole headroom is priced).
+export const DEFAULT_EXACT_RESERVE = Object.freeze({ factor: 0.25, min: 32, max: 256 });
+export const EXACT_RESERVE_FULL = Object.freeze({ factor: null, min: 0, max: 0 });
+let exactReserve = DEFAULT_EXACT_RESERVE;
+export function setExactReserve(cfg) { exactReserve = Object.freeze({ ...cfg }); }
+export function parseExactReserve(text) {
+  const raw = String(text ?? "").trim();
+  if (raw === "") return DEFAULT_EXACT_RESERVE;
+  if (raw.toLowerCase() === "full") return EXACT_RESERVE_FULL;
+  const parts = raw.split(",").map((p) => p.trim());
+  const [factor, min, max] = parts.map(Number);
+  if (parts.length !== 3 || parts.some((p) => p === "") || !(factor > 0 && factor <= 1)
+      || !Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max < min || max > 2048)
+    throw new Error(`SINGIT_ASK_EXACT_RESERVE: cannot read "${raw}" (want "full" or "factor,min,max": factor in (0,1], 0 <= min <= max <= 2048)`);
+  return Object.freeze({ factor, min, max });
+}
+// The thinking tokens `exact` prices for this model and max_tokens (a number, or null: price the whole headroom).
+export function exactReserveTokens(id, maxTokens) {
+  const headroom = reasoningHeadroom(id);
+  if (!headroom || !isUptoPrimary(id) || exactReserve.factor === null) return null;
+  const wanted = Math.min(exactReserve.max, Math.max(exactReserve.min, Math.round(exactReserve.factor * (Number.isFinite(maxTokens) ? maxTokens : 0))));
+  return Math.min(wanted, headroom);
+}
 // Which scheme a buyer should sign (28 October): for Claude Opus, `upto`. Opus's thinking cannot be switched off, so
 // an `exact` price has to carry max_tokens' share plus REASONING_HEADROOM at the purchase price, and that flat amount
 // is usually well above what the answer used (a three-word answer was 26 tokens, about 20 of them thinking); `upto`
@@ -164,10 +194,13 @@ export const costOverhead = (model) => {
 };
 
 // The most the model itself could bill for this question and answer size, in micro-units, before markup and fee.
-export function worstModelCostMicro(model, { chars, maxTokens, messageCount, charsPerToken = 4 }, share = 1) {
+// `reserveTokens` (only `exact`, see EXACT_RESERVE): the thinking tokens to price instead of the whole headroom.
+export function worstModelCostMicro(model, { chars, maxTokens, messageCount, charsPerToken = 4, reserveTokens = null }, share = 1) {
   const extra = costOverhead(model);
   const inputTokens = Math.ceil(chars / charsPerToken) + 4 * messageCount + extra.promptTokens;
-  const outputTokens = maxTokens + extra.reasoningTokens;
+  const reasoning = reserveTokens === null ? extra.reasoningTokens
+    : extra.reasoningTokens - reasoningHeadroom(model?.id) + reserveTokens;
+  const outputTokens = maxTokens + reasoning;
   return Math.ceil((inputTokens * model.promptUsdPerToken + outputTokens * model.completionUsdPerToken) * share * 1e6);
 }
 

@@ -25,6 +25,9 @@
 //                              turned into the X-Min-Discount header (src/catalogue.mjs's priceGuard), default 1
 //   SINGIT_ASK_REASONING_EFFORT   measurement only, default unset: "model=effort,..." (none|minimal|low|medium|high)
 //                              asks that model for this reasoning effort instead of "none" (e.g. claude-opus-5.5=low)
+//   SINGIT_ASK_EXACT_RESERVE   default "0.25,32,256": the thinking tokens `exact` prices for Claude Opus, as
+//                              clamp(round(factor*max_tokens), min, max); "full" restores pricing the whole headroom.
+//                              Only the price: the upstream max_tokens and `upto` are unchanged (pricing.mjs EXACT_RESERVE)
 //   SINGIT_ASK_REASONING_HEADROOM measurement only, default unset: "model=tokens,..." replaces the model's thinking
 //                              headroom (pricing.mjs REASONING_HEADROOM) in the ceiling and upstream max_tokens
 //   SINGIT_ASK_EXACT_OUTPUT_FRACTION  fraction (0,1] of max_tokens that `exact` offers price their output at;
@@ -36,7 +39,7 @@ import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 import { createApp, parseReasoningEffort } from "./app.mjs";
 import { PriceBook } from "./prices.mjs";
-import { DEFAULT_EXACT_OUTPUT_FRACTION, parseReasoningHeadroom, setReasoningHeadroomOverrides } from "./pricing.mjs";
+import { DEFAULT_EXACT_OUTPUT_FRACTION, parseReasoningHeadroom, setReasoningHeadroomOverrides, parseExactReserve, setExactReserve } from "./pricing.mjs";
 
 function required(name) {
   const value = String(process.env[name] || "").trim();
@@ -77,6 +80,7 @@ const config = {
 // A bad value stops the process at start, never prices a request with a guess.
 config.reasoningEffort = parseReasoningEffort(process.env.SINGIT_ASK_REASONING_EFFORT);
 setReasoningHeadroomOverrides(parseReasoningHeadroom(process.env.SINGIT_ASK_REASONING_HEADROOM));
+setExactReserve(parseExactReserve(process.env.SINGIT_ASK_EXACT_RESERVE));
 const model = config.model;
 config.freeModels = process.env.SINGIT_ASK_FREE_MODELS === undefined ? [model]
   : process.env.SINGIT_ASK_FREE_MODELS.split(",").map((m) => m.trim()).filter(Boolean);
