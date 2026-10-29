@@ -32,6 +32,12 @@ what it actually cost; nothing is charged without an answer.
   completions, `/v1/chat/{model}`, Messages, Responses) `accepts` leads with `upto` (Base, then
   Solana), the actual-cost offer, followed by `exact` on Base and Solana; routes sold only at a
   fixed price (images, speech, search, video) offer `exact` alone, Base first.
+  For Claude Opus the recommended offer is `upto`: Opus's thinking cannot be switched off, so its `exact` price
+  carries `max_tokens`' share plus 256 tokens of thinking headroom at the purchase price, which is usually well
+  above what the answer used. `GET /pricing.json` and `GET /v1/models` mark such a model with
+  `recommendedScheme: "upto"` (and `recommendedSchemeWhy`). Both offers stay in the 402 and no price changes;
+  this only says which to sign. If the cheapest trusted Opus offer on Surplus rises above 0.29 of list, the
+  health-alert timer sends one price alert (`scripts/README.md`).
 - **Per-model routes:** when a catalogue is configured, `POST /v1/chat/{model}` is a
   separate x402 resource for each of 14 popular models (`claude-opus-5.5`,
   `claude-sonnet-5.5`, `claude-haiku-5.5`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.5`,

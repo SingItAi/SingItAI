@@ -130,3 +130,64 @@ test("openapi.json lists /pricing.json as a free path", async (t) => {
   assert.ok(spec.paths["/pricing.json"]);
   assert.deepEqual(spec.paths["/pricing.json"].get.security, []);
 });
+
+// Claude Opus: upto is the scheme to sign (28 October). Advice only; the offers and the price formula do not move.
+const OPUS = { id: "claude-opus-5.5", name: "Claude Opus 5.5", provider: "anthropic", contextLength: 1e6,
+  promptUsdPerToken: 4e-6, completionUsdPerToken: 20e-6 };
+const withOpus = { ...fakeCatalogue,
+  async resolve(id) { return id === OPUS.id ? OPUS : fakeCatalogue.resolve(id); },
+  async list() { return [DEFAULT, SONNET, OPUS]; } };
+
+test("isUptoPrimary: Claude Opus models only", async () => {
+  const { isUptoPrimary } = await import("../src/pricing.mjs");
+  assert.equal(isUptoPrimary("claude-opus-5.5"), true);
+  assert.equal(isUptoPrimary("claude-opus-4.8"), true);
+  for (const id of ["claude-sonnet-5.5", "claude-haiku-5.5", "gpt-5.6-sol", "opus", "my-claude-opus-5.5", "", undefined, null, 5])
+    assert.equal(isUptoPrimary(id), false, String(id));
+});
+
+test("/pricing.json marks Opus recommendedScheme upto and nothing else, with the same numbers as the 402", async (t) => {
+  const url = await serve(t, { catalogue: withOpus });
+  const body = await (await fetch(`${url}/pricing.json`)).json();
+  const opus = body.models.find((m) => m.id === OPUS.id);
+  assert.equal(opus.recommendedScheme, "upto");
+  assert.match(opus.recommendedSchemeWhy, /upto.*actual|what the answer really cost/s);
+  assert.match(opus.recommendedSchemeWhy, /exact is a flat price/);
+  for (const m of body.models.filter((x) => x.id !== OPUS.id)) {
+    assert.equal(m.recommendedScheme, undefined, m.id);
+    assert.equal(m.recommendedSchemeWhy, undefined, m.id);
+  }
+  assert.match(body.note, /recommendedScheme upto \(Claude Opus\)/);
+  // The price formula is untouched: the advertised amounts still equal the 402's.
+  const offered = await offeredFor(url, OPUS.id);
+  assert.equal(opus.upto.base.priceAtomic, offered.uptoBase);
+  assert.equal(opus.exact.base.ceilingAtomic, offered.exactBase);
+  assert.equal(opus.exact.solana.ceilingAtomic, offered.exactSolana);
+});
+
+test("the Opus 402 still leads with upto on Base and keeps exact offers", async (t) => {
+  const url = await serve(t, { catalogue: withOpus });
+  const response = await fetch(`${url}${ROUTE}`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: OPUS.id, messages: [{ role: "user", content: "hi" }] }) });
+  assert.equal(response.status, 402);
+  const { accepts } = decode(response.headers.get("payment-required"));
+  assert.deepEqual(accepts.map((a) => `${a.scheme}:${a.network === BASE ? "base" : "solana"}`),
+    ["upto:base", "upto:solana", "exact:base", "exact:solana"]);
+});
+
+test("/v1/models carries the same recommendation on the Opus entry only", async (t) => {
+  const url = await serve(t, { catalogue: withOpus });
+  const body = await (await fetch(`${url}/v1/models`)).json();
+  const entry = (id) => body.data.find((m) => m.id === id);
+  assert.equal(entry(OPUS.id).recommendedScheme, "upto");
+  assert.equal(entry("claude-sonnet-5.5").recommendedScheme, undefined);
+  assert.equal(entry("deepseek-v4.1-flash").recommendedScheme, undefined);
+});
+
+test("llms.txt and openapi.json tell Opus buyers to sign upto", async (t) => {
+  const url = await serve(t, { catalogue: withOpus });
+  const llms = await (await fetch(`${url}/llms.txt`)).text();
+  assert.match(llms, /For Claude Opus, sign `upto`/);
+  const spec = await (await fetch(`${url}/openapi.json`)).json();
+  assert.match(spec.paths["/pricing.json"].get.description, /recommendedScheme upto \(Claude Opus\)/);
+});
