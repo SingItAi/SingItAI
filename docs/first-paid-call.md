@@ -2,10 +2,10 @@
 
 One paid answer from SingIt Ask, paid per call in USDC over x402: no account and no API key.
 
-**Status: End-to-end paid run of these snippets: not yet done; needs Kostya's OK for one paid test call (~$0.0015).**
+**Status: paid end to end once, on 28.10.2026.** `deepseek-v4.1-flash`, `upto` on Base: HTTP 200, $0.001 settled, about 3.3 s, transaction [`0x419874ee…f54e2f6`](https://basescan.org/tx/0x419874eea3fbb4621519fe4c252bb83b7b66c1c9cb6fbba07274172bef54e2f6).
 
-The unpaid half (Step 1: the 402 and its offers) was checked live on 27.10.2026. Variants B and C rely on Coinbase
-tooling and were checked against Coinbase's docs and package types, not run.
+Step 1 (the 402 and its offers) was also checked live on 27.10.2026. Variants B and C rely on Coinbase tooling and
+were checked against Coinbase's docs and package types; the paid run above is not a run of B or C.
 
 Endpoint: `POST https://ask.singitai.app/v1/chat/completions` (OpenAI chat completions format).
 

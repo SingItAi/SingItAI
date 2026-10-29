@@ -19,14 +19,17 @@ test("the first paid call tab is wired to its panel, copies its code and links t
   assert.ok(panel.includes('"model":"deepseek-v4.1-flash","max_tokens":200'));
   assert.ok(panel.includes(DOC));
   assert.ok(panel.indexOf("upto") < panel.indexOf("exact"));
-  assert.match(panel, /not yet run the paid step/);
+  assert.match(panel, /ran the paid step end to end on 28\.10\.2026/);
+  assert.ok(!/not yet run the paid step/.test(panel));
 });
 
 test("the guide the page links exists, and says what was and was not run", async () => {
   const doc = await readFile(path.join(website, "..", "docs", "first-paid-call.md"), "utf8");
   assert.match(doc, /^# Your first paid x402 call in 60 seconds/);
-  assert.ok(doc.includes("End-to-end paid run of these snippets: not yet done; needs Kostya's OK for one paid test call (~$0.0015)."));
-  assert.match(doc, /Variants B and C rely on Coinbase\s+tooling and were checked against Coinbase's docs/);
+  assert.ok(doc.includes("**Status: paid end to end once, on 28.10.2026.**"));
+  assert.ok(doc.includes("0x419874eea3fbb4621519fe4c252bb83b7b66c1c9cb6fbba07274172bef54e2f6"));
+  assert.ok(!doc.includes("not yet done"));
+  assert.match(doc, /Variants B and C rely on Coinbase\s+tooling and\s+were checked against Coinbase's docs/);
   for (const heading of ["## What you need", "## Step 1: see the 402", "## Step 2: pay", "## Step 3: the 200"]) {
     assert.ok(doc.includes(heading), heading);
   }
