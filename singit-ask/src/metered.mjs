@@ -15,7 +15,7 @@ import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic, minDiscountFor,
+import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic, minDiscountFor, exactReserveTokens,
   DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 
 // Actual model cost + 30% + the network's settlement fee. Solana's upto escrows the ceiling, then
@@ -81,12 +81,12 @@ export const exactSolanaOffer = (config, quotes, fallback) => ({
 // token estimate, since it already absorbs an overrun via `allowOverrun` instead of refusing the answer.
 export function ceilings(info, input, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION) {
   const size = { chars: input.chars, messageCount: input.messageCount };
-  const build = (maxTokens, charsPerToken) => Object.fromEntries(Object.entries(TERMS_BY_NETWORK).map(([net, terms]) => {
+  const build = (maxTokens, charsPerToken, reserveTokens = null) => Object.fromEntries(Object.entries(TERMS_BY_NETWORK).map(([net, terms]) => {
     if (!info) return [net, terms.maxChargeAtomic];
-    const amount = ceilingAtomic(info, { ...size, maxTokens, charsPerToken }, terms, input.share ?? 1);
+    const amount = ceilingAtomic(info, { ...size, maxTokens, charsPerToken, reserveTokens }, terms, input.share ?? 1);
     return [net, input.isDefault && BigInt(amount) > BigInt(terms.maxChargeAtomic) ? terms.maxChargeAtomic : amount];
   }));
-  return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction)) };
+  return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction), undefined, exactReserveTokens(info?.id, input.maxTokens)) };
 }
 
 // The terms of the network the payer chose, with the ceiling this question was offered for the scheme they
