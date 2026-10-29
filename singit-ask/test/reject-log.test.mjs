@@ -42,6 +42,8 @@ test("describeReject: the text is kept only for price and seller codes; anything
   assert.equal(describeReject({ model: "m", status: 404, bodyText: "{}", minDiscountSent: "59; rm" }).minDiscountSent, null);
   assert.equal(describeReject({ model: "m", status: 400, bodyText: JSON.stringify({ error: { code: "my secret sentence here" } }) }).code, null,
     "a code that is not identifier-shaped is dropped");
+  for (const keyLike of ["sk-secret123456", "inf_live_0123456789abcdef", "A".repeat(40)])
+    assert.equal(describeReject({ model: "m", status: 400, bodyText: JSON.stringify({ error: { code: keyLike } }) }).code, null, keyLike);
 });
 
 test("sanitizeBody: truncated, one line, and anything shaped like a key or address is replaced", () => {

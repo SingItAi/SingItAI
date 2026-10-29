@@ -42,7 +42,8 @@ export function describeReject({ model, status, bodyText, minDiscountSent = null
   let parsed = null;
   try { parsed = JSON.parse(bodyText); } catch { /* not JSON: logged as text */ }
   const error = parsed && typeof parsed === "object" ? parsed.error : null;
-  const pick = (v) => (typeof v === "string" && CODE_SHAPE.test(v) ? v : null);
+  // An identifier-shaped code that the redaction would change (a key-like value) is dropped, not logged altered.
+  const pick = (v) => (typeof v === "string" && CODE_SHAPE.test(v) && sanitizeBody(v) === v ? v : null);
   const code = pick(error?.code) ?? pick(error?.type);
   const message = typeof error?.message === "string" ? error.message : null;
   const text = message;  // never the raw body: it can carry other fields
