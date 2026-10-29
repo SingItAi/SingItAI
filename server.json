@@ -3,7 +3,7 @@
   "name": "app.singitai/singit",
   "title": "SingIt x402",
   "description": "Web search, page reading, prices and market data for agents, billed to your SingIt API key in USDC.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "websiteUrl": "https://singitai.app/developers/",
   "repository": {
     "url": "https://github.com/bubon-ik/SingItAI",
