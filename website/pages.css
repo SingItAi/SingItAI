@@ -21,6 +21,15 @@
 .faq-answer { color: var(--ash); max-width: 68ch; }
 .faq-answer a { color: var(--brand-ink); }
 
+/* Legal pages (/privacy, /terms): running text with headings and lists. Emphasis by
+   colour, not weight. */
+.legal h2 { font-size: 24px; line-height: 1.17; margin: 48px 0 16px; }
+.legal h2:first-child { margin-top: 0; }
+.lp-list { color: var(--ash); max-width: 68ch; padding-left: 20px; list-style: disc; }
+.lp-list li + li { margin-top: 12px; }
+.lp-list b { font-weight: 400; color: var(--ink); }
+.legal .lp-text + .lp-list, .legal .lp-list + .lp-text { margin-top: 12px; }
+
 @media (max-width: 960px) {
   .works-grid.is-2, .works-grid.is-4 { grid-template-columns: 1fr 1fr; }
 }
