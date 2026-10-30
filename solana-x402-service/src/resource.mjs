@@ -12,7 +12,7 @@ export const DATA_HOSTS = new Set(['x402.ottoai.services', 'api.exa.ai', 'stable
   'stableemail.dev']);  // an email the user sent to themselves, after pressing Send
 export const MAX_DATA_ATOMIC = 50000n;  // $0.05: data, never a purchase
 // SingIt's own routes, each at one exact URL with its own ceiling: credit for the owner's API balance ($50 and the
-// settlement fee), and web search, page contents and answers (Exa's price, at most $0.05, + 30% + the fee).
+// settlement fee), and web search, page contents and answers (Exa's list price with no markup; $0.067 ceilings remain above the real price).
 export const CREDIT_URL = 'https://ask.singitai.app/v1/credit';
 export const MAX_CREDIT_ATOMIC = 50_002_000n;
 export const SINGIT_URLS = new Map([[CREDIT_URL, MAX_CREDIT_ATOMIC],

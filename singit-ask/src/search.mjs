@@ -1,5 +1,5 @@
-// SingIt search: Exa's web search, page contents and cited answers, sold over x402 at Exa's list price + 30% + the
-// network's settlement fee, and bought from Exa with SingIt's own Exa API key, as BlockRun does
+// SingIt search: Exa's web search, page contents and cited answers, sold over x402 at Exa's list price with no markup or
+// settlement fee by default, and bought from Exa with SingIt's own Exa API key, as BlockRun does
 // (docs/singit-gateway-spec.md, 4.2).
 //
 // The price is worked out from the request and Exa's price list before the payer is asked; the payer's payment is
@@ -12,16 +12,37 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, SOLANA_ASSET, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const EXA_URL = "https://api.exa.ai";
 export const SEARCH_ROUTES = { "/v1/exa/search": "/search", "/v1/exa/contents": "/contents", "/v1/exa/answer": "/answer" };
-export const SEARCH_TERMS = Object.freeze({ markupBps: 3000, maxExaAtomic: 50_000 });  // never sell above $0.05 at Exa
+export const SEARCH_TERMS = Object.freeze({ markupBps: 0, maxExaAtomic: 50_000 });  // never sell above $0.05 at Exa
 // Exa's prices (exa.ai/pricing, 16 October 2026), in micro-USD: a search of up to 10 results by type, each result past
 // 10, each page per content kind (text, highlights, summary), an answer.
 export const EXA_PRICES = Object.freeze({ search: { instant: 4000, fast: 7000, auto: 7000 }, result: 1000, page: 1000,
   answer: 5000 });
-const FEES = { [BASE]: TERMS.settlementFeeAtomic, [SOLANA]: SOLANA_TERMS.settlementFeeAtomic };
+// Invalid environment values fall back independently to pass-through pricing.
+export function parseExaMarkupBps(value) {
+  const text = String(value ?? "").trim();
+  return /^\d+$/.test(text) && Number(text) <= 10000 ? Number(text) : 0;
+}
+export function parseExaFeeAtomic(value) {
+  const parts = String(value ?? "").trim().split(",").map((part) => part.trim());
+  if (parts.length < 1 || parts.length > 2 || parts.some((part) => !/^\d+$/.test(part))) return ["0", "0"];
+  return [BigInt(parts[0]).toString(), BigInt(parts[1] ?? parts[0]).toString()];
+}
+let markupBps = SEARCH_TERMS.markupBps;
+let fees = ["0", "0"];
+export function setExaMarkupBps(value) { markupBps = parseExaMarkupBps(value); }
+export function setExaFeeAtomic(value) { fees = parseExaFeeAtomic(Array.isArray(value) ? value.join(",") : value); }
+
+// The public range covers both networks, from one contents page to the list-price cap.
+export function exaPriceRange() {
+  const totals = (exa) => [BASE, SOLANA].map((network) => BigInt(searchPrice(exa, network).totalAtomic));
+  const usd = (atomic) => `${atomic / 1000000n}.${(atomic % 1000000n).toString().padStart(6, "0")}`.replace(/0+$/, "").replace(/\.$/, "");
+  return { min: usd(totals(EXA_PRICES.page).reduce((a, b) => a < b ? a : b)),
+    max: usd(totals(SEARCH_TERMS.maxExaAtomic).reduce((a, b) => a > b ? a : b)) };
+}
 
 export class SearchError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -75,9 +96,10 @@ export function exaPrice(path, body) {
 // What the payer pays for a request Exa lists at `exaAtomic`, on `network`.
 export function searchPrice(exaAtomic, network) {
   const exa = BigInt(exaAtomic);
-  const markup = (exa * BigInt(SEARCH_TERMS.markupBps) + 9999n) / 10000n;
-  return { exaAtomic: exa.toString(), markupAtomic: markup.toString(), feeAtomic: FEES[network],
-           totalAtomic: (exa + markup + BigInt(FEES[network])).toString() };
+  const markup = (exa * BigInt(markupBps) + 9999n) / 10000n;
+  const fee = fees[network === SOLANA ? 1 : 0];
+  return { exaAtomic: exa.toString(), markupAtomic: markup.toString(), feeAtomic: fee,
+           totalAtomic: (exa + markup + BigInt(fee)).toString() };
 }
 
 // <=300 characters, opening with the category words and naming the brand once, later (see app.mjs's
@@ -140,17 +162,16 @@ const INPUT_SCHEMAS = {
 // A route's request body as openapi.json documents it: the same schema and example the Bazaar listing declares.
 export const exaRequestBody = (route) => ({ required: true, content: { "application/json": {
   schema: { type: "object", ...INPUT_SCHEMAS[route] }, example: EXAMPLES[route] } } });
-// A real answer's shape and charge (Base): Exa's list price, 30% markup, 1000 micro-USD settlement fee.
-const billing = (exa, markup) => ({ exaAtomic: String(exa), markupAtomic: String(markup), feeAtomic: "1000",
-  totalAtomic: String(exa + markup + 1000), currency: "USDC" });
-const OUTPUT_EXAMPLES = {
+// Example billing uses the current Base settings, just like the example body's offer.
+const billing = (exa) => ({ ...searchPrice(exa, BASE), currency: "USDC" });
+const outputExamples = () => ({
   "/v1/exa/search": { requestId: "example", results: [{ id: "https://x402.org", url: "https://x402.org", title: "x402",
-    publishedDate: null, author: null }], billing: billing(7000, 2100) },
+    publishedDate: null, author: null }], billing: billing(7000) },
   "/v1/exa/contents": { requestId: "example", results: [{ id: "https://x402.org", url: "https://x402.org", title: "x402",
-    text: "x402 is an open payment standard…" }], billing: billing(1000, 300) },
+    text: "x402 is an open payment standard…" }], billing: billing(1000) },
   "/v1/exa/answer": { answer: "x402 is an open standard for paying for an API call with a stablecoin over HTTP 402.",
-    citations: [{ id: "https://x402.org", url: "https://x402.org", title: "x402" }], billing: billing(5000, 1500) },
-};
+    citations: [{ id: "https://x402.org", url: "https://x402.org", title: "x402" }], billing: billing(5000) },
+});
 const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
     exaAtomic: { type: "string" }, markupAtomic: { type: "string" }, feeAtomic: { type: "string" },
@@ -194,7 +215,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
     accepts: offers(route), mimeType: "application/json", description: DESCRIPTIONS[route],
     serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
     extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
-      output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }),
+      output: { example: outputExamples()[route], schema: OUTPUT_SCHEMA } }),
   }])), server, { log });
   for (const [route, exaPath] of Object.entries(SEARCH_ROUTES)) {
     app.post(route, async (req, res) => {

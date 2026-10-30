@@ -21,7 +21,7 @@ import { ObservedPrices } from "./observed.mjs";
 import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { addCreditRoute } from "./credit.mjs";
-import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody } from "./search.mjs";
+import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody, exaPriceRange } from "./search.mjs";
 import { IMAGE_ROUTE, IMAGE_REQUEST_BODY, addImageRoutes } from "./images.mjs";
 import { SPEECH_ROUTE, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
@@ -543,9 +543,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           summary: { "/v1/exa/search": "Search the web with Exa and return ranked results",
                      "/v1/exa/contents": "Fetch page contents from Exa for up to 10 URLs",
                      "/v1/exa/answer": "Generate a cited answer with Exa" }[route],
-          description: "Exa's own request and answer, paid per request over x402: Exa's list price + 30% + a settlement fee "
-            + "(0.001 USDC on Base, 0.002 on Solana). Nothing is charged without an answer.",
-          "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.0023", max: "0.067" }, protocols: [{ x402: {} }] },
+          description: "Exa's own request and answer, paid per request over x402: Exa's list price with no markup by default. "
+            + "Nothing is charged without an answer.",
+          "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...exaPriceRange() }, protocols: [{ x402: {} }] },
           requestBody: exaRequestBody(route),
           responses: { 200: { description: "Exa's answer, with billing" },
                        ...paidErrors({ duplicate: true, unavailable: "Exa did not answer; nothing charged. Retry after Retry-After" }) },
