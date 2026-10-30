@@ -164,7 +164,6 @@ def test_mismatched_receipt_keeps_full_reservation(account, start, monkeypatch):
     from singit.guards import encode_header
 
     merchant = start([exact("2000")])
-    merchant.bill = lambda offer: "1000"
     singit = client(account, merchant, max_per_call_usd=0.003, max_per_day_usd=0.003)
     original = module._post_json
 
@@ -178,3 +177,55 @@ def test_mismatched_receipt_keeps_full_reservation(account, start, monkeypatch):
     with pytest.raises(SingItPaymentError, match="settlement receipt"):
         singit.chat(messages=MESSAGES, scheme="exact")
     assert singit.limiter.remaining_atomic() == 1000
+
+
+@pytest.mark.parametrize("billed", ["1000", "4001"])
+def test_exact_invoice_mismatch_keeps_full_authorization(account, start, billed):
+    merchant = start([exact("4000")], bill=lambda offer: billed)
+    singit = client(account, merchant, max_per_call_usd=0.004, max_per_day_usd=0.006)
+    with pytest.raises(SingItPaymentError, match="invoice does not match.*unresolved"):
+        singit.chat(messages=MESSAGES, scheme="exact")
+    assert singit.limiter.remaining_atomic() == 2000
+    with pytest.raises(SingItPaymentError, match="Daily spend cap"):
+        singit.chat(messages=MESSAGES, scheme="exact")
+    assert len(merchant.payment_headers) == 1
+
+
+@pytest.mark.parametrize("scheme,billed,remaining,error", [
+    ("exact", "1000", 2000, True),
+    ("exact", "4000", 2000, False),
+    ("exact", "4001", 2000, True),
+    ("upto", "1000", 5000, False),
+    ("upto", "4001", 2000, True),
+])
+def test_invoice_accounting_without_sockets(account, monkeypatch, scheme, billed, remaining, error):
+    import json
+    import singit.client as module
+    from singit.guards import encode_header
+
+    url = "http://localhost"
+    offer = (exact("4000") if scheme == "exact" else upto_offer(
+        network=BASE_SEPOLIA, asset=USDC, pay_to=PAY_TO, amount="4000", facilitator_address=FACILITATOR))
+    paid = []
+
+    def post(request_url, body, headers):
+        if not headers:
+            return 402, {"payment-required": encode_header({
+                "x402Version": 2, "resource": {"url": url + "/v1/chat/completions"}, "accepts": [offer],
+            })}, b"{}"
+        paid.append(headers)
+        return 200, {}, json.dumps({"billing": {"totalAtomic": billed}}).encode()
+
+    monkeypatch.setattr(module, "_post_json", post)
+    singit = SingIt(evm_account=account, network="base-sepolia", base_url=url, pay_to=PAY_TO,
+                    max_per_call_usd=0.004, max_per_day_usd=0.006)
+    if error:
+        with pytest.raises(SingItPaymentError, match="invoice does not match.*unresolved"):
+            singit.chat(messages=MESSAGES, scheme=scheme)
+    else:
+        assert singit.chat(messages=MESSAGES, scheme=scheme)["payment"]["amountAtomic"] == billed
+    assert singit.limiter.remaining_atomic() == remaining
+    if remaining == 2000:
+        with pytest.raises(SingItPaymentError, match="Daily spend cap"):
+            singit.chat(messages=MESSAGES, scheme=scheme)
+    assert len(paid) == 1

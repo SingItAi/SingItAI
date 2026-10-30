@@ -201,7 +201,8 @@ class SingIt:
         except ValueError:
             result = {}
         total_atomic = ((result or {}).get("billing") or {}).get("totalAtomic")
-        if not is_atomic_amount(total_atomic) or int(total_atomic) > int(offer["amount"]):
+        if (not is_atomic_amount(total_atomic) or int(total_atomic) > int(offer["amount"])
+                or (scheme == "exact" and int(total_atomic) != int(offer["amount"]))):
             raise SingItPaymentError("The invoice does not match the offered ceiling; treating the payment as unresolved "
                                      "(its ceiling stays counted against the daily cap).")
 
@@ -214,7 +215,8 @@ class SingIt:
         ):
             raise SingItPaymentError("The settlement receipt does not match this request; treating the payment as unresolved.")
 
-        self.limiter.settle(release, total_atomic, offer["amount"])
+        if scheme == "upto":
+            self.limiter.settle(release, total_atomic, offer["amount"])
 
         payment_info = {"scheme": scheme, "network": self.network, "amountAtomic": total_atomic}
         if receipt and receipt.get("transaction"):

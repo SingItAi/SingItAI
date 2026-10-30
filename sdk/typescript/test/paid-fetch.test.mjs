@@ -132,3 +132,23 @@ test("paidFetch() rejects an unknown scheme", () => {
   const singit = new SingIt({ evmPrivateKey: privateKey, network: "base-sepolia", payTo: PAY_TO, maxPerCallUsd: 0.01, maxPerDayUsd: 1 });
   assert.throws(() => singit.paidFetch({ scheme: "other" }), /scheme must be/);
 });
+
+for (const billed of ["1000", "4001"]) {
+  test(`exact billing ${billed} keeps the full authorization reserved`, async () => {
+    let paid = 0;
+    const merchant = await startMerchant({
+      accepts: () => [exactOffer({ network: NETWORK, asset: ASSET, payTo: PAY_TO, amount: "4000" })],
+      bill: () => { paid++; return billed; },
+    });
+    try {
+      const client = make(merchant, { maxPerCallUsd: 0.004, maxPerDayUsd: 0.006 });
+      const invoke = () => post(client.paidFetch({ scheme: "exact" }), merchant.url);
+      await assert.rejects(invoke(), /invoice does not match.*unresolved/);
+      assert.equal(client.limiter.remainingAtomic(), 2000n);
+      await assert.rejects(invoke(), /Daily spend cap/);
+      assert.equal(paid, 1);
+    } finally {
+      await merchant.close();
+    }
+  });
+}

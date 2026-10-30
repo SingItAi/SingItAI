@@ -4,7 +4,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { SingIt } from "../src/index.js";
 import { NETWORKS } from "../src/pins.js";
 const encode = obj => Buffer.from(JSON.stringify(obj)).toString("base64");
-function setup(receiptOverrides = {}) {
+function setup(receiptOverrides = {}, { scheme = "exact", billed = "4000" } = {}) {
   const payer = privateKeyToAccount(generatePrivateKey());
   const payee = privateKeyToAccount(generatePrivateKey());
   const url = "http://localhost/v1/chat/completions";
@@ -18,15 +18,16 @@ function setup(receiptOverrides = {}) {
       if (!request.headers.has("payment-signature")) return new Response("{}", {
         status: 402, headers: { "payment-required": encode({
           x402Version: 2, resource: { url }, accepts: [{
-            scheme: "exact", network: NETWORKS["base-sepolia"].caip,
+            scheme, network: NETWORKS["base-sepolia"].caip,
             asset: NETWORKS["base-sepolia"].asset, payTo: payee.address,
             amount: "4000", maxTimeoutSeconds: 120,
+            extra: { facilitatorAddress: payee.address },
           }],
         }) },
       });
       sent++;
       assert.equal((await request.json()).stream, false);
-      return new Response(JSON.stringify({ billing: { totalAtomic: "1000" } }), {
+      return new Response(JSON.stringify({ billing: { totalAtomic: billed } }), {
         headers: { "payment-response": encode({ network: NETWORKS["base-sepolia"].caip, payer: payer.address, transaction: "0xreceipt", ...receiptOverrides }) },
       });
     },
@@ -41,8 +42,8 @@ const send = (client, url) => client.paidFetch({ scheme: "exact" })(
 );
 test("paidFetch replays a Request body once and settles a valid invoice", async () => {
   const { client, url, sent } = setup();
-  assert.equal((await (await send(client, url)).json()).billing.totalAtomic, "1000");
-  assert.equal(client.limiter.remainingAtomic(), 5000n);
+  assert.equal((await (await send(client, url)).json()).billing.totalAtomic, "4000");
+  assert.equal(client.limiter.remainingAtomic(), 2000n);
   assert.equal(sent(), 1);
 });
 for (const [mismatch, receipt] of [
@@ -73,7 +74,7 @@ for (const method of ["paidFetch", "chat"]) {
       assert.equal(result.payment.txHash, "0xreceipt");
     }
     assert.equal(checks, 1);
-    assert.equal(client.limiter.remainingAtomic(), 5000n);
+    assert.equal(client.limiter.remainingAtomic(), 2000n);
   });
 }
 test("paidFetch passes a free answer through without signing", async () => {
@@ -82,3 +83,32 @@ test("paidFetch passes a free answer through without signing", async () => {
   client._sign = () => assert.fail("unexpected signing");
   assert.equal(await (await send(client, url)).text(), "free");
 });
+
+for (const method of ["paidFetch", "chat"]) {
+  for (const billed of ["1000", "4001"]) {
+    test(`${method} keeps an exact authorization fully counted when billed ${billed}`, async () => {
+      const { client, url, sent } = setup({}, { billed });
+      const invoke = () => method === "paidFetch" ? send(client, url)
+        : client.chat({ messages: [{ role: "user", content: "Hello" }], scheme: "exact" });
+      await assert.rejects(invoke(), /invoice does not match.*unresolved/);
+      assert.equal(client.limiter.remainingAtomic(), 2000n);
+      await assert.rejects(invoke(), /Daily spend cap/);
+      assert.equal(sent(), 1);
+    });
+  }
+  for (const billed of ["1000", "4001"]) {
+    test(`${method} preserves upto billing rules for ${billed}`, async () => {
+      const { client, url } = setup({}, { scheme: "upto", billed });
+      const invoke = () => method === "paidFetch"
+        ? client.paidFetch({ scheme: "upto" })(new Request(url, { method: "POST", body: '{"stream":false}' }))
+        : client.chat({ messages: [{ role: "user", content: "Hello" }], scheme: "upto" });
+      if (billed === "1000") {
+        await invoke();
+        assert.equal(client.limiter.remainingAtomic(), 5000n);
+      } else {
+        await assert.rejects(invoke(), /invoice does not match/);
+        assert.equal(client.limiter.remainingAtomic(), 2000n);
+      }
+    });
+  }
+}

@@ -123,7 +123,7 @@ export class SingIt {
 
   /**
    * Everything between "the merchant answered 402" and "the paid answer arrived": pin the offer, reserve the
-   * worst case against today's cap, sign, send once, and settle the cap down to the billed amount. Shared by
+   * worst case against today's cap, sign, send once, and settle upto reservations down to the billed amount. Shared by
    * chat() and paidFetch() so both enforce the same guards before anything is signed. Returns the paid
    * response, its text (already validated as an invoice no larger than the offered ceiling), and validated receipt.
    */
@@ -167,12 +167,13 @@ export class SingIt {
     let result = null;
     try { result = JSON.parse(text); } catch { /* treated as an unreadable invoice below */ }
     const totalAtomic = result?.billing?.totalAtomic;
-    if (!isAtomicAmount(totalAtomic) || BigInt(totalAtomic) > BigInt(offer.amount)) {
+    if (!isAtomicAmount(totalAtomic) || BigInt(totalAtomic) > BigInt(offer.amount)
+      || (scheme === "exact" && BigInt(totalAtomic) !== BigInt(offer.amount))) {
       throw new SingItPaymentError("The invoice does not match the offered ceiling; treating the payment as unresolved "
         + "(its ceiling stays counted against the daily cap).");
     }
     const receipt = this._checkReceipt(response, payload);
-    this.limiter.settle(release, totalAtomic, offer.amount);
+    if (scheme === "upto") this.limiter.settle(release, totalAtomic, offer.amount);
     return { response, offer, payload, text, receipt };
   }
 

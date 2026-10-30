@@ -70,7 +70,7 @@ Every call pins the merchant's offer before signing anything, the same way
   `max_per_call_usd` converted to micro-USDC. A costlier offer is refused.
 - **Per-day ceiling (`max_per_day_usd`).** An in-memory counter per client instance and per UTC day.
   Reserved at the offer's worst-case ceiling before signing, settled down to the actual billed
-  amount afterwards. **Not durable**: it resets on restart and is not shared across processes —
+  amount for `upto` only. `exact` always counts the full offer amount. **Not durable**: it resets on restart and is not shared across processes —
   it is a client-side allowance guard, not a ledger. For the SingIt app agent’s separate on-chain limit, see
   `allowance()` below.
 - **Settlement receipt.** The `payment-response` header's network and payer are checked against
