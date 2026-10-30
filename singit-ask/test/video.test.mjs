@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { UnknownModel, parseVideoModels } from "../src/catalogue.mjs";
-import { VIDEO_ROUTE, publicJob, readVideoRequest, safeLog, videoPrice, videoListAtomic, pickFallbacks, isSoldVideoModel } from "../src/video.mjs";
+import { VIDEO_ROUTE, publicJob, readVideoRequest, safeLog, videoPrice, videoListAtomic, pickFallbacks } from "../src/video.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -97,8 +97,8 @@ const pay = (required, network) => ({ "PAYMENT-SIGNATURE": encode({ x402Version:
   extensions: required.extensions }) });
 const VIDEO = { model: "venice-seedance-2-fast-t2v", prompt: "a green robot waves", resolution: "480p", aspect_ratio: "16:9" };
 
-test("only text-to-video models priced per job are sold, never uncensored ones", () => {
-  assert.deepEqual([...VIDEOS.keys()], ["venice-seedance-2-fast-t2v"]);
+test("text-to-video models priced per job include uncensored models", () => {
+  assert.deepEqual([...VIDEOS.keys()], ["venice-seedance-2-fast-t2v", "uncensored-t2v-turbo"]);
 });
 
 test("a clip is offered at its list price + 30% + the fee; nothing is started before payment", async (t) => {
@@ -159,7 +159,7 @@ test("polling and the file are free with the job's token, and nothing without it
 
 test("what is not sold is refused before any payment is asked", async (t) => {
   const { url, surplus } = await serve(t);
-  for (const [body, status] of [[{ ...VIDEO, model: "uncensored-t2v-turbo" }, 404], [{ ...VIDEO, model: "ovi-image-to-video" }, 404],
+  for (const [body, status] of [[{ ...VIDEO, model: "ovi-image-to-video" }, 404],
     [{ ...VIDEO, prompt: "" }, 400], [{ ...VIDEO, resolution: "4k" }, 400], [{ ...VIDEO, aspect_ratio: "5:4" }, 400],
     [{ ...VIDEO, duration_seconds: 60 }, 400]]) {
     const refused = await post(`${url}${VIDEO_ROUTE}`, body);
@@ -225,6 +225,11 @@ test("with video off, nothing is offered or started; already-paid jobs can still
   assert.equal(unpaid.status, 503);
   assert.equal(unpaid.headers.get("payment-required"), null);
   assert.equal((await unpaid.json()).error.code, "video_disabled");
+  assert.ok(VIDEOS.has("uncensored-t2v-turbo"));
+  const uncensored = await post(`${url}${VIDEO_ROUTE}`, { ...VIDEO, model: "uncensored-t2v-turbo" });
+  assert.equal(uncensored.status, 503);
+  assert.equal((await uncensored.json()).error.code, "video_disabled");
+  assert.equal(uncensored.headers.get("payment-required"), null);
   const probe = await fetch(`${url}${VIDEO_ROUTE}`, { method: "POST" });
   assert.equal(probe.status, 503, "the empty discovery probe gets no offer either");
   for (const method of ["GET", "HEAD"]) {
@@ -268,7 +273,7 @@ test("video health refuses zero sellers before payment and allows unknown health
 test("video listing hides zero sellers and reports counts, failing open only for an empty health map", async (t) => {
   for (const [health, expected] of [[new Map([[VIDEO.model, 0]]), []],
     [new Map([[VIDEO.model, 3]]), [[VIDEO.model, 3]]], [new Map([["other", 1]]), []],
-    [new Map(), [[VIDEO.model, null]]]]) {
+    [new Map(), [[VIDEO.model, null], ["uncensored-t2v-turbo", null]]]]) {
     const { url } = await serve(t, { health });
     const list = await (await fetch(`${url}/v1/video/models`)).json();
     assert.deepEqual(list.data.map((m) => [m.id, m.healthySellers]), expected);
@@ -280,7 +285,6 @@ const model = (id, usdPerJob = 0.2, extra = {}) => ({ ...VIDEOS.get(VIDEO.model)
 test("price floor and fallback selection respect price, health, compatibility, ordering and limit", () => {
   assert.equal(videoPrice(videoListAtomic(model("cheap", 0.08)), BASE).totalAtomic, "261000");
   assert.equal(videoPrice(videoListAtomic(model("higher", 0.4)), BASE).totalAtomic, "521000");
-  assert.equal(isSoldVideoModel("UnCeNsOrEd-t2v"), false);
   const models = [model("requested", 0.4), model("b", 0.3), model("a", 0.3), model("c", 0.3),
     model("cheap", 0.08), model("expensive", 0.5), model("unknown"), model("dead"),
     model("incompatible", 0.4, { durations: [10] }), model("uncensored-t2v-turbo")];
@@ -289,8 +293,8 @@ test("price floor and fallback selection respect price, health, compatibility, o
   const args = { models, health, requested: "requested", signedListAtomic: 400000,
     body: { ...VIDEO, duration_seconds: 5 } };
   assert.deepEqual(pickFallbacks(args).map((m) => m.id), ["c", "a"]);
-  assert.deepEqual(pickFallbacks({ ...args, models: new Map(models.map((m) => [m.id, m])), max: 4 })
-    .map((m) => m.id), ["c", "a", "b", "cheap"]);
+  assert.deepEqual(pickFallbacks({ ...args, models: new Map(models.map((m) => [m.id, m])), max: 5 })
+    .map((m) => m.id), ["c", "a", "b", "cheap", "uncensored-t2v-turbo"]);
 });
 
 test("unhealthy requested model substitutes at its signed quote and settles exactly once", async (t) => {
@@ -312,12 +316,10 @@ test("unhealthy requested model substitutes at its signed quote and settles exac
   assert.equal(logs.filter((line) => line.includes("substitution")).length, 1);
 });
 
-test("pricier and uncensored candidates cannot open payment; fallback opt-out and type are checked", async (t) => {
+test("pricier candidates cannot open payment; fallback opt-out and type are checked", async (t) => {
   for (const [candidate, body, status] of [[model("expensive", 0.4), VIDEO, 503],
-    [model("uncensored-t2v-turbo", 0.08), VIDEO, 503],
     [model("fallback"), { ...VIDEO, fallback: false }, 503],
-    [model("fallback"), { ...VIDEO, fallback: "yes" }, 400],
-    [model("uncensored-t2v-turbo"), { ...VIDEO, model: "uncensored-t2v-turbo" }, 404]]) {
+    [model("fallback"), { ...VIDEO, fallback: "yes" }, 400]]) {
     const models = new Map([model(VIDEO.model), candidate].map((m) => [m.id, m]));
     const { url, surplus } = await serve(t, { models, health: new Map([[VIDEO.model, 0], [candidate.id, 2]]) });
     const response = await post(`${url}${VIDEO_ROUTE}`, body);
@@ -658,4 +660,16 @@ test("a logger that throws cannot change the answer or settle a failed job", asy
   assert.equal(response.status, 503);
   assert.equal((await response.json()).error.code, "video_failed");
   assert.deepEqual(facilitator.calls.settle, []);
+});
+
+test("uncensored video models are listed and allowed as requests and fallbacks", async (t) => {
+  const id = "uncensored-t2v-turbo";
+  const { url } = await serve(t, { health: new Map([[VIDEO.model, 0], [id, 2]]) });
+  const list = await (await fetch(`${url}/v1/video/models`)).json();
+  assert.deepEqual(list.data.map((m) => m.id), [id]);
+  for (const body of [VIDEO, { ...VIDEO, model: id }]) {
+    const response = await post(`${url}${VIDEO_ROUTE}`, body);
+    assert.equal(response.status, 402);
+    assert.equal(decode(response.headers.get("payment-required")).accepts[0].amount, "261000");
+  }
 });

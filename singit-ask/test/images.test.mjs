@@ -1,5 +1,5 @@
 // SingIt images: the list price + 30% + the fee, Surplus asked once with this service's key, nothing charged without
-// an image, edits and adult models not sold.
+// an image, edits belong to another service.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -74,8 +74,8 @@ const pay = (required, network) => ({ "PAYMENT-SIGNATURE": encode({ x402Version:
   extensions: required.extensions }) });
 const IMAGE = { model: "venice-seedream-v5-lite", prompt: "a green robot", n: 1, size: "1024x1024" };
 
-test("edits, background removal and adult models are not sold; text models are not images", () => {
-  assert.deepEqual([...IMAGES.keys()], ["venice-seedream-v5-lite", "venice-flux-2-pro", "venice-nano-banana-2"]);
+test("uncensored images are listed; edits and text models are excluded", () => {
+  assert.deepEqual([...IMAGES.keys()], ["venice-seedream-v5-lite", "venice-flux-2-pro", "venice-nano-banana-2", "venice-lustify-v7"]);
 });
 
 test("an image is offered at its list price + 30% + the network's fee, and listed for discovery", async (t) => {
@@ -120,7 +120,7 @@ test("no image, no charge; a cost above list price is logged", async (t) => {
 
 test("what is not sold is refused before any payment is asked", async (t) => {
   const { url, surplus } = await serve(t);
-  for (const [body, status] of [[{ ...IMAGE, model: "venice-lustify-v7" }, 404], [{ ...IMAGE, model: "gpt-image-2-edit" }, 404],
+  for (const [body, status] of [[{ ...IMAGE, model: "gpt-image-2-edit" }, 404],
     [{ ...IMAGE, model: undefined }, 404], [{ ...IMAGE, prompt: "" }, 400], [{ ...IMAGE, n: 5 }, 400],
     [{ ...IMAGE, size: "4096x4096" }, 400], [{ ...IMAGE, response_format: "png" }, 400]]) {
     const refused = await post(`${url}${IMAGE_ROUTE}`, body);
@@ -162,5 +162,12 @@ test("the image model list is free, cheapest first", async (t) => {
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/images/models`)).json();
   assert.deepEqual(list.data.map((m) => [m.id, m.singitUsdPerImage]), [
-    ["venice-nano-banana-2", 0.0088], ["venice-seedream-v5-lite", 0.014], ["venice-flux-2-pro", 0.062342]]);
+    ["venice-nano-banana-2", 0.0088], ["venice-seedream-v5-lite", 0.014], ["venice-lustify-v7", 0.014], ["venice-flux-2-pro", 0.062342]]);
+});
+
+test("lustify images receive the ordinary payment offer", async (t) => {
+  const { url } = await serve(t);
+  const response = await post(`${url}${IMAGE_ROUTE}`, { ...IMAGE, model: "venice-lustify-v7" });
+  assert.equal(response.status, 402);
+  assert.equal(decode(response.headers.get("payment-required")).accepts[0].amount, "14000");
 });

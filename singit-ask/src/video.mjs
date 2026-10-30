@@ -66,13 +66,12 @@ export function readVideoRequest(body, model) {
 // Cheap $0.09 models (longcat-distilled and grok-imagine) had flaky sellers; the old $0.118 price does not
 // pay for failures/retries. The floor equals the wan-2-2-a14b level, while the catalogue keeps the real list price.
 export const videoListAtomic = (model) => Math.max(Math.ceil(model.usdPerJob * 1e6), VIDEO_TERMS.minListAtomic);
-export const isSoldVideoModel = (id) => !/uncensored/i.test(id);
 
 // Only a compatible, known-healthy substitute within the signed quote may run: retries must never enlarge the
 // payer's authorization, and unknown seller health is insufficient evidence for choosing a different model.
 export function pickFallbacks({ models, health, requested, signedListAtomic, body, max = 2 }) {
   return [...(models instanceof Map ? models.values() : models)].filter((m) => {
-    if (m.id === requested || !isSoldVideoModel(m.id) || videoListAtomic(m) > signedListAtomic
+    if (m.id === requested || videoListAtomic(m) > signedListAtomic
       || !(health?.get(m.id) > 0)) return false;
     try { readVideoRequest(body, m); return true; } catch { return false; }
   }).sort((a, b) => videoListAtomic(b) - videoListAtomic(a) || health.get(b.id) - health.get(a.id)
@@ -157,7 +156,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     const served = await catalogue.videoServed?.();
     res.json({ object: "list", endpoint: VIDEO_ROUTE, fees: { markupPct: VIDEO_TERMS.markupBps / 100,
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
-      data: [...models.values()].filter((m) => isSoldVideoModel(m.id) && (!served || !served.size || served.get(m.id) > 0))
+      data: [...models.values()].filter((m) => !served || !served.size || served.get(m.id) > 0)
         .map((m) => ({ ...(served ? { healthySellers: served.get(m.id) ?? null } : {}), id: m.id, object: "model", name: m.name, owned_by: m.provider || "surplus",
         durations: m.durations, resolutions: m.resolutions, aspect_ratios: m.aspectRatios, audio: m.audio,
         listUsdPerJob: m.usdPerJob, singitUsdPerJob: Number(videoPrice(videoListAtomic(m), BASE).totalAtomic) / 1e6 }))
@@ -224,7 +223,6 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     if (config.videoDiscoverable && isDiscoveryProbe(req)) return next();
     try {
       const model = await catalogue.resolveVideo(req.body?.model);
-      if (!isSoldVideoModel(model.id)) throw new UnknownModel("That video model is not available.");
       const request = readVideoRequest(req.body, model);
       const listAtomic = videoListAtomic(model);
       if (listAtomic > VIDEO_TERMS.maxListAtomic) throw new VideoError(400, "This model costs more than is sold here.");
