@@ -20,7 +20,7 @@ The shell was copied from the former spending-limit page into `scripts/templates
 
 These eight chat models are listed because `/v1/models` lists them: `deepseek-v4.1-flash-uncensored`, `e2ee-gemma-4-26b-a4b-uncensored-p`, `e2ee-qwen3-6-35b-a3b-uncensored-p`, `gemma-4-uncensored`, `glm-4.7-flash-heretic`, `qwen3.6-plus-uncensored`, `venice-uncensored-1.2` and `venice-uncensored-role-play`. Checked 30.10.2026: all eight returned a valid unpaid x402 402 on `/v1/chat/completions`. An unpaid 402 did not prove answerability: the paid call to `deepseek-v4.1-flash-uncensored` failed with `no_healthy_sellers` (nothing charged), so it is temporarily hidden. The other seven pages are generated like all other model pages, with no special wording beyond their names; pricing and payment follow the ordinary chat model rules.
 
-The name filter does not apply to chat. In `singit-ask/src/catalogue.mjs`, `NOT_SOLD` is defined at line 51 as `/lustify|uncensored|nsfw|edit|remover|upscale/i` and applied to image (line 60), speech and transcription (line 80), and video (line 96) model IDs. Those matching models are not sold. `singit-ask/src/video.mjs:69` also excludes video IDs containing `uncensored` through `isSoldVideoModel`.
+In `singit-ask/src/catalogue.mjs`, the `OTHER_SERVICE` pattern `/edit|remover|upscale/i` is applied to image, speech/transcription and video model IDs and excludes only matching models, which take an image as input and belong to another service. Models with uncensored, nsfw or lustify in their names are sold like chat models. Video stays disabled by default (`video_disabled`).
 
 ## Claim sources
 

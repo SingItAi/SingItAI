@@ -47,8 +47,8 @@ function parseModels(data) {
 
 // Image models: text in, one image out, priced per image, per megapixel or per token. Edits, background removal and
 // upscaling take an image in and are another service (Surplus lists them as text->image all the same, so they are
-// told by name); models made for adult or uncensored output are not sold.
-const NOT_SOLD = /lustify|uncensored|nsfw|edit|remover|upscale/i;
+// detected by name).
+const OTHER_SERVICE = /edit|remover|upscale/i;
 const METERINGS = new Set(["per_image", "per_megapixel", "per_token"]);
 export function parseImageModels(data) {
   const models = new Map();
@@ -57,7 +57,7 @@ export function parseImageModels(data) {
     const arch = entry?.architecture ?? {};
     const inputs = arch.input_modalities ?? String(arch.modality ?? "").split("->")[0].split("+");
     const outputs = arch.output_modalities ?? [String(arch.modality ?? "").split("->")[1]];
-    if (!id || NOT_SOLD.test(id) || !METERINGS.has(entry.metering)) continue;
+    if (!id || OTHER_SERVICE.test(id) || !METERINGS.has(entry.metering)) continue;
     if (inputs.length !== 1 || inputs[0] !== "text" || outputs.length !== 1 || outputs[0] !== "image") continue;
     const image = Number(entry.pricing?.image), prompt = Number(entry.pricing?.prompt), completion = Number(entry.pricing?.completion);
     if (entry.metering !== "per_token" && !(image > 0)) continue;
@@ -77,7 +77,7 @@ export function parseVoiceModels(data) {
     const id = typeof entry?.id === "string" ? entry.id.trim() : "";
     const modality = entry?.architecture?.modality;
     const price = Number(entry?.pricing?.image), unit = entry?.pricing?.media_unit;
-    if (!id || NOT_SOLD.test(id) || !(price > 0)) continue;
+    if (!id || OTHER_SERVICE.test(id) || !(price > 0)) continue;
     const model = { id, name: String(entry.name || id), provider: String(entry.provider || ""), usdPerUnit: price,
       voices: Array.isArray(entry.voices) && entry.voices.length ? entry.voices.map(String) : null };
     if (modality === "text->audio" && unit === "1K characters") speech.set(id, model);
@@ -93,7 +93,7 @@ export function parseVideoModels(data) {
     const id = typeof entry?.id === "string" ? entry.id.trim() : "";
     const params = Array.isArray(entry?.supported_parameters) ? entry.supported_parameters.map(String) : [];
     const price = Number(entry?.pricing?.image);
-    if (!id || NOT_SOLD.test(id) || entry?.architecture?.modality !== "video") continue;
+    if (!id || OTHER_SERVICE.test(id) || entry?.architecture?.modality !== "video") continue;
     if (!params.includes("text-to-video") || entry?.pricing?.media_unit !== "job" || !(price > 0)) continue;
     const list = (value) => (Array.isArray(value) && value.length ? value.map(String) : null);
     models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""), usdPerJob: price,

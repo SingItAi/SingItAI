@@ -78,12 +78,12 @@ what it actually cost; nothing is charged without an answer.
   `/v1/models`, so `singitai.app/pricing/` can fetch it straight from the browser.
 
 Chat models are offered as `GET /v1/models` lists them, including some whose names
-contain uncensored, heretic or role-play. They are ordinary chat models, with the same
-x402 402 payment challenge and pricing as other chat models: provider cost + 30% +
-the network settlement fee. The `NOT_SOLD` ID pattern
-(`/lustify|uncensored|nsfw|edit|remover|upscale/i`) applies only to the image,
-speech, transcription and video catalogues; matching models in those lists are not sold.
-Video also excludes IDs containing `uncensored` in its serving path.
+contain uncensored, heretic or role-play. Uncensored image, speech, transcription
+and video-catalogue models are offered like chat models, with the same 30% markup
+and network settlement fee. Only model IDs matching `/edit|remover|upscale/i` are
+excluded by name from image, speech, transcription and video lists: these take an
+image in and belong to another service. Video remains disabled by default
+(`video_disabled`).
 
 ## Automatic web-agent payments
 
@@ -172,7 +172,7 @@ Surplus's error code/type/message (truncated, token- and key-shaped text blanked
 (job `succeeded` without a file). Nothing is stored in a database: video keeps no state.
 By default, failed submissions or retryable jobs can try up to two compatible healthy models at the same or lower list quote;
 `fallback:false` refuses substitution. Billing always uses the signed requested quote. The response's `model` is
-what ran; substitutions also include `requested_model` and `substituted: true`. Video models whose IDs contain `uncensored` are not sold.
+what ran; substitutions also include `requested_model` and `substituted: true`.
 
 ## Your spend limit in the 402, and a receipt (plan item 3)
 
