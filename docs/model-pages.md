@@ -18,7 +18,7 @@ The shell was copied from the former spending-limit page into `scripts/templates
 
 ## Models with uncensored/heretic/role-play in the name
 
-These eight chat models are listed because `/v1/models` lists them: `deepseek-v4.1-flash-uncensored`, `e2ee-gemma-4-26b-a4b-uncensored-p`, `e2ee-qwen3-6-35b-a3b-uncensored-p`, `gemma-4-uncensored`, `glm-4.7-flash-heretic`, `qwen3.6-plus-uncensored`, `venice-uncensored-1.2` and `venice-uncensored-role-play`. Checked 30.10.2026: all eight returned a valid unpaid x402 402 on `/v1/chat/completions`. Their pages are generated like all other model pages, with no special wording beyond their names; pricing and payment follow the ordinary chat model rules.
+These eight chat models are listed because `/v1/models` lists them: `deepseek-v4.1-flash-uncensored`, `e2ee-gemma-4-26b-a4b-uncensored-p`, `e2ee-qwen3-6-35b-a3b-uncensored-p`, `gemma-4-uncensored`, `glm-4.7-flash-heretic`, `qwen3.6-plus-uncensored`, `venice-uncensored-1.2` and `venice-uncensored-role-play`. Checked 30.10.2026: all eight returned a valid unpaid x402 402 on `/v1/chat/completions`. An unpaid 402 did not prove answerability: the paid call to `deepseek-v4.1-flash-uncensored` failed with `no_healthy_sellers` (nothing charged), so it is temporarily hidden. The other seven pages are generated like all other model pages, with no special wording beyond their names; pricing and payment follow the ordinary chat model rules.
 
 The name filter does not apply to chat. In `singit-ask/src/catalogue.mjs`, `NOT_SOLD` is defined at line 51 as `/lustify|uncensored|nsfw|edit|remover|upscale/i` and applied to image (line 60), speech and transcription (line 80), and video (line 96) model IDs. Those matching models are not sold. `singit-ask/src/video.mjs:69` also excludes video IDs containing `uncensored` through `isSoldVideoModel`.
 
@@ -61,3 +61,12 @@ Line numbers refer to this checkout. The limits templates use only the claims be
 | MCP free tools without key | `integrations/elizaos-plugin/README.md:77` |
 
 The dry technical pages describe enforcement boundaries, not guarantees about a wallet or client. No unverified signing implementation is supplied. No payments are made by refresh, generation or tests.
+
+## Temporarily hidden models
+
+`scripts/hidden-models.json` holds models whose listed availability has failed in paid calls. Regeneration
+keeps the raw snapshot intact but removes their pages, directory entries, related links and discovery links.
+The generator maintains temporary 302 redirects from both forms of each old URL to `/models/all/`.
+To unhide a model after a paid call answers, remove its entry and run `node scripts/generate-model-pages.mjs`.
+An entry also becomes moot once the server stops listing the model and the next snapshot drops it; remove
+that stale entry when the generator warns that it is absent from the snapshot.

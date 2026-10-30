@@ -15,7 +15,7 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
-import { UnknownModel, ModelCatalogue, priceGuard } from "./catalogue.mjs";
+import { UnknownModel, ModelCatalogue, priceGuard, unservableError } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
 import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
@@ -82,6 +82,9 @@ export async function chooseModel(config, catalogue, input) {
   const bufferPp = config.priceBufferPp ?? 1;
   if (!input.model || input.model === config.model) {
     const info = catalogue ? await catalogue.resolve(config.model).catch(() => null) : null;
+    if (catalogue?.isUnservable?.(config.model)) {
+      throw unservableError(catalogue, config.model, RequestError);
+    }
     return { ...input, model: config.model, info, isDefault: true,
       ...(info ? priceGuard(catalogue, info.id, bufferPp) : { share: 1, minDiscount: null }) };
   }
@@ -89,6 +92,7 @@ export async function chooseModel(config, catalogue, input) {
   try {
     const info = await catalogue.resolve(input.model);
     if (catalogue.canAnswer && !(await catalogue.canAnswer(info.id))) {
+      if (catalogue.isUnservable?.(info.id)) throw unservableError(catalogue, info.id, RequestError);
       throw new RequestError(400, "No trusted seller offers that model right now. Pick another; nothing was paid.");
     }
     return { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) };
@@ -364,7 +368,9 @@ const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, sch
 
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
                                     exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
-                                    catalogue = config.surplusUrl ? new ModelCatalogue({ url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [] }) : null,
+                                    catalogue = config.surplusUrl ? new ModelCatalogue({
+                                      url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
+                                      unservableTtlMs: config.unservableTtlMs }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }),
                                     spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
@@ -432,13 +438,14 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   });
   // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
   app.get("/v1/models", open, async (_req, res) => {
-    // Only the models that can be answered now (the default always is).
+    // Only models that can be answered now, including the default after a routing rejection.
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
     const answerable = await Promise.all(listed.map((m) => (catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
-    const models = listed.filter((m, i) => answerable[i] || m.id === config.model);
+    const models = listed.filter((m, i) => answerable[i] || (m.id === config.model && !catalogue.isUnservable?.(m.id)));
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
-      data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
+      data: [...(catalogue.isUnservable?.(config.model) ? [] :
+        [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model }]),
         ...freeListed,
         ...models.map(m => {
           // The price an answer is expected to cost: what this service's own answers from the model cost, or,
@@ -475,7 +482,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
     const answerable = await Promise.all(listed.map((m) => (catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
-    const models = listed.filter((m, i) => answerable[i] || m.id === config.model);
+    const models = listed.filter((m, i) => answerable[i] || (m.id === config.model && !catalogue.isUnservable?.(m.id)));
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     const priced = [];
     for (const m of models) {
@@ -785,7 +792,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     catalogue?.resolve(model).then((list) => observed.record(model, answer.usage, list)).catch(() => {});
     return answer;
   };
-  const route = { facilitatorClient, config, readRequest, choose, upstream: learning, fetchImpl, log };
+  const route = { facilitatorClient, catalogue, config, readRequest, choose, upstream: learning, fetchImpl, log };
   // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
   addCreditRoute(app, config, { facilitatorClient });
   // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
@@ -839,7 +846,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     extensions: declareEip2612GasSponsoringExtension(),
   }, route);
   // The web agent's Solana payments: measured privately, then paid directly from the owner's delegated USDC.
-  if (config.directSolana) addSolanaQuotedRoute(app, config, { facilitatorClient, readRequest, choose, upstream: learning, fetchImpl, log });
+  if (config.directSolana) addSolanaQuotedRoute(app, config, { facilitatorClient, catalogue, readRequest, choose,
+    upstream: learning, fetchImpl, log });
 
   return app;
 }

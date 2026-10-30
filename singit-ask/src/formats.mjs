@@ -12,7 +12,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { UnknownModel, priceGuard } from "./catalogue.mjs";
+import { markUnservable, unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { acceptedOf, answerLogFor, recordWhenSettled } from "./answer-log.mjs";
 import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
@@ -224,6 +224,13 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       }
     });
     const probe = (bucket, network) => async (ctx) => (await probeCeilings(ctx))[bucket][network];
+    app.all(route, (req, res, next) => {
+      if (!["GET", "HEAD"].includes(req.method) && !isDiscoveryProbe(req)) return next();
+      const model = readFormatRequest(route, EXAMPLES[route]).model;
+      if (!catalogue.isUnservable?.(model)) return next();
+      const error = unservableError(catalogue, model, FormatError);
+      res.set("Retry-After", String(error.retryAfter)).status(503).json(refusal(route, 503, error.message));
+    });
     app.post(route, async (req, res, next) => {
       // x402scan's empty, unpaid probe gets the example's offer (above), not a "Send a JSON body"/"Name a model" error.
       if (isDiscoveryProbe(req)) { req.askCeilings = ceilings(null, {}, exactOutputFraction); return next(); }
@@ -231,6 +238,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         const input = readFormatRequest(route, req.body);
         const info = await catalogue.resolve(input.model);
         if (catalogue.canAnswer && !(await catalogue.canAnswer(info.id))) {
+          if (catalogue.isUnservable?.(info.id)) throw unservableError(catalogue, info.id, FormatError);
           throw new FormatError(400, "No trusted seller offers that model right now. Pick another; nothing was paid.");
         }
         req.format = { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) };
@@ -238,8 +246,10 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         quotes.set(req.body, req.askCeilings);
         next();
       } catch (error) {
+        if (error.retryAfter) res.set("Retry-After", String(error.retryAfter));
         const status = error instanceof UnknownModel ? 404 : error.status ?? 503;
-        res.status(status).json(refusal(route, status, status === 503 ? "Try again shortly." : error.message));
+        const message = status === 503 && !error.retryAfter ? "Try again shortly." : error.message;
+        res.status(status).json(refusal(route, status, message));
       }
     });
     addPaymentRoute(app, { [`POST ${route}`]: {
@@ -290,6 +300,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
           + ` settling ${billing.totalAtomic} micro-USDC`);
         res.json({ ...scrub(data), billing });
       } catch (error) {
+        markUnservable(catalogue, req.format?.model, error, log);
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
         log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
         if (error.code === "max_tokens_spent_reasoning") {

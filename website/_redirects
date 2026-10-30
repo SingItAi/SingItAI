@@ -15,3 +15,8 @@
 # file before the dashboard SPA fallback, which is why /robots.txt and
 # /sitemap.xml used to return the landing HTML: the files were missing.
 # A splat rule here would hide them again.
+# generated:hidden-models:start
+# Temporarily hidden, see scripts/hidden-models.json
+/models/deepseek-v4.1-flash-uncensored /models/all/ 302
+/models/deepseek-v4.1-flash-uncensored/ /models/all/ 302
+# generated:hidden-models:end

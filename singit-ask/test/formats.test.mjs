@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
-import { UnknownModel } from "../src/catalogue.mjs";
+import { ModelCatalogue, UnknownModel } from "../src/catalogue.mjs";
 import { FORMAT_LIMITS, readFormatRequest, scrub, surplusModel } from "../src/formats.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
@@ -51,9 +51,9 @@ function fakeSurplus({ status = 200, cost = 2000, inHeader = false } = {}) {
   return { calls, fetchImpl };
 }
 
-async function serve(t, { surplus = fakeSurplus() } = {}) {
+async function serve(t, { surplus = fakeSurplus(), catalogue: selectedCatalogue = catalogue } = {}) {
   const facilitator = fakeFacilitator();
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue, fetchImpl: surplus.fetchImpl, log: () => {},
+  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue: selectedCatalogue, fetchImpl: surplus.fetchImpl, log: () => {},
     upstream: async () => { throw new Error("the chat route is not asked"); } });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
@@ -180,3 +180,47 @@ test("names, sizes and scrubbing", () => {
   assert.deepEqual(scrub({ provider: "x", usage: { input_tokens: 1, cost: 2, buyer_cost_micro: 3 } }), { usage: { input_tokens: 1 } });
   assert.deepEqual(scrub({ cost: { usd: 0, diem: 1e-5 }, usage: { input_tokens: 1 } }), { usage: { input_tokens: 1 } });
 });
+
+for (const [route, body, model] of [["/v1/messages", MESSAGE, SONNET], ["/v1/responses", RESPONSE, GPT]]) {
+  for (const code of ["no_healthy_sellers", "upstream_error", "rate_limited"]) {
+    test(`${route}: ${code} caches only seller absence before any further payment`, async (t) => {
+      let clock = 100;
+      const selected = new ModelCatalogue({ url: CONFIG.surplusUrl, now: () => clock, unservableTtlMs: 60_000 });
+      selected.models = new Map([[model.id, model]]);
+      selected.loadedAt = clock;
+      selected.prices = new Map();
+      selected.pricesAt = clock;
+      const surplus = { fetchImpl: async () => new Response(JSON.stringify({ error: { code } }), {
+        status: code === "rate_limited" ? 429 : 503,
+      }) };
+      const { url, facilitator } = await serve(t, { surplus, catalogue: selected });
+      const unpaid = await post(`${url}${route}`, body);
+      assert.equal(unpaid.status, 402);
+      const paid = await post(`${url}${route}`, body, pay(decode(unpaid.headers.get("payment-required")), BASE));
+      assert.equal(paid.status, 503);
+      assert.match(JSON.stringify(await paid.json()), /no_billable_answer|No billable answer was produced/);
+      assert.deepEqual(facilitator.calls.settle, []);
+      const hidden = code === "no_healthy_sellers";
+      assert.equal(selected.isUnservable(model.id), hidden);
+      assert.equal((await (await fetch(`${url}/v1/models`)).json()).data.some((m) => m.id === model.id), !hidden);
+      assert.equal((await (await fetch(`${url}/pricing.json`)).json()).models.some((m) => m.id === model.id), !hidden);
+      const retry = await post(`${url}${route}`, body);
+      assert.equal(retry.status, hidden ? 503 : 402);
+      if (hidden) {
+        assert.equal(retry.headers.get("payment-required"), null);
+        assert.equal(retry.headers.get("retry-after"), "60");
+        assert.match(JSON.stringify(await retry.json()), /Nothing was paid/);
+      }
+      for (const method of ["GET", "HEAD", "POST"]) {
+        const probe = await fetch(`${url}${route}`, { method });
+        assert.equal(probe.status, hidden ? 503 : 402);
+        if (hidden) {
+          assert.equal(probe.headers.get("retry-after"), "60");
+          assert.equal(probe.headers.get("payment-required"), null);
+        }
+      }
+      clock += 60_001;
+      assert.equal((await post(`${url}${route}`, body)).status, 402);
+    });
+  }
+}

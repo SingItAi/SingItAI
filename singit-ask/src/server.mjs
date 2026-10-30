@@ -8,6 +8,7 @@
 //   SINGIT_ASK_QUOTE_TOKEN     its shared secret (32+ characters) and
 //   SINGIT_ASK_QUOTE_DB        its private SQLite file
 //   SINGIT_ASK_MODEL           upstream model, default deepseek-v4.1-flash
+//   SINGIT_ASK_UNSERVABLE_TTL_MINUTES  seller rejection cache, default 15 minutes; 0 disables
 //   SINGIT_ASK_PORT            default 8140
 //   SINGIT_ASK_BLOCKED_PROVIDERS  provider ids the Surplus key blocks (comma-separated), so models only they sell
 //                              are not offered
@@ -78,6 +79,9 @@ const config = {
     || `${process.env.HOME}/.config/singit-ask/observed-prices.json`,
 };
 {
+  const ttlText = String(process.env.SINGIT_ASK_UNSERVABLE_TTL_MINUTES ?? "15").trim();
+  const ttl = ttlText ? Number(ttlText) : NaN;
+  config.unservableTtlMs = (Number.isFinite(ttl) && ttl >= 0 ? ttl : 15) * 60_000;
   const bufferPp = Number(process.env.SINGIT_ASK_PRICE_BUFFER_PP);
   config.priceBufferPp = Number.isInteger(bufferPp) && bufferPp >= 0 ? bufferPp : 1;
   const fraction = Number(process.env.SINGIT_ASK_EXACT_OUTPUT_FRACTION);

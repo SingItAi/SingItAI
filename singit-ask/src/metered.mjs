@@ -6,6 +6,7 @@
 // and a facilitator cannot settle an exact payment for less than what was signed), so it is priced at the full
 // ceiling and that is disclosed in the offer's own `extra.billing.mode`. `upto` is unaffected and keeps paying
 // only the answer's actual cost.
+import { markUnservable } from "./catalogue.mjs";
 import { ExpressAdapter, paymentMiddlewareFromHTTPServer, x402HTTPResourceServer, x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { SETTLEMENT_OVERRIDES_HEADER } from "@x402/core/http";
 import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
@@ -253,7 +254,9 @@ export function perRequest(quote) {
 
 // `makeOffers(quotes, probeFallback)`: `probeFallback(bucket, network)` is the discovery probes' price for that
 // offer (see `exampleProbe`), present only when `probeBody` is given; without it the probes keep the standing ceiling.
-export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, config, readRequest, choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, offerEmptyProbe = false, probeBody }) {
+export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, catalogue, config, readRequest,
+  choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log,
+  offerEmptyProbe = false, probeBody }) {
   const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose,
     exactOutputFraction: config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION });
   const offers = makeOffers(quotes, probeFallback);
@@ -265,6 +268,15 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const answerLog = answerLogFor(config, log);
+  // Do not advertise payment for a known failure on pinned routes or default-model probes.
+  app.all(route, (req, res, next) => {
+    const model = probeBody?.model ?? config.model;
+    if (!probeBody?.model && !["GET", "HEAD"].includes(req.method) && !isDiscoveryProbe(req)) return next();
+    if (!catalogue?.isUnservable?.(model)) return next();
+    res.set("Retry-After", String(catalogue.unservableRetryAfter(model))).status(503).json({
+      error: { type: "upstream_error",
+        message: "No seller can serve that model right now. Nothing was paid; try again later." } });
+  });
   app.post(route, async (req, res, next) => {
     // It gets the standing offer; paying it with no question is still refused below.
     if (offerEmptyProbe && isDiscoveryProbe(req)) {
@@ -277,6 +289,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       quotes.set(req.body, req.askCeilings);
       next();
     } catch (error) {
+      if (error.retryAfter) res.set("Retry-After", String(error.retryAfter));
       if (!error.status) log(`singit-ask: model list failure (${error.name})`);
       res.status(error.status ?? 503).json({ error: { message: error.status ? error.message : "Try again shortly.",
         type: error.status ? "invalid_request_error" : "upstream_error" } });
@@ -307,6 +320,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         model: "singit-ask", choices: [{ index: 0, message: { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing });
     } catch (error) {
+      markUnservable(catalogue, req.askInput?.model, error, log);
       // Not settled (status >= 400): on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
       // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
       log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);

@@ -144,8 +144,38 @@ function modelPage(shell, s, m) {
   if (p) product.offers = ["input", "output"].map((direction) => ({ "@type": "Offer", name: `${direction} tokens (expected price)`, priceCurrency: "USD", priceSpecification: { "@type": "UnitPriceSpecification", price: price(p[direction]), priceCurrency: "USD", unitText: `1M ${direction} tokens`, referenceQuantity: { "@type": "QuantitativeValue", value: 1000000, unitText: `${direction} tokens` } } }));
   return page(shell, { slug: `models/${safeSlug(m.id)}`, title: modelTitle(name), h1: `${name}: pay per request with x402`, description: modelDescription(m), body, faq, nodes: [product] });
 }
-export function renderPages(s, shell) {
+export function visibleSnapshot(s, hold = { hidden: [] }, warn = console.warn) {
+  if (!Array.isArray(hold?.hidden)) throw new Error("Invalid hidden models list");
+  const ids = new Set();
+  for (const entry of hold.hidden) {
+    safeSlug(entry?.id);
+    if (typeof entry.since !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(entry.since)
+        || typeof entry.reason !== "string" || !entry.reason.trim() || ids.has(entry.id)) {
+      throw new Error("Invalid hidden model entry");
+    }
+    ids.add(entry.id);
+    if (!s.models.some((m) => m.id === entry.id)) warn(`Hidden model absent from snapshot: ${entry.id}`);
+  }
+  return { ...s, models: s.models.filter((m) => !ids.has(m.id)) };
+}
+
+export function hiddenRedirects(text, hold) {
+  const start = "# generated:hidden-models:start", end = "# generated:hidden-models:end";
+  const block = [start, "# Temporarily hidden, see scripts/hidden-models.json",
+    ...hold.hidden.flatMap(({ id }) => [
+      `/models/${safeSlug(id)} /models/all/ 302`, `/models/${safeSlug(id)}/ /models/all/ 302`,
+    ]), end].join("\n");
+  const a = text.indexOf(start), b = text.indexOf(end);
+  if (a < 0 && b < 0) return text + (text.endsWith("\n") ? "" : "\n") + block + "\n";
+  if (a < 0 || b < a || text.indexOf(start, a + 1) >= 0 || text.indexOf(end, b + 1) >= 0) {
+    throw new Error("Malformed hidden model markers");
+  }
+  return text.slice(0, a) + block + text.slice(b + end.length);
+}
+
+export function renderPages(s, shell, hold = { hidden: [] }) {
   if (!Array.isArray(s.models) || s.models.length < 50 || !Number.isFinite(Date.parse(s.fetchedAt))) throw new Error("Invalid snapshot");
+  s = visibleSnapshot(s, hold);
   const files = new Map();
   const ids = new Set();
   for (const m of s.models) {
@@ -169,13 +199,16 @@ export async function generate(check = false) {
   const website = path.join(root, "website");
   const s = JSON.parse(await readFile(path.join(website, "data/models-snapshot.json"), "utf8"));
   const shell = await readFile(path.join(root, "scripts/templates/model-shell.html"), "utf8");
-  const files = renderPages(s, shell);
+  const hold = JSON.parse(await readFile(path.join(root, "scripts/hidden-models.json"), "utf8"));
+  const files = renderPages(s, shell, hold);
+  const visible = visibleSnapshot(s, hold);
   const urls = [...files.keys()].map((f) => `${origin}/${f.replace(/index\.html$/, "")}`);
   const sitemap = await readFile(path.join(website, "sitemap.xml"), "utf8");
   const llms = await readFile(path.join(website, "llms.txt"), "utf8");
   files.set("sitemap.xml", mergeBlock(sitemap, urls.map((url) => `  <url><loc>${url}</loc></url>`).join("\n"), "</urlset>"));
-  const entries = [["All model pages", `${origin}/models/all/`], ...limits.map((p) => [p.title.replace(" | SingIt", ""), `${origin}/${p.slug}/`]), ...s.models.map((m) => [m.name ?? m.id, `${origin}/models/${m.id}/`])];
+  const entries = [["All model pages", `${origin}/models/all/`], ...limits.map((p) => [p.title.replace(" | SingIt", ""), `${origin}/${p.slug}/`]), ...visible.models.map((m) => [m.name ?? m.id, `${origin}/models/${m.id}/`])];
   files.set("llms.txt", mergeBlock(llms, "## Model pages and spending limits\n\n" + entries.map(([name, url]) => `- [${name.replace(/[\[\]\\]/g, "\\$&").replace(/[\r\n]/g, " ")}](${url})`).join("\n")));
+  files.set("_redirects", hiddenRedirects(await readFile(path.join(website, "_redirects"), "utf8"), hold));
   const stale = [];
   // Model directories belong to this generator; removed models must not linger.
   for (const dir of await readdir(path.join(website, "models"), { withFileTypes: true })) {

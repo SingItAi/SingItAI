@@ -118,24 +118,33 @@ function parseMarket(data) {
 // Whether a model can be answered right now: some offer in its order book is trusted (the key routes to trusted
 // sellers only), healthy and available, and not from a provider the key blocks. A model with none is not offered:
 // choosing it would only end in an error. Measured on 12 October: 39 of 227 listed models had no such offer.
-function qualifies(offer, blocked) {
+function qualifies(offer, blocked, id) {
+  const model = offer?.model ?? offer?.model_id;
+  if (model != null && String(model).toLowerCase() !== String(id).toLowerCase()) return false;
   return offer?.trusted === true && offer?.healthy === true && offer?.available === true
+    && !(typeof offer.cap_remaining === "number" && offer.cap_remaining <= 0)
     && !blocked.has(String(offer.provider_id ?? "").toLowerCase());
 }
-function canServe(book, blocked) {
+function matchesBook(book, id) {
+  const model = book?.model ?? book?.data?.model;
+  return typeof model !== "string" || model.toLowerCase() === String(id).toLowerCase();
+}
+export function canServe(book, blocked, id) {
+  if (!matchesBook(book, id)) return false;
   const offers = book?.data?.offers ?? book?.offers ?? [];
-  return offers.some((o) => qualifies(o, blocked));
+  return offers.some((o) => qualifies(o, blocked, id));
 }
 
 // The cheapest share of list price among a model's qualifying offers (share = (100 - discount_pct) / 100), or
 // null when none qualifies or names a usable discount. This is what Surplus could really charge if told to route
 // there (catalogue.mjs's `guardShare`, pricing.mjs's `priceGuard`), not the best offer overall: an offer that is
 // not trusted, healthy, available or from a blocked provider is never actually reachable.
-function cheapestShare(book, blocked) {
+export function cheapestShare(book, blocked, id) {
+  if (!matchesBook(book, id)) return null;
   const offers = book?.data?.offers ?? book?.offers ?? [];
   let best = null;
   for (const o of offers) {
-    if (!qualifies(o, blocked)) continue;
+    if (!qualifies(o, blocked, id)) continue;
     const discount = Number(o?.discount_pct);
     if (!(discount >= 0 && discount <= 100)) continue;
     const share = (100 - discount) / 100;
@@ -160,8 +169,9 @@ export function priceGuard(catalogue, id, bufferPp) {
 // cached is served at once even when it is old, and one refresh at a time runs in the background. Only the very
 // first read, with nothing cached yet, waits.
 export class ModelCatalogue {
-  constructor({ url, fetchImpl = fetch, now = Date.now, blocked = [] }) {
-    Object.assign(this, { url, fetchImpl, now });
+  constructor({ url, fetchImpl = fetch, now = Date.now, blocked = [], unservableTtlMs = 15 * 60 * 1000 }) {
+    Object.assign(this, { url, fetchImpl, now, unservableTtlMs });
+    this.unservable = new Map();
     this.blocked = new Set(blocked.map((p) => String(p).toLowerCase()));
     this.served = null;  // ids of the models that can be answered now; null until first read
     this.guardShares = new Map();  // cheapest qualifying share of list per model id, from the same order books
@@ -233,10 +243,10 @@ export class ModelCatalogue {
               const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`,
                                                     { signal: AbortSignal.timeout(10_000) });
               const book = response.ok ? await response.json() : null;
-              if (book ? canServe(book, this.blocked) : (this.served?.has(id) ?? true)) served.add(id);
-              const share = book ? cheapestShare(book, this.blocked) : null;
+              if (book ? canServe(book, this.blocked, id) : (this.served?.has(id) ?? true)) served.add(id);
+              const share = book ? cheapestShare(book, this.blocked, id) : null;
               if (share !== null) guards.set(id, share);
-              else if (this.guardShares.has(id)) guards.set(id, this.guardShares.get(id));
+              else if (!book && this.guardShares.has(id)) guards.set(id, this.guardShares.get(id));
             } catch {
               if (this.served?.has(id) ?? true) served.add(id);
               if (this.guardShares.has(id)) guards.set(id, this.guardShares.get(id));
@@ -308,8 +318,31 @@ export class ModelCatalogue {
     return this.videoSellers ?? new Map();
   }
 
+  // Routing can reject a model whose public book still looks healthy. Keep that paid failure briefly so
+  // subsequent buyers are not asked to sign a payment that cannot produce an answer. Unknown ids are bounded
+  // too: neither a failing seller nor arbitrary callers should make this process retain ids without limit.
+  markUnservable(id, ttlMs = this.unservableTtlMs) {
+    if (!(this.unservableTtlMs > 0) || !(ttlMs > 0)) return;
+    for (const [key, expiry] of this.unservable) if (expiry <= this.now()) this.unservable.delete(key);
+    this.unservable.delete(id);
+    while (this.unservable.size >= 1000) this.unservable.delete(this.unservable.keys().next().value);
+    this.unservable.set(id, this.now() + ttlMs);
+  }
+
+  isUnservable(id) {
+    const expiry = this.unservable.get(id);
+    if (expiry > this.now()) return true;
+    this.unservable.delete(id);
+    return false;
+  }
+
+  unservableRetryAfter(id) {
+    return this.isUnservable(id) ? Math.max(30, Math.ceil((this.unservable.get(id) - this.now()) / 1000)) : 30;
+  }
+
   // Whether a model can be answered now: true until the order books have been read once.
   async canAnswer(id) {
+    if (this.isUnservable(id)) return false;
     if (this.served && this.now() - this.servedAt >= MARKET_TTL_MS) this.loadServed();
     return this.served ? this.served.has(id) : true;
   }
@@ -393,4 +426,20 @@ export class ModelCatalogue {
     if (!model) throw new UnknownModel("That image model is not available. See GET /v1/images/models.");
     return model;
   }
+}
+
+// Shared by all paid text formats; match the machine code, never the upstream's human message.
+export function markUnservable(catalogue, model, error, log) {
+  if (error.code !== "no_healthy_sellers") return;
+  catalogue?.markUnservable?.(model);
+  if (catalogue?.isUnservable?.(model)) {
+    const minutes = catalogue.unservableTtlMs / 60_000;
+    log(`singit-ask: model ${model} marked unservable for ${minutes} min (no_healthy_sellers)`);
+  }
+}
+
+export function unservableError(catalogue, id, ErrorClass) {
+  const error = new ErrorClass(503, "No seller can serve that model right now. Nothing was paid; try again later.");
+  error.retryAfter = catalogue?.unservableRetryAfter?.(id) ?? 30;
+  return error;
 }

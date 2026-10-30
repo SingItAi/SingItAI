@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
-import { BASE, SOLANA, ROUTE, LIMITS, RequestError, UpstreamError, readRequest, askSurplus, createApp, REASONING_OFF } from "../src/app.mjs";
+import { BASE, SOLANA, ROUTE, LIMITS, RequestError, UpstreamError, chooseModel, readRequest, askSurplus, createApp, REASONING_OFF } from "../src/app.mjs";
 import { FORMAT_ROUTES } from "../src/formats.mjs";
 import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage } from "../src/pricing.mjs";
 import { ModelCatalogue, UnknownModel, priceGuard } from "../src/catalogue.mjs";
@@ -53,14 +53,14 @@ const IDLE = { id: "idle-model", name: "Idle", provider: "X", contextLength: 1, 
 const fakeCatalogue = { async market() { return new Map([["pro-model", { trustedShare: 0.25 }]]); }, async resolve(id) { const m = [PRICEY, CHEAP, IDLE].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
   async list() { return [CHEAP, PRICEY]; }, async canAnswer(id) { return id !== "idle-model"; } };
 
-async function serve(t, { upstream, config = CONFIG } = {}) {
+async function serve(t, { upstream, config = CONFIG, catalogue = fakeCatalogue, fetchImpl } = {}) {
   const facilitator = fakeFacilitator();
   const asked = [];
   const answer = upstream ?? (async (_config, messages, maxTokens) => {
     asked.push({ messages, maxTokens });
     return { content: "Try Caffè Propaganda.", finishReason: "stop", usage: { total_tokens: 42, buyer_cost_micro: 100 } };
   });
-  const app = createApp(config, { facilitatorClient: facilitator, upstream: answer, log: () => {}, catalogue: fakeCatalogue });
+  const app = createApp(config, { facilitatorClient: facilitator, upstream: answer, log: () => {}, catalogue, fetchImpl });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
   return { url: `http://127.0.0.1:${listener.address().port}`, facilitator, asked, app };
@@ -1009,4 +1009,106 @@ test("free model answers contribute health but no settled usage", async t => {
   const health = await (await fetch(`${url}/health`)).json();
   assert.equal(health.models[CONFIG.model].successes, 1);
   assert.equal((await (await fetch(`${url}/numbers.json`)).json()).paid_calls.total, 0);
+});
+
+// Exercise the real error parser and cache together: a public healthy book is not proof that routing can answer.
+for (const [route, id] of [[ROUTE, CHEAP.id], [ROUTE, CONFIG.model],
+  ["/v1/chat/deepseek-v4.1-flash", CONFIG.model]]) {
+  for (const code of ["no_healthy_sellers", "upstream_error", "rate_limited"]) {
+    test(`${route} ${id}: paid ${code} hides only an unservable model until its TTL passes`, async (t) => {
+      let clock = 1000;
+      const model = { ...CHEAP, id };
+      const catalogue = new ModelCatalogue({ url: CONFIG.surplusUrl, now: () => clock, unservableTtlMs: 60_000 });
+      catalogue.models = new Map([[model.id, model]]);
+      catalogue.loadedAt = clock;
+      catalogue.prices = new Map();
+      catalogue.pricesAt = clock;
+      const fetchImpl = async () => new Response(JSON.stringify({ error: { code } }), {
+        status: code === "rate_limited" ? 429 : 503,
+      });
+      const { url, facilitator } = await serve(t, { catalogue, upstream: askSurplus, fetchImpl });
+      const send = (headers = {}) => fetch(`${url}${route}`, { method: "POST",
+        headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify({ ...QUESTION, model: model.id }) });
+      const challenge = await send();
+      assert.equal(challenge.status, 402);
+      const paid = await send({ "PAYMENT-SIGNATURE": baseSignature(decode(challenge.headers.get("payment-required"))) });
+      assert.equal(paid.status, 503);
+      assert.equal((await paid.json()).error.code, "no_billable_answer");
+      assert.deepEqual(facilitator.calls.settle, []);
+      const hidden = code === "no_healthy_sellers";
+      const listed = (await (await fetch(`${url}/v1/models`)).json()).data;
+      const pricing = await (await fetch(`${url}/pricing.json`)).json();
+      assert.equal(listed.some((m) => m.id === model.id), !hidden);
+      assert.equal(pricing.models.some((m) => m.id === model.id), !hidden);
+      const retry = await send();
+      assert.equal(retry.status, hidden ? 503 : 402);
+      if (hidden) {
+        assert.equal(retry.headers.get("payment-required"), null);
+        assert.equal(retry.headers.get("retry-after"), "60");
+        assert.match((await retry.json()).error.message, /Nothing was paid/);
+        if (route !== ROUTE) assert.equal((await fetch(`${url}${route}`)).status, 503);
+      }
+      clock += 60_001;
+      assert.equal((await send()).status, 402);
+      assert.ok((await (await fetch(`${url}/v1/models`)).json()).data.some((m) => m.id === model.id));
+      assert.ok((await (await fetch(`${url}/pricing.json`)).json()).models.some((m) => m.id === model.id));
+    });
+  }
+}
+
+test("chooseModel refuses marked default and named models, recovers on expiry and keeps unknown at 400", async () => {
+  let clock = 100;
+  const catalogue = new ModelCatalogue({ url: CONFIG.surplusUrl, now: () => clock, unservableTtlMs: 60_000 });
+  catalogue.models = new Map([[CONFIG.model, { ...CHEAP, id: CONFIG.model }], [CHEAP.id, CHEAP]]);
+  catalogue.loadedAt = clock;
+  for (const id of [CONFIG.model, CHEAP.id]) catalogue.markUnservable(id);
+  for (const model of [undefined, CONFIG.model, CHEAP.id]) {
+    await assert.rejects(chooseModel(CONFIG, catalogue, { model }), (error) => {
+      assert.equal(error.status, 503);
+      assert.equal(error.retryAfter, 60);
+      assert.match(error.message, /Nothing was paid/);
+      return true;
+    });
+  }
+  await assert.rejects(chooseModel(CONFIG, catalogue, { model: "unknown" }), { status: 400 });
+  clock += 60_001;
+  assert.equal((await chooseModel(CONFIG, catalogue, {})).model, CONFIG.model);
+  assert.equal((await chooseModel(CONFIG, catalogue, { model: CHEAP.id })).model, CHEAP.id);
+});
+
+test("default fallback survives an unserved or unresolved catalogue model", async () => {
+  for (const resolves of [true, false]) {
+    const catalogue = {
+      async resolve() { if (!resolves) throw new UnknownModel("unknown"); return { ...CHEAP, id: CONFIG.model }; },
+      async canAnswer() { return false; },
+      isUnservable() { return false; },
+    };
+    for (const model of [undefined, CONFIG.model]) {
+      const chosen = await chooseModel(CONFIG, catalogue, { model });
+      assert.equal(chosen.model, CONFIG.model);
+      assert.equal(chosen.isDefault, true);
+      assert.equal(chosen.info?.id ?? null, resolves ? CONFIG.model : null);
+    }
+  }
+});
+
+test("marked default hides the alias and refuses discovery until expiry", async (t) => {
+  let clock = 100;
+  const catalogue = new ModelCatalogue({ url: CONFIG.surplusUrl, now: () => clock, unservableTtlMs: 60_000 });
+  catalogue.models = new Map([[CONFIG.model, { ...CHEAP, id: CONFIG.model }]]);
+  catalogue.loadedAt = clock;
+  catalogue.prices = new Map();
+  catalogue.pricesAt = clock;
+  catalogue.markUnservable(CONFIG.model);
+  const { url } = await serve(t, { catalogue });
+  assert.equal((await (await fetch(`${url}/v1/models`)).json()).data.some((m) => m.id === "singit-ask"), false);
+  for (const method of ["GET", "HEAD", "POST"]) {
+    const response = await fetch(`${url}${ROUTE}`, { method });
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get("retry-after"), "60");
+    assert.equal(response.headers.get("payment-required"), null);
+  }
+  clock += 60_001;
+  assert.equal((await (await fetch(`${url}/v1/models`)).json()).data.some((m) => m.id === "singit-ask"), true);
+  assert.equal((await fetch(`${url}${ROUTE}`)).status, 402);
 });

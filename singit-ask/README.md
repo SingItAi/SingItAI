@@ -206,6 +206,7 @@ node --env-file=.env src/server.mjs
 
 | Variable | Meaning |
 | --- | --- |
+| `SINGIT_ASK_UNSERVABLE_TTL_MINUTES` | Seller rejection cache in minutes; default 15, 0 disables, invalid values use 15. |
 | `SINGIT_ASK_PAY_TO_SOLANA` | Wallet that receives Solana payments. Its USDC token account must already exist. |
 | `SINGIT_ASK_PAY_TO_BASE` | Address that receives Base payments. |
 | `SIGN402_BASE_BUILDER_CODE` | Optional. Base Builder Code (base.dev). When set, every Base-payable 402 declares it as the x402 `builder-code` app code (`a`), and the CDP facilitator appends it to the settlement calldata as an ERC-8021 suffix. Unset or invalid: no extension. Keep it in the service env, never in git. |
