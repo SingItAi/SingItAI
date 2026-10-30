@@ -198,3 +198,56 @@ test("all committed pages are current, crawlable and follow content rules", asyn
   const index = await read("models/all/index.html");
   for (const m of s.models) assert.ok(index.includes(`href="/models/${m.id}/"`));
 });
+
+test("retired singular spending page redirects and is absent from discovery", async () => {
+  await assert.rejects(read("ai-agent-spending-limit/index.html"), { code: "ENOENT" });
+  const { stat } = await import("node:fs/promises");
+  await assert.rejects(stat(path.join(website, "ai-agent-spending-limit")), { code: "ENOENT" });
+  for (const file of ["sitemap.xml", "llms.txt"]) assert.doesNotMatch(await read(file), /\/ai-agent-spending-limit(?:\/|[?#\s<)])/);
+  const rules = (await read("_redirects")).split("\n");
+  assert.ok(rules.includes("/ai-agent-spending-limit /agent-spending-limits/ 301"));
+  assert.ok(rules.includes("/ai-agent-spending-limit/ /agent-spending-limits/ 301"));
+});
+
+test("limits copy distinguishes Base emergency stop and Solana server checks", async () => {
+  const permanent = "Pause is a permanent emergency stop. To change limits, revoke and set up a new allowance.";
+  const server = "The daily limit, the per-purchase limit and the expiry are enforced by SingIt's server, not on-chain.";
+  const descriptions = [
+    "Set a per-purchase cap, a daily cap and an expiry once. Your agent spends USDC only inside them, and you can stop it at any time.",
+    "Step by step: approve USDC, set caps and expiry, watch receipts, and stop the agent at any time.",
+  ];
+  for (const [i, brief] of limits.entries()) {
+    const html = await read(`${brief.slug}/index.html`);
+    assert.doesNotMatch(html, /one click|anytime|pause it|pause in one/i);
+    const solana = html.match(/<h2>Solana[^<]*<\/h2>([\s\S]*?)(?=<h2>|<\/section>)/)[1];
+    assert.ok(decode(solana).includes(server));
+    assert.doesNotMatch(solana, /permanent|contract|reject/i);
+    for (const match of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/g)) {
+      if (/Solana/i.test(match[1])) assert.doesNotMatch(match[1], /rejected on-chain|reject/i);
+    }
+    if (i < 2) {
+      assert.ok(html.includes(permanent));
+      assert.ok(html.includes("The daily limit resets at 00:00 UTC."));
+      assert.equal(brief.description, descriptions[i]);
+      for (const tag of ["meta name=\"description\"", "meta property=\"og:description\""]) {
+        assert.ok(html.includes(`<${tag} content="${escapeHtml(descriptions[i])}">`));
+      }
+      const graph = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1])["@graph"];
+      assert.equal(graph.find((n) => n["@type"] === "WebPage").description, descriptions[i]);
+    }
+  }
+});
+
+test("consolidated page preserves the published spend excerpt and comparison structure", async () => {
+  const html = await read("agent-spending-limits/index.html");
+  for (const id of ["problem", "how", "pays-for"]) assert.ok(html.includes(`class="lp-section" id="${id}"`));
+  assert.ok(html.includes('class="mtable"'));
+  const excerpt = decode(html.match(/<code id="code-spend">([\s\S]*?)<\/code>/)[1].replace(/<[^>]+>/g, ""));
+  const contract = await readFile(path.join(root, "agent-allowance/src/AgentAllowance.sol"), "utf8");
+  let offset = contract.indexOf("function spend(");
+  for (const line of excerpt.split("\n").map((line) => line.trim()).filter((line) => line && line !== "// ...")) {
+    const at = contract.indexOf(line, offset);
+    assert.ok(at >= offset, line);
+    offset = at + line.length;
+  }
+});

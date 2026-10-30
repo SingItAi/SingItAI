@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>How to limit what an AI agent can spend | SingIt</title>
-<meta name="description" content="Step by step: approve USDC, set caps and expiry, watch receipts, pause in one click.">
+<meta name="description" content="Step by step: approve USDC, set caps and expiry, watch receipts, and stop the agent at any time.">
 <link rel="canonical" href="https://singitai.app/limit-ai-agent-spending/">
 <meta property="og:title" content="How to limit what an AI agent can spend | SingIt">
-<meta property="og:description" content="Step by step: approve USDC, set caps and expiry, watch receipts, pause in one click.">
+<meta property="og:description" content="Step by step: approve USDC, set caps and expiry, watch receipts, and stop the agent at any time.">
 <meta property="og:url" content="https://singitai.app/limit-ai-agent-spending/">
 <meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
 <meta property="og:type" content="website">
@@ -27,7 +27,7 @@
       "@type": "WebPage",
       "url": "https://singitai.app/limit-ai-agent-spending/",
       "name": "How to limit what an AI agent can spend | SingIt",
-      "description": "Step by step: approve USDC, set caps and expiry, watch receipts, pause in one click.",
+      "description": "Step by step: approve USDC, set caps and expiry, watch receipts, and stop the agent at any time.",
       "inLanguage": "en"
     },
     {
@@ -50,6 +50,14 @@
     {
       "@type": "FAQPage",
       "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "When does the Base daily cap reset?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "At 00:00 UTC. The contract counts calendar days, not a rolling 24 hours."
+          }
+        },
         {
           "@type": "Question",
           "name": "Does signing in approve spending?",
@@ -134,12 +142,12 @@
 </header>
 
 <main id="top">
-<section class="hero dev-hero"><div class="shell"><div class="hero-copy"><h1>How to cap an AI agent&#39;s spending</h1><p class="hero-sub">Step by step: approve USDC, set caps and expiry, watch receipts, pause in one click.</p></div></div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Set a budget</h2>
+<section class="hero dev-hero"><div class="shell"><div class="hero-copy"><h1>How to cap an AI agent&#39;s spending</h1><p class="hero-sub">Step by step: approve USDC, set caps and expiry, watch receipts, and stop the agent at any time.</p></div></div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Set a budget</h2>
 <p><a href="https://app.singitai.app/app/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=limit-ai-agent-spending&amp;utm_content=hero">Open SingIt and set limits</a></p>
 </div></section><section class="lp-section"><div class="shell"><h2>1. Sign in with your wallet</h2>
 <p>Open the SingIt app and connect the wallet you want to use. Sign in with that wallet. A sign-in message establishes the account; it does not itself grant USDC spending permission. Check the network before setting up your budget. Base and Solana use different approval mechanisms, so review the section for the network you choose.</p>
 <h2>2. Set daily, per-purchase and lifetime limits</h2>
-<p>Choose the daily cap, the per-purchase cap and how many days the budget lasts. Use a per-purchase cap that fits one intended purchase and a daily cap that fits the total activity you expect. On Base, the day is a UTC calendar day and resets at UTC midnight. It is not measured from the time you sign in or the time of the first purchase.</p>
+<p>Choose the daily cap, the per-purchase cap and how many days the budget lasts. Use a per-purchase cap that fits one intended purchase and a daily cap that fits the total activity you expect. On Base, the day is a UTC calendar day. The daily limit resets at 00:00 UTC. It is not measured from the time you sign in or the time of the first purchase.</p>
 <p>On Base, SingIt deploys a limiter for you and pays its deployment gas. The caps and expiry are fixed in that contract. Review them before approval. Nothing in the limiter can raise them later: changing the policy means a new limiter and a new approval. The limiter itself holds no tokens.</p>
 <h2>3. Approve USDC once</h2>
 <p>Approve USDC from your wallet to your Base limiter. The approval gives it permission to transfer within the approved total. Each spend uses transferFrom from the owner's wallet to the payee. Only the configured agent can call the spending function. The contract rejects a purchase above either cap, after expiry or while paused.</p>
@@ -147,12 +155,13 @@
 <h2>4. Let SingIt's agent buy and review receipts</h2>
 <p>After approval, SingIt's own agent buys inside the limits in the SingIt app. Watch purchases and receipts in the app. A receipt helps you review what was purchased; it does not change the policy you approved. AgentAllowance does not impose these limits on a wallet that signs x402 payments by itself. For direct API calls, also read the per-call offer before signing.</p>
 <h2>5. Pause or revoke</h2>
-<p>Pause from the app or wallet when you want to stop a Base limiter. That limiter stays paused. To resume, create a new limiter and approve it. The guardian watcher can also pause, but cannot move funds or raise limits. To remove token permission, approve zero from your wallet. You can use revoke.cash without relying on SingIt.</p>
+<p>Pause from the app or wallet when you want to stop a Base limiter. Pause is a permanent emergency stop. To change limits, revoke and set up a new allowance. The guardian watcher can also pause, but cannot move funds or raise limits. To remove token permission, approve zero from your wallet. You can use revoke.cash without relying on SingIt.</p>
 <h2>Solana setup and stopping</h2>
-<p>Solana has no limiter contract. Your wallet approves the agent as SPL delegate on your USDC account for a total. The chain enforces that total; one Revoke ends it. SingIt's server checks the daily cap, per-purchase cap and expiry before every payment. The stop button records a pause and refuses new purchases. It leaves the delegate approval in place. Only a new approval signed by your wallet lifts the pause. A purchase reserved before the pause may still settle; use Revoke to remove the approval.</p></div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Continue reading</h2>
-<p><a href="/agent-spending-limits/">Agent spending limits for USDC on Base</a> · <a href="/x402-budget-for-agents/">x402 payments with a budget for AI agents</a> · <a href="/models/all/">All model pages</a></p><p><a href="/ai-agent-spending-limit/">Published spending-limit overview</a> · <a href="/x402-gift-cards-esims/">Gift cards and eSIMs</a></p>
+<p>Solana uses a delegate approval. Your wallet approves the agent as SPL delegate on your USDC account for a total. The chain enforces that total; one Revoke ends it. The daily limit, the per-purchase limit and the expiry are enforced by SingIt's server, not on-chain. The stop button records a pause and refuses new purchases. It leaves the delegate approval in place. Only a new approval signed by your wallet lifts the pause. A purchase reserved before the pause may still settle; use Revoke to remove the approval.</p></div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Continue reading</h2>
+<p><a href="/agent-spending-limits/">Agent spending limits for USDC on Base</a> · <a href="/x402-budget-for-agents/">x402 payments with a budget for AI agents</a> · <a href="/models/all/">All model pages</a></p><p><a href="/x402-gift-cards-esims/">Gift cards and eSIMs</a></p>
 </div></section><section class="lp-section"><div class="shell"><h2 class="section-title">FAQ</h2>
-<dl class="faq"><div class="faq-item"><dt><h3>Does signing in approve spending?</h3></dt><dd class="faq-answer">No. Sign-in and the USDC approval are separate steps.</dd></div>
+<dl class="faq"><div class="faq-item"><dt><h3>When does the Base daily cap reset?</h3></dt><dd class="faq-answer">At 00:00 UTC. The contract counts calendar days, not a rolling 24 hours.</dd></div>
+<div class="faq-item"><dt><h3>Does signing in approve spending?</h3></dt><dd class="faq-answer">No. Sign-in and the USDC approval are separate steps.</dd></div>
 <div class="faq-item"><dt><h3>Where do I review purchases?</h3></dt><dd class="faq-answer">The SingIt app shows purchases and receipts.</dd></div>
 <div class="faq-item"><dt><h3>How do I revoke on Base?</h3></dt><dd class="faq-answer">Approve zero from your wallet, including through revoke.cash without SingIt.</dd></div>
 <div class="faq-item"><dt><h3>Can I resume a paused Base limiter?</h3></dt><dd class="faq-answer">No. Create a new limiter and make a new approval.</dd></div></dl>

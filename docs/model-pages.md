@@ -14,7 +14,7 @@ For an offline refresh, supply both `--models-input` and `--pricing-input` JSON 
 
 Formatting treats digits beyond the 12th significant digit as binary floating-point noise (for example, the server's decimal product `0.052 * 1.3` becomes `0.06760000000000001`) and normalizes with `x = Number(n.toPrecision(12))`. On that number's decimal string, it keeps up to nine decimal places; if more remain, it rounds UP at the ninth decimal using string arithmetic, then trims trailing zeros. Snapshot numbers remain unchanged in JSON. Live values and the actual request's 402 are authoritative. Titles fall back to a shorter form; descriptions drop the optional price sentence before shortening a name.
 
-The shell is copied from the published spending-limit page into `scripts/templates/model-shell.html`. Limits copy is in `scripts/templates/spending-limits.mjs`. Both are generator inputs. Sitemap and llms.txt edits replace only the marked generated blocks. The live models table has a plain directory link; its JavaScript is unchanged.
+The shell was copied from the former spending-limit page into `scripts/templates/model-shell.html`. Limits copy is in `scripts/templates/spending-limits.mjs`. Both are generator inputs. Sitemap and llms.txt edits replace only the marked generated blocks. The live models table has a plain directory link; its JavaScript is unchanged.
 
 ## Claim sources
 
@@ -25,7 +25,7 @@ Line numbers refer to this checkout. The limits templates use only the claims be
 | Sign in with wallet; sign-in is separate from approval | `docs/allowance-web-v1.md:43`, `docs/allowance-web-v1.md:67` |
 | Choose daily, per-purchase and lifetime; deploy limiter; SingIt pays deployment gas | `docs/allowance-web-v1.md:79`, `docs/allowance-web-v1.md:85` |
 | Approve USDC once from owner's wallet; approval is a separate total | `agent-allowance/src/AgentAllowance.sol:13`, `agent-allowance/src/AgentAllowance.sol:132`, `docs/allowance-web-v1.md:93` |
-| Limiter holds no tokens; spend uses transferFrom from owner to payee | `agent-allowance/src/AgentAllowance.sol:18`, `agent-allowance/src/AgentAllowance.sol:109` |
+| Limiter holds no tokens; spend uses transferFrom from owner to payee | `agent-allowance/src/AgentAllowance.sol:18`, `agent-allowance/src/AgentAllowance.sol:109`, `docs/trezor-allowance-v1.md:300` |
 | Agent-only caller; reject over caps, at expiry or while paused | `agent-allowance/src/AgentAllowance.sol:88`, `agent-allowance/src/AgentAllowance.sol:103` |
 | UTC calendar days, midnight reset; adjacent days have separate caps | `agent-allowance/src/AgentAllowance.sol:98` |
 | Immutable limits; no admin/proxy/setter; changes need new limiter and approval | `agent-allowance/src/AgentAllowance.sol:21`, `agent-allowance/src/AgentAllowance.sol:30` |
@@ -44,6 +44,14 @@ Line numbers refer to this checkout. The limits templates use only the claims be
 | SDK caps are in-memory per client, reset at restart, only as strong as client | `sdk/README.md:43` |
 | Plugin paid chat uses Base; caps in process memory, reset at restart, not on-chain or server-enforced | `integrations/elizaos-plugin/README.md:110` |
 | Provider charge + markup + per-request network fee | `singit-ask/src/pricing.mjs:7`, `singit-ask/src/pricing.mjs:13`, `singit-ask/src/pricing.mjs:61` |
+| Funded hot wallet / stored key risks funds accessible to it (problem framing inferred from compromised-key loss scope); client software limits depend on the client | `docs/trezor-allowance-v1.md:483`, `sdk/README.md:43` |
+| Spend alerts report after activity rather than imposing caps | `docs/trezor-allowance-v1.md:296`, `docs/trezor-allowance-v1.md:309` |
+| Sign in with email, Google or Apple as well as a wallet; signing in moves nothing | `README.md:72` |
+| Base vs Solana comparison: approvals, enforcement and wallet custody; Base micro-payment float up to 0.20 USDC by default | `README.md:84`, `README.md:86`, `docs/trezor-allowance-v1.md:266`, `sign402-gateway/sign402_gateway/solana_allowance.py:6` |
+| Published spend excerpt, with omission markers; caller, pause, expiry, caps, UTC day and transferFrom | `agent-allowance/src/AgentAllowance.sol:87`, `agent-allowance/src/AgentAllowance.sol:109` |
+| Watcher reads Base chain; unexpected payee or unusual hourly burst pauses and alerts; guardian cannot move funds or raise caps | `docs/trezor-allowance-v1.md:296`, `docs/trezor-allowance-v1.md:300`, `docs/trezor-allowance-v1.md:304`, `docs/trezor-allowance-v1.md:311`, `agent-allowance/src/AgentAllowance.sol:113` |
+| Budget buys Bitrefill gift cards/eSIMs/top-ups, capped paid live answers, per-answer chat and Venice credit | `README.md:147`, `README.md:148`, `README.md:149`, `README.md:150` |
+| Base caps hold even with compromised server/agent; setup gas and normal wallet approval | `README.md:160`, `docs/allowance-web-v1.md:85`, `docs/allowance-web-v1.md:93` |
 | MCP free tools without key | `integrations/elizaos-plugin/README.md:77` |
 
 The dry technical pages describe enforcement boundaries, not guarantees about a wallet or client. No unverified signing implementation is supplied. No payments are made by refresh, generation or tests.

@@ -24,7 +24,7 @@ const pages = htmlFiles(root);
 test("the site has the pages the tracker must cover", () => {
   const rel = pages.map((p) => path.relative(root, p)).sort();
   for (const page of ["index.html", "404.html", "app/index.html", "developers/index.html", "models/index.html",
-    "x402-llm-api/index.html", "x402-gift-cards-esims/index.html", "ai-agent-spending-limit/index.html"]) {
+    "x402-llm-api/index.html", "x402-gift-cards-esims/index.html", "agent-spending-limits/index.html"]) {
     assert.ok(rel.includes(page), `${page} is missing`);
   }
 });
