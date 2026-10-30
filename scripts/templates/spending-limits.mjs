@@ -44,7 +44,7 @@ export const limits = [
             <tr>
               <th scope="row">Who enforces the limits</th>
               <td>The contract, on chain: daily limit, per-purchase limit and expiry are fixed in it</td>
-              <td>The chain caps the approved total; daily and per-purchase limits and expiry are enforced by SingIt's server, not on-chain</td>
+              <td>SingIt's server (on-chain: only the total SPL delegate amount)</td>
             </tr>
             <tr>
               <th scope="row">Where the money is</th>

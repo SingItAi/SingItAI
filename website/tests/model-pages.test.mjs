@@ -242,6 +242,7 @@ test("consolidated page preserves the published spend excerpt and comparison str
   const html = await read("agent-spending-limits/index.html");
   for (const id of ["problem", "how", "pays-for"]) assert.ok(html.includes(`class="lp-section" id="${id}"`));
   assert.ok(html.includes('class="mtable"'));
+  assert.match(html, /<th scope="row">Who enforces the limits<\/th>\s*<td>[^<]*<\/td>\s*<td>SingIt's server \(on-chain: only the total SPL delegate amount\)<\/td>/);
   const excerpt = decode(html.match(/<code id="code-spend">([\s\S]*?)<\/code>/)[1].replace(/<[^>]+>/g, ""));
   const contract = await readFile(path.join(root, "agent-allowance/src/AgentAllowance.sol"), "utf8");
   let offset = contract.indexOf("function spend(");
