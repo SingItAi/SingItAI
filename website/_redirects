@@ -7,6 +7,10 @@
 # singitai.app/numbers.json is served live by ask.singitai.app.
 /numbers.json https://ask.singitai.app/numbers.json 302
 
+# Consolidated into /agent-spending-limits/; 301 because the move is permanent.
+/ai-agent-spending-limit /agent-spending-limits/ 301
+/ai-agent-spending-limit/ /agent-spending-limits/ 301
+
 # Do not add a catch-all rewrite to /index.html. Cloudflare Pages serves a real
 # file before the dashboard SPA fallback, which is why /robots.txt and
 # /sitemap.xml used to return the landing HTML: the files were missing.

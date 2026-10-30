@@ -15,7 +15,7 @@ const PAGES = [
   "https://singitai.app/developers/",
   "https://singitai.app/models/",
   "https://singitai.app/x402-gift-cards-esims/",
-  "https://singitai.app/ai-agent-spending-limit/",
+  "https://singitai.app/agent-spending-limits/",
   "https://singitai.app/x402-llm-api/",
 ];
 
@@ -66,6 +66,7 @@ test("the pages output contains robots.txt and the landing sitemap", async () =>
     assert.match(robots, /^Sitemap:\s*https:\/\/singitai\.app\/sitemap\.xml$/m);
     assert.doesNotMatch(robots, /<!DOCTYPE|<html/i);
     for (const page of PAGES) assert.match(sitemap, new RegExp(`<loc>${page.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}</loc>`));
+    assert.ok(!sitemap.includes("https://singitai.app/ai-agent-spending-limit/"));
     assert.doesNotMatch(sitemap, /app\.singitai\.app/);
     assert.doesNotMatch(sitemap, /<!DOCTYPE|<html/i);
     assert.equal(headerTypes(headers).get("/robots.txt"), "text/plain; charset=utf-8");
@@ -75,6 +76,8 @@ test("the pages output contains robots.txt and the landing sitemap", async () =>
       "/app https://app.singitai.app/app/ 302",
       "/app/* https://app.singitai.app/app/:splat 302",
       "/numbers.json https://ask.singitai.app/numbers.json 302",
+      "/ai-agent-spending-limit /agent-spending-limits/ 301",
+      "/ai-agent-spending-limit/ /agent-spending-limits/ 301",
     ]);
 
     const server = createServer(async (request, response) => {

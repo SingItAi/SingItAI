@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Agent Spending Limit in USDC on Base &amp; Solana | SingIt</title>
-<meta name="description" content="Give your AI agent a USDC budget, not your wallet: a daily and a per-purchase limit enforced on chain on Base. Approve once, revoke with one signature.">
-<link rel="canonical" href="https://singitai.app/ai-agent-spending-limit/">
-<meta property="og:title" content="AI Agent Spending Limit in USDC on Base &amp; Solana | SingIt">
-<meta property="og:description" content="Give your AI agent a USDC budget, not your wallet: a daily and a per-purchase limit enforced on chain on Base. Approve once, revoke with one signature.">
-<meta property="og:url" content="https://singitai.app/ai-agent-spending-limit/">
+<title>Agent spending limits for USDC on Base | SingIt</title>
+<meta name="description" content="Set a per-purchase cap, a daily cap and an expiry once. Your agent spends USDC only inside them, and you can stop it at any time.">
+<link rel="canonical" href="https://singitai.app/agent-spending-limits/">
+<meta property="og:title" content="Agent spending limits for USDC on Base | SingIt">
+<meta property="og:description" content="Set a per-purchase cap, a daily cap and an expiry once. Your agent spends USDC only inside them, and you can stop it at any time.">
+<meta property="og:url" content="https://singitai.app/agent-spending-limits/">
 <meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
@@ -20,94 +20,93 @@
 <link rel="stylesheet" href="/style.css?v=bb7061fc">
 <link rel="stylesheet" href="/dev.css?v=1">
 <link rel="stylesheet" href="/pages.css?v=1">
-<script type="application/ld+json">
-{
+<script type="application/ld+json">{
   "@context": "https://schema.org",
   "@graph": [
     {
-      "@type": "Organization",
-      "@id": "https://singitai.app/#organization",
-      "name": "SingIt",
-      "url": "https://singitai.app/"
-    },
-    {
-      "@type": "WebSite",
-      "@id": "https://singitai.app/#website",
-      "url": "https://singitai.app/",
-      "name": "SingIt",
-      "publisher": { "@id": "https://singitai.app/#organization" }
-    },
-    {
       "@type": "WebPage",
-      "@id": "https://singitai.app/ai-agent-spending-limit/#webpage",
-      "url": "https://singitai.app/ai-agent-spending-limit/",
-      "name": "AI Agent Spending Limit in USDC on Base & Solana | SingIt",
-      "description": "Give your AI agent a USDC budget, not your wallet: a daily and a per-purchase limit enforced on chain on Base. Approve once, revoke with one signature.",
-      "isPartOf": { "@id": "https://singitai.app/#website" },
-      "about": { "@id": "https://singitai.app/ai-agent-spending-limit/#application" },
-      "breadcrumb": { "@id": "https://singitai.app/ai-agent-spending-limit/#breadcrumb" },
+      "url": "https://singitai.app/agent-spending-limits/",
+      "name": "Agent spending limits for USDC on Base | SingIt",
+      "description": "Set a per-purchase cap, a daily cap and an expiry once. Your agent spends USDC only inside them, and you can stop it at any time.",
       "inLanguage": "en"
     },
     {
-      "@type": "SoftwareApplication",
-      "@id": "https://singitai.app/ai-agent-spending-limit/#application",
-      "name": "SingIt",
-      "applicationCategory": "FinanceApplication",
-      "operatingSystem": "Web/PWA",
-      "provider": { "@id": "https://singitai.app/#organization" },
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      }
-    },
-    {
       "@type": "BreadcrumbList",
-      "@id": "https://singitai.app/ai-agent-spending-limit/#breadcrumb",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "SingIt", "item": "https://singitai.app/" },
-        { "@type": "ListItem", "position": 2, "name": "AI agent spending limit", "item": "https://singitai.app/ai-agent-spending-limit/" }
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "SingIt",
+          "item": "https://singitai.app/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Give your AI agent a budget, not your wallet",
+          "item": "https://singitai.app/agent-spending-limits/"
+        }
       ]
     },
     {
       "@type": "FAQPage",
-      "@id": "https://singitai.app/ai-agent-spending-limit/#faq",
       "mainEntity": [
         {
           "@type": "Question",
-          "name": "Can SingIt or the agent take more than my limits?",
-          "acceptedAnswer": { "@type": "Answer", "text": "On Base, no: the caps and expiry are fixed in the contract and hold even if SingIt's server or the agent is compromised. On Solana, the chain caps the approved total, and SingIt enforces the daily and per-purchase limits." }
+          "name": "Can SingIt or the agent take more than my Base limits?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. The caps and expiry are fixed in the Base limiter and hold even if SingIt's server or the agent is compromised."
+          }
         },
         {
           "@type": "Question",
-          "name": "How do I change a limit?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Nothing in the Base limiter can change after deployment. You set new limits, SingIt deploys a new limiter, and you approve it. The old limiter is superseded, and its approval can be set to zero." }
-        },
-        {
-          "@type": "Question",
-          "name": "How do I stop everything?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Revoke with one signature in SingIt, or on revoke.cash without us. An emergency stop pauses a Base limiter for good. Resuming means a new limiter and a new approval." }
-        },
-        {
-          "@type": "Question",
-          "name": "When does the daily limit reset?",
-          "acceptedAnswer": { "@type": "Answer", "text": "On Base, at UTC midnight (the contract counts calendar days, not a rolling 24 hours)." }
+          "name": "How do I stop everything on Base?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Revoke the USDC approval from your wallet, including through revoke.cash without SingIt. Pausing permanently stops the Base limiter; new spending requires a new limiter and approval."
+          }
         },
         {
           "@type": "Question",
           "name": "Does setting up cost gas?",
-          "acceptedAnswer": { "@type": "Answer", "text": "On Base, SingIt deploys your limiter and pays its gas. The approval is a normal USDC approve from your wallet." }
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "On Base, SingIt deploys your limiter and pays its gas. The approval is a normal USDC approve from your wallet."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "When does the Base daily cap reset?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "At 00:00 UTC. The contract counts calendar days, not a rolling 24 hours."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I raise an existing Base limit?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. New limits require a new limiter and a new approval."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does a Solana pause revoke the delegate?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. It stops new purchases through SingIt. Revoke removes the on-chain approval."
+          }
         }
       ]
     }
   ]
-}
-</script>
+}</script>
 <!-- Umami, self-hosted and cookieless (docs/analytics.md) -->
 <script defer src="https://stats.singitai.app/s.js" data-website-id="6eab5805-b9b8-4f04-aa73-df64a8ce096e" data-domains="singitai.app,app.singitai.app"></script>
 </head>
 <body>
-
+<!-- Generated by scripts/generate-model-pages.mjs -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="singit-mark" viewBox="0 0 240 240" fill="none">
     <path d="M192 108 V152 Q192 176 168 176 H112 Q88 176 88 152 V88 Q88 64 112 64 H168 Q192 64 192 78"
@@ -151,31 +150,15 @@
 </header>
 
 <main id="top">
-
-  <section class="hero dev-hero">
-    <div class="shell">
-      <div class="hero-copy" data-hero-reveal>
-        <p class="eyebrow">AI agent spending limit</p>
-        <h1>Give your AI agent a spending limit, <em>not your wallet</em></h1>
-        <p class="hero-sub">Set a daily limit and a per-purchase limit once. Your agent spends USDC inside them without asking again, and one signature takes it all back.</p>
-        <div class="hero-cta">
-          <a class="btn btn-primary" href="https://app.singitai.app/app/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=spending-limit&amp;utm_content=hero">
-            Set my limits
-            <span class="btn-arrow" aria-hidden="true">&#8599;</span>
-          </a>
-          <a class="btn btn-outline" href="https://github.com/bubon-ik/SingItAI/blob/main/agent-allowance/src/AgentAllowance.sol" target="_blank" rel="noopener">Read the contract</a>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="lp-section" id="problem">
+<section class="hero dev-hero"><div class="shell"><div class="hero-copy"><h1>Give your AI agent a budget, not your wallet</h1><p class="hero-sub">Set a per-purchase cap, a daily cap and an expiry once. Your agent spends USDC only inside them, and you can stop it at any time.</p></div></div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Set a budget</h2>
+<p><a href="https://app.singitai.app/app/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=agent-spending-limits&amp;utm_content=hero">Open SingIt and set limits</a></p>
+</div></section>  <section class="lp-section" id="problem">
     <div class="shell">
       <h2 class="section-title" data-reveal>The problem.</h2>
       <ul class="works-grid" data-batch>
-        <li><p>An agent with a funded hot wallet or a stored API key is a blank check. A leaked key is lost money.</p></li>
-        <li><p>Limits that live in the agent's own software are only as strong as that software, and as the prompt it was given.</p></li>
-        <li><p>Spend alerts don't help at 3am. By the time you read one, the money is gone.</p></li>
+        <li><p>An agent with a funded hot wallet or a stored API key is a blank check for the funds that credential permits. A leaked key puts those funds at risk.</p></li>
+        <li><p>Limits that live in the agent's own software are only as strong as that software.</p></li>
+        <li><p>Spend alerts report activity after it happens; they do not impose a spending cap.</p></li>
       </ul>
     </div>
   </section>
@@ -209,7 +192,7 @@
             <tr>
               <th scope="row">Who enforces the limits</th>
               <td>The contract, on chain: daily limit, per-purchase limit and expiry are fixed in it</td>
-              <td>The chain caps the approved total; SingIt enforces the daily and per-purchase limits before every payment</td>
+              <td>SingIt's server (on-chain: only the total SPL delegate amount)</td>
             </tr>
             <tr>
               <th scope="row">Where the money is</th>
@@ -221,7 +204,7 @@
       </div>
 
       <h3 data-reveal>The one function that moves money</h3>
-      <p class="lp-text" data-reveal>On Base, the limiter is a small contract with no admin, no proxy and no setter. It holds no tokens: each purchase goes from your wallet to the seller in one <span class="mono">transferFrom</span>.</p>
+      <p class="lp-text" data-reveal>On Base, the limiter is a small contract with no admin, no proxy and no setter. It holds no tokens: each spend goes from your wallet to the payee in one <span class="mono">transferFrom</span>. For purchases through SingIt, that payee is your own agent, which pays the seller.</p>
       <div class="code" data-reveal>
 <pre><code id="code-spend">function spend(address payee, uint256 amount, bytes32 ref) external {
     if (msg.sender != agent) revert NotAgent();
@@ -258,49 +241,28 @@
     </div>
   </section>
 
-  <section class="lp-section" id="faq">
-    <div class="shell">
-      <h2 class="section-title" data-reveal>FAQ.</h2>
-      <dl class="faq" data-batch>
-        <div class="faq-item">
-          <dt><h3>Can SingIt or the agent take more than my limits?</h3></dt>
-          <dd class="faq-answer">On Base, no: the caps and expiry are fixed in the contract and hold even if SingIt's server or the agent is compromised. On Solana, the chain caps the approved total, and SingIt enforces the daily and per-purchase limits.</dd>
-        </div>
-        <div class="faq-item">
-          <dt><h3>How do I change a limit?</h3></dt>
-          <dd class="faq-answer">Nothing in the Base limiter can change after deployment. You set new limits, SingIt deploys a new limiter, and you approve it. The old limiter is superseded, and its approval can be set to zero.</dd>
-        </div>
-        <div class="faq-item">
-          <dt><h3>How do I stop everything?</h3></dt>
-          <dd class="faq-answer">Revoke with one signature in SingIt, or on revoke.cash without us. An emergency stop pauses a Base limiter for good. Resuming means a new limiter and a new approval.</dd>
-        </div>
-        <div class="faq-item">
-          <dt><h3>When does the daily limit reset?</h3></dt>
-          <dd class="faq-answer">On Base, at UTC midnight (the contract counts calendar days, not a rolling 24 hours).</dd>
-        </div>
-        <div class="faq-item">
-          <dt><h3>Does setting up cost gas?</h3></dt>
-          <dd class="faq-answer">On Base, SingIt deploys your limiter and pays its gas. The approval is a normal USDC approve from your wallet.</dd>
-        </div>
-      </dl>
-    </div>
-  </section>
-
-  <section class="cta">
-    <div class="shell">
-      <h2 data-reveal>Give your agent a budget. <em>Keep your money.</em></h2>
-      <p data-reveal>Two limits, one approval, about a minute.</p>
-      <div class="hero-cta" data-reveal>
-        <a class="btn btn-primary btn-lg" href="https://app.singitai.app/app/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=spending-limit&amp;utm_content=footer">
-          Set my limits
-          <span class="btn-arrow" aria-hidden="true">&#8599;</span>
-        </a>
-      </div>
-    </div>
-  </section>
-
+<section class="lp-section"><div class="shell"><h2>What an agent budget contains</h2>
+<p>A SingIt agent budget has several separate boundaries. A per-purchase cap limits one purchase. A daily cap limits the sum for a UTC calendar day. An expiry ends spending after the chosen lifetime. The USDC approval is a separate total allowance. Choose each boundary for the purchases you want SingIt's own agent to make in the SingIt app.</p>
+<p>These values answer different questions. A small per-purchase cap can reject one large purchase even when today's budget remains. A daily cap can reject another purchase after several smaller ones. An expiry rejects spending when the grant is no longer current. On Base, the daily limit follows the UTC calendar. The daily limit resets at 00:00 UTC. It is not a rolling 24-hour window: purchases on either side of midnight count against different days.</p>
+<h2>Base: the limiter contract</h2>
+<p>The owner approves USDC once from their own wallet to a limiter contract deployed for them. SingIt pays the deployment gas. The limiter holds no tokens. Each spend calls transferFrom to move USDC from the owner's wallet to the payee. The contract rejects a caller other than its configured agent. It also rejects a spend over the per-purchase cap, over the daily cap, after expiry or while paused.</p>
+<p>The limits cannot change after deployment. There is no admin, proxy or setter that raises them. New limits require a new limiter and a new approval. The owner can pause from the app or wallet. Pause is a permanent emergency stop. To change limits, revoke and set up a new allowance. A paused Base limiter stays paused; resuming requires a new limiter. The guardian is a watcher that can pause and nothing else. It cannot move funds or change the caps.</p>
+<p>To revoke, approve zero from the wallet. You can also use revoke.cash without SingIt. A pause and a revoked approval are different operations. The pause stops this limiter; revocation removes its token allowance. The app shows purchases and receipts so the owner can review spending.</p>
+<h2>Solana: delegate approval and server checks</h2>
+<p>On Solana, the owner's wallet approves the agent as SPL delegate on their USDC account for a total. The chain enforces that total, and one Revoke ends it. The daily limit, the per-purchase limit and the expiry are enforced by SingIt's server, not on-chain.</p>
+<p>The Solana stop button records a pause so SingIt refuses new purchases. It does not remove the on-chain delegate approval; Revoke does. Only a new approval signed by the owner's wallet lifts the pause. A purchase reserved before the pause may still settle.</p>
+<h2>What these limits cover</h2>
+<p>AgentAllowance applies to purchases through SingIt's own agent in the SingIt app. A wallet signing x402 payments by itself is not limited by AgentAllowance. Client-side caps live in the client process and are only as strong as that process. Read the x402 budget guide before treating a per-call quote as a continuing daily allowance.</p></div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Continue reading</h2>
+<p><a href="/limit-ai-agent-spending/">How to limit what an AI agent can spend</a> · <a href="/x402-budget-for-agents/">x402 payments with a budget for AI agents</a> · <a href="/models/all/">All model pages</a></p><p><a href="/x402-gift-cards-esims/">Gift cards and eSIMs</a></p>
+</div></section><section class="lp-section"><div class="shell"><h2 class="section-title">FAQ</h2>
+<dl class="faq"><div class="faq-item"><dt><h3>Can SingIt or the agent take more than my Base limits?</h3></dt><dd class="faq-answer">No. The caps and expiry are fixed in the Base limiter and hold even if SingIt&#39;s server or the agent is compromised.</dd></div>
+<div class="faq-item"><dt><h3>How do I stop everything on Base?</h3></dt><dd class="faq-answer">Revoke the USDC approval from your wallet, including through revoke.cash without SingIt. Pausing permanently stops the Base limiter; new spending requires a new limiter and approval.</dd></div>
+<div class="faq-item"><dt><h3>Does setting up cost gas?</h3></dt><dd class="faq-answer">On Base, SingIt deploys your limiter and pays its gas. The approval is a normal USDC approve from your wallet.</dd></div>
+<div class="faq-item"><dt><h3>When does the Base daily cap reset?</h3></dt><dd class="faq-answer">At 00:00 UTC. The contract counts calendar days, not a rolling 24 hours.</dd></div>
+<div class="faq-item"><dt><h3>Can I raise an existing Base limit?</h3></dt><dd class="faq-answer">No. New limits require a new limiter and a new approval.</dd></div>
+<div class="faq-item"><dt><h3>Does a Solana pause revoke the delegate?</h3></dt><dd class="faq-answer">No. It stops new purchases through SingIt. Revoke removes the on-chain approval.</dd></div></dl>
+</div></section>
 </main>
-
 <footer class="footer">
   <div class="shell footer-inner">
     <a class="brand brand-footer" href="/">

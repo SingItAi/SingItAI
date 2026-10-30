@@ -1,4 +1,4 @@
-// The SEO landing pages (/x402-gift-cards-esims, /ai-agent-spending-limit,
+// The SEO landing pages (/x402-gift-cards-esims, /agent-spending-limits,
 // /x402-llm-api) must ship exactly what their briefs say: title, meta
 // description, self-referencing canonical, a FAQPage JSON-LD that matches the
 // visible FAQ word for word, UTM-tagged CTAs, and sitemap entries.
@@ -21,21 +21,19 @@ const PAGES = [
     jsonLdTypes: ["WebPage", "Service", "FAQPage", "BreadcrumbList"],
     ctas: [
       "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=giftcards-esims&utm_content=hero",
-      "/ai-agent-spending-limit/?utm_source=singitai&utm_medium=landing&utm_campaign=giftcards-esims&utm_content=hero-secondary",
+      "/agent-spending-limits/?utm_source=singitai&utm_medium=landing&utm_campaign=giftcards-esims&utm_content=hero-secondary",
       "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=giftcards-esims&utm_content=footer",
     ],
   },
   {
-    dir: "ai-agent-spending-limit",
-    canonical: "https://singitai.app/ai-agent-spending-limit/",
-    title: "AI Agent Spending Limit in USDC on Base & Solana | SingIt",
-    description: "Give your AI agent a USDC budget, not your wallet: a daily and a per-purchase limit enforced on chain on Base. Approve once, revoke with one signature.",
-    jsonLdTypes: ["WebPage", "SoftwareApplication", "FAQPage", "BreadcrumbList"],
+    dir: "agent-spending-limits",
+    canonical: "https://singitai.app/agent-spending-limits/",
+    title: "Agent spending limits for USDC on Base | SingIt",
+    description: "Set a per-purchase cap, a daily cap and an expiry once. Your agent spends USDC only inside them, and you can stop it at any time.",
+    jsonLdTypes: ["WebPage", "FAQPage", "BreadcrumbList"],
     ctas: [
-      "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=spending-limit&utm_content=hero",
-      "https://github.com/bubon-ik/SingItAI/blob/main/agent-allowance/src/AgentAllowance.sol",
+      "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=agent-spending-limits&utm_content=hero",
       "/x402-gift-cards-esims/?utm_source=singitai&utm_medium=landing&utm_campaign=spending-limit&utm_content=body",
-      "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=spending-limit&utm_content=footer",
     ],
   },
   {
@@ -48,7 +46,7 @@ const PAGES = [
       "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=hero",
       "/models/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=hero",
       "/developers/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=keys",
-      "/ai-agent-spending-limit/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=body",
+      "/agent-spending-limits/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=body",
       "/models/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=faq",
       "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=footer-key",
     ],
