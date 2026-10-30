@@ -277,9 +277,11 @@ test("the eight named chat model pages contain only neutral technical copy", asy
   ]).sort((a, b) => b.length - a.length);
   const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const namesAndUrls = new RegExp(allowed.map(escapeRegex).join("|"), "gi");
+  const forbiddenWords = /uncensored|heretic|role[- ]?play|nsfw|adult|explicit|erotic|sexual|unfiltered|jailbreak|no censorship/i;
+  assert.match("venice-uncensored-1X2".replace(namesAndUrls, ""), forbiddenWords);
   for (const id of ids) {
     const html = (await read(`models/${id}/index.html`)).replace(namesAndUrls, "");
-    assert.doesNotMatch(html, /uncensored|heretic|role[- ]?play|nsfw|adult|explicit|erotic|sexual|unfiltered|jailbreak|no censorship/i, id);
+    assert.doesNotMatch(html, forbiddenWords, id);
   }
 });
 
