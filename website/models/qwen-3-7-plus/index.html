@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qwen 3.7 Plus API via x402: pay per call in USDC | SingIt</title>
+<meta name="description" content="Call Qwen 3.7 Plus with no account or API key. Pay per request in USDC on Base via x402. Price: $0.31135/1M input, $1.2454/1M output tokens.">
+<link rel="canonical" href="https://singitai.app/models/qwen-3-7-plus/">
+<meta property="og:title" content="Qwen 3.7 Plus API via x402: pay per call in USDC | SingIt">
+<meta property="og:description" content="Call Qwen 3.7 Plus with no account or API key. Pay per request in USDC on Base via x402. Price: $0.31135/1M input, $1.2454/1M output tokens.">
+<meta property="og:url" content="https://singitai.app/models/qwen-3-7-plus/">
+<meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@SingItAgent">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css?v=bb7061fc">
+<link rel="stylesheet" href="/dev.css?v=1">
+<link rel="stylesheet" href="/pages.css?v=1">
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "url": "https://singitai.app/models/qwen-3-7-plus/",
+      "name": "Qwen 3.7 Plus API via x402: pay per call in USDC | SingIt",
+      "description": "Call Qwen 3.7 Plus with no account or API key. Pay per request in USDC on Base via x402. Price: $0.31135/1M input, $1.2454/1M output tokens.",
+      "inLanguage": "en"
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "SingIt",
+          "item": "https://singitai.app/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Models",
+          "item": "https://singitai.app/models/all/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Qwen 3.7 Plus: pay per request with x402",
+          "item": "https://singitai.app/models/qwen-3-7-plus/"
+        }
+      ]
+    },
+    {
+      "@type": "Product",
+      "name": "Qwen 3.7 Plus",
+      "description": "Call Qwen 3.7 Plus with no account or API key. Pay per request in USDC on Base via x402. Price: $0.31135/1M input, $1.2454/1M output tokens.",
+      "url": "https://singitai.app/models/qwen-3-7-plus/",
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "input tokens (expected price)",
+          "priceCurrency": "USD",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "0.31135",
+            "priceCurrency": "USD",
+            "unitText": "1M input tokens",
+            "referenceQuantity": {
+              "@type": "QuantitativeValue",
+              "value": 1000000,
+              "unitText": "input tokens"
+            }
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "output tokens (expected price)",
+          "priceCurrency": "USD",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "1.2454",
+            "priceCurrency": "USD",
+            "unitText": "1M output tokens",
+            "referenceQuantity": {
+              "@type": "QuantitativeValue",
+              "value": 1000000,
+              "unitText": "output tokens"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is x402?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "x402 is an HTTP payment protocol. An unpaid request returns HTTP 402 with a payment offer; sign one offer and retry the same request with proof of payment."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need an account?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No account or API key is needed for these x402 calls."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which network? Base?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Base or Solana, paid in USDC. This page focuses on Base."
+          }
+        }
+      ]
+    }
+  ]
+}</script>
+<!-- Umami, self-hosted and cookieless (docs/analytics.md) -->
+<script defer src="https://stats.singitai.app/s.js" data-website-id="6eab5805-b9b8-4f04-aa73-df64a8ce096e" data-domains="singitai.app,app.singitai.app"></script>
+</head>
+<body>
+<!-- Generated by scripts/generate-model-pages.mjs -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="singit-mark" viewBox="0 0 240 240" fill="none">
+    <path d="M192 108 V152 Q192 176 168 176 H112 Q88 176 88 152 V88 Q88 64 112 64 H168 Q192 64 192 78"
+          stroke="currentColor" stroke-width="12.5" stroke-linecap="round"/>
+    <path d="M116 118 L139 143 L188 86 H206" stroke="currentColor" stroke-width="11.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="216" cy="86" r="8" stroke="currentColor" stroke-width="8.5"/>
+    <g stroke="currentColor" stroke-width="9" stroke-linecap="round">
+      <line x1="58" y1="94"  x2="88" y2="94"/>
+      <line x1="58" y1="121" x2="88" y2="121"/>
+      <line x1="58" y1="148" x2="88" y2="148"/>
+    </g>
+    <g fill="currentColor">
+      <circle cx="49" cy="94"  r="9"/>
+      <circle cx="49" cy="121" r="9"/>
+      <circle cx="49" cy="148" r="9"/>
+    </g>
+  </symbol>
+  <symbol id="ic-copy" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="nav-wrap">
+  <div class="nav-bar">
+    <a class="brand" href="/" aria-label="SingIt home">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/developers/">Developers</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/developers/#quickstart">Quickstart</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="https://app.singitai.app/app/">
+      Open SingIt
+      <span class="btn-arrow" aria-hidden="true">&#8599;</span>
+    </a>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero dev-hero"><div class="shell"><div class="hero-copy"><h1>Qwen 3.7 Plus: pay per request with x402</h1><p class="hero-sub">Call Qwen 3.7 Plus with no account or API key. Pay per request in USDC on Base via x402. Price: $0.31135/1M input, $1.2454/1M output tokens.</p></div></div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Pay per request</h2>
+<p>Send a request to ask.singitai.app, get HTTP 402 with the exact price, pay in USDC on Base, get the answer. No signup, no monthly plan.</p><p>Provider: Alibaba · Context window: 256,000 tokens</p>
+</div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Price</h2>
+<div class="table-wrap"><table class="mtable"><thead><tr><th scope="col">USD per 1M tokens</th><th scope="col">Input</th><th scope="col">Output</th></tr></thead><tbody><tr><th scope="row">SingIt price (expected, markup included)</th><td>$0.31135</td><td>$1.2454</td></tr>
+<tr><th scope="row">List price of the model (for reference)</th><td>$0.5</td><td>$2</td></tr></tbody></table></div><p>The expected price is estimate from sellers&#39; quotes, not yet confirmed by answers we paid for, so the real price can be higher. It is an expected price, not a guarantee; you pay what each answer actually used.</p><p>Price = what the provider charges for the answer + 30% markup + a settlement fee per request ($0.001 on Base, $0.002 on Solana).</p>
+<h3>Per request, reference request</h3>
+<p>One short message, max_tokens 800 (30 characters), 12 input tokens. upto settles actual usage, so a real answer normally costs less; exact is flat, with no refund.</p><div class="table-wrap"><table class="mtable"><thead><tr><th scope="col">Network</th><th scope="col">upto ceiling (USD)</th><th scope="col">exact flat price (USD)</th></tr></thead><tbody><tr><th scope="row">Base</th><td>$0.002031</td><td>$0.0015</td></tr>
+<tr><th scope="row">Solana</th><td>$0.003031</td><td>$0.002311</td></tr></tbody></table></div><p>Prices as of 2026-10-30 10:03:34 UTC (snapshot of ask.singitai.app/v1/models and /pricing.json). Live: <a href="https://ask.singitai.app/v1/models">/v1/models</a> and <a href="https://ask.singitai.app/pricing.json">/pricing.json</a>. Live values are authoritative and the 402 response states the exact price.</p>
+</div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Call it with x402</h2>
+<div class="code"><pre><code>curl -i https://ask.singitai.app/v1/chat/completions \
+  -H &#39;Content-Type: application/json&#39; \
+  -d &#39;{&quot;model&quot;:&quot;qwen-3-7-plus&quot;,&quot;max_tokens&quot;:200,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Hello&quot;}]}&#39;</code></pre></div>
+<p>The unpaid POST returns HTTP 402 and a PAYMENT-REQUIRED header: base64 JSON, x402 v2. Sign one offer (upto first, then exact; Base then Solana) and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200 returns choices[0].message.content and billing.totalAtomic.</p>
+<p>Follow the <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md">first paid call walkthrough</a>, <a href="/developers/">developer guide</a> and <a href="https://singitai.app/llms.txt">llms.txt</a>.</p><p>For a free try, use the separate model <code>free/deepseek-v4.1-flash</code>: 20 answers a day, no wallet. This is a different model from the one on this page.</p>
+</div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Use it from an agent</h2>
+<p>MCP: <a href="https://app.singitai.app/mcp">https://app.singitai.app/mcp</a>. Free tools without a key: list_models, get_price, list_price_symbols.</p><p>The elizaOS plugin <a href="https://github.com/bubon-ik/SingItAI/tree/main/integrations/elizaos-plugin">@singitai/plugin-singit</a> has a paid-chat action that pays on Base. Its per-call and per-day caps are held in the plugin's memory: in-process, reset on restart, not on-chain, not enforced by SingIt's servers. It does not use AgentAllowance.</p>
+</div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Give your agent a budget</h2>
+<p><a href="/agent-spending-limits/">Agent spending limits for USDC on Base</a> · <a href="/limit-ai-agent-spending/">How to limit what an AI agent can spend</a> · <a href="/x402-budget-for-agents/">x402 payments with a budget for AI agents</a></p>
+</div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Related models</h2>
+<ul><li><a href="/models/e2ee-qwen-2-5-7b-p/">Qwen 2.5 7B</a></li>
+<li><a href="/models/e2ee-qwen3-6-35b-a3b/">Qwen 3.6 35B A3B (E2EE)</a></li>
+<li><a href="/models/e2ee-qwen3-6-35b-a3b-uncensored-p/">Qwen 3.6 35B A3B Uncensored (E2EE)</a></li>
+<li><a href="/models/qwen-3-7-max/">Qwen 3.7 Max</a></li>
+<li><a href="/models/qwen3-235b-a22b-2507/">Qwen 3 235B A22B Instruct 2507</a></li>
+<li><a href="/models/qwen3-235b-a22b-thinking-2507/">Qwen 3 235B A22B Thinking 2507</a></li>
+<li><a href="/models/qwen3-30b-a3b/">Qwen3 30B A3B</a></li>
+<li><a href="/models/qwen3-5-35b-a3b/">Qwen 3.5 35B A3B</a></li></ul><p><a href="/models/all/">All model pages</a></p>
+</div></section><section class="lp-section"><div class="shell"><h2 class="section-title">FAQ</h2>
+<dl class="faq"><div class="faq-item"><dt><h3>What is x402?</h3></dt><dd class="faq-answer">x402 is an HTTP payment protocol. An unpaid request returns HTTP 402 with a payment offer; sign one offer and retry the same request with proof of payment.</dd></div>
+<div class="faq-item"><dt><h3>Do I need an account?</h3></dt><dd class="faq-answer">No account or API key is needed for these x402 calls.</dd></div>
+<div class="faq-item"><dt><h3>Which network? Base?</h3></dt><dd class="faq-answer">Base or Solana, paid in USDC. This page focuses on Base.</dd></div></dl>
+</div></section>
+</main>
+<footer class="footer">
+  <div class="shell footer-inner">
+    <a class="brand brand-footer" href="/">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/">For everyone</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/x402-gift-cards-esims/">Gift cards &amp; eSIMs</a>
+      <a href="/x402-llm-api/">LLM API over x402</a>
+      <a href="https://app.singitai.app/app/">Open SingIt</a>
+      <a href="https://x.com/SingItAgent" target="_blank" rel="noopener">X</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://bubon-ik.github.io/SingItAI/" target="_blank" rel="noopener">Privacy policy</a>
+      <a href="mailto:contact@singitai.app">Contact</a>
+    </nav>
+    <p class="footer-fine">&copy; 2026 SingIt</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="/app.js?v=bb7061fc"></script>
+<script type="module" src="/dev.mjs?v=1"></script>
+
+</body>
+</html>
