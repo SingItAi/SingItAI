@@ -239,3 +239,8 @@ th[aria-sort="descending"] .sort-btn::after { content: " \2193"; }
   .mtable .hide-sm { display: none; }
   .code pre { padding-right: 0; padding-top: 36px; }
 }
+
+/* Install blocks share the quickstart code and copy controls. */
+.install-blocks { display: grid; gap: 24px; }
+.install-card { min-width: 0; padding: 24px; border: 1px solid var(--hairline); border-radius: var(--r-card); }
+.install-card .code { margin-top: 12px; }

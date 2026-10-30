@@ -80,6 +80,7 @@
             <span class="btn-arrow" aria-hidden="true">&#8595;</span>
           </a>
           <a class="btn btn-outline" href="https://app.singitai.app/app/">Get an API key</a>
+          <a class="btn btn-outline" href="#install">Install</a>
         </div>
         <p class="chat-link">Just want to chat with these models? <a href="https://app.singitai.app/app/">Open SingIt</a>, no code needed.</p>
         <span class="endpoint-label">Base URL with an API key</span>
@@ -322,6 +323,166 @@ npm install ./SingItAI/integrations/elizaos-plugin</code></pre>
           </section>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section class="quick" id="install">
+    <div class="shell">
+      <p class="eyebrow" data-reveal>Tool setup</p>
+      <h2 class="section-title" data-reveal>Install in your tool</h2>
+      <div class="install-blocks">
+        <article class="install-card">
+          <h3>Claude Code</h3>
+          <p class="tab-note">Connect MCP; free tools work without the header.</p>
+            <div class="code">
+<pre><code id="install-claude-mcp">claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_API_KEY"</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-claude-mcp" aria-label="Copy Claude Code MCP setup">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+          <p class="tab-note">Pay from your own Base wallet: limits are enforced in your code before anything is signed; the key comes from an environment variable.</p>
+            <div class="code">
+<pre><code id="install-claude-sdk">npm install @singitai/sdk</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-claude-sdk" aria-label="Copy SDK install command">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <div class="code">
+<pre><code id="install-claude-base">import { SingIt } from "@singitai/sdk";
+
+const singit = new SingIt({
+  evmPrivateKey: process.env.AGENT_PRIVATE_KEY,
+  network: "base",
+  maxPerCallUsd: 0.01,
+  maxPerDayUsd: 1,
+});
+const answer = await singit.chat({ messages: [{ role: "user", content: "Hello" }] });
+console.log(answer.choices[0].message.content, answer.payment);</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-claude-base" aria-label="Copy Base SDK example">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+        </article>
+        <article class="install-card">
+          <h3>Cursor</h3>
+          <p class="tab-note">Paste into mcp.json; the button adds the keyless remote server.</p>
+            <div class="code">
+<pre><code id="install-cursor">{
+  "mcpServers": {
+    "singit": {
+      "url": "https://app.singitai.app/mcp",
+      "headers": { "Authorization": "Bearer ${env:SINGIT_API_KEY}" }
+    }
+  }
+}</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-cursor" aria-label="Copy Cursor mcp.json">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+          <p class="tab-note"><a class="btn btn-outline btn-sm" href="cursor://anysphere.cursor-deeplink/mcp/install?name=singit&amp;config=eyJ1cmwiOiJodHRwczovL2FwcC5zaW5naXRhaS5hcHAvbWNwIn0%3D">Add to Cursor</a></p>
+        </article>
+        <article class="install-card">
+          <h3>Codex</h3>
+          <p class="tab-note">Run the command, or add the equivalent entry to config.toml; the API key comes from SINGIT_API_KEY.</p>
+            <div class="code">
+<pre><code id="install-codex-cli">codex mcp add singit --url https://app.singitai.app/mcp --bearer-token-env-var SINGIT_API_KEY</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-codex-cli" aria-label="Copy Codex command">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <div class="code">
+<pre><code id="install-codex-config">[mcp_servers.singit]
+url = "https://app.singitai.app/mcp"
+bearer_token_env_var = "SINGIT_API_KEY"</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-codex-config" aria-label="Copy Codex config.toml">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+        </article>
+        <article class="install-card">
+          <h3>LangChain (JS)</h3>
+          <p class="tab-note">Pay from your own Base wallet: limits are enforced in your code before anything is signed; the key comes from an environment variable.</p>
+            <div class="code">
+<pre><code id="install-langchain-command">npm install @singitai/sdk @langchain/openai</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-langchain-command" aria-label="Copy LangChain install command">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <div class="code">
+<pre><code id="install-langchain">import { ChatOpenAI } from "@langchain/openai";
+import { SingIt } from "@singitai/sdk";
+
+const singit = new SingIt({
+  evmPrivateKey: process.env.AGENT_PRIVATE_KEY,
+  network: "base",
+  maxPerCallUsd: 0.01,
+  maxPerDayUsd: 1,
+});
+
+const chat = new ChatOpenAI({
+  model: "deepseek-v4.1-flash",
+  apiKey: "x402",
+  configuration: { baseURL: "https://ask.singitai.app/v1", fetch: singit.paidFetch() },
+  maxRetries: 0,
+});
+
+console.log((await chat.invoke("What is x402?")).content);</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-langchain" aria-label="Copy LangChain example">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+        </article>
+        <article class="install-card">
+          <h3>Vercel AI SDK</h3>
+          <p class="tab-note">Pay from your own Base wallet: limits are enforced in your code before anything is signed; the key comes from an environment variable.</p>
+            <div class="code">
+<pre><code id="install-vercel-command">npm install @singitai/sdk ai @ai-sdk/openai-compatible</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-vercel-command" aria-label="Copy Vercel AI SDK install command">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+            <div class="code">
+<pre><code id="install-vercel">import { generateText } from "ai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { SingIt } from "@singitai/sdk";
+
+const singit = new SingIt({
+  evmPrivateKey: process.env.AGENT_PRIVATE_KEY,
+  network: "base",
+  maxPerCallUsd: 0.01,
+  maxPerDayUsd: 1,
+});
+
+const singitProvider = createOpenAICompatible({
+  name: "singit",
+  apiKey: "x402",
+  baseURL: "https://ask.singitai.app/v1",
+  fetch: singit.paidFetch(),
+});
+
+const result = await generateText({
+  model: singitProvider("deepseek-v4.1-flash"),
+  prompt: "What is x402?",
+  maxRetries: 0,
+});
+console.log(result.text);</code></pre>
+              <button type="button" class="copy-btn" data-copy="install-vercel" aria-label="Copy Vercel AI SDK example">
+                <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
+                <span data-copy-label>Copy</span>
+              </button>
+            </div>
+        </article>
+      </div>
+      <p class="tab-note">@singitai/sdk is released by the maintainer; until it appears on npm, use the repo checkout (sdk/typescript).</p>
     </div>
   </section>
 
