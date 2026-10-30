@@ -9,7 +9,7 @@
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addUsageRoute, baseOffer, exactBaseOffer, exactSolanaOffer, solanaOffer } from "./metered.mjs";
-import { UnknownModel, priceGuard } from "./catalogue.mjs";
+import { unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, ICON_URL, ceilingAtomic, discoveryTags, modelServiceName, usd } from "./pricing.mjs";
 
@@ -75,7 +75,7 @@ export async function chooseModelRoute(catalogue, id, bufferPp, input) {
     throw error;
   }
   if (catalogue.canAnswer && !(await catalogue.canAnswer(info.id))) {
-    throw new ModelRouteError(503, "No trusted seller offers this model right now. Try again shortly; nothing was paid.");
+    throw unservableError(catalogue, info.id, ModelRouteError);
   }
   return { ...input, model: id, info, isDefault: false, ...priceGuard(catalogue, info.id, bufferPp) };
 }
@@ -144,7 +144,7 @@ export function addModelRoutes(app, config, { facilitatorClient, catalogue, read
           output: { example: exampleOutput, schema: outputSchema } }),
       },
     }, {
-      facilitatorClient, config, readRequest,
+      facilitatorClient, catalogue, config, readRequest,
       choose: (input) => chooseModelRoute(catalogue, model.id, bufferPp, input),
       upstream, fetchImpl, log,
       offerEmptyProbe: true,

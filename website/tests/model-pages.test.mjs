@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { test } from "node:test";
 import { snapshot } from "../../scripts/models-snapshot.mjs";
-import { price, escapeHtml, safeSlug, modelTitle, modelDescription, mergeBlock, renderPages } from "../../scripts/generate-model-pages.mjs";
+import { price, escapeHtml, safeSlug, modelTitle, modelDescription, mergeBlock, renderPages, visibleSnapshot, hiddenRedirects } from "../../scripts/generate-model-pages.mjs";
 import { limits } from "../../scripts/templates/spending-limits.mjs";
 
 const exec = promisify(execFile);
@@ -146,6 +146,8 @@ test("all committed pages are current, crawlable and follow content rules", asyn
   const generatedLlms = llms.split("<!-- generated:model-pages:start -->")[1].split("<!-- generated:model-pages:end -->")[0];
   assert.doesNotMatch(generatedLlms, forbidden);
   assert.doesNotMatch(generatedLlms, /\$\d/);
+  const hidden = JSON.parse(await readFile(path.join(root, "scripts/hidden-models.json"), "utf8")).hidden;
+  s.models = s.models.filter((m) => !hidden.some((h) => h.id === m.id));
   const dirs = [...s.models.map((m) => `models/${m.id}`), "models/all", ...limits.map((p) => p.slug)];
   for (const dir of dirs) {
     const html = await read(`${dir}/index.html`);
@@ -254,9 +256,8 @@ test("consolidated page preserves the published spend excerpt and comparison str
 });
 
 
-test("the eight named chat model pages contain only neutral technical copy", async () => {
+test("the seven visible named chat model pages contain only neutral technical copy", async () => {
   const ids = [
-    "deepseek-v4.1-flash-uncensored",
     "e2ee-gemma-4-26b-a4b-uncensored-p",
     "e2ee-qwen3-6-35b-a3b-uncensored-p",
     "gemma-4-uncensored",
@@ -288,4 +289,45 @@ test("the eight named chat model pages contain only neutral technical copy", asy
 test("Ask README does not claim all uncensored models are never sold", async () => {
   const readme = await readFile(path.join(root, "singit-ask/README.md"), "utf8");
   assert.ok(!readme.includes("Uncensored models are never sold."));
+});
+
+test("hold list removes pages and related links and maintains temporary redirects", async () => {
+  const { models, pricing } = fixtures();
+  const s = snapshot(models, pricing, fetchedAt);
+  s.models[0].owned_by = s.models[1].owned_by = "Fixture";
+  const id = s.models[0].id;
+  const hold = { hidden: [{ id, since: "2026-10-30", reason: "No seller" }] };
+  const shell = await readFile(path.join(root, "scripts/templates/model-shell.html"), "utf8");
+  const pages = renderPages(s, shell, hold);
+  assert.equal(pages.has(`models/${id}/index.html`), false);
+  for (const html of pages.values()) assert.ok(!html.includes(`/models/${id}/`));
+  assert.equal(s.models.length, 50, "the raw snapshot is preserved");
+  assert.equal(visibleSnapshot(s, hold).models.length, 49);
+  const original = "/existing /target 301\n";
+  const redirects = hiddenRedirects(original, hold);
+  assert.ok(redirects.startsWith(original));
+  assert.ok(redirects.includes(`/models/${id} /models/all/ 302`));
+  assert.ok(redirects.includes(`/models/${id}/ /models/all/ 302`));
+  assert.equal(hiddenRedirects(redirects, hold), redirects);
+  assert.ok(!hiddenRedirects(redirects, { hidden: [] }).includes(`/models/${id}`));
+  assert.throws(() => visibleSnapshot(s, { hidden: [{}] }), /Unsafe/);
+  assert.throws(() => visibleSnapshot(s, { hidden: {} }), /Invalid/);
+  assert.throws(() => visibleSnapshot(s, { hidden: [{ ...hold.hidden[0], reason: "" }] }), /Invalid/);
+  const warnings = [];
+  visibleSnapshot(s, { hidden: [{ ...hold.hidden[0], id: "absent" }] }, (line) => warnings.push(line));
+  assert.equal(warnings.length, 1);
+});
+
+test("held model has no page or discovery links and both temporary redirects exist", async () => {
+  const hold = JSON.parse(await readFile(path.join(root, "scripts/hidden-models.json"), "utf8"));
+  const { stat } = await import("node:fs/promises");
+  const rules = (await read("_redirects")).split("\n");
+  for (const { id } of hold.hidden) {
+    await assert.rejects(stat(path.join(website, "models", id)), { code: "ENOENT" });
+    for (const file of ["sitemap.xml", "llms.txt", "models/all/index.html"]) {
+      assert.ok(!(await read(file)).includes(`/models/${id}/`), file);
+    }
+    assert.ok(rules.includes(`/models/${id} /models/all/ 302`));
+    assert.ok(rules.includes(`/models/${id}/ /models/all/ 302`));
+  }
 });

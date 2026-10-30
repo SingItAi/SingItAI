@@ -78,6 +78,8 @@ test("the pages output contains robots.txt and the landing sitemap", async () =>
       "/numbers.json https://ask.singitai.app/numbers.json 302",
       "/ai-agent-spending-limit /agent-spending-limits/ 301",
       "/ai-agent-spending-limit/ /agent-spending-limits/ 301",
+      "/models/deepseek-v4.1-flash-uncensored /models/all/ 302",
+      "/models/deepseek-v4.1-flash-uncensored/ /models/all/ 302",
     ]);
 
     const server = createServer(async (request, response) => {
