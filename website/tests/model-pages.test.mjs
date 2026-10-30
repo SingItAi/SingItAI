@@ -28,8 +28,37 @@ function fixtures() {
 }
 
 test("prices strip float noise and round upward only at nine decimals", () => {
+  for (const [input, output] of [
+    [0.06760000000000001, "0.0676"],
+    [1.0000000011, "1.000000002"],
+    [1.000000001, "1.000000001"],
+    [2.19908, "2.19908"],
+    [0.0000000001, "0.000000001"],
+    [4, "4"],
+    [0.00201825, "0.00201825"],
+  ]) assert.equal(price(input), output);
   for (const [input, output] of [[0, "0"], [10, "10"], [0.06760000000000001, "0.0676"], [0.049999999999999996, "0.05"], [0.00002339999999999867, "0.0000234"], [0.1234567891, "0.12345679"], [0.123456789, "0.123456789"], [1e-10, "0.000000001"], [1e-9, "0.000000001"]]) assert.equal(price(input), output);
   for (const bad of [NaN, Infinity, -1, "1", null]) assert.throws(() => price(bad));
+});
+
+test("template replacement never reprocesses model names and rejects unknown placeholders", async () => {
+  const { models, pricing } = fixtures();
+  models.data[0].name = "{{schema}}{{body}}";
+  models.data[1].name = "<script>";
+  const s = snapshot(models, pricing, fetchedAt);
+  const shell = await readFile(path.join(root, "scripts/templates/model-shell.html"), "utf8");
+  const pages = renderPages(s, shell);
+  for (const [id, name] of [["fixture-0", "{{schema}}{{body}}"], ["fixture-1", "<script>"]]) {
+    const html = pages.get(`models/${id}/index.html`);
+    assert.ok(html.includes(`<h1>${escapeHtml(name)}: pay per request with x402</h1>`));
+    assert.doesNotMatch(html, /&amp;lt;script&amp;gt;/);
+    assert.equal((html.match(/<script type="application\/ld\+json">/g) ?? []).length, 1);
+    assert.equal((html.match(/<h1>/g) ?? []).length, 1);
+    assert.equal((html.match(/<h2 class="section-title">Price<\/h2>/g) ?? []).length, 1);
+    const graph = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1])["@graph"];
+    assert.equal(graph.find((node) => node["@type"] === "Product").name, name);
+  }
+  for (const key of ["unknown", "toString"]) assert.throws(() => renderPages(s, shell + `{{${key}}}`), /Unknown template placeholder/);
 });
 
 test("HTML escaping, path segments and short metadata", () => {
