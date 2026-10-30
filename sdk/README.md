@@ -3,12 +3,13 @@
 Client libraries for [SingIt Ask](../singit-ask): pay per call with x402 and keep spending inside
 a client-side allowance, in a few lines.
 
-**Not published yet.** `@singit/sdk` is `"private": true` and `singit` has no PyPI upload
-configuration (both version 0.1.0). Publishing to npm/PyPI needs a separate OK from the owner.
+Packages are released by the maintainer, with the owner’s approval.
+
+Install: `npm install @singitai/sdk` or `pip install singit`.
 
 | | TypeScript | Python |
 |---|---|---|
-| Package | [`@singit/sdk`](typescript) (ESM, Node ≥20) | [`singit`](python) (Python ≥3.10) |
+| Package | [`@singitai/sdk`](typescript) (ESM, Node ≥20) | [`singit`](python) (Python ≥3.10) |
 | Base / Base Sepolia | `upto` (default) and `exact` | `upto` (default) and `exact` |
 | Solana | `exact` (via `@x402/svm`) | `exact`, optional extra `singit[svm]` |
 
@@ -19,7 +20,7 @@ Both use the official x402 client packages (`@x402/*` 2.28.0, `x402` 2.25.0 on P
 TypeScript, Base:
 
 ```js
-import { SingIt } from "@singit/sdk";
+import { SingIt } from "@singitai/sdk";
 
 const singit = new SingIt({ evmPrivateKey: process.env.AGENT_PRIVATE_KEY, network: "base", maxPerCallUsd: 0.01, maxPerDayUsd: 1 });
 const answer = await singit.chat({ messages: [{ role: "user", content: "Hello" }] });
@@ -29,6 +30,7 @@ console.log(answer.choices[0].message.content, answer.payment);
 Python, Base:
 
 ```python
+import os
 from singit import SingIt
 
 singit = SingIt(evm_private_key=os.environ["AGENT_PRIVATE_KEY"], network="base", max_per_call_usd=0.01, max_per_day_usd=1)
@@ -44,20 +46,16 @@ Solana: see the package READMEs (`solanaSigner` / `solana_signer`, `network: "so
   per network, taken from `singit-ask/src/pricing.mjs`. On `base-sepolia` SingIt has no
   deployment, so you must pass `payTo` yourself.
 - The offer's amount must be ≤ `maxPerCallUsd`.
-- A local daily counter must stay ≤ `maxPerDayUsd`. It is in memory, per client instance, and
-  resets when the process restarts. It is an allowance-style guard, not a ledger. The on-chain
-  limit set in the SingIt app is what `allowance(address)` reports.
+- A local daily counter must stay ≤ `maxPerDayUsd`. It is in memory, per client instance and per UTC day, and
+  resets when the process restarts. It is an allowance-style guard, not a ledger. The separate AgentAllowance contract covers only the SingIt app’s own agent, not other agents.
 
-## Not deployed yet
+## Live endpoints
 
-These endpoints belong to pending work. The SDKs call them as documented and surface a clear
-error on 404 instead of inventing a response.
-
-- Per-model route `POST /v1/chat/{model}` (SI-62), enabled with `route: "per-model"`. The default
-  `POST /v1/chat/completions` works today.
-- Wallet reconciliation `GET https://app.singitai.app/v1/wallet/{address}/reconciliation` (SI-67),
-  behind `walletReport()` and `allowance()`. Private: needs an API key of the wallet's own account.
-- `GET /pricing.json` (SI-68), behind `pricing()`.
+- Chat: `POST /v1/chat/completions` and `POST /v1/chat/{model}` (select `route: "per-model"`,
+  or Python `route="per-model"`).
+- Pricing: `GET /pricing.json`, exposed by `pricing()`.
+- Wallet report (SI-67): private; `walletReport()` / `wallet_report()` and `allowance()`
+  require a SingIt API key for the wallet's account. Without one the server returns HTTP 401.
 
 ## Tests
 

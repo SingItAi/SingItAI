@@ -135,3 +135,23 @@ test("SingIt refuses to construct without spending ceilings", () => {
   assert.throws(() => new SingIt({ evmPrivateKey: privateKey, network: "base", maxPerCallUsd: 0.01 }),
     /never pays without a ceiling/);
 });
+
+for (const billed of ["1000", "4001"]) {
+  test(`exact billing ${billed} keeps the full authorization reserved`, async () => {
+    let paid = 0;
+    const merchant = await startMerchant({
+      accepts: () => [exactOffer({ network: NETWORK, asset: ASSET, payTo: PAY_TO, amount: "4000" })],
+      bill: () => { paid++; return billed; },
+    });
+    try {
+      const client = makeSingIt({ merchant, maxPerCallUsd: 0.004, maxPerDayUsd: 0.006 });
+      const invoke = () => client.chat({ messages: [{ role: "user", content: "Hello" }], scheme: "exact" });
+      await assert.rejects(invoke(), /invoice does not match.*unresolved/);
+      assert.equal(client.limiter.remainingAtomic(), 2000n);
+      await assert.rejects(invoke(), /Daily spend cap/);
+      assert.equal(paid, 1);
+    } finally {
+      await merchant.close();
+    }
+  });
+}

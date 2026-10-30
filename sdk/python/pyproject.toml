@@ -1,15 +1,25 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "singit"
 version = "0.1.0"
-description = "SingIt SDK: x402 payment and client-side spending allowance for SingIt Ask. Not published yet."
+description = "SingIt SDK: x402 payment and client-side spending allowance for SingIt Ask."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
-classifiers = ["Private :: Do Not Upload"]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "SingIt", email = "contact@singitai.app"}]
+keywords = ["singit", "x402", "usdc", "base", "solana", "ai-agents"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
   "x402[evm]>=2.25.0,<3",
 ]
@@ -21,7 +31,17 @@ svm = [
 ]
 test = [
   "pytest>=8",
+  "tomli>=2; python_version < '3.11'",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/singit"]
+
+[project.urls]
+Homepage = "https://singitai.app/developers/"
+Repository = "https://github.com/bubon-ik/SingItAI"
+Source = "https://github.com/bubon-ik/SingItAI/tree/main/sdk/python"
+Issues = "https://github.com/bubon-ik/SingItAI/issues"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/singit", "README.md", "LICENSE", "pyproject.toml"]

@@ -50,12 +50,12 @@ test("walletReport() says the report is private on a 401", async () => {
   }
 });
 
-test("walletReport() reports clearly when the reconciliation endpoint is not deployed (404)", async () => {
+test("walletReport() reports clearly when the reconciliation endpoint is unavailable (404)", async () => {
   const app = await startJsonServer((req, res) => { res.writeHead(404).end(); });
   try {
     const singit = new SingIt({ evmPrivateKey: privateKey, network: "base", payTo: PAY_TO,
       appBaseUrl: app.url, maxPerCallUsd: 0.01, maxPerDayUsd: 1 });
-    await assert.rejects(singit.walletReport(addr("f00d")), /SI-67/);
+    await assert.rejects(singit.walletReport(addr("f00d")), /HTTP 404/);
   } finally {
     await app.close();
   }
@@ -77,12 +77,12 @@ test("pricing() parses pricing.json", async () => {
   }
 });
 
-test("pricing() reports clearly when pricing.json is not deployed (404)", async () => {
+test("pricing() reports clearly when pricing.json is unavailable (404)", async () => {
   const ask = await startJsonServer((req, res) => { res.writeHead(404).end(); });
   try {
     const singit = new SingIt({ evmPrivateKey: privateKey, network: "base", payTo: PAY_TO,
       baseUrl: ask.url, maxPerCallUsd: 0.01, maxPerDayUsd: 1 });
-    await assert.rejects(singit.pricing(), /SI-68/);
+    await assert.rejects(singit.pricing(), /HTTP 404/);
   } finally {
     await ask.close();
   }

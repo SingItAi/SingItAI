@@ -1,8 +1,32 @@
 {
-  "name": "@singit/sdk",
+  "name": "@singitai/sdk",
   "version": "0.1.0",
-  "private": true,
-  "description": "SingIt SDK: x402 payment and client-side spending allowance for SingIt Ask, in a few lines. Not published yet.",
+  "description": "SingIt SDK: pay SingIt Ask over x402 with client-side spend limits (per call, per day) enforced before anything is signed. USDC on Base or Solana.",
+  "keywords": [
+    "singit",
+    "x402",
+    "usdc",
+    "base",
+    "solana",
+    "ai-agents",
+    "llm",
+    "payments",
+    "spending-limit",
+    "langchain",
+    "vercel-ai-sdk",
+    "mcp"
+  ],
+  "homepage": "https://singitai.app/developers/",
+  "bugs": {
+    "url": "https://github.com/bubon-ik/SingItAI/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bubon-ik/SingItAI.git",
+    "directory": "sdk/typescript"
+  },
+  "license": "MIT",
+  "author": "SingIt <contact@singitai.app>",
   "type": "module",
   "main": "src/index.js",
   "types": "index.d.ts",
@@ -14,10 +38,15 @@
   },
   "files": [
     "src",
-    "index.d.ts"
+    "index.d.ts",
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "node --test test/*.test.mjs"

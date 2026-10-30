@@ -25,7 +25,7 @@ export interface SingItOptions {
   rpcUrl?: string;
   /** Hard ceiling per chat() call, in whole USD (e.g. 0.01). Required. */
   maxPerCallUsd: number;
-  /** Hard ceiling per rolling UTC day across all chat() calls, in whole USD. Required, in-memory only. */
+  /** Hard ceiling per UTC day across chat() and paidFetch() calls on this instance, in whole USD. Required, in-memory only. */
   maxPerDayUsd: number;
   fetchImpl?: typeof fetch;
 }
@@ -37,7 +37,7 @@ export interface ChatOptions {
   max_tokens?: number;
   /** Default "upto": pay only the actual answer cost, up to the offered ceiling. "exact" pays the ceiling flat. */
   scheme?: SingItScheme;
-  /** Default "completions" (POST /v1/chat/completions, live today). "per-model" calls POST /v1/chat/{model} (SI-62, may not be deployed yet). */
+  /** Default "completions" (POST /v1/chat/completions, live today). "per-model" calls POST /v1/chat/{model} (SI-62, live). */
   route?: SingItRoute;
 }
 
@@ -64,10 +64,17 @@ export declare class SingItPaymentError extends Error {}
 export declare class SingIt {
   constructor(options: SingItOptions);
   chat(options: ChatOptions): Promise<ChatResult>;
-  /** GET /v1/wallet/{address}/reconciliation on appBaseUrl (SI-67; may not be deployed yet). */
+  /**
+   * A fetch-compatible function for frameworks that take a custom fetch (LangChain's ChatOpenAI `configuration.fetch`,
+   * the AI SDK's createOpenAICompatible({ fetch }), the OpenAI SDK's `fetch`). A request to baseUrl that gets HTTP 402 is
+   * paid like chat(): same pins and per-call/per-day ceilings (shared with chat() on this instance), signed once, never
+   * repeated. Other origins pass through unpaid. Non-streaming JSON answers only; set the framework's maxRetries to 0.
+   */
+  paidFetch(options?: { scheme?: SingItScheme }): typeof fetch;
+  /** GET /v1/wallet/{address}/reconciliation on appBaseUrl (SI-67). */
   /** Private: options.apiKey must be a SingIt API key of the account that signs in with `address`. */
   walletReport(address: string, options?: { days?: number; apiKey?: string }): Promise<any>;
-  /** GET /pricing.json on baseUrl (SI-68; may not be deployed yet). */
+  /** GET /pricing.json on baseUrl (SI-68; live). */
   pricing(): Promise<any>;
   /** walletReport(address, options).allowance */
   allowance(address: string, options?: { days?: number; apiKey?: string }): Promise<any>;

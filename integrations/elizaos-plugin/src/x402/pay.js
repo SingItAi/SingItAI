@@ -106,7 +106,7 @@ export async function payAskRequest({
   }
   limiter.settle(release, totalAtomic, offer.amount);
 
-  // Trimmed vs. @singit/sdk's SingIt.chat(): this skips the receipt's payer-address cross-check
+  // Trimmed vs. @singitai/sdk's SingIt.chat(): this skips the receipt's payer-address cross-check
   // (network is still checked). See sdk/typescript/src/singit.js for the full check.
   const receiptHeader = response.headers.get("payment-response");
   const receipt = receiptHeader ? decodeHeader(receiptHeader) : null;
