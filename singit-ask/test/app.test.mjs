@@ -53,17 +53,17 @@ const IDLE = { id: "idle-model", name: "Idle", provider: "X", contextLength: 1, 
 const fakeCatalogue = { async market() { return new Map([["pro-model", { trustedShare: 0.25 }]]); }, async resolve(id) { const m = [PRICEY, CHEAP, IDLE].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
   async list() { return [CHEAP, PRICEY]; }, async canAnswer(id) { return id !== "idle-model"; } };
 
-async function serve(t, { upstream } = {}) {
+async function serve(t, { upstream, config = CONFIG } = {}) {
   const facilitator = fakeFacilitator();
   const asked = [];
   const answer = upstream ?? (async (_config, messages, maxTokens) => {
     asked.push({ messages, maxTokens });
     return { content: "Try Caffè Propaganda.", finishReason: "stop", usage: { total_tokens: 42, buyer_cost_micro: 100 } };
   });
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, upstream: answer, log: () => {}, catalogue: fakeCatalogue });
+  const app = createApp(config, { facilitatorClient: facilitator, upstream: answer, log: () => {}, catalogue: fakeCatalogue });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
-  return { url: `http://127.0.0.1:${listener.address().port}`, facilitator, asked };
+  return { url: `http://127.0.0.1:${listener.address().port}`, facilitator, asked, app };
 }
 
 const QUESTION = { messages: [{ role: "user", content: "Coffee near the Colosseum?" }], max_tokens: 300 };
@@ -175,7 +175,8 @@ test("the payment resource keeps the public HTTPS URL behind the local tunnel", 
 
 test("a paid question on Base gets the answer and is charged its actual cost once", async (t) => {
   const { url, facilitator, asked } = await serve(t);
-  const response = await post(url, QUESTION, { "PAYMENT-SIGNATURE": baseSignature(await offer(url)) });
+  const required = await offer(url);
+  const response = await post(url, QUESTION, { "PAYMENT-SIGNATURE": baseSignature(required) });
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.choices[0].message.content, "Try Caffè Propaganda.");
@@ -183,6 +184,12 @@ test("a paid question on Base gets the answer and is charged its actual cost onc
   assert.equal(body.billing.totalAtomic, "1130"); // 100 model + 30 markup + 1000 Base settlement fee
   assert.equal(asked[0].maxTokens, 300);
   assert.deepEqual(facilitator.calls.settle, ["1130"]);
+  assert.ok(BigInt(body.billing.totalAtomic) < BigInt(required.accepts.find(a => a.network === BASE && a.scheme === "upto").amount));
+  // The fake facilitator deliberately omits amount from its settlement result.
+  const numbers = await (await fetch(`${url}/numbers.json`)).json();
+  assert.equal(numbers.usdc_volume.total, 0.001130);
+  assert.equal(numbers.usdc_volume.calls_without_amount, 0);
+
   assert.equal(decode(response.headers.get("payment-response")).network, BASE);
 });
 
@@ -944,4 +951,62 @@ test("deepseek-v4-pro sends its own thinking-off fields, and only with none", as
   // Any other model: none of it.
   const [other] = await run([ok], "deepseek-v4.1-flash");
   assert.equal("enable_thinking" in other || "thinking" in other, false);
+});
+
+test("public settled measurements, open CORS and private payer", async t => {
+  const { url, facilitator } = await serve(t);
+  const required = await offer(url);
+  const response = await post(url, QUESTION, { "payment-signature": exactSignature(required) });
+  assert.equal(response.status, 200); await response.json();
+  const h = await fetch(`${url}/health`), n = await fetch(`${url}/numbers.json`);
+  assert.equal(h.headers.get("access-control-allow-origin"), "*");
+  assert.equal(n.headers.get("access-control-allow-origin"), "*");
+  const health = await h.json(), numbers = await n.json();
+  for (const key of ["ok", "service", "model", "facilitator", "pricing", "free", "metered"])
+    assert.ok(Object.hasOwn(health, key));
+  assert.equal(health.ok, true); assert.equal(health.models[CONFIG.model].successes, 1);
+  assert.equal(health.payments.networks.base.settled, 1);
+  assert.equal(numbers.paid_calls.total, 1);
+  assert.equal(numbers.usdc_volume.total, Number(facilitator.calls.settle[0]) / 1e6);
+  assert.equal(numbers.unique_payers.total, 1);
+  assert.ok(!JSON.stringify([health, numbers]).includes(PAYER));
+});
+
+
+test("internal settled calls inform rails but not public numbers; stats failure preserves answers", async t => {
+  const { url, app } = await serve(t);
+  const internalPost = headers => fetch(`${url}${METERED_ROUTE}`, { method: "POST",
+    headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(QUESTION) });
+  const challenge = await internalPost({});
+  const required = decode(challenge.headers.get("payment-required"));
+  required.resource.url = `${url}${ROUTE}`; // Spoof a public resource on an internal payment.
+  const paid = await internalPost({ "payment-signature": exactSignature(required) });
+  assert.equal(paid.status, 200); await paid.json();
+  assert.equal((await (await fetch(`${url}/health`)).json()).payments.networks.base.settled, 1);
+  assert.equal((await (await fetch(`${url}/numbers.json`)).json()).paid_calls.total, 0);
+  app.locals.healthStats = { recordModel() { throw new Error("stats unavailable"); },
+    recordSettlement() { throw new Error("stats unavailable"); } };
+  const offer = decode((await post(url, QUESTION)).headers.get("payment-required"));
+  const answer = await post(url, QUESTION, { "payment-signature": exactSignature(offer) });
+  assert.equal(answer.status, 200);
+});
+
+test("free and failed model observations do not invent paid calls", async t => {
+  const { url } = await serve(t, { upstream: async () => { throw new UpstreamError("unreachable"); } });
+  const required = await offer(url);
+  assert.equal((await post(url, QUESTION, { "payment-signature": baseSignature(required) })).status, 503);
+  const health = await (await fetch(`${url}/health`)).json();
+  assert.equal(health.models[CONFIG.model].failures, 1);
+  assert.equal(health.ok, true);
+  assert.equal((await (await fetch(`${url}/numbers.json`)).json()).paid_calls.total, 0);
+});
+
+
+test("free model answers contribute health but no settled usage", async t => {
+  const { url } = await serve(t, { config: { ...CONFIG, freeModels: [CONFIG.model] } });
+  const answer = await post(url, { ...QUESTION, model: `free/${CONFIG.model}` });
+  assert.equal(answer.status, 200); await answer.json();
+  const health = await (await fetch(`${url}/health`)).json();
+  assert.equal(health.models[CONFIG.model].successes, 1);
+  assert.equal((await (await fetch(`${url}/numbers.json`)).json()).paid_calls.total, 0);
 });

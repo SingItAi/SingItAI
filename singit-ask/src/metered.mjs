@@ -7,6 +7,7 @@
 // ceiling and that is disclosed in the offer's own `extra.billing.mode`. `upto` is unaffected and keeps paying
 // only the answer's actual cost.
 import { ExpressAdapter, paymentMiddlewareFromHTTPServer, x402HTTPResourceServer, x402ResourceServer, setSettlementOverrides } from "@x402/express";
+import { SETTLEMENT_OVERRIDES_HEADER } from "@x402/core/http";
 import { bazaarResourceServerExtension } from "@x402/extensions/bazaar";
 import { permitGuard as defaultPermitGuard } from "./permit-guard.mjs";
 import { withBuilderCode } from "./builder-code.mjs";
@@ -159,8 +160,35 @@ function discoveryChallenge(httpServer) {
 // challenge: `routes` is `paymentMiddleware`'s own shape, `{ "POST /the/route": { accepts, mimeType, ... } }`.
 // `discoverable` should mirror whichever check already grants that route's empty-POST probe the same 402 (see
 // `isDiscoveryProbe` above) — a route that does not offer that probe should not advertise itself over GET either.
+const statsServers = new WeakSet(), statsRoutes = new WeakMap();
 export function addPaymentRoute(app, routes, server,
   { discoverable = true, log = console.log, permitGuard = defaultPermitGuard } = {}) {
+  const paths = statsRoutes.get(server) ?? new Set();
+  for (const key of Object.keys(routes)) if (key.startsWith("POST ")) paths.add(key.slice(5));
+  statsRoutes.set(server, paths);
+  if (!statsServers.has(server)) {
+    statsServers.add(server);
+    const record = ok => ctx => {
+      try {
+        let route = null;
+        try { const path = ctx.transportContext?.request?.path;
+          if (statsRoutes.get(server).has(path)) route = path; } catch {}
+        // Core 2.28 supplies effective requirements after overrides, but without an override
+        // an upto amount is only the authorization ceiling, not observed settlement volume.
+        let amountOverridden = false;
+        try {
+          const raw = Object.entries(ctx.transportContext?.responseHeaders ?? {})
+            .find(([key]) => key.toLowerCase() === SETTLEMENT_OVERRIDES_HEADER.toLowerCase())?.[1];
+          amountOverridden = JSON.parse(raw)?.amount !== undefined;
+        } catch {}
+        app.locals?.healthStats?.recordSettlement({ route, network: ctx.requirements?.network,
+          scheme: ctx.requirements?.scheme, ok: ok && ctx.result?.success !== false,
+          amount: ctx.result?.amount ?? ((ctx.requirements?.scheme === "exact" || amountOverridden) ? ctx.requirements?.amount : undefined),
+          payer: ctx.result?.payer });
+      } catch {}
+    };
+    server.onAfterSettle(record(true)); server.onSettleFailure(record(false));
+  }
   server.onAfterSettle(ctx => { permitGuard.record(ctx.paymentPayload, ctx.requirements, ctx.result); });
   // Only diagnostic fields are logged: facilitator errors can embed payer addresses or signatures, so redact
   // long encoded values even in the reason string rather than serializing any part of the payment payload.

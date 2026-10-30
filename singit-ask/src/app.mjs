@@ -10,6 +10,7 @@
 // with this service's own key; the payer never sees or needs it.
 
 import express from "express";
+import { HealthStats, FacilitatorCheck, healthBody, numbersBody } from "./health-stats.mjs";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
@@ -369,6 +370,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
   fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log });
   const app = express();
+  app.locals.healthStats = new HealthStats({ file: config.statsFile ?? null,
+    isPublicRoute: route => discoverableRoutes().includes(route), ownPayers: config.ownPayers ?? [], log });
+  app.locals.facilitatorCheck = new FacilitatorCheck({ client: facilitatorClient });
   app.locals.catalogue = catalogue;  // server.mjs warms it
   app.disable("x-powered-by");
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
@@ -417,9 +421,14 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const DISCOVERY_DESCRIPTION = "LLM chat completions API, OpenAI-compatible: one endpoint for 100+ models (Claude, "
     + "GPT, Gemini, Grok, DeepSeek, Qwen), no API key or account, pay per call in USDC. Call it when an agent needs an "
     + "LLM answer, a second opinion, or a model it has no key for. SingIt Ask; models at GET /v1/models.";
-  app.get("/health", (_req, res) => {
-    res.json({ ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
+  app.get("/health", open, (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model),
+               ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
+  });
+  app.get("/numbers.json", open, (_req, res) => {
+    res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
   });
   // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
   app.get("/v1/models", open, async (_req, res) => {
@@ -663,6 +672,17 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           operationId: "listModels", summary: "List models that can be asked for now, with prices",
           responses: { 200: { description: "Model list" } }, security: [],
         } },
+        "/health": { get: { operationId: "getHealth", security: [], summary: "Get service, model and payment-rail status",
+          responses: { 200: { description: "Legacy service fields plus observed health",
+            content: { "application/json": { schema: { type: "object", properties: {
+              ok: { type: "boolean", const: true }, status: { enum: ["ok", "degraded", "down"] },
+              generatedAt: { type: "string", format: "date-time" }, windowHours: { type: "integer", const: 24 },
+              statsSince: { type: "string", format: "date-time" }, models: { type: "object" },
+              payments: { type: "object", properties: { facilitator: { type: ["object", "null"] },
+                networks: { type: "object" } } }
+            } } } } } } } },
+        "/numbers.json": { get: { operationId: "getNumbers", security: [], summary: "Get measured usage numbers with definitions",
+          responses: { 200: { description: "Calls, USDC volume and unique payer counts since counters began" } } } },
         "/pricing.json": { get: {
           operationId: "listPricing", summary: "Get per-model upto/exact prices for one reference question",
           description: "What GET/HEAD discovery and a real paid request would be offered for each model that can be "
@@ -738,7 +758,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       ...(catalogue ? [`- GET ${base}/v1/images/models — image models and their prices`,
         `- GET ${base}/v1/audio/models — voice models and their prices`] : []),
       ...(priceBook ? [`- GET ${base}/v1/prices — crypto, metal and fx prices, no payment`] : []),
-      `- GET ${base}/health — service status`, "",
+      `- GET ${base}/health — service, model and payment-rail status`,
+      `- GET ${base}/numbers.json — measured usage numbers with definitions`, "",
       "## Links", "",
       `- OpenAPI: ${base}/openapi.json`,
       `- x402 discovery: ${base}/.well-known/x402`,
@@ -754,7 +775,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const choose = input => chooseModel(config, catalogue, input);
   // Every answer that came back teaches the price shown for its model. It never delays or fails the answer.
   const learning = async (config_, messages, maxTokens, fetchImpl_, model = config.model, options) => {
-    const answer = await upstream(config_, messages, maxTokens, fetchImpl_, model, options);
+    let answer;
+    try { answer = await upstream(config_, messages, maxTokens, fetchImpl_, model, options); }
+    catch (error) {
+      try { app.locals.healthStats.recordModel(model, { ok: false, code: error.code, status: error.status }); } catch {}
+      throw error;
+    }
+    try { app.locals.healthStats.recordModel(model, { ok: true }); } catch {}
     catalogue?.resolve(model).then((list) => observed.record(model, answer.usage, list)).catch(() => {});
     return answer;
   };

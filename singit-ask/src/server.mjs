@@ -13,6 +13,8 @@
 //                              are not offered
 //   SINGIT_ASK_OBSERVED_PRICES where what answers cost per model is kept (no prompts), default
 //                              ~/.config/singit-ask/observed-prices.json
+//   SINGIT_ASK_STATS_FILE      persistent private counters, default ~/.config/singit-ask/health-stats.json
+//   SINGIT_ASK_OWN_PAYERS_FILE optional own payers, one per line with # comments
 //   SINGIT_ASK_FREE_MODELS     models answered free as "free/<id>" (comma-separated); unset means the default model,
 //                              empty turns free answers off
 //   SINGIT_ASK_FREE_PER_VISITOR, SINGIT_ASK_FREE_PER_DAY  free answers a day per visitor and for everyone together
@@ -33,6 +35,7 @@
 //   SINGIT_ASK_EXACT_OUTPUT_FRACTION  fraction (0,1] of max_tokens that `exact` offers price their output at;
 //                              `upto` always prices the whole budget. Default 0.3
 
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createPublicClient, http } from "viem";
@@ -81,6 +84,11 @@ const config = {
 config.reasoningEffort = parseReasoningEffort(process.env.SINGIT_ASK_REASONING_EFFORT);
 setReasoningHeadroomOverrides(parseReasoningHeadroom(process.env.SINGIT_ASK_REASONING_HEADROOM));
 setExactReserve(parseExactReserve(process.env.SINGIT_ASK_EXACT_RESERVE));
+config.statsFile = process.env.SINGIT_ASK_STATS_FILE || `${process.env.HOME}/.config/singit-ask/health-stats.json`;
+config.ownPayers = process.env.SINGIT_ASK_OWN_PAYERS_FILE
+  ? readFileSync(process.env.SINGIT_ASK_OWN_PAYERS_FILE, "utf8").split(/\r?\n/)
+    .map(line => line.split("#")[0].trim()).filter(Boolean) : [];
+console.error(`singit-ask: own payer exclusions: ${config.ownPayers.length}`);
 const model = config.model;
 config.freeModels = process.env.SINGIT_ASK_FREE_MODELS === undefined ? [model]
   : process.env.SINGIT_ASK_FREE_MODELS.split(",").map((m) => m.trim()).filter(Boolean);
@@ -113,3 +121,5 @@ app.locals.catalogue?.warm().catch(() => { /* the first read retries */ });
 app.listen(port, "127.0.0.1", () => {
   console.error(`singit-ask: ${config.model}, actual usage over Coinbase CDP on Solana and Base, on http://127.0.0.1:${port}`);
 });
+
+for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { app.locals.healthStats.flush(); process.exit(0); });

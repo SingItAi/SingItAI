@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SingIt status: models, payments, numbers</title>
+<meta name="description" content="Observed model and payment status and measured public usage numbers.">
+<link rel="canonical" href="https://singitai.app/status/">
+<meta property="og:title" content="SingIt status: models, payments, numbers">
+<meta property="og:description" content="Observed model and payment status and measured public usage numbers.">
+<meta property="og:url" content="https://singitai.app/status/">
+<meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@SingItAgent">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css?v=bb7061fc">
+<link rel="stylesheet" href="/dev.css?v=1">
+<link rel="stylesheet" href="/pages.css?v=1">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://singitai.app/#organization",
+      "name": "SingIt",
+      "url": "https://singitai.app/"
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://singitai.app/#website",
+      "url": "https://singitai.app/",
+      "name": "SingIt",
+      "publisher": { "@id": "https://singitai.app/#organization" }
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://singitai.app/status/#webpage",
+      "url": "https://singitai.app/status/",
+      "name": "SingIt status: models, payments, numbers",
+      "description": "Observed model and payment status and measured public usage numbers.",
+      "isPartOf": { "@id": "https://singitai.app/#website" },
+      "breadcrumb": { "@id": "https://singitai.app/status/#breadcrumb" },
+      "inLanguage": "en"
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://singitai.app/status/#breadcrumb",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "SingIt", "item": "https://singitai.app/" },
+        { "@type": "ListItem", "position": 2, "name": "Status", "item": "https://singitai.app/status/" }
+      ]
+    }
+  ]
+}
+</script>
+<!-- Umami, self-hosted and cookieless (docs/analytics.md) -->
+<script defer src="https://stats.singitai.app/s.js" data-website-id="6eab5805-b9b8-4f04-aa73-df64a8ce096e" data-domains="singitai.app,app.singitai.app"></script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="singit-mark" viewBox="0 0 240 240" fill="none">
+    <path d="M192 108 V152 Q192 176 168 176 H112 Q88 176 88 152 V88 Q88 64 112 64 H168 Q192 64 192 78"
+          stroke="currentColor" stroke-width="12.5" stroke-linecap="round"/>
+    <path d="M116 118 L139 143 L188 86 H206" stroke="currentColor" stroke-width="11.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="216" cy="86" r="8" stroke="currentColor" stroke-width="8.5"/>
+    <g stroke="currentColor" stroke-width="9" stroke-linecap="round">
+      <line x1="58" y1="94"  x2="88" y2="94"/>
+      <line x1="58" y1="121" x2="88" y2="121"/>
+      <line x1="58" y1="148" x2="88" y2="148"/>
+    </g>
+    <g fill="currentColor">
+      <circle cx="49" cy="94"  r="9"/>
+      <circle cx="49" cy="121" r="9"/>
+      <circle cx="49" cy="148" r="9"/>
+    </g>
+  </symbol>
+</svg>
+
+<header class="nav-wrap">
+  <div class="nav-bar">
+    <a class="brand" href="/" aria-label="SingIt home">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/developers/">Developers</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/developers/#quickstart">Quickstart</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="https://app.singitai.app/app/">
+      Open SingIt
+      <span class="btn-arrow" aria-hidden="true">&#8599;</span>
+    </a>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero dev-hero"><div class="shell"><div class="hero-copy" data-hero-reveal>
+    <p class="eyebrow">Status</p>
+    <h1>SingIt status: models, payments, numbers</h1>
+    <p class="hero-sub">Observed results and independent availability probes, refreshed every 60 seconds; history is limited to recorded measurements.</p>
+  </div></div></section>
+  <section class="lp-section"><div class="shell">
+    <h2 class="section-title">Models</h2>
+    <p id="overall" class="lp-text" role="status">Loading service status…</p>
+    <div class="table-wrap"><table class="mtable">
+      <caption>Observed model answers in the last 24 hours.</caption>
+      <thead><tr><th scope="col">Model</th><th scope="col">Status</th><th scope="col">Successes (24h)</th><th scope="col">Failures (24h)</th><th scope="col">Error rate</th><th scope="col">Last success</th></tr></thead>
+      <tbody id="models"><tr><td colspan="6">Loading model status…</td></tr></tbody>
+    </table></div>
+  </div></section>
+  <section class="lp-section"><div class="shell">
+    <h2 class="section-title">Payment rails</h2>
+
+    <div class="table-wrap"><table class="mtable">
+      <caption>Observed payment settlements in the last 24 hours.</caption>
+      <thead><tr><th scope="col">Network</th><th scope="col">Status</th><th scope="col">Basis</th><th scope="col">Settled (24h)</th><th scope="col">Failed (24h)</th><th scope="col">Last settlement</th></tr></thead>
+      <tbody id="rails"><tr><td colspan="6">Loading payment status…</td></tr></tbody>
+    </table></div>
+  </div></section>
+  <section class="lp-section"><div class="shell">
+    <h2 class="section-title">Availability</h2>
+    <p class="lp-text">From <a href="https://app.singitai.app/status.json">independent probe results</a>. Short histories do not cover every window.</p>
+    <div class="table-wrap"><table class="mtable">
+      <caption>Independent probes of the Ask service and app health.</caption>
+      <thead><tr><th scope="col">Endpoint</th><th scope="col">Status</th><th scope="col">Last 24 hours</th><th scope="col">Last 7 days</th><th scope="col">Last 30 days</th></tr></thead>
+      <tbody id="availability"><tr><td colspan="5">Loading availability…</td></tr></tbody>
+    </table></div>
+  </div></section>
+  <section class="lp-section"><div class="shell">
+    <h2 class="section-title">Measured numbers</h2>
+    <p id="since" class="lp-text">Loading measured numbers…</p>
+    <div class="table-wrap"><table class="mtable">
+      <caption>Recorded usage; unavailable measurements are labelled.</caption>
+      <thead><tr><th scope="col">Measurement</th><th scope="col">Total</th><th scope="col">Last 24 hours</th><th scope="col">Last 7 days</th></tr></thead>
+      <tbody id="numbers"><tr><td colspan="4">Loading measured numbers…</td></tr></tbody>
+    </table></div>
+  </div></section>
+  <section class="lp-section"><div class="shell">
+    <h2 class="section-title">Definitions</h2>
+
+    <div class="table-wrap"><table class="mtable">
+      <caption>Measurement definitions and coverage.</caption>
+      <thead><tr><th scope="col">Definition</th><th scope="col">Value</th></tr></thead>
+      <tbody id="definitions"><tr><td colspan="2">Loading definitions…</td></tr></tbody>
+    </table></div>
+  </div></section>
+  <noscript><p class="shell fine">JavaScript is required to load current measurements. Read <a href="https://ask.singitai.app/health">health JSON</a>, <a href="https://ask.singitai.app/numbers.json">measured numbers JSON</a> and <a href="https://app.singitai.app/status.json">availability JSON</a> directly.</p></noscript>
+</main>
+
+<footer class="footer">
+  <div class="shell footer-inner">
+    <a class="brand brand-footer" href="/">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/">For everyone</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/x402-gift-cards-esims/">Gift cards &amp; eSIMs</a>
+      <a href="/ai-agent-spending-limit/">Spending limit</a>
+      <a href="https://app.singitai.app/app/">Open SingIt</a>
+      <a href="https://x.com/SingItAgent" target="_blank" rel="noopener">X</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://bubon-ik.github.io/SingItAI/" target="_blank" rel="noopener">Privacy policy</a>
+      <a href="mailto:contact@singitai.app">Contact</a>
+    </nav>
+    <p class="footer-fine">&copy; 2026 SingIt</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="/app.js?v=bb7061fc"></script>
+<script type="module" src="/status.mjs?v=1"></script>
+
+</body>
+</html>

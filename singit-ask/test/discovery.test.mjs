@@ -133,7 +133,7 @@ test("routes not listed for discovery keep Express's plain 404 on GET and HEAD",
 
 test("free GET routes are unaffected", async (t) => {
   const { url } = await serve(t);
-  for (const route of ["/health", "/v1/models", "/openapi.json", "/.well-known/x402", "/v1/images/models",
+  for (const route of ["/health", "/numbers.json", "/v1/models", "/openapi.json", "/.well-known/x402", "/v1/images/models",
     "/v1/audio/models", "/v1/video/models"]) {
     const response = await fetch(`${url}${route}`);
     assert.equal(response.status, 200, route);

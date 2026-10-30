@@ -221,3 +221,7 @@ cloudflared tunnel --url http://127.0.0.1:8099
 
 If macOS refuses to run scripts or virtualenvs inside `Documents` with
 `Operation not permitted`, grant the terminal Full Disk Access.
+
+The observed health and numbers change also touches `website/`, so merging it triggers the site publish.
+The new Ask endpoints require `systemctl --user restart singit-ask` on the deployment to appear.
+This note records the required operation; it does not claim a restart or deployment has been performed.

@@ -327,3 +327,14 @@ low-effort retry. Pre-settlement answer logs now describe settlement as pending.
 Verification: `npm test` under Node 22: 218 of 219 pass; the one failure (`test/solana-direct.test.mjs`, module
 link error) fails the same way on `main` without this change. No live payments were sent. The nonce memory is local to one process, bounded to 10,000 owner/asset pairs and
 expires after ten minutes; it does not coordinate concurrent requests or replicas and does not replace chain validation.
+
+### SingIt Ask observed health and numbers
+
+This follow-up to imported, ongoing SingIt Ask functionality adds observed model and payment-rail health
+on `GET /health`, settled usage counters on `GET /numbers.json`, and a website status page.
+It adds no new Solana transaction functionality.
+
+Verification: `npm test` in `singit-ask` passes 351 tests; website tests pass 115 tests.
+Tests use fake facilitators and send no payments. Counters start empty at deployment, with no history
+before their creation; hourly windows are retained for 30 days and unique counts are bounded.
+This change is not deployed until it is merged and SingIt Ask is restarted.
