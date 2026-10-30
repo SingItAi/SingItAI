@@ -77,6 +77,14 @@ what it actually cost; nothing is charged without an answer.
   of an empty or invented list. Linked from `openapi.json` as a free path. CORS is open (`*`), same as
   `/v1/models`, so `singitai.app/pricing/` can fetch it straight from the browser.
 
+Chat models are offered as `GET /v1/models` lists them, including some whose names
+contain uncensored, heretic or role-play. They are ordinary chat models, with the same
+x402 402 payment challenge and pricing as other chat models: provider cost + 30% +
+the network settlement fee. The `NOT_SOLD` ID pattern
+(`/lustify|uncensored|nsfw|edit|remover|upscale/i`) applies only to the image,
+speech, transcription and video catalogues; matching models in those lists are not sold.
+Video also excludes IDs containing `uncensored` in its serving path.
+
 ## Automatic web-agent payments
 
 Select **DeepSeek V4.1 Flash · SingIt Ask** with an existing approved allowance.
@@ -164,7 +172,7 @@ Surplus's error code/type/message (truncated, token- and key-shaped text blanked
 (job `succeeded` without a file). Nothing is stored in a database: video keeps no state.
 By default, failed submissions or retryable jobs can try up to two compatible healthy models at the same or lower list quote;
 `fallback:false` refuses substitution. Billing always uses the signed requested quote. The response's `model` is
-what ran; substitutions also include `requested_model` and `substituted: true`. Uncensored models are never sold.
+what ran; substitutions also include `requested_model` and `substituted: true`. Video models whose IDs contain `uncensored` are not sold.
 
 ## Your spend limit in the 402, and a receipt (plan item 3)
 

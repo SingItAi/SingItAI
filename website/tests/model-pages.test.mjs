@@ -252,3 +252,38 @@ test("consolidated page preserves the published spend excerpt and comparison str
     offset = at + line.length;
   }
 });
+
+
+test("the eight named chat model pages contain only neutral technical copy", async () => {
+  const ids = [
+    "deepseek-v4.1-flash-uncensored",
+    "e2ee-gemma-4-26b-a4b-uncensored-p",
+    "e2ee-qwen3-6-35b-a3b-uncensored-p",
+    "gemma-4-uncensored",
+    "glm-4.7-flash-heretic",
+    "qwen3.6-plus-uncensored",
+    "venice-uncensored-1.2",
+    "venice-uncensored-role-play",
+  ];
+  const snapshot = JSON.parse(await read("data/models-snapshot.json"));
+  const models = ids.map((id) => {
+    const model = snapshot.models.find((m) => m.id === id);
+    assert.ok(model?.name, `Missing model: ${id}`);
+    return model;
+  });
+  const allowed = models.flatMap(({ id, name }) => [
+    name, escapeHtml(name), id, safeSlug(id), `/models/${id}/`,
+    `https://singitai.app/models/${id}/`,
+  ]).sort((a, b) => b.length - a.length);
+  const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const namesAndUrls = new RegExp(allowed.map(escapeRegex).join("|"), "gi");
+  for (const id of ids) {
+    const html = (await read(`models/${id}/index.html`)).replace(namesAndUrls, "");
+    assert.doesNotMatch(html, /uncensored|heretic|role[- ]?play|nsfw|adult|explicit|erotic|sexual|unfiltered|jailbreak|no censorship/i, id);
+  }
+});
+
+test("Ask README does not claim all uncensored models are never sold", async () => {
+  const readme = await readFile(path.join(root, "singit-ask/README.md"), "utf8");
+  assert.ok(!readme.includes("Uncensored models are never sold."));
+});
