@@ -4,6 +4,9 @@
 /app https://app.singitai.app/app/ 302
 /app/* https://app.singitai.app/app/:splat 302
 
+# singitai.app/numbers.json is served live by ask.singitai.app.
+/numbers.json https://ask.singitai.app/numbers.json 302
+
 # Do not add a catch-all rewrite to /index.html. Cloudflare Pages serves a real
 # file before the dashboard SPA fallback, which is why /robots.txt and
 # /sitemap.xml used to return the landing HTML: the files were missing.

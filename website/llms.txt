@@ -35,6 +35,7 @@ Agents with their own wallet can skip the key: pay per answer over x402 at https
 
 ## For developers
 
+- Health and status: https://ask.singitai.app/health (JSON: model and payment-rail status), https://singitai.app/status/ (page), https://ask.singitai.app/numbers.json (measured numbers)
 - Docs: https://singitai.app/developers/
 - SingIt Ask OpenAPI: https://ask.singitai.app/openapi.json
 - SingIt Ask x402 discovery: https://ask.singitai.app/.well-known/x402

@@ -283,3 +283,20 @@ require a separately approved live test; `src/solana-buyer-cli.mjs` and
 
 Stop or roll back only this service with `systemctl --user disable --now singit-ask`.
 Keep its private configuration out of Git, command output and published logs.
+
+### Observed health and usage
+
+`GET /health` retains `ok: true` and the existing service fields, and adds observed text-model results,
+payment-rail status, a cached read-only facilitator check, measurement start and generation timestamps.
+Model and settlement rates cover UTC hourly buckets in the last 24 hours; idle models are omitted.
+`GET /numbers.json` publishes settled public x402 calls, known USDC volume and distinct payer wallets for
+all recorded history, 24 hours and 7 days, with definitions. Internal web-app payments inform rail health
+but are excluded from usage. Configured own payers are excluded too. History before these counters existed
+is not included. Missing amounts are never estimated; unique counts become null when their bounded sets fill.
+Payers are stored only as salted HMAC hashes, never exposed. Availability is measured separately by the
+external prober at https://app.singitai.app/status.json.
+
+`SINGIT_ASK_STATS_FILE` defaults to `~/.config/singit-ask/health-stats.json`; it holds private counters and
+salt, written atomically with mode 0600, with a roughly ten-second debounce and a shutdown flush.
+`SINGIT_ASK_OWN_PAYERS_FILE` optionally names a private file of excluded own payer addresses, one per line
+with `#` comments, read once at startup; only the count is logged. Keep these files outside version control.

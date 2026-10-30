@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const website = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PAGES = [
+  "https://singitai.app/status/",
   "https://singitai.app/",
   "https://singitai.app/developers/",
   "https://singitai.app/models/",
@@ -73,6 +74,7 @@ test("the pages output contains robots.txt and the landing sitemap", async () =>
     assert.deepEqual(rules, [
       "/app https://app.singitai.app/app/ 302",
       "/app/* https://app.singitai.app/app/:splat 302",
+      "/numbers.json https://ask.singitai.app/numbers.json 302",
     ]);
 
     const server = createServer(async (request, response) => {
