@@ -134,7 +134,7 @@ class SingIt:
     ) -> dict:
         """One OpenAI-shaped chat completion, paid over x402.
 
-        `route="per-model"` calls POST /v1/chat/{model} (SI-62), which may not be deployed yet;
+        `route="per-model"` calls POST /v1/chat/{model} (SI-62), which is live;
         the default calls POST /v1/chat/completions, which is live today.
         """
         if not messages:
@@ -204,7 +204,6 @@ class SingIt:
         if not is_atomic_amount(total_atomic) or int(total_atomic) > int(offer["amount"]):
             raise SingItPaymentError("The invoice does not match the offered ceiling; treating the payment as unresolved "
                                      "(its ceiling stays counted against the daily cap).")
-        self.limiter.settle(release, total_atomic, offer["amount"])
 
         receipt_header = headers.get("payment-response")
         receipt = decode_header(receipt_header) if receipt_header else None
@@ -214,6 +213,8 @@ class SingIt:
             or (payer and receipt.get("payer") and not _same_payer(self.pin.family, receipt["payer"], payer))
         ):
             raise SingItPaymentError("The settlement receipt does not match this request; treating the payment as unresolved.")
+
+        self.limiter.settle(release, total_atomic, offer["amount"])
 
         payment_info = {"scheme": scheme, "network": self.network, "amountAtomic": total_atomic}
         if receipt and receipt.get("transaction"):
@@ -233,17 +234,17 @@ class SingIt:
             )
         if status >= 400:
             raise SingItPaymentError(
-                f"Wallet reconciliation is not available (HTTP {status}). This endpoint (SI-67) may not be deployed yet; see the SDK README."
+                f"Wallet reconciliation is not available (HTTP {status})."
             )
         return json.loads(raw)
 
     def pricing(self) -> dict:
-        """GET /pricing.json on base_url (SI-68; may not be deployed yet)."""
+        """GET /pricing.json on base_url (SI-68; live)."""
         url = f"{self.base_url}/pricing.json"
         status, raw = _get_json(url)
         if status >= 400:
             raise SingItPaymentError(
-                f"pricing.json is not available (HTTP {status}). This endpoint (SI-68) may not be deployed yet; see the SDK README."
+                f"pricing.json is not available (HTTP {status})."
             )
         return json.loads(raw)
 

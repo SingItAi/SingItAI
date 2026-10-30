@@ -1,9 +1,9 @@
 // Vendored and trimmed from sdk/typescript/src/{guards.js,pins.js} (Base only — this plugin pays
 // through an agent's EVM wallet key, not a Solana signer). Keep in sync by hand; do not import the
-// unpublished @singit/sdk package by path, so this plugin installs standalone from npm.
+// @singitai/sdk package by path, so this plugin installs standalone from npm.
 //
 // Pins the merchant's offer (network, asset, payTo) before signing, caps a single call, and caps a
-// rolling day of calls — the same guards @singit/sdk applies in front of SingIt Ask.
+// rolling day of calls — the same guards @singitai/sdk applies in front of SingIt Ask.
 
 export class SingItPaymentError extends Error {}
 

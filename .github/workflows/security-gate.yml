@@ -124,3 +124,51 @@ jobs:
       - name: singit-risk-check audit
         working-directory: singit-risk-check
         run: npm audit --audit-level=moderate
+
+  sdk-package-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check npm package contents
+        working-directory: sdk/typescript
+        run: |
+          npm ci --ignore-scripts
+          npm pack --dry-run --json > /tmp/sdk-pack.json
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const files = JSON.parse(readFileSync('/tmp/sdk-pack.json'))[0].files.map(f => f.path);
+          for (const file of ['index.d.ts', 'README.md', 'LICENSE', 'src/index.js']) assert(files.includes(file), file);
+          assert(files.some(f => f.startsWith('src/')));
+          assert(files.every(f => !/(^|\/)(test|tests|node_modules)(\/|$)/.test(f)));
+          JS
+      - name: Build and check Python distributions
+        working-directory: sdk/python
+        run: |
+          pip install build twine
+          python -m build
+          twine check dist/*
+          python <<'PYTHON'
+          import glob
+          import tarfile
+          import zipfile
+          from email.parser import Parser
+          with zipfile.ZipFile(glob.glob('dist/*.whl')[0]) as wheel:
+              names = wheel.namelist()
+              assert not any(part in ('test', 'tests') for name in names for part in name.split('/'))
+              metadata = Parser().parsestr(wheel.read(next(n for n in names if n.endswith('/METADATA'))).decode())
+              assert metadata['Description-Content-Type'] == 'text/markdown'
+              assert metadata.get_payload().strip() == open('README.md').read().strip()
+              assert any(n.endswith('/licenses/LICENSE') for n in names)
+          with tarfile.open(glob.glob('dist/*.tar.gz')[0]) as sdist:
+              names = sdist.getnames()
+              for file in ('README.md', 'LICENSE', 'pyproject.toml'):
+                  assert any(n.endswith('/' + file) for n in names)
+              assert not any(part in ('test', 'tests') for name in names for part in name.split('/'))
+          PYTHON

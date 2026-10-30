@@ -86,7 +86,7 @@ export class SingIt {
   /**
    * One OpenAI-shaped chat completion, paid over x402.
    *
-   * `route: "per-model"` calls POST /v1/chat/{model} (SI-62), which may not be deployed yet;
+   * `route: "per-model"` calls POST /v1/chat/{model} (SI-62), which is live;
    * the default calls POST /v1/chat/completions, which is live today.
    */
   async chat({ model, messages, max_tokens, scheme = "upto", route = "completions" } = {}) {
@@ -112,6 +112,22 @@ export class SingIt {
     const first = await send({});
     if (first.status !== 402) return { ...(await readJsonOrThrow(first)), payment: null };
 
+    const { receipt, text } = await this._payOffer({ first, scheme, url, send });
+    const result = JSON.parse(text);
+
+    return {
+      ...result,
+      payment: { scheme, network: this.network, amountAtomic: result.billing.totalAtomic, ...(receipt?.transaction ? { txHash: receipt.transaction } : {}) },
+    };
+  }
+
+  /**
+   * Everything between "the merchant answered 402" and "the paid answer arrived": pin the offer, reserve the
+   * worst case against today's cap, sign, send once, and settle the cap down to the billed amount. Shared by
+   * chat() and paidFetch() so both enforce the same guards before anything is signed. Returns the paid
+   * response, its text (already validated as an invoice no larger than the offered ceiling), and validated receipt.
+   */
+  async _payOffer({ first, scheme, url, send }) {
     const header = first.headers.get("payment-required");
     if (!header) throw new SingItPaymentError("Got HTTP 402 with no PAYMENT-REQUIRED header.");
     const challenge = decodeHeader(header);
@@ -147,24 +163,55 @@ export class SingIt {
       throw new SingItPaymentError(`Paid request returned HTTP ${response.status}; it was not repeated, and its ceiling `
         + "stays counted against the daily cap in case it settled.");
     }
-    const result = await response.json().catch(() => null);
+    const text = await response.text().catch(() => "");
+    let result = null;
+    try { result = JSON.parse(text); } catch { /* treated as an unreadable invoice below */ }
     const totalAtomic = result?.billing?.totalAtomic;
     if (!isAtomicAmount(totalAtomic) || BigInt(totalAtomic) > BigInt(offer.amount)) {
       throw new SingItPaymentError("The invoice does not match the offered ceiling; treating the payment as unresolved "
         + "(its ceiling stays counted against the daily cap).");
     }
+    const receipt = this._checkReceipt(response, payload);
     this.limiter.settle(release, totalAtomic, offer.amount);
+    return { response, offer, payload, text, receipt };
+  }
 
+  _checkReceipt(response, payload) {
     const receiptHeader = response.headers.get("payment-response");
     const receipt = receiptHeader ? decodeHeader(receiptHeader) : null;
     const payer = payload.payload?.permit2Authorization?.from ?? payload.payload?.authorization?.from ?? payload.payload?.from;
     if (receipt && (receipt.network !== this.pin.caip || (payer && receipt.payer && !samePayer(this.pin.family, receipt.payer, payer)))) {
       throw new SingItPaymentError("The settlement receipt does not match this request; treating the payment as unresolved.");
     }
+    return receipt;
+  }
 
-    return {
-      ...result,
-      payment: { scheme, network: this.network, amountAtomic: totalAtomic, ...(receipt?.transaction ? { txHash: receipt.transaction } : {}) },
+  /**
+   * A fetch-compatible function for frameworks that take a custom `fetch` (LangChain's ChatOpenAI
+   * `configuration.fetch`, the AI SDK's `createOpenAICompatible({ fetch })`, the OpenAI SDK's `fetch`).
+   * A request to SingIt Ask that gets HTTP 402 is paid exactly like chat(): same pins, same per-call and
+   * per-day ceilings (shared with chat() on this instance), signed once, never repeated. Requests to any other
+   * origin pass through untouched and unpaid. Non-streaming JSON answers only: the billed amount is read from
+   * the answer's `billing.totalAtomic`, so a paid answer without it counts as unresolved and the framework must
+   * not retry (set maxRetries to 0).
+   */
+  paidFetch({ scheme = "upto" } = {}) {
+    if (scheme !== "upto" && scheme !== "exact") throw new SingItPaymentError('scheme must be "upto" or "exact".');
+    const origin = new URL(this.baseUrl).origin;
+    return async (input, init) => {
+      let request = new Request(input, init);
+      if (new URL(request.url).origin !== origin) return this.fetchImpl(request);
+      request = new Request(request, { redirect: "error" });
+      const first = await this.fetchImpl(request.clone());
+      if (first.status !== 402) return first;
+      // redirect: "error" so a redirect can never carry PAYMENT-SIGNATURE elsewhere or resend the paid POST.
+      const send = headers => {
+        const paid = new Request(request.clone(), { redirect: "error" });
+        for (const [name, value] of Object.entries(headers)) paid.headers.set(name, value);
+        return this.fetchImpl(paid);
+      };
+      const { response, text } = await this._payOffer({ first, scheme, url: request.url, send });
+      return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
     };
   }
 
@@ -181,18 +228,18 @@ export class SingIt {
     }
     if (!response.ok) {
       throw new SingItPaymentError(
-        `Wallet reconciliation is not available (HTTP ${response.status}). This endpoint (SI-67) may not be deployed yet; see the SDK README.`
+        `Wallet reconciliation is not available (HTTP ${response.status}).`
       );
     }
     return response.json();
   }
 
-  /** GET /pricing.json on the SingIt Ask base URL (SI-68; may not be deployed yet). */
+  /** GET /pricing.json on the SingIt Ask base URL (SI-68; live). */
   async pricing() {
     const response = await this.fetchImpl(`${this.baseUrl}/pricing.json`);
     if (!response.ok) {
       throw new SingItPaymentError(
-        `pricing.json is not available (HTTP ${response.status}). This endpoint (SI-68) may not be deployed yet; see the SDK README.`
+        `pricing.json is not available (HTTP ${response.status}).`
       );
     }
     return response.json();

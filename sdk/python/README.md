@@ -1,10 +1,10 @@
 # singit
 
 x402 payment and client-side spending allowance for [SingIt Ask](../../singit-ask), in a few
-lines. **Not published yet** — this package has no PyPI upload configuration; it is built and
-tested locally only. Publishing needs a separate decision from the project owner.
+lines. Limits are checked in your process before signing. The separate AgentAllowance
+contract covers only the SingIt app's own agent; it does not protect other agents.
 
-## Install (once published)
+## Install
 
 ```bash
 pip install singit          # Base / Base Sepolia (EVM): upto + exact
@@ -14,6 +14,7 @@ pip install singit[svm]      # adds Solana: exact only (see "What isn't supporte
 ## Base
 
 ```python
+import os
 from singit import SingIt
 
 singit = SingIt(
@@ -30,6 +31,7 @@ print(answer["choices"][0]["message"]["content"], answer["payment"])
 ## Solana (exact only)
 
 ```python
+import os
 from singit import SingIt
 
 singit = SingIt(
@@ -49,8 +51,8 @@ explicitly (e.g. your own test merchant, or a facilitator's own test receiver).
 
 ```python
 singit = SingIt(
-    evm_private_key=..., network="base-sepolia",
-    pay_to="0x...",  # required: no SingIt deployment to pin a default against
+    evm_private_key=os.environ["AGENT_PRIVATE_KEY"], network="base-sepolia",
+    pay_to=os.environ["TEST_MERCHANT_PAY_TO"],  # required: no SingIt deployment to pin a default against
     max_per_call_usd=0.01, max_per_day_usd=1,
 )
 ```
@@ -66,10 +68,10 @@ Every call pins the merchant's offer before signing anything, the same way
   before anything is signed.
 - **Per-call ceiling (`max_per_call_usd`).** The offer's atomic amount must be at or below
   `max_per_call_usd` converted to micro-USDC. A costlier offer is refused.
-- **Per-day ceiling (`max_per_day_usd`).** An in-memory, per-process, per-UTC-day counter.
+- **Per-day ceiling (`max_per_day_usd`).** An in-memory counter per client instance and per UTC day.
   Reserved at the offer's worst-case ceiling before signing, settled down to the actual billed
   amount afterwards. **Not durable**: it resets on restart and is not shared across processes —
-  it is a client-side allowance guard, not a ledger. For the actual on-chain spending limit, see
+  it is a client-side allowance guard, not a ledger. For the SingIt app agent’s separate on-chain limit, see
   `allowance()` below.
 - **Settlement receipt.** The `payment-response` header's network and payer are checked against
   the request; a mismatch is treated as unresolved rather than returned as a success.
@@ -90,11 +92,11 @@ caller to check independently if needed.
   to the offered ceiling, on EVM networks; `"exact"` pays that ceiling flat and is the only
   scheme supported on Solana (see below). `route="completions"` (default) calls
   `POST /v1/chat/completions`, live today. `route="per-model"` calls `POST /v1/chat/{model}`
-  (SI-62) — **may not be deployed yet**; `model` is then required.
+  (SI-62), live; `model` is then required.
 - `wallet_report(address, days=None, api_key=None)` — `GET {app_base_url}/v1/wallet/{address}/reconciliation`
   (SI-67). The report is private: `api_key` must be a SingIt API key of the account that signs in
   with `address`; without one the server answers 401, and the SDK says so.
-- `pricing()` — `GET {base_url}/pricing.json` (SI-68). **May not be deployed yet**, same caveat.
+- `pricing()` — `GET {base_url}/pricing.json` (SI-68), live.
 - `allowance(address, **kwargs)` — `wallet_report(address, **kwargs)["allowance"]`: the on-chain
   spending limit set in the SingIt app, with what has been spent/remains today.
 
@@ -106,12 +108,11 @@ caller to check independently if needed.
   that Python might lack EVM `upto` too: it does not, Base/Base Sepolia support both schemes.
   Solana support here is `exact` only, and calling `chat(scheme="upto", network="solana")` raises
   clearly rather than silently falling back.
-- The per-model route (SI-62), wallet reconciliation (SI-67) and `pricing.json` (SI-68) are not
-  present anywhere in this repository yet; calling them against the live `ask.singitai.app` /
-  `app.singitai.app` hosts will 404 until those PRs ship.
 - No on-chain confirmation of the settlement transaction.
 - The Solana `exact` client in the official package resolves a blockhash over a live RPC call
   during payload construction, so it cannot be exercised fully offline; this SDK's own test suite
   therefore only covers Solana at the offer-selection/guard level (see `tests/test_solana_offer.py`).
 - `base-sepolia` is useful for integration-testing against a merchant you control; SingIt itself
   has no testnet deployment to pay.
+
+Framework fetch adapters are currently available only in the TypeScript SDK.

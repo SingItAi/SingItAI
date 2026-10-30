@@ -157,3 +157,24 @@ def test_pricing_raises_a_clear_error_on_404(account, start):
     merchant = start([exact()])
     with pytest.raises(SingItPaymentError, match=r"pricing.json is not available \(HTTP 404\)"):
         client(account, merchant).pricing()
+
+
+def test_mismatched_receipt_keeps_full_reservation(account, start, monkeypatch):
+    import singit.client as module
+    from singit.guards import encode_header
+
+    merchant = start([exact("2000")])
+    merchant.bill = lambda offer: "1000"
+    singit = client(account, merchant, max_per_call_usd=0.003, max_per_day_usd=0.003)
+    original = module._post_json
+
+    def post(*args, **kwargs):
+        status, headers, raw = original(*args, **kwargs)
+        if status == 200:
+            headers.replace_header("payment-response", encode_header({"network": "wrong-network"}))
+        return status, headers, raw
+
+    monkeypatch.setattr(module, "_post_json", post)
+    with pytest.raises(SingItPaymentError, match="settlement receipt"):
+        singit.chat(messages=MESSAGES, scheme="exact")
+    assert singit.limiter.remaining_atomic() == 1000

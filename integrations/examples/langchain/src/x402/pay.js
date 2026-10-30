@@ -1,6 +1,6 @@
 // Vendored and trimmed from sdk/typescript/src/{signers.js,singit.js} (Base only), reshaped as a
 // fetch-wrapper so it drops straight into @langchain/openai's `configuration.fetch`. Every request
-// through the returned fetch is guarded exactly like @singit/sdk: the merchant's offer must be on
+// through the returned fetch is guarded exactly like @singitai/sdk: the merchant's offer must be on
 // Base, pay the pinned SingIt Ask address in the pinned USDC contract, and stay within both the
 // per-call and per-day ceilings. See ../../../../elizaos-plugin/src/x402/pay.js for the same
 // pattern as a plain async call instead of a fetch wrapper.
