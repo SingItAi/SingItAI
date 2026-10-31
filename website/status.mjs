@@ -3,12 +3,40 @@ export const HEALTH_URL = "https://ask.singitai.app/health";
 export const AVAILABILITY_URL = "https://app.singitai.app/status.json";
 export const NUMBERS_URL = "https://ask.singitai.app/numbers.json";
 export function statusLabel(value) {
-  return ({ ok: "OK", up: "Up", degraded: "Degraded", down: "Down", unknown: "Unknown" })[value] ?? "Unknown";
+  const labels = { ok: "OK", up: "Up", degraded: "Degraded", down: "Down",
+    insufficient_data: "Not enough data", unavailable: "Unavailable", unknown: "Unknown" };
+  return typeof value === "string" && Object.hasOwn(labels, value) ? labels[value] : "Unknown";
 }
 export function modelRows(health) {
-  if (!health || typeof health.models !== "object") throw new Error("Could not load model status.");
-  return Object.entries(health.models).map(([id, m]) => [id, statusLabel(m.status), m.successes,
-    m.failures, `${m.errorRatePct}%`, m.lastSuccessAt ?? "No success recorded"]);
+  if (!health?.models || typeof health.models !== "object") throw new Error("Could not load model status.");
+  return Object.entries(health.models).map(([id, entry]) => {
+    const m = entry && typeof entry === "object" && !Array.isArray(entry) ? entry : {};
+    let label = statusLabel(m.status);
+    const details = [];
+    if (m.status === "unavailable") {
+      if (Number.isFinite(m.retryAfterSeconds)) details.push(`retry in ${m.retryAfterSeconds} s`);
+      if (typeof m.unavailableUntil === "string" &&
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(m.unavailableUntil) &&
+          Number.isFinite(Date.parse(m.unavailableUntil))) details.push(`until ${m.unavailableUntil}`);
+    } else if (m.status === "insufficient_data" && Number.isInteger(m.attempts)) {
+      details.push(`${m.attempts} attempts, 5 needed`);
+    } else if (m.status === "degraded" || m.status === "down") {
+      if (m.reason === "no_healthy_sellers") details.push("no healthy sellers");
+      if (m.reason === "minimum_discount_not_met") details.push("minimum discount not met");
+    }
+    if (details.length) label += ` (${details.join(", ")})`;
+    return [id, label, Number.isFinite(m.successes) ? m.successes : "Not available",
+      Number.isFinite(m.failures) ? m.failures : "Not available",
+      Number.isFinite(m.errorRatePct) ? `${m.errorRatePct}%` : "Not available",
+      typeof m.lastSuccessAt === "string" ? m.lastSuccessAt : "No success recorded"];
+  });
+}
+export function summaryText(health) {
+  const s = health?.models_summary;
+  const keys = ["up", "degraded", "down", "insufficient_data", "unavailable"];
+  if (!s || typeof s !== "object" || Array.isArray(s) ||
+      !keys.every(k => Number.isInteger(s[k]) && s[k] >= 0)) return "";
+  return `Models: ${keys.map(k => `${s[k]} ${statusLabel(k).toLowerCase()}`).join(", ")}.`;
 }
 export function railRows(health) {
   if (!health?.payments?.networks) throw new Error("Could not load payment status.");
@@ -68,7 +96,8 @@ if (typeof document !== "undefined") {
       loadJson(HEALTH_URL).then(h => {
         const models = modelRows(h), rails = railRows(h);
         table("models", models); table("rails", rails);
-        text("overall", `Overall: ${statusLabel(h.status)}. Generated ${h.generatedAt}.`);
+        const summary = summaryText(h);
+        text("overall", `Overall: ${statusLabel(h.status)}. Generated ${h.generatedAt}.${summary ? ` ${summary}` : ""}`);
       }).catch(() => {
         text("overall", "Could not load service status.");
         table("models", [], "Could not load model status."); table("rails", [], "Could not load payment status.");

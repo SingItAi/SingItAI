@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { statusLabel, modelRows, railRows, numberRows, availabilityRows, tableRows, loadJson } from "../status.mjs";
+import { statusLabel, summaryText, modelRows, railRows, numberRows, availabilityRows, tableRows, loadJson } from "../status.mjs";
 const read = p => readFile(new URL(`../${p}`, import.meta.url), "utf8");
 test("status labels and measured fixture rows", () => {
   assert.equal(statusLabel("down"), "Down"); assert.equal(statusLabel("bad"), "Unknown");
@@ -17,6 +17,7 @@ test("fetch errors never become numbers", async () => {
 });
 test("static status page and discovery are safe", async () => {
   const page = await read("status/index.html"), script = await read("status.mjs");
+  assert.match(page, /<script type="module" src="\/status\.mjs\?v=2"><\/script>/);
   assert.match(page, /rel="canonical" href="https:\/\/singitai.app\/status\/"/);
   assert.doesNotMatch(page, /video|0x[a-f0-9]{40}/i);
   assert.doesNotMatch(script, /innerHTML/); assert.match(script, /textContent/);
@@ -81,4 +82,68 @@ test("every status table uses pricing styling and row-based states", async () =>
   }
   assert.match(script, /loadJson\(AVAILABILITY_URL\)/);
   assert.match(script, /setInterval\(refresh, 60000\)/);
+});
+
+test("model labels accept only known string states", () => {
+  assert.equal(statusLabel("insufficient_data"), "Not enough data");
+  assert.equal(statusLabel("unavailable"), "Unavailable");
+  for (const value of [null, {}, [], "constructor", "__proto__", "unexpected"])
+    assert.equal(statusLabel(value), "Unknown");
+});
+
+test("old model rows retain all six columns", () => {
+  const m = { status: "up", successes: 2, failures: 0, errorRatePct: 0, lastSuccessAt: null };
+  assert.deepEqual(modelRows({ models: { text: m } }),
+    [["text", "Up", 2, 0, "0%", "No success recorded"]]);
+});
+
+test("new model rows show validated details for each state", () => {
+  const until = "2026-10-31T12:00:00Z";
+  const base = { successes: 2, failures: 1, errorRatePct: 33.3, lastSuccessAt: until,
+    windowHours: 24, attempts: 3, lastOutcome: "success", sellerFailures: 1,
+    failureReasons: { no_healthy_sellers: 1, minimum_discount_not_met: 0, other: 0 } };
+  const cases = [
+    [{ status: "up" }, "Up"],
+    [{ status: "unavailable", retryAfterSeconds: 30, unavailableUntil: until },
+      `Unavailable (retry in 30 s, until ${until})`],
+    [{ status: "unavailable" }, "Unavailable"],
+    [{ status: "unavailable", retryAfterSeconds: 30 }, "Unavailable (retry in 30 s)"],
+    [{ status: "unavailable", unavailableUntil: until }, `Unavailable (until ${until})`],
+    [{ status: "unavailable", retryAfterSeconds: "30", unavailableUntil: "bad" }, "Unavailable"],
+    [{ status: "unavailable", retryAfterSeconds: Infinity, unavailableUntil: {} }, "Unavailable"],
+    [{ status: "insufficient_data" }, "Not enough data (3 attempts, 5 needed)"],
+    [{ status: "insufficient_data", attempts: 0 }, "Not enough data (0 attempts, 5 needed)"],
+    [{ status: "insufficient_data", attempts: "3" }, "Not enough data"],
+    [{ status: "insufficient_data", attempts: 1.5 }, "Not enough data"],
+    [{ status: "degraded", reason: "no_healthy_sellers" }, "Degraded (no healthy sellers)"],
+    [{ status: "down", reason: "minimum_discount_not_met" }, "Down (minimum discount not met)"],
+    [{ status: "down", reason: "other" }, "Down"],
+    [{ status: "degraded", reason: "<untrusted>" }, "Degraded"]
+  ];
+  for (const [fields, label] of cases) assert.deepEqual(modelRows({ models: { text: { ...base, ...fields } } }),
+    [["text", label, 2, 1, "33.3%", until]]);
+});
+
+test("malformed model entries render without throwing or coercing objects", () => {
+  for (const entry of [null, false, "bad", [], {}, { status: {}, successes: {}, failures: [],
+    errorRatePct: "0", lastSuccessAt: {} }]) {
+    assert.deepEqual(modelRows({ models: { text: entry } }),
+      [["text", "Unknown", "Not available", "Not available", "Not available", "No success recorded"]]);
+  }
+  for (const errorRatePct of [null, undefined, NaN, Infinity, {}, "10"])
+    assert.equal(modelRows({ models: { text: { errorRatePct } } })[0][4], "Not available");
+  assert.deepEqual(tableRows(modelRows({ models: { "<script>": { lastSuccessAt: "<img>" } } }), 6, "" )
+    [0].map(cell => cell.text), ["<script>", "Unknown", "Not available", "Not available", "Not available", "<img>"]);
+});
+
+test("model summary requires all five non-negative integer counts", () => {
+  const models_summary = { up: 5, degraded: 1, down: 0, insufficient_data: 2, unavailable: 1 };
+  assert.equal(summaryText({ models_summary }),
+    "Models: 5 up, 1 degraded, 0 down, 2 not enough data, 1 unavailable.");
+  for (const health of [null, {}, { models: {} }, { models_summary: null }, { models_summary: [] }])
+    assert.equal(summaryText(health), "");
+  for (const key of Object.keys(models_summary)) {
+    for (const value of [undefined, null, -1, 1.5, Infinity, NaN, "1", {}])
+      assert.equal(summaryText({ models_summary: { ...models_summary, [key]: value } }), "");
+  }
 });
