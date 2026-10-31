@@ -76,7 +76,8 @@ test("each error response carries a short JSON schema; 402 describes the PAYMENT
     for (const [code, response] of Object.entries(item.post.responses)) {
       if (Number(code) < 400) continue;
       assert.ok(response.description.length > 10, `${route} ${code}`);
-      const schema = response.content?.["application/json"]?.schema;
+      let schema = response.content?.["application/json"]?.schema;
+      while (schema?.$ref) schema = doc.components.schemas[schema.$ref.split("/").at(-1)];
       assert.equal(schema?.type, "object", `${route} ${code} has a JSON schema`);
       if (code === "402") {
         assert.ok(response.headers["PAYMENT-REQUIRED"], route);
@@ -86,8 +87,8 @@ test("each error response carries a short JSON schema; 402 describes the PAYMENT
     }
   }
   // /v1/messages speaks Anthropic's envelope, the rest OpenAI's.
-  assert.deepEqual(doc.paths["/v1/messages"].post.responses[400].content["application/json"].schema.required, ["type", "error"]);
-  assert.deepEqual(doc.paths["/v1/responses"].post.responses[400].content["application/json"].schema.required, ["error"]);
+  assert.deepEqual(doc.components.schemas.AnthropicErrorResponse.required, ["type", "error"]);
+  assert.deepEqual(doc.components.schemas.ErrorResponse.required, ["error"]);
   assert.ok(doc.paths[ROUTE].post.responses[429].headers["Retry-After"]);
 });
 
@@ -98,7 +99,11 @@ test("the documented 402 is what an unpaid request really gets", async (t) => {
     const response = await fetch(`${url}${route}`, { method: "POST" });
     assert.equal(response.status, 402, route);
     assert.ok(response.headers.get("payment-required"), route);
-    assert.deepEqual(await response.json(), {}, route);
+    const challenge = JSON.parse(Buffer.from(response.headers.get("payment-required"), "base64"));
+    const body = await response.json();
+    assert.deepEqual(body.accepts, challenge.accepts, route);
+    assert.equal(body.x402Version, challenge.x402Version);
+    assert.equal(body.code, "payment_required");
   }
 });
 
@@ -111,6 +116,7 @@ test("unreadable and oversize JSON bodies get the documented 400 and 413, as JSO
     assert.match(bad.headers.get("content-type"), /application\/json/, route);
     const body = await bad.json();
     assert.equal(route === "/v1/messages" ? body.error.type : body.error.type, "invalid_request_error", route);
+    assert.equal(body.error.code, "invalid_json");
     assert.equal(bad.headers.get("payment-required"), null, route);
 
     const big = await fetch(`${url}${route}`, { method: "POST", headers, body: JSON.stringify({ x: "a".repeat(130 * 1024) }) });

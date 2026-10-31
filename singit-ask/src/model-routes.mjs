@@ -1,3 +1,4 @@
+import { errorRef } from "./errors.mjs";
 // SI-62: one x402 resource per popular model, `/v1/chat/<model>`, so a Bazaar search for a model name ("claude
 // opus 5.5") finds a dedicated SingIt Ask listing with that model's own description and price, instead of only
 // the generic /v1/chat/completions listing where the model is a body field a search engine cannot see.
@@ -166,11 +167,11 @@ export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, 
       responses: {
         200: { description: "The answer, with what it was charged",
                content: { "application/json": { schema: outputSchema, example: exampleOutput } } },
-        400: { description: "model does not match this route's model, or the question cannot be answered; nothing was charged" },
-        402: { description: "Payment Required: x402 challenge in the PAYMENT-REQUIRED header" },
-        404: { description: "This model is not available; nothing was charged" },
-        422: { description: "max_tokens too small: this reasoning model spent it all thinking and wrote no answer; raise max_tokens. Nothing was charged" },
-        503: { description: "No seller or no billable answer right now; nothing was charged. Retry after Retry-After",
+        400: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "model does not match this route's model, or the question cannot be answered; nothing was charged" },
+        402: { content: { "application/json": { schema: errorRef("PaymentRequired402") } }, description: "Payment Required: x402 challenge in the PAYMENT-REQUIRED header" },
+        404: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "This model is not available; nothing was charged" },
+        422: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "max_tokens too small: this reasoning model spent it all thinking and wrote no answer; raise max_tokens. Nothing was charged" },
+        503: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "No seller or no billable answer right now; nothing was charged. Retry after Retry-After",
                headers: { "Retry-After": { description: "Seconds to wait before trying again", schema: { type: "integer" } } } },
       },
       security: [{ x402: [] }],

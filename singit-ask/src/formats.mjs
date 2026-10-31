@@ -128,8 +128,8 @@ export function scrub(data) {
 }
 
 const refusal = (route, status, message, code) => (route === "/v1/messages"
-  ? { type: "error", error: { type: status === 400 || status === 422 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message } }
-  : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", ...(code ? { code } : {}), message } });
+  ? { type: "error", error: { type: status === 400 || status === 422 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message, code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request") } }
+  : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request"), message } });
 
 // <=300 characters, opening with the category words and naming the brand once, later (see app.mjs's
 // DISCOVERY_DESCRIPTION for why): what each format does and when to call it, not what it costs.
@@ -229,7 +229,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       const model = readFormatRequest(route, EXAMPLES[route]).model;
       if (!catalogue.isUnservable?.(model)) return next();
       const error = unservableError(catalogue, model, FormatError);
-      res.set("Retry-After", String(error.retryAfter)).status(503).json(refusal(route, 503, error.message));
+      res.set("Retry-After", String(error.retryAfter)).status(503).json(refusal(route, 503, error.message, "no_healthy_sellers"));
     });
     app.post(route, async (req, res, next) => {
       // x402scan's empty, unpaid probe gets the example's offer (above), not a "Send a JSON body"/"Name a model" error.
@@ -249,7 +249,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         if (error.retryAfter) res.set("Retry-After", String(error.retryAfter));
         const status = error instanceof UnknownModel ? 404 : error.status ?? 503;
         const message = status === 503 && !error.retryAfter ? "Try again shortly." : error.message;
-        res.status(status).json(refusal(route, status, message));
+        res.status(status).json(refusal(route, status, message, error.retryAfter ? "no_healthy_sellers" : undefined));
       }
     });
     addPaymentRoute(app, { [`POST ${route}`]: {

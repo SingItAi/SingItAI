@@ -83,7 +83,10 @@ test("GET on every discoverable route gets the exact 402 an empty, unpaid POST g
     assert.ok(gotRequired.extensions?.bazaar?.info, `${route} needs the input schema for x402scan to index it`);
     // The extension and resource always describe the route as POST, which is how it is actually called.
     assert.equal(gotRequired.extensions.bazaar.info.input.method, "POST", route);
-    assert.deepEqual(await got.json(), {}, route);
+    const challengeBody = await got.json();
+    assert.deepEqual(challengeBody.accepts, gotRequired.accepts, route);
+    assert.equal(challengeBody.x402Version, gotRequired.x402Version);
+    assert.equal(challengeBody.code, "payment_required");
   }
   assert.equal(facilitator.calls.verify, 0);
   assert.deepEqual(facilitator.calls.settle, []);

@@ -459,7 +459,7 @@ test("invalid_request terminal failure returns only its message and never settle
     error: { type: "invalid_request", message: "Prompt refused", retryable: false } }]] }) });
   const response = await paidVideo(service);
   assert.equal(response.status, 400);
-  assert.deepEqual(await response.json(), { error: { type: "invalid_request_error", message: "Prompt refused" } });
+  assert.deepEqual(await response.json(), { error: { type: "invalid_request_error", message: "Prompt refused", code: "invalid_request" } });
   assert.deepEqual(service.facilitator.calls.settle, []);
 });
 
@@ -515,7 +515,7 @@ test("requested submit invalid_request returns its message or a generic refusal 
     const response = await paidVideo(service);
     assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), { error: { type: "invalid_request_error",
-      message: message ?? "The video request was refused." } });
+      message: message ?? "The video request was refused.", code: "invalid_request" } });
     assert.equal(submissions(service.surplus).length, 1);
     assert.deepEqual(service.facilitator.calls.settle, []);
   }
