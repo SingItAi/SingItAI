@@ -29,6 +29,8 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 
 Existing route-specific codes remain unchanged. Error schema examples list the common vocabulary without restricting future or existing provider-specific values.
 
+The OpenAPI document carries error response examples, daily and busy rate-limit header examples, and a synthetic per-model health example generated from HealthStats in tests. Payment challenges use route-specific examples: chat shows Base upto and exact offers (Solana follows each Base offer in the full challenge); Exa, images and speech show exact offers on both networks. The 503 examples use the corresponding handler messages and codes, and the 413 example matches the JSON parser response.
+
 An OpenAI-compatible error looks like:
 
 ```json
