@@ -71,3 +71,15 @@ test('onboarding files have content types, CORS and survive the static build', a
     }
   } finally { await rm(out, { recursive:true, force:true }); }
 });
+
+test('Claude Code headers preserve the environment reference in onboarding docs', async () => {
+  const command = "claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'";
+  const explanation = "Single quotes keep ${SINGIT_API_KEY} as a reference so the key is not written into Claude Code's configuration.";
+  for (const path of ['website/SKILL.md', 'website/llms.txt', 'website/llms-full.txt']) {
+    const doc = await read(path);
+    const commands = doc.split('\n').filter(line => line.includes('claude mcp add'));
+    assert.ok(commands.length > 0, path);
+    for (const line of commands) assert.ok(line.endsWith(command), path);
+    assert.ok(doc.includes(explanation), path);
+  }
+});
