@@ -342,7 +342,7 @@ def tools() -> list[dict[str, Any]]:
 
 # Catalog metadata served by web_api.py's GET dispatch, public and keyless.
 ICON_URL = "https://singitai.app/assets/icons/icon-512.png"
-DOCS_URL = ("https://github.com/bubon-ik/SingItAI/blob/main/sign402-gateway/README.md"
+DOCS_URL = ("https://github.com/SingItAi/SingItAI/blob/main/sign402-gateway/README.md"
             "#mcp-server-remote-for-claude-code-cursor-codex")
 SERVER_CARD_DESCRIPTION = ("Free price, model and symbol lookups, plus paid web search, page reading and x402 "
                            "market data, in USDC on Base or Solana within your API key's SingIt limits.")

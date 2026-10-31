@@ -46,7 +46,7 @@ test("website/llms.txt explains the first paid x402 call, upto before exact, wit
   assert.match(paid, /PAYMENT-SIGNATURE/);
   assert.ok(paid.indexOf("`upto`") >= 0 && paid.indexOf("`upto`") < paid.indexOf("`exact`"));
   assert.match(paid, /flat price for a typical-length answer \(about 30% of max_tokens\)/);
-  assert.match(paid, /https:\/\/github\.com\/bubon-ik\/SingItAI\/blob\/main\/docs\/first-paid-call\.md/);
+  assert.match(paid, /https:\/\/github\.com\/SingItAi\/SingItAI\/blob\/main\/docs\/first-paid-call\.md/);
   assert.ok(!/video/i.test(text));
   assert.ok(!text.includes("when enabled"));
 });

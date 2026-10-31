@@ -39,9 +39,9 @@ packages = ["src/singit"]
 
 [project.urls]
 Homepage = "https://singitai.app/developers/"
-Repository = "https://github.com/bubon-ik/SingItAI"
-Source = "https://github.com/bubon-ik/SingItAI/tree/main/sdk/python"
-Issues = "https://github.com/bubon-ik/SingItAI/issues"
+Repository = "https://github.com/SingItAi/SingItAI"
+Source = "https://github.com/SingItAi/SingItAI/tree/main/sdk/python"
+Issues = "https://github.com/SingItAi/SingItAI/issues"
 
 [tool.hatch.build.targets.sdist]
 include = ["src/singit", "README.md", "LICENSE", "pyproject.toml"]

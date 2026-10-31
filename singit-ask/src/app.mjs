@@ -37,7 +37,7 @@ export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 export const ROUTE = "/v1/chat/completions";
 // Linked from llms.txt: the x402 walkthrough, and SingIt's MCP server (paid with a SingIt API key, not x402).
-const FIRST_PAID_CALL_DOC = "https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md";
+const FIRST_PAID_CALL_DOC = "https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md";
 const MCP_URL = "https://app.singitai.app/mcp";
 
 export { LIMITS };

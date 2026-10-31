@@ -59,7 +59,7 @@ would mean a chat message choosing which contract to trust, and the answer to
 """
 
 GRAPH_GATEWAY = "https://gateway.thegraph.com/api/x402/subgraphs/id"
-GRAPH_USER_AGENT = "SingItAI/1.0 (+https://github.com/bubon-ik/SingItAI)"
+GRAPH_USER_AGENT = "SingItAI/1.0 (+https://github.com/SingItAi/SingItAI)"
 
 BASE_USDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 

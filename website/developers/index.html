@@ -56,7 +56,7 @@
       <a href="/models/">Models &amp; prices</a>
       <a href="/pricing/">Pricing</a>
       <a href="#quickstart">Quickstart</a>
-      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/SingItAi/SingItAI" target="_blank" rel="noopener">GitHub</a>
     </nav>
     <a class="btn btn-primary btn-sm" href="https://app.singitai.app/app/">
       Open SingIt
@@ -134,7 +134,7 @@
           <li><b>Get a key</b><span>In <a href="https://app.singitai.app/app/">the SingIt app</a> under Settings → API keys, your wallet signs the key's limits (per day, per request, how many days), and you top up $1 to $50 at a time in USDC. Each request costs what it used + 30%, with no fee per call, in the OpenAI SDK, the Anthropic SDK or Claude Code at <span class="mono">app.singitai.app/v1</span>, with any id from <a href="/models/">the model list</a>.</span></li>
           <li><b>Plug in MCP <span class="status is-live">Live</span></b><span>Use Add to Cursor in the MCP tab, or one command in Claude Code. Prices work without a key; your key unlocks web search, page reading and market data.</span></li>
         </ol>
-        <p class="tab-note" data-reveal>No key at all? Agents with a wallet pay per answer over x402: <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md" target="_blank" rel="noopener">first paid call in 60 seconds</a>.</p>
+        <p class="tab-note" data-reveal>No key at all? Agents with a wallet pay per answer over x402: <a href="https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md" target="_blank" rel="noopener">first paid call in 60 seconds</a>.</p>
       </div>
 
       <div data-reveal>
@@ -276,7 +276,7 @@ curl -i https://ask.singitai.app/v1/chat/completions \
                 <span data-copy-label>Copy</span>
               </button>
             </div>
-            <p class="tab-note">You pay the answer's actual cost + 30% + $0.001 on Base; <span class="mono">exact</span> offers follow for wallets that sign only a flat price. For Claude Opus sign <span class="mono">upto</span>: its <span class="mono">exact</span> price carries room for thinking tokens and is usually dearer than the answer used. Step by step, with the x402 fetch, Bazaar MCP and agentic wallet variants: <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md" target="_blank" rel="noopener">the first paid call guide</a>. We ran the paid step end to end on 28.10.2026: <span class="mono">deepseek-v4.1-flash</span>, <span class="mono">upto</span> on Base, HTTP 200, $0.001 settled, about 3.3 s (<a href="https://basescan.org/tx/0x419874eea3fbb4621519fe4c252bb83b7b66c1c9cb6fbba07274172bef54e2f6" target="_blank" rel="noopener">transaction</a>).</p>
+            <p class="tab-note">You pay the answer's actual cost + 30% + $0.001 on Base; <span class="mono">exact</span> offers follow for wallets that sign only a flat price. For Claude Opus sign <span class="mono">upto</span>: its <span class="mono">exact</span> price carries room for thinking tokens and is usually dearer than the answer used. Step by step, with the x402 fetch, Bazaar MCP and agentic wallet variants: <a href="https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md" target="_blank" rel="noopener">the first paid call guide</a>. We ran the paid step end to end on 28.10.2026: <span class="mono">deepseek-v4.1-flash</span>, <span class="mono">upto</span> on Base, HTTP 200, $0.001 settled, about 3.3 s (<a href="https://basescan.org/tx/0x419874eea3fbb4621519fe4c252bb83b7b66c1c9cb6fbba07274172bef54e2f6" target="_blank" rel="noopener">transaction</a>).</p>
           </section>
 
           <section class="tab-panel" role="tabpanel" id="panel-find" aria-labelledby="tab-find" tabindex="0" hidden>
@@ -308,7 +308,7 @@ npm install @langchain/mcp-adapters @langchain/core @langchain/openai
 npm install ai @ai-sdk/mcp @ai-sdk/openai-compatible
 
 <span class="c"># ElizaOS — plugin, not on npm yet: install from a checkout</span>
-git clone https://github.com/bubon-ik/SingItAI.git
+git clone https://github.com/SingItAi/SingItAI.git
 npm install ./SingItAI/integrations/elizaos-plugin</code></pre>
               <button type="button" class="copy-btn" data-copy="code-frameworks" aria-label="Copy the framework install commands">
                 <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
@@ -316,9 +316,9 @@ npm install ./SingItAI/integrations/elizaos-plugin</code></pre>
               </button>
             </div>
             <p class="tab-note">
-              <span class="status is-live">Live</span> <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/integrations/langchain.md" target="_blank" rel="noopener">LangChain.js recipe</a> &mdash;
-              <span class="status is-live">Live</span> <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/integrations/vercel-ai-sdk.md" target="_blank" rel="noopener">Vercel AI SDK recipe</a> &mdash;
-              <span class="status">Soon</span> <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/integrations/elizaos.md" target="_blank" rel="noopener">ElizaOS plugin</a>, not published yet.
+              <span class="status is-live">Live</span> <a href="https://github.com/SingItAi/SingItAI/blob/main/docs/integrations/langchain.md" target="_blank" rel="noopener">LangChain.js recipe</a> &mdash;
+              <span class="status is-live">Live</span> <a href="https://github.com/SingItAi/SingItAI/blob/main/docs/integrations/vercel-ai-sdk.md" target="_blank" rel="noopener">Vercel AI SDK recipe</a> &mdash;
+              <span class="status">Soon</span> <a href="https://github.com/SingItAi/SingItAI/blob/main/docs/integrations/elizaos.md" target="_blank" rel="noopener">ElizaOS plugin</a>, not published yet.
             </p>
           </section>
         </div>
@@ -594,7 +594,7 @@ console.log(result.text);</code></pre>
         <div><b data-model-count>150+</b><span>models you can ask for now, from <a href="https://ask.singitai.app/v1/models">the live list</a></span></div>
         <div><b>2 networks</b><span>USDC on Base and Solana, settled by Coinbase CDP</span></div>
         <div><b>Listed</b><span>on Coinbase's x402 Bazaar and <a href="https://www.x402scan.com/recipient/0xC23d1Dc0f5fCe1abfFB051e06cB93f0329968B4e" target="_blank" rel="noopener">x402scan</a></span></div>
-        <div><b>Open source</b><span>the code is on <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a></span></div>
+        <div><b>Open source</b><span>the code is on <a href="https://github.com/SingItAi/SingItAI" target="_blank" rel="noopener">GitHub</a></span></div>
       </div>
     </div>
   </section>
@@ -627,7 +627,7 @@ console.log(result.text);</code></pre>
       <a href="/models/">Models &amp; prices</a>
       <a href="https://app.singitai.app/app/">Open SingIt</a>
       <a href="https://x.com/SingItAgent" target="_blank" rel="noopener">X</a>
-      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/SingItAi/SingItAI" target="_blank" rel="noopener">GitHub</a>
       <a href="https://singitai.app/privacy/" target="_blank" rel="noopener">Privacy policy</a>
       <a href="mailto:contact@singitai.app">Contact</a>
     </nav>

@@ -44,7 +44,7 @@ test('API reference links resolve and public copy follows content rules', () => 
     const file = path.join(site, decodeURIComponent(url.pathname));
     assert.ok(existsSync(file.endsWith('/') ? path.join(file, 'index.html') : file), url.pathname);
   }
-  assert.ok(html.includes('https://github.com/bubon-ik/SingItAI/blob/main/singit-ask/ERRORS.md'));
+  assert.ok(html.includes('https://github.com/SingItAi/SingItAI/blob/main/singit-ask/ERRORS.md'));
   assert.ok(!html.includes('/docs/errors/'));
 });
 

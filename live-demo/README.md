@@ -6,7 +6,7 @@ client. Keep this package available alongside the gateway.
 
 The bundled demo resource server, HTML dashboard and presentation launcher
 have been removed. The original presentation instructions remain in
-[Git history](https://github.com/bubon-ik/SingItAI/tree/d4380f431b04633f27bc726178fd24a3836a7934/live-demo).
+[Git history](https://github.com/SingItAi/SingItAI/tree/d4380f431b04633f27bc726178fd24a3836a7934/live-demo).
 
 The retained `sign402-live-demo` CLI requires an independently supplied resource
 compatible with the legacy probe protocol. Set `--resource-url` to that service;

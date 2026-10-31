@@ -56,8 +56,8 @@ test('links resolve and vendors use https', () => {
       assert.ok(existsSync(local),url);
     } else {
       assert.ok(url.startsWith('https://'),url);
-      if (url.startsWith('https://github.com/bubon-ik/SingItAI/')) {
-        assert.ok(url.startsWith('https://github.com/bubon-ik/SingItAI/blob/main/'));
+      if (url.startsWith('https://github.com/SingItAi/SingItAI/')) {
+        assert.ok(url.startsWith('https://github.com/SingItAi/SingItAI/blob/main/'));
         const relative = url.split('/blob/main/')[1].split('#')[0];
         assert.ok(existsSync(path.join(site,'..',relative)),relative);
       }
