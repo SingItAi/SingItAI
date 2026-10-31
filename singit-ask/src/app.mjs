@@ -10,8 +10,9 @@
 // with this service's own key; the payer never sees or needs it.
 
 import express from "express";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } from "./errors.mjs";
-import { HealthStats, FacilitatorCheck, healthBody, numbersBody } from "./health-stats.mjs";
+import { HealthStats, FacilitatorCheck, healthBody, numbersBody, privateStatsBody } from "./health-stats.mjs";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
@@ -21,7 +22,7 @@ import { LIMITS } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
 import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
-import { addCreditRoute } from "./credit.mjs";
+import { CREDIT_ROUTE, addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody, exaPriceRange } from "./search.mjs";
 import { IMAGE_ROUTE, IMAGE_REQUEST_BODY, addImageRoutes } from "./images.mjs";
 import { SPEECH_ROUTE, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
@@ -403,7 +404,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
   fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log });
   const app = express();
+  app.locals.paidRoutes = new Set([CREDIT_ROUTE]);
   app.locals.healthStats = new HealthStats({ file: config.statsFile ?? null,
+    isPaidRoute: route => app.locals.paidRoutes.has(route),
     isPublicRoute: route => discoverableRoutes().includes(route), ownPayers: config.ownPayers ?? [], log });
   app.locals.facilitatorCheck = new FacilitatorCheck({ client: facilitatorClient });
   app.locals.catalogue = catalogue;  // server.mjs warms it
@@ -411,6 +414,26 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");
   app.use(errorCodesMiddleware);
+  app.use((req, res, next) => {
+    res.on("finish", () => {
+      try {
+        if (res.statusCode === 402) app.locals.healthStats.recordChallenge({ route: req.path,
+          method: req.method, challenge: res.hasHeader("PAYMENT-REQUIRED") });
+      } catch {}
+    });
+    next();
+  });
+  if (config.statsToken && config.statsToken.length < 32) log("singit-ask: SINGIT_ASK_STATS_TOKEN must be at least 32 characters; internal stats disabled");
+  if (config.statsToken?.length >= 32) {
+    const digest = value => createHash("sha256").update(value).digest();
+    const expected = digest(`Bearer ${config.statsToken}`);
+    app.get("/internal/stats", (req, res) => {
+      res.set("Cache-Control", "no-store");
+      if (!timingSafeEqual(expected, digest(req.get("Authorization") || "")))
+        return res.status(401).json({ error: { code: "unauthorized", message: "Unauthorized" } });
+      res.json(privateStatsBody(app.locals.healthStats));
+    });
+  }
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
   // ...with a JSON body like every other refusal, not Express's HTML page (documented in openapi.json).
   app.use((error, req, res, next) => {
@@ -818,7 +841,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                 networks: { type: "object" } } }
             } } } } } } } },
         "/numbers.json": { get: { operationId: "getNumbers", security: [], summary: "Get measured usage numbers with definitions",
-          responses: { 200: { description: "Calls, USDC volume and unique payer counts since counters began" } } } },
+          responses: { 200: { description: "Calls, USDC volume and unique payer counts since counters began", content: { "application/json": { schema: { type: "object", required: ["own_payers_configured"], properties: { own_payers_configured: { type: "boolean" } } } } } } } } },
         "/pricing.json": { get: {
           operationId: "listPricing", summary: "Get per-model upto/exact prices for one reference question",
           description: "What GET/HEAD discovery and a real paid request would be offered for each model that can be "

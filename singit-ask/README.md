@@ -311,3 +311,46 @@ external prober at https://app.singitai.app/status.json.
 salt, written atomically with mode 0600, with a roughly ten-second debounce and a shutdown flush.
 `SINGIT_ASK_OWN_PAYERS_FILE` optionally names a private file of excluded own payer addresses, one per line
 with `#` comments, read once at startup; only the count is logged. Keep these files outside version control.
+
+### Own payers and private counters
+
+`SINGIT_ASK_OWN_PAYERS_FILE` optionally names a private file containing one payer per
+line. Blank lines and `#` comments are ignored; duplicates are removed, EVM case is
+normalised and Solana case is preserved. Set permissions to `chmod 600`, keep the
+file out of git, and restart after changing it. An unreadable configured file stops
+startup; logs contain only the exclusion count. No own addresses are built in.
+
+`/numbers.json` reports `own_payers_configured`, true only for a non-empty list.
+Adding the list removes matching historical unique-payer hashes. Calls and USDC
+volume recorded before configuration still include own test payments: payer-level
+payment history is not stored, so those totals cannot be corrected retroactively.
+Capped unique counts remain null even after exclusions.
+
+`SINGIT_ASK_STATS_TOKEN` enables `GET /internal/stats` when at least 32 characters
+long. Short tokens disable registration and produce a log line. Send
+`Authorization: Bearer <token>`; responses are private, use `Cache-Control: no-store`
+and have no CORS allow-origin header. Keep the token secret. This endpoint is
+excluded from discovery and OpenAPI.
+
+The private report includes external payer/call/USDC windows and issued 402 counts:
+`post` means a POST with PAYMENT-REQUIRED, `probe` means GET/HEAD discovery with
+that header, and `refused` means a 402 without it. These count responses, not unique
+clients or conversions. Known paid routes (including hidden payment routes) are
+counted separately, with unknown/overflow paths in `other`; at most 100 keys are
+stored. Dynamic private quote-payment paths use `other`, so quote IDs are never
+recorded. No prompts, addresses, IPs or header values are recorded. Hourly buckets
+retain 720 hours; lifetime totals remain. Windows include the current UTC hour and
+the preceding 23 or 167 hourly buckets. The 402 report is not public.
+
+For daily-metrics cron, run this read-only command from `singit-ask` with the same
+stats and own-payer environment as the server:
+
+```sh
+node scripts/ask-counters.mjs          # private JSON
+node scripts/ask-counters.mjs --text   # short summary
+```
+
+`SINGIT_ASK_STATS_FILE` defaults to `~/.config/singit-ask/health-stats.json`.
+The CLI applies exclusions in memory without writing or scheduling a flush. It
+prints no payer hashes or addresses. Missing/invalid stats files follow HealthStats'
+empty-counter fallback; check the report's `since` before interpreting it as history.

@@ -40,6 +40,7 @@
 
 import { parseExaMarkupBps, parseExaFeeAtomic, setExaMarkupBps, setExaFeeAtomic } from "./search.mjs";
 import { readFileSync } from "node:fs";
+import { parseOwnPayers } from "./own-payers.mjs";
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { createPublicClient, http } from "viem";
@@ -94,9 +95,14 @@ setExactReserve(parseExactReserve(process.env.SINGIT_ASK_EXACT_RESERVE));
 setExaMarkupBps(parseExaMarkupBps(process.env.SINGIT_ASK_EXA_MARKUP_BPS));
 setExaFeeAtomic(parseExaFeeAtomic(process.env.SINGIT_ASK_EXA_FEE_ATOMIC));
 config.statsFile = process.env.SINGIT_ASK_STATS_FILE || `${process.env.HOME}/.config/singit-ask/health-stats.json`;
-config.ownPayers = process.env.SINGIT_ASK_OWN_PAYERS_FILE
-  ? readFileSync(process.env.SINGIT_ASK_OWN_PAYERS_FILE, "utf8").split(/\r?\n/)
-    .map(line => line.split("#")[0].trim()).filter(Boolean) : [];
+config.statsToken = process.env.SINGIT_ASK_STATS_TOKEN;
+try {
+  config.ownPayers = process.env.SINGIT_ASK_OWN_PAYERS_FILE
+    ? parseOwnPayers(readFileSync(process.env.SINGIT_ASK_OWN_PAYERS_FILE, "utf8")) : [];
+} catch {
+  console.error("singit-ask: SINGIT_ASK_OWN_PAYERS_FILE could not be read");
+  process.exit(1);
+}
 console.error(`singit-ask: own payer exclusions: ${config.ownPayers.length}`);
 const model = config.model;
 config.freeModels = process.env.SINGIT_ASK_FREE_MODELS === undefined ? [model]
