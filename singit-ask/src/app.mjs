@@ -10,6 +10,7 @@
 // with this service's own key; the payer never sees or needs it.
 
 import express from "express";
+import { AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto } from "./auto-router.mjs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } from "./errors.mjs";
 import { HealthStats, FacilitatorCheck, healthBody, numbersBody, privateStatsBody } from "./health-stats.mjs";
@@ -73,7 +74,10 @@ export function readRequest(body) {
   if (model !== undefined && (typeof model !== "string" || !model.trim() || model.length > 120)) {
     throw new RequestError(400, "model must be the id of a model listed at GET /v1/models.");
   }
-  return { messages: clean, maxTokens, chars, model: model?.trim(), messageCount: clean.length };
+  if (Object.hasOwn(body, "min_tier") && (model?.trim() !== AUTO_ID || !TIERS.includes(body.min_tier))) {
+    throw new RequestError(400, "min_tier must be eco, standard or premium and requires model singit/auto.");
+  }
+  return { ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, model: model?.trim(), messageCount: clean.length };
 }
 
 // The model an answer is bought from and what it may cost. No model, or the default one, is still looked up on
@@ -213,6 +217,8 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
 // Directories rank a listing by how completely it says what to send and what comes back (Coinbase's Bazaar:
 // docs.cdp.coinbase.com/x402/seller/get-discovered), so every field an agent fills in is described.
+const autoHeaders = Object.fromEntries(["X-SingIt-Model", "X-SingIt-Tier"].map(name => [name,
+  { description: "Chosen concrete model or tier for singit/auto, once selected.", schema: { type: "string" } }]));
 const INPUT_SCHEMA = {
   properties: {
     messages: { type: "array", minItems: 1, maxItems: LIMITS.messages, description: "The conversation, oldest first.",
@@ -266,7 +272,8 @@ async function pricingFor(config, catalogue, modelId) {
   const chars = PRICING_REFERENCE.content.length;
   const input = { messages: [{ role: "user", content: PRICING_REFERENCE.content }], maxTokens: PRICING_REFERENCE.maxTokens,
     chars, messageCount: 1, model: modelId };
-  const askInput = await chooseModel(config, catalogue, input);
+  const askInput = modelId === AUTO_ID ? await chooseAuto(config, catalogue, input, RequestError)
+    : await chooseModel(config, catalogue, input);
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const { upto, exact } = ceilings(askInput.info, askInput, exactOutputFraction);
   const price = net => ({ priceAtomic: upto[net], usd: Number(usd(upto[net])) });
@@ -423,6 +430,38 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     });
     next();
   });
+  app.use((req, res, next) => {
+    const header = "Access-Control-Expose-Headers";
+    const writeHead = res.writeHead;
+    res.writeHead = function (...args) {
+      const values = [this.getHeader(header) ?? []];
+      const index = typeof args[1] === "string" ? 2 : 1;
+      const headers = args[index];
+      if (headers) {
+        const entries = Array.isArray(headers)
+          ? Array.from({ length: headers.length / 2 }, (_, i) => [headers[i * 2], headers[i * 2 + 1]])
+          : Object.entries(headers);
+        const rest = entries.filter(([name, value]) => {
+          if (name.toLowerCase() !== header.toLowerCase()) return true;
+          values.push(value);
+          return false;
+        });
+        args[index] = Array.isArray(headers) ? rest.flat() : Object.fromEntries(rest);
+      }
+      const seen = new Set();
+      const merged = [...values, "X-SingIt-Model", "X-SingIt-Tier"]
+        .flat().flatMap(value => String(value).split(",")).map(value => value.trim())
+        .filter(value => {
+          const key = value.toLowerCase();
+          if (!value || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      this.setHeader(header, merged.join(", "));
+      return writeHead.apply(this, args);
+    };
+    next();
+  });
   if (config.statsToken && config.statsToken.length < 32) log("singit-ask: SINGIT_ASK_STATS_TOKEN must be at least 32 characters; internal stats disabled");
   if (config.statsToken?.length >= 32) {
     const digest = value => createHash("sha256").update(value).digest();
@@ -498,6 +537,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       data: [...(catalogue.isUnservable?.(config.model) ? [] :
         [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model }]),
+        // Virtual routes have no fixed token rate; priced-model consumers use property presence.
+        { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION },
         ...freeListed,
         ...models.map(m => {
           // The price an answer is expected to cost: what this service's own answers from the model cost, or,
@@ -543,6 +584,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       const perMillion = perMillionFor(m, observed, market);
       priced.push({ id: m.id, name: m.name, ...p, ...(perMillion ? { perMillion } : {}), ...schemeAdvice(m.id) });
     }
+    let autoPrice = { upto: null, exact: null };
+    try { autoPrice = await pricingFor(config, catalogue, AUTO_ID); } catch { /* no eligible healthy model */ }
+    priced.push({ id: AUTO_ID, name: "SingIt Auto", description: AUTO_DESCRIPTION, ...autoPrice });
     const chars = PRICING_REFERENCE.content.length;
     res.json({
       generatedAt: new Date().toISOString(),
@@ -587,11 +631,14 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           ...(freeOffer ? { "x-free-models": freeListed } : {}),
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": {
-            schema: { type: "object", ...inputSchema }, example: EXAMPLE.input } } },
+            schema: { type: "object", ...inputSchema, properties: { ...inputSchema.properties,
+              min_tier: { type: "string", enum: TIERS, description: "Minimum tier; only valid with model singit/auto." },
+              model: { ...inputSchema.properties.model, description: inputSchema.properties.model.description + " " + AUTO_DESCRIPTION } } }, example: EXAMPLE.input } } },
           responses: {
-            200: { description: "The answer, with what it was charged",
+            200: { description: "The answer, with what it was charged", headers: autoHeaders,
                    content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
-            ...paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }),
+            ...Object.fromEntries(Object.entries(paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }))
+              .map(([status, response]) => [status, { ...response, headers: { ...response.headers, ...autoHeaders } }])),
             429: {
               description: "Free answers (model free/…) used up for today, or busy; nothing was charged",
               content: { "application/json": { schema: errorRef("RateLimited429"), examples: {
@@ -933,7 +980,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.set("Content-Type", "text/plain; charset=utf-8").send(lines.join("\n") + "\n");
   });
 
-  const choose = input => chooseModel(config, catalogue, input);
+  const choose = input => input.model === AUTO_ID
+    ? chooseAuto(config, catalogue, input, RequestError) : chooseModel(config, catalogue, input);
   // Every answer that came back teaches the price shown for its model. It never delays or fails the answer.
   const learning = async (config_, messages, maxTokens, fetchImpl_, model = config.model, options) => {
     let answer;

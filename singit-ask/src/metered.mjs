@@ -287,6 +287,11 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     }
     try {
       req.askInput = await choose(readRequest(req.body));
+      if (req.askInput.autoTier) {
+        res.set("X-SingIt-Model", req.askInput.model);
+        res.set("X-SingIt-Tier", req.askInput.autoTier);
+        log(`singit-ask: auto tier=${req.askInput.autoTier} reason=${req.askInput.autoReason}`);
+      }
       req.askCeilings = ceilings(req.askInput.info, req.askInput, exactOutputFraction);
       quotes.set(req.body, req.askCeilings);
       next();

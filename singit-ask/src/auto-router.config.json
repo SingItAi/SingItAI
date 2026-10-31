@@ -1,0 +1,12 @@
+{
+  "tiers": {
+    "eco": ["deepseek-v4.1-flash", "claude-haiku-5.5", "gemini-3.8-flash"],
+    "standard": ["claude-sonnet-5.5", "kimi-k3"],
+    "premium": ["claude-opus-5.5", "gpt-5.5", "gemini-3.1-pro-preview"]
+  },
+  "charsPerToken": 4,
+  "eco": { "maxInputTokens": 400, "maxOutputTokens": 512, "maxMessages": 3 },
+  "premium": { "minInputTokens": 6000, "reasoningOutputTokens": 1000, "reasoningInputTokens": 1500 },
+  "reasoningWords": ["prove", "step by step", "analyze", "debug", "refactor"],
+  "policy": "Eco requires all short plain conditions. Premium matches any premium condition. Otherwise standard. Escalate only upward; ties follow tier order."
+}

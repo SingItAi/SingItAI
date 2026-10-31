@@ -171,3 +171,13 @@ test('the chain settles up a lost payment: paid, unpaid once its blockhash is de
  const listing=asked.find(([m])=>m==='getSignaturesForAddress')[1];
  assert.equal(listing[0],await ata(owner));assert.equal(listing[1].minContextSlot,670);assert.equal(listing[1].commitment,'finalized');
 });
+
+test('auto is refused before preparing an answer or requesting payment',async t=>{
+ const s=await serve(t);
+ const r=await s.send('/prepare',{...question,model:'singit/auto'});
+ assert.equal(r.status,400);
+ assert.equal((await r.json()).message,'singit/auto is only offered on /v1/chat/completions');
+ assert.equal(r.headers.get('payment-required'),null);
+ assert.deepEqual(s.counts,{model:0,verify:0,settle:0});
+ assert.equal(s.store.get(requestId),undefined);
+});

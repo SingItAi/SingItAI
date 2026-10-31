@@ -126,6 +126,8 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 
 ## Model pages with prices
 
+singit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets a minimum. X-SingIt-Model and X-SingIt-Tier report the choice. Prices depend on the chosen model; use the live 402 quote.
+
 > Generated from models-snapshot.json; USD per 1M tokens includes markup. Settlement fees are additional. Reference request prices are USDC per call; live 402 offers are authoritative.
 
 | Model page | Input / 1M | Output / 1M | Base upto | Base exact | Solana upto | Solana exact |

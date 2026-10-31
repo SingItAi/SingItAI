@@ -66,6 +66,9 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
     let input;
     let chosen;
     try{input=readRequest(req.body);}catch{return res.status(400).json({error:'invalid_request',code:'invalid_request'});}
+    // Refuse auto before preparing or quoting an answer; selection headers belong to the chat routes.
+    if(input.model==='singit/auto')return res.status(400).json({error:'invalid_request',code:'invalid_request',
+      message:'singit/auto is only offered on /v1/chat/completions'});
     const hash=digest({owner,agent,input});
     let old=store.get(requestId);
     if(old){

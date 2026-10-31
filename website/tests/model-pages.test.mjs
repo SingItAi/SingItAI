@@ -23,7 +23,9 @@ function fixtures() {
     models.data.push({ id: `fixture-${i}`, name: `Fixture ${i}`, usdPerMillionTokens: { input: 1, output: 2 }, irrelevant: "omit" });
     pricing.models.push({ id: `fixture-${i}`, upto: { base: { usd: 0.0015 }, solana: { usd: 0.002 } }, exact: { base: { usd: 0.0015 }, solana: { usd: 0.002 } } });
   }
-  models.data.push({ id: "singit-ask" }, { id: "free/fixture" });
+  models.data.push({ id: "singit-ask" }, { id: "free/fixture" },
+    { id: "singit/auto", object: "model", owned_by: "singit" });
+  pricing.models.push({ id: "singit/auto", name: "SingIt Auto", upto: null, exact: null });
   return { models, pricing };
 }
 
@@ -89,6 +91,7 @@ test("snapshot fixtures filter, whitelist, preserve absence and reject malformed
   models.data[0].singitUsdPerMillionTokens = { input: 1.3, output: 2.6 };
   const s = snapshot(models, pricing, fetchedAt);
   assert.equal(s.models.length, 50);
+  assert.equal(s.models.some((m) => m.id === "singit/auto"), false);
   assert.equal(s.models[0].irrelevant, undefined);
   assert.deepEqual(s.models[0].expectedUsdPerMillionTokens, { basis: "observed" });
   assert.deepEqual(s.models[0].singitUsdPerMillionTokens, { input: 1.3, output: 2.6 });
