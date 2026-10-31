@@ -29,3 +29,12 @@
   .lp-section { padding: 0 0 96px; }
   .works-grid.is-2, .works-grid.is-4 { grid-template-columns: 1fr; }
 }
+
+/* Long-form policy text uses the same typography and section rhythm as docs. */
+.legal-copy { color: var(--ash); }
+.legal-copy > * { max-width: 68ch; }
+.legal-copy p, .legal-copy ul, .legal-copy ol { margin-bottom: 20px; line-height: 1.68; }
+.legal-copy ul, .legal-copy ol { padding-left: 1.5rem; }
+.legal-copy li { margin: 8px 0; }
+.legal-copy a { color: var(--brand-ink); }
+.legal-copy .section-title { color: var(--ink); }
