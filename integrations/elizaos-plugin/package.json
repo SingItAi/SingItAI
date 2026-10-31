@@ -1,6 +1,6 @@
 {
   "name": "@singitai/plugin-singit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "ElizaOS plugin for SingIt: free crypto/FX prices and model listing via SingIt's MCP server, optional paid web search/page reading with a SingIt API key, and optional x402-paid chat on SingIt Ask (Base; needs the optional @x402/evm peer).",
   "type": "module",
   "main": "src/index.js",
