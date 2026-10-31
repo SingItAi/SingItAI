@@ -16,6 +16,8 @@ export const HOUR = 3600000, RETENTION_HOURS = 720, MODEL_CAP = 300, PAYER_CAP =
 export const DOWN_RATE = 0.5, DEGRADED_RATE = 0.1, DOWN_ATTEMPTS = 3;
 export const networkName = n => n === "eip155:8453" ? "base"
   : n === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" ? "solana" : "other";
+const REASONS = ["no_healthy_sellers", "minimum_discount_not_met", "other"];
+const failureReason = code => REASONS.includes(code) ? code : "other";
 const normalize = p => /^0x/i.test(p) ? p.toLowerCase() : p;
 const minute = t => Number.isFinite(t) ? new Date(Math.floor(t / 60000) * 60000).toISOString() : null;
 const empty = () => ({ calls: 0, atomic: "0", noAmount: 0, own: 0, fail: 0 });
@@ -34,6 +36,9 @@ function validState(s) {
   const last = o => object(o) && typeof o.failed === "boolean"
     && [o.ok, o.fail].every(t => t === undefined || count(t));
   const counts = o => object(o) && count(o.ok) && count(o.fail);
+  const reasons = o => object(o) && Object.entries(o).every(([key, n]) => REASONS.includes(key) && count(n));
+  const modelLast = o => last(o) && (o.lastReason === undefined || REASONS.includes(o.lastReason));
+  const modelCounts = o => counts(o) && (o.reasons === undefined || reasons(o.reasons));
   const totals = o => object(o) && Object.entries(o).every(([n, t]) =>
     ["base", "solana", "other"].includes(n) && object(t)
     && [t.calls, t.noAmount, t.own, t.fail].every(count) && /^\d+$/.test(t.atomic));
@@ -43,10 +48,10 @@ function validState(s) {
     ["base", "solana", "other"].includes(n) && valid(v));
   return object(s) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
     && hashes(s.payers, PAYER_CAP) && typeof s.capped === "boolean" && totals(s.totals)
-    && models(s.models, last) && networks(s.networks, last) && object(s.buckets)
+    && models(s.models, modelLast) && networks(s.networks, last) && object(s.buckets)
     && Object.keys(s.buckets).length <= RETENTION_HOURS
     && Object.entries(s.buckets).every(([key, b]) => Number.isFinite(Date.parse(key)) && object(b)
-      && models(b.models, counts) && networks(b.networks, counts) && totals(b.totals)
+      && models(b.models, modelCounts) && networks(b.networks, counts) && totals(b.totals)
       && hashes(b.payers, BUCKET_PAYER_CAP) && typeof b.capped === "boolean");
 }
 export class HealthStats {
@@ -99,7 +104,13 @@ export class HealthStats {
       const last = this.state.models[model] ??= {};
       last[ok ? "ok" : "fail"] = this.now(); last.failed = !ok;
       const counts = this.bucket().models[model] ??= { ok: 0, fail: 0 };
-      counts[ok ? "ok" : "fail"]++; this.changed();
+      counts[ok ? "ok" : "fail"]++;
+      if (!ok) {
+        last.lastReason = failureReason(code);
+        const reasons = counts.reasons ??= {};
+        reasons[last.lastReason] = (reasons[last.lastReason] || 0) + 1;
+      }
+      this.changed();
     } catch {}
   }
   recordSettlement({ route, network, ok, amount, payer } = {}) {
@@ -141,16 +152,37 @@ export class HealthStats {
     return Object.entries(this.state.buckets).filter(([k]) => Date.parse(k) >= cutoff
       && Date.parse(k) <= this.now()).map(([, b]) => b);
   }
-  models(hours = 24) {
-    const counts = Object.create(null);
+  models(hours = 24, unservable = new Map()) {
+    const counts = Object.create(null), now = this.now();
+    const active = new Map([...unservable].filter(([, expiry]) => expiry > now));
     for (const b of this.window(hours)) for (const [id, c] of Object.entries(b.models ?? {})) {
-      const t = counts[id] ??= { ok: 0, fail: 0 }; t.ok += c.ok; t.fail += c.fail;
+      const t = counts[id] ??= { ok: 0, fail: 0, reasons: {} }; t.ok += c.ok; t.fail += c.fail;
+      // Old buckets have no reasons; their failures still count as other.
+      for (const reason of REASONS) t.reasons[reason] = (t.reasons[reason] || 0) + (c.reasons?.[reason] || 0);
+      t.reasons.other += c.fail - Object.values(c.reasons ?? {}).reduce((sum, n) => sum + n, 0);
     }
-    return Object.fromEntries(Object.entries(counts).filter(([, c]) => c.ok + c.fail > 0)
-      .sort(([a, x], [b, y]) => y.ok + y.fail - x.ok - x.fail || a.localeCompare(b)).slice(0, 50)
-      .map(([id, c]) => [id, { status: outcomeStatus(c.ok, c.fail, this.state.models[id]?.failed),
-        successes: c.ok, failures: c.fail, errorRatePct: Math.round(c.fail / (c.ok + c.fail) * 1000) / 10,
-        lastSuccessAt: minute(this.state.models[id]?.ok), lastFailureAt: minute(this.state.models[id]?.fail) }]));
+    for (const id of active.keys()) counts[id] ??= { ok: 0, fail: 0, reasons: {} };
+    // Keep every unavailable model, even if their number exceeds the normal public cap.
+    return Object.fromEntries(Object.entries(counts)
+      .sort(([a, x], [b, y]) => Number(active.has(b)) - Number(active.has(a))
+        || y.ok + y.fail - x.ok - x.fail || a.localeCompare(b))
+      .filter(([id], i) => active.has(id) || i < 50)
+      .map(([id, c]) => {
+        const attempts = c.ok + c.fail, rate = attempts ? c.fail / attempts : 0;
+        const last = this.state.models[id], expiry = active.get(id);
+        return [id, { status: expiry ? "unavailable" : attempts < 5 ? "insufficient_data"
+          : rate > 0.5 ? "down" : rate > 0.2 ? "degraded" : "up",
+          windowHours: hours, attempts, successes: c.ok, failures: c.fail,
+          errorRatePct: Math.round(rate * 1000) / 10,
+          // As before, last* are the latest ever seen (not limited to the window); lastOutcome is the newest of the two.
+          lastSuccessAt: minute(last?.ok), lastFailureAt: minute(last?.fail),
+          lastOutcome: last && (Number.isFinite(last.ok) || Number.isFinite(last.fail)) ? (last.failed ? "failure" : "success") : null,
+          sellerFailures: (c.reasons.no_healthy_sellers || 0) + (c.reasons.minimum_discount_not_met || 0),
+          failureReasons: Object.fromEntries(Object.entries(c.reasons).filter(([, n]) => n > 0)),
+          reason: Number.isFinite(last?.fail) ? last.lastReason ?? "other" : null,
+          ...(expiry ? { unavailableUntil: new Date(expiry).toISOString(),
+            retryAfterSeconds: Math.max(30, Math.ceil((expiry - now) / 1000)) } : {}) }];
+      }));
   }
   rails(hours = 24) {
     const cutoff = Math.floor(this.now() / HOUR) * HOUR - (hours - 1) * HOUR;
@@ -207,8 +239,10 @@ export class FacilitatorCheck {
   }
 }
 
-export function healthBody(stats, check, model) {
-  const models = stats.models();
+export function healthBody(stats, check, model, unservable = new Map()) {
+  const models = stats.models(24, unservable);
+  const models_summary = { up: 0, degraded: 0, down: 0, insufficient_data: 0, unavailable: 0 };
+  for (const entry of Object.values(models)) models_summary[entry.status]++;
   const networks = Object.fromEntries(Object.entries(stats.rails()).map(([n, rail]) => {
     let status = "unknown", basis = "none";
     if (rail.settled + rail.failed) {
@@ -227,9 +261,9 @@ export function healthBody(stats, check, model) {
   const known = Object.values(networks).filter(n => n.status !== "unknown");
   const status = known.length && known.every(n => n.status === "down") ? "down"
     : known.some(n => ["down", "degraded"].includes(n.status))
-      || ["down", "degraded"].includes(models[model]?.status) ? "degraded" : "ok";
+      || ["down", "degraded", "unavailable"].includes(models[model]?.status) ? "degraded" : "ok";
   return { status, generatedAt: new Date(stats.now()).toISOString(), windowHours: 24, statsSince: stats.state.since,
-    models, payments: { facilitator: check, networks } };
+    models, models_summary, payments: { facilitator: check, networks } };
 }
 export function numbersBody(stats) {
   const { since, total, day, week } = stats.numbers();

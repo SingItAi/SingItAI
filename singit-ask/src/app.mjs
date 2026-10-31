@@ -429,7 +429,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     + "LLM answer, a second opinion, or a model it has no key for. SingIt Ask; models at GET /v1/models.";
   app.get("/health", open, (_req, res) => {
     res.set("Cache-Control", "no-store");
-    res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model),
+    res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model, catalogue?.unservableSnapshot?.()),
                ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
   });
@@ -684,7 +684,29 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             content: { "application/json": { schema: { type: "object", properties: {
               ok: { type: "boolean", const: true }, status: { enum: ["ok", "degraded", "down"] },
               generatedAt: { type: "string", format: "date-time" }, windowHours: { type: "integer", const: 24 },
-              statsSince: { type: "string", format: "date-time" }, models: { type: "object" },
+              statsSince: { type: "string", format: "date-time" },
+              models_summary: { type: "object", required: ["up", "degraded", "down", "insufficient_data", "unavailable"],
+                properties: Object.fromEntries(["up", "degraded", "down", "insufficient_data", "unavailable"]
+                  .map(key => [key, { type: "integer", minimum: 0 }])) },
+              models: { type: "object", additionalProperties: { type: "object",
+                required: ["status", "windowHours", "attempts", "successes", "failures", "errorRatePct",
+                  "lastSuccessAt", "lastFailureAt", "lastOutcome", "sellerFailures", "failureReasons", "reason"],
+                properties: {
+                status: { enum: ["up", "degraded", "down", "insufficient_data", "unavailable"] },
+                windowHours: { type: "integer", const: 24 },
+                ...Object.fromEntries(["attempts", "successes", "failures", "sellerFailures"]
+                  .map(key => [key, { type: "integer", minimum: 0 }])),
+                errorRatePct: { type: "number", minimum: 0, maximum: 100 },
+                lastSuccessAt: { type: ["string", "null"], format: "date-time" },
+                lastFailureAt: { type: ["string", "null"], format: "date-time" },
+                lastOutcome: { enum: ["success", "failure", null] },
+                reason: { enum: ["no_healthy_sellers", "minimum_discount_not_met", "other", null] },
+                failureReasons: { type: "object", additionalProperties: false,
+                  properties: Object.fromEntries(["no_healthy_sellers", "minimum_discount_not_met", "other"]
+                    .map(key => [key, { type: "integer", minimum: 0 }])) },
+                unavailableUntil: { type: "string", format: "date-time" },
+                retryAfterSeconds: { type: "integer", minimum: 30 }
+              } } },
               payments: { type: "object", properties: { facilitator: { type: ["object", "null"] },
                 networks: { type: "object" } } }
             } } } } } } } },

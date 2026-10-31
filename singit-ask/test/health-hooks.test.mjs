@@ -68,8 +68,17 @@ test("app read endpoints preserve legacy fields, CORS and private public-only me
     next(); return { headers, body };
   };
   const h = read("/health"), n = read("/numbers.json");
+  const api = (app._router?.stack ?? app.router.stack).find(l => l.route?.path === "/openapi.json").route.stack;
+  let spec;
+  await api.at(-1).handle({ protocol: "https", get: () => "example.test" }, { json(v) { spec = v; } });
+  const schema = spec.paths["/health"].get.responses[200].content["application/json"].schema;
+  assert.ok(schema.properties.models_summary);
+  assert.ok(schema.properties.models.additionalProperties.properties.lastOutcome);
   for (const key of ["ok", "service", "model", "facilitator", "pricing", "free", "metered"])
     assert.ok(Object.hasOwn(h.body, key));
+  assert.deepEqual(h.body.models_summary, { up: 0, degraded: 0, down: 0, insufficient_data: 1, unavailable: 0 });
+  assert.equal(h.body.models.text.attempts, 1);
+  assert.equal(h.body.models.text.lastOutcome, "success");
   assert.equal(h.body.ok, true); assert.equal(h.body.models.text.successes, 1);
   assert.equal(h.body.payments.networks.base.settled, 2);
   assert.equal(n.body.paid_calls.total, 1); assert.equal(n.body.usdc_volume.total, 0.001);

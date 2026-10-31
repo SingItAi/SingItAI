@@ -12,14 +12,14 @@ const settle = (s, extra = {}) => s.recordSettlement({ route: "/public", network
 test("model transitions, caller faults and window expiry", () => {
   let now = Date.UTC(2026, 9, 30);
   const s = new HealthStats({ now: () => now });
-  s.recordModel("text", { ok: true }); assert.equal(s.models().text.status, "up");
+  s.recordModel("text", { ok: true }); assert.equal(s.models().text.status, "insufficient_data");
   s.recordModel("text", { ok: false, status: 400 });
   s.recordModel("text", { ok: false, status: 413 });
   s.recordModel("text", { ok: false, status: 422 });
   s.recordModel("text", { ok: false, code: "max_tokens_spent_reasoning" });
   assert.equal(s.models().text.failures, 0);
-  s.recordModel("text", { ok: false }); assert.equal(s.models().text.status, "degraded");
-  s.recordModel("text", { ok: false }); assert.equal(s.models().text.status, "down");
+  s.recordModel("text", { ok: false }); assert.equal(s.models().text.status, "insufficient_data");
+  s.recordModel("text", { ok: false }); assert.equal(s.models().text.status, "insufficient_data");
   assert.equal(s.models().text.errorRatePct, 66.7);
   now += 24 * HOUR; assert.deepEqual(s.models(), {});
 });
@@ -168,5 +168,97 @@ test("a failed facilitator probe preserves worse or equal settlement health", ()
   for (const rail of Object.values(down.payments.networks)) {
     assert.equal(rail.status, "down"); assert.equal(rail.basis, "settlements");
     assert.equal(rail.failed, 3);
+  }
+});
+
+test("model rate boundaries use at least five attempts", () => {
+  for (const [attempts, failures, status] of [[4, 4, "insufficient_data"], [5, 1, "up"],
+    [5, 2, "degraded"], [5, 3, "down"], [6, 3, "degraded"]]) {
+    const s = new HealthStats();
+    for (let i = 0; i < attempts; i++) s.recordModel("text", { ok: i >= failures });
+    assert.equal(s.models().text.status, status);
+    assert.equal(s.models().text.attempts, attempts);
+    assert.equal(s.models().text.windowHours, 24);
+  }
+});
+
+test("seller failures are whitelisted and latest failure survives success", () => {
+  const s = new HealthStats();
+  for (const code of ["no_healthy_sellers", "minimum_discount_not_met", "private detail", undefined])
+    s.recordModel("text", { ok: false, code });
+  let m = s.models().text;
+  assert.equal(m.failures, 4); assert.equal(m.sellerFailures, 2);
+  assert.deepEqual(m.failureReasons, { no_healthy_sellers: 1, minimum_discount_not_met: 1, other: 2 });
+  assert.equal(m.reason, "other"); assert.equal(m.lastOutcome, "failure");
+  s.recordModel("text", { ok: false, code: "no_healthy_sellers" });
+  s.recordModel("text", { ok: true }); m = s.models().text;
+  assert.equal(m.reason, "no_healthy_sellers"); assert.equal(m.lastOutcome, "success");
+  assert.ok(!JSON.stringify(s.state).includes("private detail"));
+});
+
+test("unavailable entries override rates, include empty models and survive cap", async () => {
+  const { ModelCatalogue } = await import("../src/catalogue.mjs");
+  let now = Date.UTC(2026, 9, 30);
+  const s = new HealthStats({ now: () => now });
+  const c = new ModelCatalogue({ now: () => now });
+  c.markUnservable("empty");
+  const snapshot = c.unservableSnapshot(); snapshot.clear();
+  assert.equal(c.isUnservable("empty"), true);
+  let h = healthBody(s, null, "empty", c.unservableSnapshot());
+  assert.deepEqual(h.models.empty, { status: "unavailable", windowHours: 24, attempts: 0,
+    successes: 0, failures: 0, errorRatePct: 0, lastSuccessAt: null, lastFailureAt: null,
+    lastOutcome: null, sellerFailures: 0, failureReasons: {}, reason: null,
+    unavailableUntil: new Date(now + 900000).toISOString(), retryAfterSeconds: 900 });
+  assert.equal(h.status, "degraded");
+  for (let i = 0; i < 60; i++) s.recordModel(`model-${i}`, { ok: true });
+  assert.equal(Object.keys(s.models(24, c.unservableSnapshot())).length, 50);
+  assert.ok(s.models(24, c.unservableSnapshot()).empty);
+  c.markUnservable("model-0");
+  assert.equal(s.models(24, c.unservableSnapshot())["model-0"].status, "unavailable");
+  now += 899999;
+  assert.equal(s.models(24, c.unservableSnapshot()).empty.retryAfterSeconds, 30);
+  now++;
+  assert.equal(c.unservableSnapshot().size, 0);
+  assert.equal(s.models(24, c.unservableSnapshot()).empty, undefined);
+  const many = new Map(Array.from({ length: 51 }, (_, i) => [`unavailable-${i}`, now + 1000]));
+  assert.equal(Object.values(s.models(24, many)).filter(m => m.status === "unavailable").length, 51);
+});
+
+test("summary counts model statuses while only default affects overall", () => {
+  const s = new HealthStats();
+  for (const [id, failures] of [["up", 1], ["degraded", 2], ["down", 3]])
+    for (let i = 0; i < 5; i++) s.recordModel(id, { ok: i >= failures });
+  s.recordModel("small", { ok: false });
+  const unavailable = new Map([["empty", s.now() + 60000]]);
+  const h = healthBody(s, null, "up", unavailable);
+  assert.equal(h.status, "ok");
+  assert.deepEqual(h.models_summary, { up: 1, degraded: 1, down: 1, insufficient_data: 1, unavailable: 1 });
+  for (const model of ["degraded", "down", "empty"])
+    assert.equal(healthBody(s, null, model, unavailable).status, "degraded");
+});
+
+test("old persisted reasons load and invalid reasons reject the whole file", t => {
+  const dir = mkdtempSync(join(tmpdir(), "health-reasons-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "stats.json"), s = new HealthStats({ file });
+  s.recordModel("text", { ok: false, code: "no_healthy_sellers" }); s.flush();
+  assert.deepEqual(new HealthStats({ file }).models(), s.models());
+  const old = JSON.parse(readFileSync(file, "utf8"));
+  delete old.models.text.lastReason;
+  const bucket = Object.values(old.buckets)[0]; delete bucket.models.text.reasons;
+  writeFileSync(file, JSON.stringify(old));
+  const loaded = new HealthStats({ file });
+  assert.equal(loaded.models().text.failures, 1);
+  assert.deepEqual(loaded.models().text.failureReasons, { other: 1 });
+  assert.equal(loaded.models().text.reason, "other");
+  for (const reasons of [{ secret: 1 }, { other: -1 }, { other: "1" }, { other: 0.5 }, null]) {
+    bucket.models.text.reasons = reasons;
+    writeFileSync(file, JSON.stringify(old));
+    assert.deepEqual(new HealthStats({ file }).models(), {});
+  }
+  delete bucket.models.text.reasons;
+  for (const reason of ["secret", null, 3]) {
+    old.models.text.lastReason = reason; writeFileSync(file, JSON.stringify(old));
+    assert.deepEqual(new HealthStats({ file }).models(), {});
   }
 });
