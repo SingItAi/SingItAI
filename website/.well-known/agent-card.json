@@ -1,0 +1,71 @@
+{
+  "name": "SingIt",
+  "description": "This is a discovery card for SingIt's MCP server and x402 API, not an A2A task endpoint. The interface protocolVersion is the MCP version, 2025-06-18.",
+  "version": "1.0.0",
+  "supportedInterfaces": [
+    {
+      "url": "https://app.singitai.app/mcp",
+      "protocolBinding": "https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http",
+      "protocolVersion": "2025-06-18"
+    }
+  ],
+  "provider": {
+    "organization": "SingIt",
+    "url": "https://singitai.app/"
+  },
+  "documentationUrl": "https://singitai.app/docs/mcp-key/",
+  "capabilities": {},
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain"
+  ],
+  "skills": [
+    {
+      "id": "free-model-answers",
+      "name": "Free model answers",
+      "description": "Limited free model answers without a wallet or key.",
+      "tags": [
+        "llm",
+        "free"
+      ]
+    },
+    {
+      "id": "paid-model-answers-x402",
+      "name": "Paid model answers over x402",
+      "description": "Pay per call in USDC on Base or Solana through the x402 API.",
+      "tags": [
+        "llm",
+        "x402"
+      ]
+    },
+    {
+      "id": "web-search-and-page-reading",
+      "name": "Web search and page reading",
+      "description": "Paid calls with a SingIt key and search scope on Base or Solana.",
+      "tags": [
+        "search",
+        "mcp"
+      ]
+    },
+    {
+      "id": "price-lookups",
+      "name": "Price lookups",
+      "description": "Free crypto, metal and FX price lookups without a key.",
+      "tags": [
+        "prices",
+        "free"
+      ]
+    },
+    {
+      "id": "key-spending-limits",
+      "name": "Key spending limits",
+      "description": "get_limits and get_receipts read key limits and spend. Caps apply only to calls with that key to SingIt MCP and its /v1 endpoint; they do not limit spending elsewhere or protect an agent’s own wallet.",
+      "tags": [
+        "limits",
+        "receipts"
+      ]
+    }
+  ]
+}
