@@ -1,0 +1,2493 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SingIt API-key API",
+    "version": "1.0.0",
+    "description": "Create sk_singit_ keys in the app at https://app.singitai.app/app/. For x402 pay-per-call without a key, use https://ask.singitai.app/openapi.json. New keys carry answers, search and tools scopes; older keys may have answers only. Exa checks search; tools is checked for paid MCP tools, outside this REST API. Model routes do not separately check answers. Paid requests have a per-key limit of 60 requests/minute. Each key has a daily cap (reset at 00:00 UTC, including reservations for in-flight requests) and a per-request cap. Daily exhaustion returns 429 insufficient_quota; the per-minute limit returns 429 rate_limit_exceeded. Proxy estimates above the per-request cap return 400 over_request_limit. A nonempty Origin header returns 403 browser_request. Keep keys in server code. The proxy routes below exist in the gateway source; availability depends on server configuration, not a live deployment guarantee."
+  },
+  "servers": [
+    {
+      "url": "https://app.singitai.app/v1"
+    }
+  ],
+  "security": [
+    {
+      "BearerKey": []
+    },
+    {
+      "HeaderKey": []
+    }
+  ],
+  "paths": {
+    "/chat/completions": {
+      "post": {
+        "summary": "Create a chat completion",
+        "operationId": "createChatCompletion",
+        "description": "Works with or without the proxy. Without it, tools/functions are refused and streaming sends a completed answer as SSE rather than incremental generation. With the proxy, requests and streams are relayed. When configured with SIGN402_WEB_FREE_MODELS and an upstream key, free/<id> models use this route with authentication but no paid per-minute limit, daily cap reservation or balance charge. Free answers have separate configurable daily account/network/global quotas; defaults are 20/40/1000, with 400 output tokens and 4000 UTF-16 code units of message content. Tools/functions are refused. Counters are in memory and reset on restart; quotas reset at midnight UTC. Discover configured models and limits with GET /models. Exhaustion returns 429 free_limit_reached with Retry-After. Request format: https://platform.openai.com/docs/api-reference/chat/create. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "Use an id from GET /models."
+                  },
+                  "messages": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string"
+                        },
+                        "content": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "stream": {
+                    "type": "boolean"
+                  },
+                  "max_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "max_completion_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "max_output_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "input": {},
+                  "system": {},
+                  "instructions": {},
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "stream_options": {
+                    "type": "object",
+                    "properties": {
+                      "include_usage": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": true
+              },
+              "example": {
+                "model": "deepseek-v4.1-flash",
+                "max_tokens": 200,
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Say hello in five words."
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses. The example body is an illustrative fragment: its text, token counts and charge are placeholder values, not a real answer, price or usage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                },
+                "example": {
+                  "object": "chat.completion",
+                  "choices": [
+                    {
+                      "index": 0,
+                      "message": {
+                        "role": "assistant",
+                        "content": "Hello!"
+                      },
+                      "finish_reason": "stop"
+                    }
+                  ],
+                  "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 3,
+                    "total_tokens": 12
+                  },
+                  "billing": {
+                    "chargedAtomic": 7100
+                  }
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "example": "data: [DONE]\n\n"
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-SingIt-Free": {
+                "description": "true for a free answer",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-SingIt-Free-Remaining": {
+                "description": "Remaining free answers for this account today",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid or revoked API key. Create one in the SingIt app.",
+                    "type": "authentication_error",
+                    "code": "invalid_api_key"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/responses": {
+      "post": {
+        "summary": "Create a response",
+        "operationId": "createResponse",
+        "description": "Requires the proxy/balance service to be enabled. Request format: https://platform.openai.com/docs/api-reference/responses/create. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "Use an id from GET /models."
+                  },
+                  "messages": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string"
+                        },
+                        "content": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "stream": {
+                    "type": "boolean"
+                  },
+                  "max_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "max_completion_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "max_output_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "input": {},
+                  "system": {},
+                  "instructions": {},
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "stream_options": {
+                    "type": "object",
+                    "properties": {
+                      "include_usage": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid or revoked API key. Create one in the SingIt app.",
+                    "type": "authentication_error",
+                    "code": "invalid_api_key"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/messages": {
+      "post": {
+        "summary": "Create a message",
+        "operationId": "createMessage",
+        "description": "Requires the proxy/balance service to be enabled. Request format: https://docs.anthropic.com/en/api/messages. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model. Gateway ApiError refusals use the Anthropic error envelope; upstream responses are relayed. HTTP-layer content-type errors can use the OpenAI envelope.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "Use an id from GET /models."
+                  },
+                  "messages": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string"
+                        },
+                        "content": {}
+                      },
+                      "additionalProperties": true
+                    }
+                  },
+                  "stream": {
+                    "type": "boolean"
+                  },
+                  "max_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "max_completion_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "max_output_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "input": {},
+                  "system": {},
+                  "instructions": {},
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "stream_options": {
+                    "type": "object",
+                    "properties": {
+                      "include_usage": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": true
+              },
+              "example": {
+                "model": "claude-sonnet-5-5",
+                "max_tokens": 200,
+                "messages": [
+                  {
+                    "role": "user",
+                    "content": "Hello!"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Invalid or revoked API key. Create one in the SingIt app."
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "anthropic-version",
+            "in": "header",
+            "description": "Forward this header to the Anthropic-compatible upstream.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "anthropic-beta",
+            "in": "header",
+            "description": "Forward this header to the Anthropic-compatible upstream.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/messages/count_tokens": {
+      "post": {
+        "summary": "Count message tokens",
+        "operationId": "countMessageTokens",
+        "description": "Requires the proxy/balance service to be enabled. Relays upstream without reserving or charging the balance or daily cap, but still counts against the per-key minute limit. Request format: https://docs.anthropic.com/en/api/messages-count-tokens. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model. Gateway ApiError refusals use the Anthropic error envelope; upstream responses are relayed. HTTP-layer content-type errors can use the OpenAI envelope.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "Use an id from GET /models."
+                  },
+                  "messages": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "stream": {
+                    "type": "boolean"
+                  },
+                  "max_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "max_completion_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "max_output_tokens": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "input": {},
+                  "system": {},
+                  "instructions": {},
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  },
+                  "stream_options": {
+                    "type": "object",
+                    "properties": {
+                      "include_usage": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                },
+                "example": {
+                  "type": "error",
+                  "error": {
+                    "type": "authentication_error",
+                    "message": "Invalid or revoked API key. Create one in the SingIt app."
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnthropicError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "anthropic-version",
+            "in": "header",
+            "description": "Forward this header to the Anthropic-compatible upstream.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "anthropic-beta",
+            "in": "header",
+            "description": "Forward this header to the Anthropic-compatible upstream.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/images/generations": {
+      "post": {
+        "summary": "Generate images",
+        "operationId": "generateImages",
+        "description": "Requires the proxy/balance service to be enabled. Request format: https://platform.openai.com/docs/api-reference/images/create. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "Use an id from https://ask.singitai.app/v1/images/models (the media model list; GET /models lists text models)."
+                  },
+                  "n": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4
+                  },
+                  "prompt": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "model"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid or revoked API key. Create one in the SingIt app.",
+                    "type": "authentication_error",
+                    "code": "invalid_api_key"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/speech": {
+      "post": {
+        "summary": "Generate speech",
+        "operationId": "generateSpeech",
+        "description": "Requires the proxy/balance service to be enabled. Request format: https://platform.openai.com/docs/api-reference/audio/createSpeech. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "Use an id from https://ask.singitai.app/v1/audio/models (the media model list; GET /models lists text models)."
+                  },
+                  "input": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "voice": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "model",
+                  "input"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              },
+              "audio/mpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid or revoked API key. Create one in the SingIt app.",
+                    "type": "authentication_error",
+                    "code": "invalid_api_key"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/audio/transcriptions": {
+      "post": {
+        "summary": "Transcribe audio",
+        "operationId": "transcribeAudio",
+        "description": "Requires the proxy/balance service to be enabled. Request format: https://platform.openai.com/docs/api-reference/audio/createTranscription. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model. Send multipart/form-data; the gateway reads only model and forwards the raw upload (at most 25 MiB).",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "Use an id from https://ask.singitai.app/v1/audio/models (the media model list; GET /models lists text models)."
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "model",
+                  "file"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid or revoked API key. Create one in the SingIt app.",
+                    "type": "authentication_error",
+                    "code": "invalid_api_key"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exa/search": {
+      "post": {
+        "summary": "Search the web",
+        "operationId": "searchWeb",
+        "description": "Requires the search scope. Uses the owner’s wallet within their SingIt limits, independently of the proxy balance. Request format: https://docs.exa.ai/reference/search. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid or revoked API key. Create one in the SingIt app.",
+                    "type": "authentication_error",
+                    "code": "invalid_api_key"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exa/contents": {
+      "post": {
+        "summary": "Retrieve page contents",
+        "operationId": "retrieveContents",
+        "description": "Requires the search scope. Uses the owner’s wallet within their SingIt limits, independently of the proxy balance. Request format: https://docs.exa.ai/reference/get-contents. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid or revoked API key. Create one in the SingIt app.",
+                    "type": "authentication_error",
+                    "code": "invalid_api_key"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/exa/answer": {
+      "post": {
+        "summary": "Answer a search query",
+        "operationId": "answerSearch",
+        "description": "Requires the search scope. Uses the owner’s wallet within their SingIt limits, independently of the proxy balance. Request format: https://docs.exa.ai/reference/answer. The schema lists fields read by the gateway; additional upstream fields are accepted. Model support depends on the selected model.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return the upstream response format, or the gateway chat envelope. Billing fields may be added to successful JSON responses.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              }
+            },
+            "headers": {
+              "X-SingIt-Charged-Atomic": {
+                "description": "Charged USDC in atomic units, when known on nonstreaming proxy responses or wallet-paid chat/search. Not guaranteed on streams.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Reject invalid input or over_request_limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject an invalid, expired or revoked key: invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": {
+                    "message": "Invalid or revoked API key. Create one in the SingIt app.",
+                    "type": "authentication_error",
+                    "code": "invalid_api_key"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Reject a low proxy balance: balance_low.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request, scope_missing (Exa), or unavailable payment permissions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found or model_not_found; conditional routes are absent when disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Reject an oversized request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Reject an unsupported request content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Reject insufficient_quota, rate_limit_exceeded or free_limit_reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until retry, when supplied (free quota exhaustion).",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report an upstream failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report an unavailable service or paused payments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/models": {
+      "get": {
+        "summary": "List models",
+        "operationId": "listModels",
+        "description": "Requires the model-list shop service, independently of the proxy. Includes configured free models with their limits.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Return account data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": {
+                      "const": "list"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "object": {
+                            "type": "string"
+                          },
+                          "free": {
+                            "type": "boolean"
+                          },
+                          "limits": {
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": true
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Report a gateway error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found when a conditional route is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report a gateway error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report a gateway error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/balance": {
+      "get": {
+        "summary": "Read account balance",
+        "operationId": "getBalance",
+        "description": "Available only when the proxy/balance service is enabled. Returns account-wide state, not a per-key balance.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Return account data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": {
+                      "const": "balance"
+                    },
+                    "currency": {
+                      "const": "USDC"
+                    },
+                    "balanceUsd": {
+                      "type": "number"
+                    },
+                    "availableUsd": {
+                      "type": "number"
+                    },
+                    "heldUsd": {
+                      "type": "number"
+                    },
+                    "topupUsd": {
+                      "type": "number"
+                    },
+                    "thresholdUsd": {
+                      "type": "number"
+                    },
+                    "autoTopup": {
+                      "type": "boolean"
+                    },
+                    "refundRequested": {
+                      "type": "boolean"
+                    },
+                    "pendingTopups": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Report a gateway error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found when a conditional route is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report a gateway error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report a gateway error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/usage": {
+      "get": {
+        "summary": "Read account usage",
+        "operationId": "getUsage",
+        "description": "Available only when the proxy/balance service is enabled. Returns account-wide balance usage grouped by date, key and model.",
+        "security": [
+          {
+            "BearerKey": []
+          },
+          {
+            "HeaderKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Return account data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": {
+                      "const": "list"
+                    },
+                    "days": {
+                      "type": "integer"
+                    },
+                    "totalUsd": {
+                      "type": "number"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "date": {
+                            "type": "string"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "keyName": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "model": {
+                            "type": "string"
+                          },
+                          "requests": {
+                            "type": "integer"
+                          },
+                          "chargedUsd": {
+                            "type": "number"
+                          },
+                          "inputTokens": {
+                            "type": "integer"
+                          },
+                          "outputTokens": {
+                            "type": "integer"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Report a gateway error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Reject invalid_api_key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reject browser_request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reject not_found when a conditional route is disabled.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Report a gateway error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Report a gateway error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "description": "Defaults to 1; integer inputs are clamped to 1–90. Non-integer text returns 400 bad_days.",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "sk_singit_...",
+        "description": "An API key created in the SingIt app."
+      },
+      "HeaderKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "Alternative authentication header accepted on all documented routes; a nonempty Bearer token takes precedence."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "code": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "message",
+              "type",
+              "code"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "error"
+        ]
+      },
+      "AnthropicError": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "const": "error"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "type",
+              "message"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "type",
+          "error"
+        ]
+      }
+    }
+  }
+}
