@@ -67,22 +67,33 @@ Agents with their own wallet can skip the key: pay per answer over x402 at https
 
 ## Errors
 
-The code column names existing error.type and optional error.code values; there is no universal stable code field. Messages-format errors use an Anthropic envelope and may omit error.code.
+JSON errors include a stable code: OpenAI-style error.code, Messages-format error.code, or a top-level code alongside a string error. Tolerate unknown codes. Reference: https://singitai.app/docs/errors/
+
+A 402 challenge body includes x402Version and accepts, equal to the corresponding fields in the decoded PAYMENT-REQUIRED header, plus error: "payment_required" and code: "payment_required". A settlement-failure 402 has only error and code, with no challenge header.
+
+429s include Retry-After (seconds). Free-tier daily 429s and /v1/prices 429s include X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset (Unix seconds). Free-tier busy 429s have only Retry-After: 5. Prices use fixed minute windows and Retry-After: 60.
 
 | HTTP status | code | meaning | charged? | what to do |
 | --- | --- | --- | --- | --- |
-| 400 / 413 | error.type: invalid_request_error | Invalid JSON, oversized body, or invalid input | No | Fix the request; reduce body size for 413. |
-| 402 | No uniform error.type/error.code | Payment required or payment verification failed | No answer charge | Read PAYMENT-REQUIRED; check budget and sign one offer. |
-| 404 | error.type: invalid_request_error; error.code: model_not_found (image/speech), not_found (prices); Messages: not_found_error | Model or symbol not offered | No | Check the appropriate models or symbols list. |
-| 409 | error.type: invalid_request_error | This payment was already used | No new charge | Check the original request result; do not reuse the signature. |
-| 422 | error.type: invalid_request_error; error.code: max_tokens_too_small where provided | Reasoning used the output budget without an answer | No | Raise max_tokens within your budget. |
-| 429 | error.type: rate_limit_error | Free allowance exhausted or busy; price lookup rate limit | No | Wait for Retry-After. |
-| 503 | error.type: upstream_error; error.code: no_billable_answer where provided; Messages: api_error | No billable answer, unavailable seller, or catalogue unavailable | No | Wait for Retry-After where supplied, then retry. |
+| 400 / 413 | invalid_json, invalid_request, payload_too_large | Invalid JSON, input or body size | No | Fix request; reduce body for 413. |
+| 401 / 403 | unauthorized, forbidden | Authentication or access refused | No answer charge | Check access. |
+| 402 | payment_required | Payment challenge or refusal | No answer charge on refusal | Inspect PAYMENT-REQUIRED; check budget before signing. Without a challenge, reconcile submitted payment. |
+| 404 | model_not_found, not_found | Model, route or symbol unavailable | No | Check route or catalogue. |
+| 409 | payment_duplicate, stale_payment_permit | Signature used or permit nonce stale | No new charge | Check original result; wait for settlement before signing a fresh permit. |
+| 422 | max_tokens_too_small, invalid_request | No answer within output budget or invalid request | No | Fix request; raise max_tokens within budget. |
+| 429 | rate_limited, free_tier_exhausted, free_tier_busy | Allowance exhausted or busy | No | Wait Retry-After. |
+| 503 | no_billable_answer, no_healthy_sellers, upstream_unavailable | No billable answer or upstream unavailable | Never | Wait Retry-After where supplied, then retry. |
 
 ## For developers
 
 - Health and status: https://ask.singitai.app/health (JSON: model and payment-rail status), https://singitai.app/status/ (page), https://ask.singitai.app/numbers.json (measured numbers)
 - Docs: https://singitai.app/developers/
+- Docs index: https://singitai.app/docs/
+- Errors: https://singitai.app/docs/errors/
+- Limits: https://singitai.app/docs/limits/
+- How a payment is charged: https://singitai.app/docs/payments/
+- Security: https://singitai.app/docs/security/
+- FAQ: https://singitai.app/docs/faq/
 - SingIt Ask OpenAPI: https://ask.singitai.app/openapi.json
 - SingIt Ask x402 discovery: https://ask.singitai.app/.well-known/x402
 - Source: https://github.com/bubon-ik/SingItAI
