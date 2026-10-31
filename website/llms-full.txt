@@ -60,7 +60,8 @@ SingIt lets you connect the wallet you already use, set a daily and a per-purcha
    - Free with a key (read-only): get_balance, get_limits, get_receipts.
    - Paid per call from the key's limits (USDC on Base or Solana): web_search, read_page.
    - Paid, Base accounts for now: get_x_profile, get_crypto_news, get_hyperliquid_market, get_funding_rates, resolve_ens, get_token_price; demo calls get_weather, get_singit_risk_check.
-   - Claude Code: claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer sk_singit_..."
+   - Claude Code: claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'
+     Single quotes keep ${SINGIT_API_KEY} as a reference so the key is not written into Claude Code's configuration.
    - Install guide: https://github.com/SingItAi/SingItAI/blob/main/llms-install.md
 
 Agents with their own wallet can skip the key: pay per answer over x402 at https://ask.singitai.app (USDC on Base or Solana).
