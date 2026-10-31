@@ -705,6 +705,150 @@ class PaidDataToolTests(Fixture):
         self.assertEqual(self.shop.calls, [])
 
 
+class KeyLimitRefusalTests(Fixture):
+    """Offline tools/call coverage of the owner's key caps."""
+
+    PAID_CALLS = (("web_search", {"query": "x402"}),
+                  ("read_page", {"url": "https://example.com"}),
+                  ("get_token_price", {"symbol": "ETH"}))
+
+    def setUp(self):
+        super().setUp()
+        self.limiter = "0x" + "ab" * 20
+        self.api.allowance.store.active_limiter.return_value = {"limiter": self.limiter}
+
+    def spent(self, made):
+        return self.store.key_spent(made["id"], self.clock[0] // 86400)
+
+    def success(self, response):
+        status, out, _ = response
+        self.assertEqual(status, 200)
+        self.assertNotIn("error", out)
+        self.assertFalse(out["result"].get("isError"))
+        return out["result"]["structuredContent"]
+
+    def refusal(self, made, response, daily=True):
+        status, out, _ = response
+        self.assertEqual(status, 200)
+        self.assertEqual((out["jsonrpc"], out["id"]), ("2.0", 1))
+        self.assertNotIn("error", out)
+        self.assertIs(out["result"]["isError"], True)
+        text = out["result"]["content"][0]["text"]
+        # Boolean assertions keep credentials out of failure diagnostics as well.
+        for private in (made["key"], self.user.address, self.account, self.limiter):
+            self.assertTrue(private not in text, "refusal exposed private account data")
+        if daily:
+            self.assertIn("This key's daily limit of 0.01 USDC is used up", text)
+            self.assertIn("00:00 UTC", text)
+        return text
+
+    def test_daily_cap_refuses_search_page_and_data_without_another_charge(self):
+        self.shop.reply = (200, {"data": {}, "costAtomic": 7_000})
+        for name, args in self.PAID_CALLS:
+            with self.subTest(tool=name):
+                made = self.make_key(dailyUsd=0.01)
+                before = len(self.shop.calls)
+                data = self.success(self.call_tool(made["key"], name, args))
+                self.assertEqual(data["billing"]["chargedAtomic"], 7_000)
+                self.assertEqual(self.spent(made), (7_000, 1))
+                self.refusal(made, self.call_tool(made["key"], name, args))
+                self.assertEqual(len(self.shop.calls), before + 1)
+                self.assertEqual(self.spent(made), (7_000, 1))
+                self.assertEqual(self.api.keys._reserved[made["id"]], 0)
+
+    def test_in_flight_hold_counts_with_spent_and_next_call_maximum(self):
+        for name, args in self.PAID_CALLS:
+            with self.subTest(tool=name):
+                made = self.make_key(dailyUsd=0.01, perRequestUsd=0.006)
+                self.store.record_key_spend(made["id"], NOW // 86400, 1_000, NOW)
+                row = self.store.api_key(made["key"], NOW)
+                # Spent + next maximum fits; adding an existing hold exceeds the cap.
+                done = self.api.keys._reserve(row, 4_000)
+                try:
+                    self.refusal(made, self.call_tool(made["key"], name, args))
+                    self.assertEqual(self.shop.calls, [])
+                    self.assertEqual(self.spent(made), (1_000, 1))
+                    self.assertEqual(self.api.keys._reserved[made["id"]], 4_000)
+                finally:
+                    done(0)
+                self.shop.reply = (200, {"data": {}, "costAtomic": 1_000})
+                self.success(self.call_tool(made["key"], name, args))
+                self.shop.calls.clear()
+                self.assertEqual(self.spent(made), (2_000, 2))
+                self.assertEqual(self.api.keys._reserved[made["id"]], 0)
+
+    def test_free_tools_limits_and_receipts_work_at_exhausted_cap(self):
+        made = self.make_key(dailyUsd=0.01)
+        self.shop.reply = (200, {"data": {}, "costAtomic": 10_000})
+        self.success(self.call_tool(made["key"], "web_search", {"query": "x402"}))
+        self.refusal(made, self.call_tool(made["key"], "web_search", {"query": "x402"}))
+        self.api.mcp.fetch_json = Mock(return_value={"usd": 3000})
+        self.api.keys.proxy = Mock()
+        self.api.keys.proxy.balances.ledger.return_value = []
+        self.api.keys._balance = Mock(return_value={"availableUsd": 0})
+        self.api.allowance.store.active_limiter.return_value = None
+        self.success(self.call_tool(made["key"], "get_price", {"kind": "crypto", "symbol": "ETH"}))
+        models = self.success(self.call_tool(made["key"], "list_models"))
+        self.assertIn("claude-opus-5.5", [m["id"] for m in models["data"]])
+        limits = self.success(self.call_tool(made["key"], "get_limits"))["key"]
+        self.assertEqual((limits["dailyCapUsd"], limits["spentTodayUsd"], limits["remainingTodayUsd"]),
+                         (0.01, 0.01, 0.0))
+        self.assertEqual(limits["spentTodayUsd"] + limits["remainingTodayUsd"], limits["dailyCapUsd"])
+        self.assertGreaterEqual(limits["remainingTodayUsd"], 0)
+        self.assertEqual(limits["heldNowUsd"], 0)
+        self.assertEqual(limits["resetsAt"], (NOW // 86400 + 1) * 86400)
+        receipts = self.success(self.call_tool(made["key"], "get_receipts"))
+        self.assertEqual(receipts["data"], [])
+        self.api.keys.proxy.balances.ledger.assert_called_once_with(self.account, limit=200, before=None)
+        self.assertEqual([c[0] for c in self.shop.calls], ["api-search", "api-models"])
+        self.assertEqual(self.spent(made), (10_000, 1))
+
+    def test_new_utc_day_allows_same_key_to_spend_again(self):
+        made = self.make_key(dailyUsd=0.01)
+        self.shop.reply = (200, {"data": {}, "costAtomic": 7_000})
+        args = {"query": "x402"}
+        self.success(self.call_tool(made["key"], "web_search", args))
+        self.refusal(made, self.call_tool(made["key"], "web_search", args))
+        self.clock[0] += 86400
+        self.assertEqual(self.spent(made), (0, 0))
+        self.success(self.call_tool(made["key"], "web_search", args))
+        self.assertEqual(self.spent(made), (7_000, 1))
+        self.assertEqual(self.store.key_spent(made["id"], NOW // 86400), (7_000, 1))
+        self.assertEqual(len(self.shop.calls), 2)
+
+    def test_per_request_cap_forwarded_and_shop_refusals_are_tool_errors(self):
+        made = self.make_key(dailyUsd=1, perRequestUsd=0.012)
+        for name, args in (self.PAID_CALLS[0], self.PAID_CALLS[2]):
+            for status in (400, 429, 403):
+                with self.subTest(tool=name, shop_status=status):
+                    message = "Price 0.013 USDC is more than this key's per-request limit of 0.012 USDC. Nothing was paid."
+                    self.shop.reply = (status, {"text": message})
+                    before = len(self.shop.calls)
+                    text = self.refusal(made, self.call_tool(made["key"], name, args), daily=False)
+                    self.assertEqual(text, message)
+                    self.assertEqual(len(self.shop.calls), before + 1)
+                    action, account, body = self.shop.calls[-1]
+                    self.assertEqual(action, "api-search" if name == "web_search" else "api-tool")
+                    self.assertTrue(account == self.account)
+                    self.assertEqual(body["limitAtomic"], 12_000)
+                    self.assertEqual(self.spent(made), (0, 0))
+                    self.assertEqual(self.api.keys._reserved[made["id"]], 0)
+
+    def test_revoked_and_wrong_keys_get_401_for_paid_calls_without_shop(self):
+        made = self.make_key()
+        self.call("POST", "/api-keys/revoke", {"id": made["id"]})
+        for key in (made["key"], BAD_KEY):
+            for name, args in self.PAID_CALLS:
+                with self.subTest(tool=name, revoked=key == made["key"]):
+                    status, out, headers = self.call_tool(key, name, args)
+                    self.assertEqual(status, 401)
+                    self.assertEqual(out["error"]["code"], -32001)
+                    self.assertIn("Bearer", headers["WWW-Authenticate"])
+                    self.assertTrue(key not in out["error"]["message"])
+        self.assertEqual(self.shop.calls, [])
+        self.assertEqual(self.spent(made), (0, 0))
+
+
 class ProtocolTests(Fixture):
     def test_a_notification_gets_202_and_no_body(self):
         made = self.make_key()
