@@ -78,6 +78,8 @@ test("the pages output contains robots.txt and the landing sitemap", async () =>
       "/numbers.json https://ask.singitai.app/numbers.json 302",
       "/ai-agent-spending-limit /agent-spending-limits/ 301",
       "/ai-agent-spending-limit/ /agent-spending-limits/ 301",
+      "/.well-known/x402 https://ask.singitai.app/.well-known/x402 302",
+      "/openapi.json https://ask.singitai.app/openapi.json 302",
     ]);
 
     const server = createServer(async (request, response) => {

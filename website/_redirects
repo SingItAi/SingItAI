@@ -18,3 +18,7 @@
 # generated:hidden-models:start
 # Temporarily hidden, see scripts/hidden-models.json
 # generated:hidden-models:end
+
+# The live resource list is served by ask; a static copy would go stale (as with /numbers.json).
+/.well-known/x402 https://ask.singitai.app/.well-known/x402 302
+/openapi.json https://ask.singitai.app/openapi.json 302
