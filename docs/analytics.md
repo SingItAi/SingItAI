@@ -248,3 +248,25 @@ Setting up Umami itself (Docker container, Postgres, the Cloudflare tunnel hostn
 in the Umami UI) is VPS/ops work, not code in this repository, and is not done here. Until then:
 `UMAMI_URL`/`UMAMI_WEBSITE_ID` are unset, so the Umami mirror is a no-op and every event still
 lands durably in the `events` table, queryable today and ready to backfill into Umami later.
+
+## Ask external payers and issued 402s (31 October 2026)
+
+The local Ask counters distinguish configured own payments from external payments.
+Configure `SINGIT_ASK_OWN_PAYERS_FILE` as described in `singit-ask/README.md` before
+interpreting `/numbers.json` as external usage. `own_payers_configured` indicates a
+non-empty exclusion list. Historical own unique hashes are removed on loading;
+earlier calls and volume still include own tests because payment-level payer
+history is unavailable. No addresses are built into the counters.
+
+For daily collection, run `node scripts/ask-counters.mjs` from `singit-ask` with
+`SINGIT_ASK_STATS_FILE` and the optional own-payer file environment. It reads without
+writing and prints private aggregate JSON (`--text` gives a short summary).
+Alternatively, a private `GET /internal/stats` is enabled by
+`SINGIT_ASK_STATS_TOKEN` of at least 32 characters, authenticated by Bearer token.
+It has no public discovery entry or CORS access. Keep the token out of logs.
+
+Issued 402s are private response counts by paid route and UTC hourly windows:
+POST challenges, GET/HEAD discovery probes, and refusals without PAYMENT-REQUIRED.
+They are not unique clients, paid calls, or a conversion denominator. No prompts,
+addresses, IPs or header values are retained. Route keys are bounded to 100 including
+`other`; hourly history lasts 720 hours.

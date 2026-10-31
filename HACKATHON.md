@@ -353,6 +353,16 @@ all failures depend on child processes. No endpoints were refetched or paid call
 answerability after the hide remains unverified. The supplied snapshot updates pricing
 for 52 other models; DeepSeek's prices are unchanged.
 
+### 31 October 2026 — Ask external-payer and 402 counters (draft PR, not deployed)
+
+Ask's own-payer list now has a tested parser and a fail-closed read at startup, and adding the list removes own
+wallets from the historical unique-payer hashes. `/numbers.json` gains `own_payers_configured`. New private counters
+record how many 402 responses Ask issued (POST challenges, GET/HEAD discovery probes, refusals without a challenge),
+by paid route and in 24 h / 7 d windows; they are reachable only through a read-only CLI or a token-protected
+`GET /internal/stats` and are not public. Limits: calls and volume recorded before the own list was configured still
+include own payments (payer-level history is not stored), and 402 counts are responses, not unique clients. See
+`singit-ask/README.md` and `docs/analytics.md`.
+
 ### 31 October 2026 — six free models and a shared daily cost cap (draft PR, not deployed)
 
 SingIt Ask's free tier goes from one model to six (`free/openai-gpt-oss-20b`, `free/gemma-4-e2b`,

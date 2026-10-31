@@ -11,6 +11,7 @@
 import { randomBytes, createHmac } from "node:crypto";
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { normalize } from "./own-payers.mjs";
 
 export const HOUR = 3600000, RETENTION_HOURS = 720, MODEL_CAP = 300, PAYER_CAP = 20000, BUCKET_PAYER_CAP = 500;
 export const DOWN_RATE = 0.5, DEGRADED_RATE = 0.1, DOWN_ATTEMPTS = 3;
@@ -18,7 +19,8 @@ export const networkName = n => n === "eip155:8453" ? "base"
   : n === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" ? "solana" : "other";
 const REASONS = ["no_healthy_sellers", "minimum_discount_not_met", "other"];
 const failureReason = code => REASONS.includes(code) ? code : "other";
-const normalize = p => /^0x/i.test(p) ? p.toLowerCase() : p;
+const challengeCounts = () => ({ post: 0, probe: 0, refused: 0, routes: Object.create(null) });
+export const ROUTE_CAP = 100;
 const minute = t => Number.isFinite(t) ? new Date(Math.floor(t / 60000) * 60000).toISOString() : null;
 const empty = () => ({ calls: 0, atomic: "0", noAmount: 0, own: 0, fail: 0 });
 export function outcomeStatus(ok, fail, lastFailed) {
@@ -46,17 +48,20 @@ function validState(s) {
     && Object.entries(o).every(([id, v]) => /^[A-Za-z0-9._:/-]{1,80}$/.test(id) && valid(v));
   const networks = (o, valid) => object(o) && Object.entries(o).every(([n, v]) =>
     ["base", "solana", "other"].includes(n) && valid(v));
-  return object(s) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
+  const c402 = o => object(o) && [o.post, o.probe, o.refused].every(count)
+    && object(o.routes) && Object.keys(o.routes).length <= ROUTE_CAP
+    && Object.entries(o.routes).every(([key, n]) => (key === "other" || /^\/[^\s]{0,200}$/.test(key)) && count(n));
+  return object(s) && (s.c402 === undefined || c402(s.c402)) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
     && hashes(s.payers, PAYER_CAP) && typeof s.capped === "boolean" && totals(s.totals)
     && models(s.models, modelLast) && networks(s.networks, last) && object(s.buckets)
     && Object.keys(s.buckets).length <= RETENTION_HOURS
     && Object.entries(s.buckets).every(([key, b]) => Number.isFinite(Date.parse(key)) && object(b)
-      && models(b.models, modelCounts) && networks(b.networks, counts) && totals(b.totals)
+      && (b.c402 === undefined || c402(b.c402)) && models(b.models, modelCounts) && networks(b.networks, counts) && totals(b.totals)
       && hashes(b.payers, BUCKET_PAYER_CAP) && typeof b.capped === "boolean");
 }
 export class HealthStats {
-  constructor({ file = null, now = Date.now, isPublicRoute = () => true, ownPayers = [], log = () => {} } = {}) {
-    Object.assign(this, { file, now, isPublicRoute, log });
+  constructor({ file = null, now = Date.now, isPublicRoute = () => true, ownPayers = [], readOnly = false, isPaidRoute = () => false, log = () => {} } = {}) {
+    Object.assign(this, { file, now, isPublicRoute, isPaidRoute, readOnly, log });
     this.own = new Set(ownPayers.filter(p => typeof p === "string").map(normalize));
     this.state = { since: new Date(now()).toISOString(), salt: randomBytes(32).toString("hex"),
       buckets: {}, totals: {}, models: Object.create(null), networks: {}, payers: [], capped: false };
@@ -69,7 +74,18 @@ export class HealthStats {
     // "constructor" as inherited entries. Every dictionary is rebuilt before it can observe an event.
     this.state.models = Object.assign(Object.create(null), this.state.models);
     for (const b of Object.values(this.state.buckets)) b.models = Object.assign(Object.create(null), b.models);
+    for (const target of [this.state, ...Object.values(this.state.buckets)]) {
+      target.c402 ??= challengeCounts();
+      target.c402.routes = Object.assign(Object.create(null), target.c402.routes);
+    }
+    const ownHashes = new Set([...this.own].map(p => createHmac("sha256", this.state.salt).update(p).digest("hex").slice(0, 16)));
+    let removed = false;
+    for (const target of [this.state, ...Object.values(this.state.buckets)]) {
+      const filtered = target.payers.filter(h => !ownHashes.has(h));
+      if (filtered.length !== target.payers.length) { target.payers = filtered; removed = true; }
+    }
     this.prune();
+    if (removed) this.changed();
   }
   prune() {
     const cutoff = Math.floor(this.now() / HOUR) * HOUR - (RETENTION_HOURS - 1) * HOUR;
@@ -77,12 +93,12 @@ export class HealthStats {
   }
   changed() {
     this.prune();
-    if (this.file && !this.timer) { this.timer = setTimeout(() => this.flush(), 10000); this.timer.unref(); }
+    if (!this.readOnly && this.file && !this.timer) { this.timer = setTimeout(() => this.flush(), 10000); this.timer.unref(); }
   }
   flush() {
     try {
       clearTimeout(this.timer); this.timer = null;
-      if (!this.file) return;
+      if (this.readOnly || !this.file) return;
       this.prune(); mkdirSync(dirname(this.file), { recursive: true });
       const tmp = `${this.file}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
       writeFileSync(tmp, JSON.stringify(this.state), { mode: 0o600, flag: "wx" }); renameSync(tmp, this.file);
@@ -93,8 +109,25 @@ export class HealthStats {
   bucket() {
     const key = new Date(Math.floor(this.now() / HOUR) * HOUR).toISOString();
     return this.state.buckets[key] ??= {
-      models: Object.create(null), networks: {}, totals: {}, payers: [], capped: false };
+      models: Object.create(null), networks: {}, totals: {}, payers: [], capped: false, c402: challengeCounts() };
 
+  }
+  recordChallenge({ route, method, challenge } = {}) {
+    try {
+      const kind = challenge ? method === "POST" ? "post" : ["GET", "HEAD"].includes(method) ? "probe" : null : "refused";
+      if (!kind) return;
+      let key = this.isPaidRoute(route) && typeof route === "string" && /^\/[^\s]{0,200}$/.test(route) ? route : "other";
+      const routes = this.state.c402.routes;
+      // Reserve one slot for overflow, keeping the complete dictionary bounded at 100.
+      if (!Object.hasOwn(routes, key) && Object.keys(routes).filter(k => k !== "other").length >= ROUTE_CAP - 1) key = "other";
+      for (const target of [this.state.c402, this.bucket().c402]) {
+        target[kind]++;
+        const boundedKey = !Object.hasOwn(target.routes, key)
+          && Object.keys(target.routes).filter(k => k !== "other").length >= ROUTE_CAP - 1 ? "other" : key;
+        target.routes[boundedKey] = (target.routes[boundedKey] || 0) + 1;
+      }
+      this.changed();
+    } catch {}
   }
   recordModel(model, { ok, code, status } = {}) {
     try {
@@ -276,7 +309,7 @@ export function numbersBody(stats) {
     paid_calls: { ...fields("calls"), by_network: byNetwork("calls") },
     usdc_volume: { unit: "USDC", total: volume(total.atomic), last_24h: volume(day.atomic),
       last_7d: volume(week.atomic), by_network: byNetwork("atomic"), calls_without_amount: total.noAmount },
-    unique_payers: fields("unique"), own_payments_excluded: total.own,
+    unique_payers: fields("unique"), own_payers_configured: stats.own.size > 0, own_payments_excluded: total.own,
     settlement_failures: { last_24h: day.fail, last_7d: week.fail },
     definitions: {
       schema: "Version of this response format.", generated_at: "Time this response was generated.",
@@ -291,8 +324,30 @@ export function numbersBody(stats) {
       calls_without_amount: "Settlements with unavailable actual amounts count without estimated volume.",
       unique_payers: "Distinct payer wallets counted by salted hash without exposing them; "
         + "null means a cap prevents measurement.",
+      own_payers_configured: "True when the own-payer list is non-empty. Adding it removes historical own unique hashes; earlier calls and volume cannot be corrected because payer-level payment history is not stored.",
       own_payments_excluded: "Configured own-payer settlements excluded from calls, volume and unique payers.",
       settlement_failures: "Failed facilitator settlements across all routes during each window.",
       availability: "External availability is published separately at https://app.singitai.app/status.json."
     } };
+}
+
+export function privateStatsBody(stats) {
+  const n = numbersBody(stats);
+  const aggregate = entries => {
+    const result = { post: 0, probe: 0, refused: 0, all: 0 }, routes = Object.create(null);
+    for (const c of entries) {
+      for (const k of ["post", "probe", "refused"]) result[k] += c?.[k] || 0;
+      for (const [r, count] of Object.entries(c?.routes || {})) routes[r] = (routes[r] || 0) + count;
+    }
+    result.all = result.post + result.probe + result.refused;
+    return { result, routes };
+  };
+  const total = aggregate([stats.state.c402]), day = aggregate(stats.window(24).map(b => b.c402)), week = aggregate(stats.window(168).map(b => b.c402));
+  const fields = o => Object.fromEntries(["total", "last_24h", "last_7d"].map(k => [k, o[k]]));
+  return { schema: 1, generated_at: n.generated_at, since: n.since,
+    external_payers: { unique: n.unique_payers, paid_calls: fields(n.paid_calls), usdc: fields(n.usdc_volume) },
+    own_payments_excluded: n.own_payments_excluded, own_payers_configured: n.own_payers_configured,
+    issued_402: { total: total.result, last_24h: day.result, last_7d: week.result,
+      by_route: { total: total.routes, last_24h: day.routes, last_7d: week.routes } },
+    note: "402s count responses, not unique clients. post = POST challenge; probe = GET/HEAD discovery; refused = 402 without PAYMENT-REQUIRED. Windows use UTC hourly buckets. Own unique hashes are removed retroactively; calls and volume before configuration still include own payments." };
 }

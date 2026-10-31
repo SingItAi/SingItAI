@@ -167,6 +167,8 @@ export function addPaymentRoute(app, routes, server,
   const paths = statsRoutes.get(server) ?? new Set();
   for (const key of Object.keys(routes)) if (key.startsWith("POST ")) paths.add(key.slice(5));
   statsRoutes.set(server, paths);
+  app.locals.paidRoutes ??= new Set();
+  for (const path of paths) app.locals.paidRoutes.add(path);
   if (!statsServers.has(server)) {
     statsServers.add(server);
     const record = ok => ctx => {
