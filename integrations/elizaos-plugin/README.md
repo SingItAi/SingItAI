@@ -25,7 +25,7 @@ To enable paid chat, install it and force zod to a fixed version in **your** `pa
 ```json
 {
   "dependencies": {
-    "@singitai/plugin-singit": "^0.1.1",
+    "@singitai/plugin-singit": "^0.1.2",
     "@x402/evm": "^2.28.0"
   },
   "overrides": {
@@ -126,6 +126,7 @@ Fully offline: a local mock MCP server and a local mock x402 merchant that issue
 
 ## Changelog
 
+- **0.1.2**: repository moved to SingItAi; package metadata and links updated. No code changes.
 - **0.1.1**: `@x402/evm` is now an optional peer dependency, so installing the plugin no longer pulls in the zod < 4.6.6 advisory (GHSA-mrhx-c7xc-m3w5); paid chat fails closed with an install message when it is missing. README rewritten.
 - **0.1.0**: initial release: free MCP actions, API-key actions, x402 paid chat on Base.
 
