@@ -336,6 +336,10 @@ export class ModelCatalogue {
     return false;
   }
 
+  unservableSnapshot() {
+    return new Map([...this.unservable].filter(([, expiry]) => expiry > this.now()));
+  }
+
   unservableRetryAfter(id) {
     return this.isUnservable(id) ? Math.max(30, Math.ceil((this.unservable.get(id) - this.now()) / 1000)) : 30;
   }
