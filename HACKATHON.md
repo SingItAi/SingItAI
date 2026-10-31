@@ -363,3 +363,24 @@ day's spend and answer count are kept in a small private state file so they surv
 spent, free routes return 429 `free_budget_exhausted` with `Retry-After` until midnight UTC. Per-network limits
 are unchanged. Limits: after a crash, answers that were in flight count as spent (stricter, never looser); an invalid state file
 fails closed until midnight UTC; per-network counters still reset on restart, and the cap is per process. Details in `docs/free-models.md`.
+
+## October 31, 2026 — Privacy pages on singitai.app
+
+Branch `privacy-singitai` (draft PR): moves the existing
+Privacy Policy and data-deletion instructions into the SingIt website's shared
+page styling at `/privacy/` and `/data-deletion/`. This maintains imported SingIt
+website functionality and adds no Solana payment functionality. Policy substance,
+contact details and the July 10, 2026 effective date are preserved; no terms page
+was added. Repository links, the shared generator template, sitemap and generated
+LLM discovery files point to the new pages.
+
+Verification: both page generators and their `--check` modes pass; a local build
+includes both pages and source-content comparisons preserve all original policy
+paragraphs and list items. Website and JavaScript script tests with isolation
+disabled report 432 pass, 5 fail and 1 skip; the same five child-process output
+failures reproduce on unchanged HEAD. All 263 Python script tests pass. All nine
+package `npm test` commands were attempted offline: `singit-risk-check` passes;
+the remaining packages lack installed dependencies (including viem, express,
+@solana/kit and rxjs). No dependencies were downloaded. The final old-host search
+returns no matches. Nothing was published, committed or pushed, and no network
+requests or payments were made.
