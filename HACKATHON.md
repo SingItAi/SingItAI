@@ -352,3 +352,24 @@ isolation disabled report website 350 pass / 4 fail and scripts 38 pass / 1 fail
 all failures depend on child processes. No endpoints were refetched or paid calls made;
 answerability after the hide remains unverified. The supplied snapshot updates pricing
 for 52 other models; DeepSeek's prices are unchanged.
+
+## October 31, 2026 — Privacy pages on singitai.app
+
+Branch `privacy-singitai` (draft PR): moves the existing
+Privacy Policy and data-deletion instructions into the SingIt website's shared
+page styling at `/privacy/` and `/data-deletion/`. This maintains imported SingIt
+website functionality and adds no Solana payment functionality. Policy substance,
+contact details and the July 10, 2026 effective date are preserved; no terms page
+was added. Repository links, the shared generator template, sitemap and generated
+LLM discovery files point to the new pages.
+
+Verification: both page generators and their `--check` modes pass; a local build
+includes both pages and source-content comparisons preserve all original policy
+paragraphs and list items. Website and JavaScript script tests with isolation
+disabled report 432 pass, 5 fail and 1 skip; the same five child-process output
+failures reproduce on unchanged HEAD. All 263 Python script tests pass. All nine
+package `npm test` commands were attempted offline: `singit-risk-check` passes;
+the remaining packages lack installed dependencies (including viem, express,
+@solana/kit and rxjs). No dependencies were downloaded. The final old-host search
+returns no matches. Nothing was published, committed or pushed, and no network
+requests or payments were made.

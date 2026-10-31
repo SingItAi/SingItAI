@@ -2,8 +2,8 @@
 
 **Effective date:** July 10, 2026
 
-**Public URL:** https://bubon-ik.github.io/SingItAI/  
-**Data deletion instructions:** https://bubon-ik.github.io/SingItAI/data-deletion.html
+**Public URL:** https://singitai.app/privacy/  
+**Data deletion instructions:** https://singitai.app/data-deletion/
 
 SingIt provides messaging-based wallet, payment, purchase, and transaction-approval features. This Privacy Policy explains what information SingIt processes, why it is processed, and the choices available to users.
 
