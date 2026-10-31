@@ -22,3 +22,9 @@
 # The MCP Registry reads this to prove SingIt owns the app.singitai/* namespace.
 /.well-known/mcp-registry-auth
   Content-Type: text/plain; charset=utf-8
+
+/llms-models.txt
+  Content-Type: text/plain; charset=utf-8
+
+/llms-full.txt
+  Content-Type: text/plain; charset=utf-8

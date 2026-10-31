@@ -1,0 +1,217 @@
+# SingIt model pages
+
+> Generated from models-snapshot.json; USD per 1M tokens includes markup. Settlement fees are additional. Reference request prices are USDC per call; live 402 offers are authoritative.
+
+| Model page | Input / 1M | Output / 1M | Base upto | Base exact | Solana upto | Solana exact |
+| --- | --- | --- | --- | --- | --- | --- |
+| [Aion 3.0](https://singitai.app/models/aion-labs-aion-3-0/) | $1.35681 | $2.71362 | 0.003613 | 0.001788 | 0.004613 | 0.002788 |
+| [Aion 3.0 Mini](https://singitai.app/models/aion-labs-aion-3-0-mini/) | $0.364 | $0.728 | 0.00161 | 0.0015 | 0.00261 | 0.002185 |
+| [Aion 2.0](https://singitai.app/models/aion-labs.aion-2-0/) | $0.416 | $0.832 | 0.001697 | 0.0015 | 0.002697 | 0.002211 |
+| [Reflection: Beam 1.0 501B A23B](https://singitai.app/models/beam-1.0-501b-a23b/) | $0.0975 | $0.39 | 0.0015 | 0.0015 | 0.002327 | 0.002099 |
+| [Claude Fable 5](https://singitai.app/models/claude-fable-5/) | $1.7589 | $8.7945 | 0.008867 | 0.003364 | 0.009867 | 0.004364 |
+| [Claude Fable 5.1](https://singitai.app/models/claude-fable-5.1/) | $6.37 | $31.85 | 0.027221 | 0.008878 | 0.028221 | 0.009878 |
+| [Claude Haiku 4.5](https://singitai.app/models/claude-haiku-4.5/) | $0.91 | $4.55 | 0.001631 | 0.0015 | 0.002631 | 0.00219 |
+| [Claude Haiku 5.5](https://singitai.app/models/claude-haiku-5.5/) | $0.09646 | $0.4823 | 0.0015 | 0.0015 | 0.00208 | 0.002025 |
+| [Claude Opus 4.8 Fast](https://singitai.app/models/claude-opus-4-8-fast/) | $9.1923 | $45.9615 | 0.041906 | 0.013291 | 0.042906 | 0.014291 |
+| [Claude Opus 4.5](https://singitai.app/models/claude-opus-4.5/) | $0.65 | $3.25 | 0.003624 | 0.00179 | 0.004624 | 0.00279 |
+| [Claude Opus 4.6](https://singitai.app/models/claude-opus-4.6/) | $0.845 | $4.225 | 0.001526 | 0.0015 | 0.002526 | 0.002159 |
+| [Claude Opus 4.7](https://singitai.app/models/claude-opus-4.7/) | $0.28405 | $1.42025 | 0.002312 | 0.0015 | 0.003312 | 0.002396 |
+| [Claude Opus 4.8](https://singitai.app/models/claude-opus-4.8/) | $0.51415 | $2.57075 | 0.003099 | 0.001631 | 0.004099 | 0.002631 |
+| [Claude Opus 5](https://singitai.app/models/claude-opus-5/) | $0.845 | $4.225 | 0.002312 | 0.0015 | 0.003312 | 0.002396 |
+| [Claude Opus 5 (Fast)](https://singitai.app/models/claude-opus-5-fast/) | $6.63 | $33.15 | 0.028271 | 0.009194 | 0.029271 | 0.010194 |
+| [Claude Opus 5.5](https://singitai.app/models/claude-opus-5.5/) | $2.19908 | $10.9954 | 0.005422 | 0.002841 | 0.006422 | 0.003841 |
+| [Claude Sonnet 4.5](https://singitai.app/models/claude-sonnet-4.5/) | $0.585 | $2.925 | 0.003519 | 0.001757 | 0.004519 | 0.002757 |
+| [Claude Sonnet 4.6](https://singitai.app/models/claude-sonnet-4.6/) | $0.58461 | $2.92305 | 0.0015 | 0.0015 | 0.002316 | 0.002095 |
+| [Claude Sonnet 5](https://singitai.app/models/claude-sonnet-5/) | $0.15002 | $0.7501 | 0.001735 | 0.0015 | 0.002735 | 0.002221 |
+| [Claude Sonnet 5.5](https://singitai.app/models/claude-sonnet-5.5/) | $1.82728 | $9.1364 | 0.003728 | 0.001821 | 0.004728 | 0.002821 |
+| [Cohere: Command A+](https://singitai.app/models/command-a-plus/) | $0.117 | $0.585 | 0.0015 | 0.0015 | 0.002489 | 0.002147 |
+| [DeepSeek R1](https://singitai.app/models/deepseek-r1/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [DeepSeek V3.1](https://singitai.app/models/deepseek-v3.1/) | $0.0032175 | $0.0122265 | 0.0015 | 0.0015 | 0.002021 | 0.002007 |
+| [DeepSeek V3.2](https://singitai.app/models/deepseek-v3.2/) | $0.0033852 | $0.0050778 | 0.0015 | 0.0015 | 0.00201 | 0.002004 |
+| [DeepSeek V4 Flash](https://singitai.app/models/deepseek-v4-flash/) | $0.01690507 | $0.03381014 | 0.0015 | 0.0015 | 0.002032 | 0.002011 |
+| [DeepSeek V4 Flash 0731](https://singitai.app/models/deepseek-v4-flash-0731/) | $0.0075803 | $0.0151606 | 0.0015 | 0.0015 | 0.002006 | 0.002003 |
+| [DeepSeek V4 Flash 0731 Fast](https://singitai.app/models/deepseek-v4-flash-0731-fast/) | $0.29575 | $0.5915 | 0.00153 | 0.0015 | 0.00253 | 0.00216 |
+| [DeepSeek: DeepSeek V4 Flash Vision Exp](https://singitai.app/models/deepseek-v4-flash-vision-exp/) | $0.112112 | $0.336336 | 0.0015 | 0.0015 | 0.002281 | 0.002085 |
+| [DeepSeek V4 Pro](https://singitai.app/models/deepseek-v4-pro/) | $0.067801734 | $0.135611775 | 0.0015 | 0.0015 | 0.002036 | 0.002012 |
+| [DeepSeek V4 Pro 0813](https://singitai.app/models/deepseek-v4-pro-0813/) | $0.2574 | $0.7722 | 0.0015 | 0.0015 | 0.002168 | 0.002051 |
+| [DeepSeek V4.1 Flash](https://singitai.app/models/deepseek-v4.1-flash/) | $0.00014625 | $0.001625 | 0.0015 | 0.0015 | 0.002012 | 0.002004 |
+| [DeepSeek V4.1 Flash 1017](https://singitai.app/models/deepseek-v4.1-flash-1017/) | $0.0585 | $0.234 | 0.0015 | 0.0015 | 0.002051 | 0.002016 |
+| [DeepSeek V4.1 Flash Uncensored](https://singitai.app/models/deepseek-v4.1-flash-uncensored/) | $0.0585 | $0.65 | 0.001523 | 0.0015 | 0.002523 | 0.002158 |
+| [Devstral 2 123B](https://singitai.app/models/devstral-2-123b/) | $0.010088 | $0.05044 | 0.0015 | 0.0015 | 0.002064 | 0.00202 |
+| [DeepSeek V4 Flash E2EE](https://singitai.app/models/e2ee-deepseek-v4-flash/) | $0.15379 | $0.315185 | 0.0015 | 0.0015 | 0.002283 | 0.002086 |
+| [Gemma 3 27B E2EE](https://singitai.app/models/e2ee-gemma-3-27b/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [Gemma 4 26B A4B Uncensored (E2EE)](https://singitai.app/models/e2ee-gemma-4-26b-a4b-uncensored-p/) | $0.21242 | $0.98384 | 0.001805 | 0.0015 | 0.002805 | 0.002242 |
+| [Gemma 4 31B (E2EE)](https://singitai.app/models/e2ee-gemma-4-31b/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [GLM 5.2 E2EE](https://singitai.app/models/e2ee-glm-5-2-p/) | $1.47875 | $4.85875 | 0.005302 | 0.002294 | 0.006302 | 0.003294 |
+| [GLM 5.1 E2EE](https://singitai.app/models/e2ee-glm-5.1/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [GPT OSS 120B](https://singitai.app/models/e2ee-gpt-oss-120b-p/) | $0.1453231 | $0.7266155 | 0.001595 | 0.0015 | 0.002595 | 0.00218 |
+| [GPT OSS 20B](https://singitai.app/models/e2ee-gpt-oss-20b-p/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [Qwen 2.5 7B](https://singitai.app/models/e2ee-qwen-2-5-7b-p/) | $0.0584935 | $0.1520831 | 0.0015 | 0.0015 | 0.002127 | 0.002038 |
+| [Qwen 3.6 35B A3B (E2EE)](https://singitai.app/models/e2ee-qwen3-6-35b-a3b/) | $0.15379 | $0.9971 | 0.001878 | 0.0015 | 0.002878 | 0.002264 |
+| [Qwen 3.6 35B A3B Uncensored (E2EE)](https://singitai.app/models/e2ee-qwen3-6-35b-a3b-uncensored-p/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [Fireworks: Ember-1](https://singitai.app/models/ember-1/) | $1.17 | $5.85 | 0.005878 | 0.002467 | 0.006878 | 0.003467 |
+| [Gemini 2.5 Flash](https://singitai.app/models/gemini-2.5-flash/) | $0.003861 | $0.032175 | 0.0015 | 0.0015 | 0.002054 | 0.002017 |
+| [Gemini 2.5 Pro](https://singitai.app/models/gemini-2.5-pro/) | $0.39 | $3.12 | 0.003615 | 0.001786 | 0.004615 | 0.002786 |
+| [Gemini 3.5 Flash](https://singitai.app/models/gemini-3-5-flash/) | $0.039 | $0.234 | 0.0015 | 0.0015 | 0.00219 | 0.002058 |
+| [Gemini 3.5 Flash Lite](https://singitai.app/models/gemini-3-5-flash-lite/) | $0.116961 | $0.974675 | 0.001812 | 0.0015 | 0.002812 | 0.002245 |
+| [Gemini 3.6 Flash](https://singitai.app/models/gemini-3-6-flash/) | $0.2925 | $1.4625 | 0.00222 | 0.0015 | 0.00322 | 0.002367 |
+| [Gemini 3 Flash Preview](https://singitai.app/models/gemini-3-flash-preview/) | $0.0065 | $0.039 | 0.0015 | 0.0015 | 0.002064 | 0.00202 |
+| [Gemini 3.1 Flash Lite](https://singitai.app/models/gemini-3.1-flash-lite/) | $0.00325 | $0.0195 | 0.0015 | 0.0015 | 0.002033 | 0.002011 |
+| [Gemini 3.1 Pro](https://singitai.app/models/gemini-3.1-pro/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [Gemini 3.1 Pro Preview](https://singitai.app/models/gemini-3.1-pro-preview/) | $0.47281 | $2.83686 | 0.003285 | 0.002581 | 0.004285 | 0.003581 |
+| [Gemini 3.7 Flash](https://singitai.app/models/gemini-3.7-flash/) | $0.00975 | $0.04875 | 0.0015 | 0.0015 | 0.00208 | 0.002025 |
+| [Gemini 3.8 Flash](https://singitai.app/models/gemini-3.8-flash/) | $0.01576575 | $0.07882875 | 0.0015 | 0.0015 | 0.002088 | 0.002026 |
+| [Google: Gemini 4 Argon](https://singitai.app/models/gemini-4-argon/) | $0.4316 | $2.158 | 0.002889 | 0.001569 | 0.003889 | 0.002569 |
+| [Gemma 3 12B IT](https://singitai.app/models/gemma-3-12b-it/) | $0.0006435 | $0.0019305 | 0.0015 | 0.0015 | 0.002004 | 0.002002 |
+| [Gemma 3 27B](https://singitai.app/models/gemma-3-27b-it/) | $0.0010296 | $0.002574 | 0.0015 | 0.0015 | 0.002006 | 0.002002 |
+| [Gemma 3 4B IT](https://singitai.app/models/gemma-3-4b-it/) | $0.0005915 | $0.001183 | 0.0015 | 0.0015 | 0.002003 | 0.002002 |
+| [Gemma 4 26B A4B IT](https://singitai.app/models/gemma-4-26b-a4b-it/) | $0.000585 | $0.00195 | 0.0015 | 0.0015 | 0.002007 | 0.002003 |
+| [Gemma 4 31B](https://singitai.app/models/gemma-4-31b/) | $0.0011856 | $0.0035568 | 0.0015 | 0.0015 | 0.002008 | 0.002003 |
+| [Gemma 4 31B IT](https://singitai.app/models/gemma-4-31b-it/) | $0.00156 | $0.00468 | 0.0015 | 0.0015 | 0.002008 | 0.002003 |
+| [Gemma 4 E2B](https://singitai.app/models/gemma-4-e2b/) | $0.002574 | $0.005148 | 0.0015 | 0.0015 | 0.002006 | 0.002003 |
+| [Gemma 4 Uncensored](https://singitai.app/models/gemma-4-uncensored/) | $0.190125 | $0.585 | 0.0015 | 0.0015 | 0.002481 | 0.002145 |
+| [Elorian: Glimpse](https://singitai.app/models/glimpse/) | $0.234 | $1.17 | 0.001977 | 0.0015 | 0.002977 | 0.002294 |
+| [GLM 4.5](https://singitai.app/models/glm-4.5/) | $0.007644 | $0.028028 | 0.0015 | 0.0015 | 0.002047 | 0.002015 |
+| [GLM 4.5 Air](https://singitai.app/models/glm-4.5-air/) | $0.000169 | $0.001105 | 0.0015 | 0.0015 | 0.002019 | 0.002007 |
+| [GLM 4.6](https://singitai.app/models/glm-4.6/) | $0.0054223 | $0.0220675 | 0.0015 | 0.0015 | 0.002038 | 0.002012 |
+| [GLM 4.7](https://singitai.app/models/glm-4.7/) | $0.0035802 | $0.0131274 | 0.0015 | 0.0015 | 0.002043 | 0.002013 |
+| [GLM 4.7 Flash](https://singitai.app/models/glm-4.7-flash/) | $0.000401115 | $0.002652 | 0.0015 | 0.0015 | 0.00201 | 0.002003 |
+| [GLM 4.7 Flash Heretic](https://singitai.app/models/glm-4.7-flash-heretic/) | $0.05915 | $0.338 | 0.0015 | 0.0015 | 0.002298 | 0.00209 |
+| [GLM 5](https://singitai.app/models/glm-5/) | $0.00702 | $0.022464 | 0.0015 | 0.0015 | 0.002068 | 0.002021 |
+| [GLM-5 Turbo](https://singitai.app/models/glm-5-turbo/) | $0.015444 | $0.05148 | 0.0015 | 0.0015 | 0.002085 | 0.002026 |
+| [GLM 5.1](https://singitai.app/models/glm-5.1/) | $0.012376 | $0.038896 | 0.0015 | 0.0015 | 0.002094 | 0.002029 |
+| [GLM 5.2](https://singitai.app/models/glm-5.2/) | $0.00006318 | $0.046332 | 0.0015 | 0.0015 | 0.002093 | 0.002029 |
+| [GLM 5.3](https://singitai.app/models/glm-5.3/) | $0.0024024 | $0.108108 | 0.0015 | 0.0015 | 0.002076 | 0.002024 |
+| [GLM 5.3 Flash](https://singitai.app/models/glm-5.3-flash/) | $0.002925 | $0.00975 | 0.0015 | 0.0015 | 0.002012 | 0.002004 |
+| [Z.ai: GLM 5.3 FlashX](https://singitai.app/models/glm-5.3-flashx/) | $0.143338 | $0.48425 | 0.0015 | 0.0015 | 0.002409 | 0.002124 |
+| [Z.ai: GLM 5.3 Prime](https://singitai.app/models/glm-5.3-prime/) | $1.456 | $4.576 | 0.0015 | 0.0015 | 0.00228 | 0.002085 |
+| [GLM 5V Turbo](https://singitai.app/models/glm-5v-turbo/) | $1.2675 | $4.225 | 0.004751 | 0.002129 | 0.005751 | 0.003129 |
+| [GPT-4o](https://singitai.app/models/gpt-4o/) | $0.096525 | $0.3861 | 0.0015 | 0.0015 | 0.002422 | 0.002128 |
+| [GPT-4o Mini](https://singitai.app/models/gpt-4o-mini/) | $0.005772 | $0.023088 | 0.0015 | 0.0015 | 0.002026 | 0.002008 |
+| [GPT 5 Mini](https://singitai.app/models/gpt-5-mini/) | $0.07852 | $0.62816 | 0.001545 | 0.0015 | 0.002545 | 0.002164 |
+| [GPT 5 Nano](https://singitai.app/models/gpt-5-nano/) | $0.0076505 | $0.061204 | 0.0015 | 0.0015 | 0.002055 | 0.002017 |
+| [GPT-5.2](https://singitai.app/models/gpt-5.2/) | $0.02275 | $0.182 | 0.0015 | 0.0015 | 0.002294 | 0.002089 |
+| [GPT-5.2 Codex](https://singitai.app/models/gpt-5.2-codex/) | $0.56875 | $4.55 | 0.004807 | 0.002144 | 0.005807 | 0.003144 |
+| [GPT-5.3 Codex](https://singitai.app/models/gpt-5.3-codex/) | $0.546 | $4.368 | 0.00466 | 0.0021 | 0.00566 | 0.0031 |
+| [GPT-5.4](https://singitai.app/models/gpt-5.4/) | $0.079625 | $0.47775 | 0.0015 | 0.0015 | 0.002472 | 0.002142 |
+| [GPT-5.4 Mini](https://singitai.app/models/gpt-5.4-mini/) | $0.093405 | $0.56043 | 0.001519 | 0.0015 | 0.002519 | 0.002156 |
+| [GPT 5.4 Nano](https://singitai.app/models/gpt-5.4-nano/) | $0.05148 | $0.32175 | 0.0015 | 0.0015 | 0.002276 | 0.002084 |
+| [GPT-5.4 Pro](https://singitai.app/models/gpt-5.4-pro/) | $5.2494 | $31.4964 | 0.029279 | 0.009495 | 0.030279 | 0.010495 |
+| [GPT-5.5](https://singitai.app/models/gpt-5.5/) | $0.065 | $0.39 | 0.00163 | 0.0015 | 0.00263 | 0.00219 |
+| [GPT-5.5 Pro](https://singitai.app/models/gpt-5.5-pro/) | $11.1189 | $66.7134 | 0.057558 | 0.017989 | 0.058558 | 0.018989 |
+| [GPT-5.6 Luna](https://singitai.app/models/gpt-5.6-luna/) | $0.002626 | $0.015756 | 0.0015 | 0.0015 | 0.002039 | 0.002012 |
+| [GPT-5.6 Luna Pro](https://singitai.app/models/gpt-5.6-luna-pro/) | $0.0507 | $0.3042 | 0.0015 | 0.0015 | 0.002266 | 0.00208 |
+| [GPT-5.6 Sol](https://singitai.app/models/gpt-5.6-sol/) | $0.091 | $0.455 | 0.001631 | 0.0015 | 0.002631 | 0.00219 |
+| [GPT-5.6 Sol Pro](https://singitai.app/models/gpt-5.6-sol-pro/) | $1.04 | $5.2 | 0.005406 | 0.002325 | 0.006406 | 0.003325 |
+| [GPT-5.6 Terra](https://singitai.app/models/gpt-5.6-terra/) | $0.12155 | $0.7293 | 0.001756 | 0.0015 | 0.002756 | 0.002228 |
+| [GPT-5.6 Terra Pro](https://singitai.app/models/gpt-5.6-terra-pro/) | $0.78 | $4.68 | 0.004898 | 0.002172 | 0.005898 | 0.003172 |
+| [GPT-6 Astra](https://singitai.app/models/gpt-6-astra/) | $2.951 | $14.755 | 0.005721 | 0.002419 | 0.006721 | 0.003419 |
+| [GPT-6 Luna](https://singitai.app/models/gpt-6-luna/) | $0.003887 | $0.019435 | 0.0015 | 0.0015 | 0.002023 | 0.002007 |
+| [GPT-6 Luna Pro](https://singitai.app/models/gpt-6-luna-pro/) | $0.039 | $0.195 | 0.0015 | 0.0015 | 0.002164 | 0.00205 |
+| [GPT-6 Sol](https://singitai.app/models/gpt-6-sol/) | $0.48932 | $2.4466 | 0.003099 | 0.001631 | 0.004099 | 0.002631 |
+| [GPT-6 Sol Pro](https://singitai.app/models/gpt-6-sol-pro/) | $0.78 | $3.9 | 0.004253 | 0.001978 | 0.005253 | 0.002978 |
+| [GPT-6.1 Sol](https://singitai.app/models/gpt-6.1-sol/) | $0.338 | $1.69 | 0.002469 | 0.0015 | 0.003469 | 0.002442 |
+| [OpenAI: GPT-6.1 Sol Pro](https://singitai.app/models/gpt-6.1-sol-pro/) | $0.65 | $3.25 | 0.003728 | 0.001821 | 0.004728 | 0.002821 |
+| [OpenAI: GPT-6.1 Terra](https://singitai.app/models/gpt-6.1-terra/) | $0.169 | $0.845 | 0.001735 | 0.0015 | 0.002735 | 0.002221 |
+| [OpenAI: GPT-6.1 Terra Pro](https://singitai.app/models/gpt-6.1-terra-pro/) | $0.39 | $1.95 | 0.002627 | 0.0015 | 0.003627 | 0.002489 |
+| [Grok 4.20 Beta](https://singitai.app/models/grok-4.20-beta/) | $0.2275 | $0.455 | 0.0015 | 0.0015 | 0.002426 | 0.002129 |
+| [Grok 4.20 Multi-Agent Beta](https://singitai.app/models/grok-4.20-multi-agent-beta/) | $0.2275 | $0.455 | 0.0015 | 0.0015 | 0.002426 | 0.002129 |
+| [Grok 4.3](https://singitai.app/models/grok-4.3/) | $0.0160875 | $0.032175 | 0.0015 | 0.0015 | 0.002054 | 0.002017 |
+| [Grok 4.5](https://singitai.app/models/grok-4.5/) | $0.38974 | $1.16922 | 0.002013 | 0.0015 | 0.003013 | 0.002306 |
+| [Grok 4.6](https://singitai.app/models/grok-4.6/) | $0.4628 | $1.3884 | 0.002203 | 0.0015 | 0.003203 | 0.002363 |
+| [Grok 4.7](https://singitai.app/models/grok-4.7/) | $0.42991 | $1.28973 | 0.002124 | 0.001637 | 0.003124 | 0.002637 |
+| [Grok Build 0.1](https://singitai.app/models/grok-build-0-1/) | $1.07887 | $2.15774 | 0.002785 | 0.001539 | 0.003785 | 0.002539 |
+| [Hermes 3 Llama 3.1 405b](https://singitai.app/models/hermes-3-llama-3.1-405b/) | $1.02687 | $1.02687 | 0.001869 | 0.0015 | 0.002869 | 0.002263 |
+| [Tencent HY3](https://singitai.app/models/hy3/) | $0.032175 | $0.1287 | 0.0015 | 0.0015 | 0.002112 | 0.002034 |
+| [Kimi K2](https://singitai.app/models/kimi-k2/) | $0.2223 | $0.897 | 0.001751 | 0.0015 | 0.002751 | 0.002227 |
+| [Kimi K2 Thinking](https://singitai.app/models/kimi-k2-thinking/) | $0.007722 | $0.032175 | 0.0015 | 0.0015 | 0.002054 | 0.002017 |
+| [Kimi K2.5](https://singitai.app/models/kimi-k2.5/) | $0.00533 | $0.02665 | 0.0015 | 0.0015 | 0.002054 | 0.002017 |
+| [Kimi K2.6](https://singitai.app/models/kimi-k2.6/) | $0.0705575 | $0.3701555 | 0.0015 | 0.0015 | 0.00218 | 0.002055 |
+| [Kimi K2.7 Code](https://singitai.app/models/kimi-k2.7-code/) | $0.1091272 | $0.604097 | 0.0015 | 0.0015 | 0.00213 | 0.002041 |
+| [Kimi K3](https://singitai.app/models/kimi-k3/) | $0.00154752 | $0.1209 | 0.0015 | 0.0015 | 0.002314 | 0.002095 |
+| [Kimi K3 Fast](https://singitai.app/models/kimi-k3-fast-api/) | $3.509415 | $17.547075 | 0.015397 | 0.005326 | 0.016397 | 0.006326 |
+| [Kimi K3.1 Pro](https://singitai.app/models/kimi-k3.1-pro/) | $1.02908 | $5.1454 | 0.002679 | 0.001505 | 0.003679 | 0.002505 |
+| [LiquidAI: LFM2.5-24B-A2B](https://singitai.app/models/lfm-2.5-24b-a2b/) | $0.0195 | $0.273 | 0.0015 | 0.0015 | 0.002228 | 0.002069 |
+| [inclusionAI: Ling 3.1 Flash](https://singitai.app/models/ling-3.1-flash/) | $0.02925 | $0.08775 | 0.0015 | 0.0015 | 0.002075 | 0.002024 |
+| [Llama 3.2 3B](https://singitai.app/models/llama-3.2-3b-instruct/) | $0.01625 | $0.10725 | 0.0015 | 0.0015 | 0.002091 | 0.002028 |
+| [Llama 3.3 70B](https://singitai.app/models/llama-3.3-70b-instruct/) | $0.010803 | $0.0345696 | 0.0015 | 0.0015 | 0.002034 | 0.002011 |
+| [Magistral Small 2509](https://singitai.app/models/magistral-small-2509/) | $0.0091 | $0.0273 | 0.0015 | 0.0015 | 0.002049 | 0.002015 |
+| [Mercury 2](https://singitai.app/models/mercury-2/) | $0.2640625 | $0.7921875 | 0.001705 | 0.0015 | 0.002705 | 0.002212 |
+| [Inception: Mercury 2.5](https://singitai.app/models/mercury-2.5/) | $0.0156 | $0.0585 | 0.0015 | 0.0015 | 0.00205 | 0.002016 |
+| [Mercury 3](https://singitai.app/models/mercury-3/) | $0.039 | $0.1365 | 0.0015 | 0.0015 | 0.002115 | 0.002036 |
+| [MiMo-V2.5-Pro](https://singitai.app/models/mimo-v2.5-pro/) | $0.1249872 | $0.468702 | 0.0015 | 0.0015 | 0.002342 | 0.002103 |
+| [MiMo-V2.6-Flash](https://singitai.app/models/mimo-v2.6-flash/) | $0.0546 | $0.1092 | 0.0015 | 0.0015 | 0.002093 | 0.002029 |
+| [MiMo-V2.6-Pro](https://singitai.app/models/mimo-v2.6-pro/) | $0.16965 | $0.3393 | 0.0015 | 0.0015 | 0.002288 | 0.002088 |
+| [MiMo-V2.6-Pro-UltraSpeed](https://singitai.app/models/mimo-v2.6-pro-ultraspeed/) | $2.262 | $4.524 | 0.00479 | 0.002142 | 0.00579 | 0.003142 |
+| [MiniMax M2](https://singitai.app/models/minimax-m2/) | $0.00301665 | $0.0120666 | 0.0015 | 0.0015 | 0.002023 | 0.002007 |
+| [MiniMax M2.1](https://singitai.app/models/minimax-m2.1/) | $0.000468 | $0.001872 | 0.0015 | 0.0015 | 0.002026 | 0.002008 |
+| [MiniMax M2.5](https://singitai.app/models/minimax-m2.5/) | $0.0034749 | $0.0122265 | 0.0015 | 0.0015 | 0.002021 | 0.002007 |
+| [MiniMax M2.7](https://singitai.app/models/minimax-m2.7/) | $0.09282 | $0.37128 | 0.0015 | 0.0015 | 0.002316 | 0.002095 |
+| [MiniMax M2.7 Highspeed](https://singitai.app/models/minimax-m2.7-highspeed/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [MiniMax M3](https://singitai.app/models/minimax-m3/) | $0.351 | $1.404 | 0.002148 | 0.0015 | 0.003148 | 0.002346 |
+| [MiniMax M3 Preview](https://singitai.app/models/minimax-m3-preview/) | $0.2535 | $1.014 | 0.001896 | 0.0015 | 0.002896 | 0.002271 |
+| [Ministral 14B 3.0](https://singitai.app/models/ministral-3-14b-instruct/) | $0.0026 | $0.0026 | 0.0015 | 0.0015 | 0.002006 | 0.002003 |
+| [Ministral 3B](https://singitai.app/models/ministral-3-3b-instruct/) | $0.0013 | $0.0013 | 0.0015 | 0.0015 | 0.002003 | 0.002002 |
+| [Ministral 3 8B](https://singitai.app/models/ministral-3-8b-instruct/) | $0.002262 | $0.002262 | 0.0015 | 0.0015 | 0.002006 | 0.002003 |
+| [Venice Medium](https://singitai.app/models/mistral-large/) | $0.12064 | $0.36192 | 0.0015 | 0.0015 | 0.002381 | 0.002115 |
+| [Mistral Large 3](https://singitai.app/models/mistral-large-3/) | $0.032175 | $0.096525 | 0.0015 | 0.0015 | 0.002097 | 0.002029 |
+| [Mistral: Mistral Large 4](https://singitai.app/models/mistral-large-4-0/) | $0.273 | $0.819 | 0.001688 | 0.0015 | 0.002688 | 0.002207 |
+| [Mistral Small 3.2 24B Instruct](https://singitai.app/models/mistral-small-3.2-24b-instruct/) | $0.0060645 | $0.016172 | 0.0015 | 0.0015 | 0.002019 | 0.002006 |
+| [Mistral Small 4](https://singitai.app/models/mistral-small-4/) | $0.0609375 | $0.24375 | 0.0015 | 0.0015 | 0.00221 | 0.002064 |
+| [Moondream: Moondream 3 Preview](https://singitai.app/models/moondream3-preview/) | $0.117 | $0.975 | 0.001812 | 0.0015 | 0.002812 | 0.002245 |
+| [Moondream: Moondream 3.1](https://singitai.app/models/moondream3.1-9b-a2b/) | $0.117 | $0.975 | 0.001812 | 0.0015 | 0.002812 | 0.002245 |
+| [Meta: Muse Glimmer 30B](https://singitai.app/models/muse-glimmer-30b/) | $0.117 | $0.468 | 0.0015 | 0.0015 | 0.002392 | 0.002119 |
+| [Meta: Muse Spark 1.1](https://singitai.app/models/muse-spark-1.1/) | $0.65 | $2.21 | 0.0015 | 0.0015 | 0.002136 | 0.002042 |
+| [Meta: Muse Spark 1.2](https://singitai.app/models/muse-spark-1.2/) | $0.65 | $2.21 | 0.0015 | 0.0015 | 0.002136 | 0.002042 |
+| [Meta: Muse Spark 1.2 Contributor](https://singitai.app/models/muse-spark-1.2-contributor/) | $0.052 | $0.104 | 0.0015 | 0.0015 | 0.002088 | 0.002028 |
+| [Meta: Muse Spark 1.3](https://singitai.app/models/muse-spark-1.3/) | $0.65 | $2.21 | 0.0015 | 0.0015 | 0.00209 | 0.002028 |
+| [Meta: Muse Spark 1.3 Contributor](https://singitai.app/models/muse-spark-1.3-contributor/) | $0.052 | $0.104 | 0.0015 | 0.0015 | 0.002006 | 0.002002 |
+| [Meta: Muse Spark Open](https://singitai.app/models/muse-spark-open/) | $0.4875 | $1.6575 | 0.002389 | 0.0015 | 0.003389 | 0.002418 |
+| [Meta: Muse Wonder](https://singitai.app/models/muse-wonder/) | $2.08 | $10.4 | 0.0015 | 0.0015 | 0.00242 | 0.002127 |
+| [NVIDIA: Nemotron 3.5 Super VL](https://singitai.app/models/nemotron-3.5-super-vl/) | $0.0585 | $0.195 | 0.0015 | 0.0015 | 0.002164 | 0.00205 |
+| [NVIDIA Nemotron 3 Nano 30B](https://singitai.app/models/nvidia-nemotron-3-nano-30b-a3b/) | $0.00096525 | $0.003861 | 0.0015 | 0.0015 | 0.002007 | 0.002003 |
+| [NVIDIA Nemotron 3 Super 120B](https://singitai.app/models/nvidia-nemotron-3-super-120b/) | $0.001014 | $0.008112 | 0.0015 | 0.0015 | 0.002051 | 0.002016 |
+| [NVIDIA Nemotron 3 Ultra 550B](https://singitai.app/models/nvidia-nemotron-3-ultra-550b-a55b/) | $0.528125 | $2.640625 | 0.003329 | 0.0017 | 0.004329 | 0.0027 |
+| [NVIDIA Nemotron Nano 12B v2 VL BF16](https://singitai.app/models/nvidia-nemotron-nano-12b-v2/) | $0.00286 | $0.00858 | 0.0015 | 0.0015 | 0.00202 | 0.002007 |
+| [NVIDIA Nemotron Nano 9B v2](https://singitai.app/models/nvidia-nemotron-nano-9b-v2/) | $0.0014508 | $0.0055614 | 0.0015 | 0.0015 | 0.002008 | 0.002003 |
+| [OpenAI GPT OSS 120B](https://singitai.app/models/openai-gpt-oss-120b/) | $0.000091 | $0.00039 | 0.0015 | 0.0015 | 0.002007 | 0.002003 |
+| [gpt-oss-20b](https://singitai.app/models/openai-gpt-oss-20b/) | $0.0000234 | $0.000117 | 0.0015 | 0.0015 | 0.002003 | 0.002002 |
+| [GPT OSS Safeguard 120B](https://singitai.app/models/openai-gpt-oss-safeguard-120b/) | $0.00312 | $0.01248 | 0.0015 | 0.0015 | 0.00202 | 0.002007 |
+| [GPT OSS Safeguard 20B](https://singitai.app/models/openai-gpt-oss-safeguard-20b/) | $0.0000975 | $0.00039 | 0.0015 | 0.0015 | 0.002007 | 0.002003 |
+| [Palmyra Vision 7B](https://singitai.app/models/palmyra-vision-7b/) | $0.004368 | $0.017472 | 0.0015 | 0.0015 | 0.002026 | 0.002008 |
+| [Pareto 26.9](https://singitai.app/models/pareto-26.9/) | $1.3 | $3.9 | 0.004244 | 0.001977 | 0.005244 | 0.002977 |
+| [Particle AI: Particle-1](https://singitai.app/models/particle-1/) | $0.13 | $0.52 | 0.0015 | 0.0015 | 0.002432 | 0.00213 |
+| [Qwen 3.7 Max](https://singitai.app/models/qwen-3-7-max/) | $2.526849 | $7.5337535 | 0.00771 | 0.003018 | 0.00871 | 0.004018 |
+| [Qwen 3.7 Plus](https://singitai.app/models/qwen-3-7-plus/) | $0.52 | $2.08 | 0.002703 | 0.001513 | 0.003703 | 0.002513 |
+| [Qwen 3.8 27B](https://singitai.app/models/qwen-3-8-27b/) | $0.0002535 | $0.00316875 | 0.0015 | 0.0015 | 0.002041 | 0.002013 |
+| [Qwen 3 235B A22B Instruct 2507](https://singitai.app/models/qwen3-235b-a22b-2507/) | $0.0007371 | $0.0045045 | 0.0015 | 0.0015 | 0.002012 | 0.002004 |
+| [Qwen 3 235B A22B Thinking 2507](https://singitai.app/models/qwen3-235b-a22b-thinking-2507/) | $0.0118755 | $0.092365 | 0.0015 | 0.0015 | 0.002147 | 0.002045 |
+| [Qwen3 30B A3B](https://singitai.app/models/qwen3-30b-a3b/) | $0.0468 | $0.195 | 0.0015 | 0.0015 | 0.002164 | 0.00205 |
+| [Qwen3 32B](https://singitai.app/models/qwen3-32b/) | $0.0010296 | $0.0036036 | 0.0015 | 0.0015 | 0.002007 | 0.002003 |
+| [Qwen 3.5 35B A3B](https://singitai.app/models/qwen3-5-35b-a3b/) | $0.12675 | $0.845 | 0.001744 | 0.0015 | 0.002744 | 0.002224 |
+| [Qwen 3.5 9B](https://singitai.app/models/qwen3-5-9b/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [Qwen 3.6 35B A3B](https://singitai.app/models/qwen3-6-35b-a3b/) | $0.111787 | $1.11787 | 0.0015 | 0.0015 | 0.002064 | 0.00202 |
+| [Qwen 3 Coder 480b](https://singitai.app/models/qwen3-coder/) | $0.003861 | $0.01287 | 0.0015 | 0.0015 | 0.002023 | 0.002007 |
+| [Qwen3 Coder 30B A3B Instruct](https://singitai.app/models/qwen3-coder-30b-a3b-instruct/) | $0.0009009 | $0.0036036 | 0.0015 | 0.0015 | 0.002007 | 0.002003 |
+| [Qwen3 Coder Next](https://singitai.app/models/qwen3-coder-next/) | $0.0015444 | $0.010296 | 0.0015 | 0.0015 | 0.002017 | 0.002006 |
+| [Qwen 3 Coder 480B Turbo](https://singitai.app/models/qwen3-coder-turbo/) | $0.29575 | $1.2675 | 0.00212 | 0.0015 | 0.00312 | 0.002337 |
+| [Qwen 3 Next 80b](https://singitai.app/models/qwen3-next-80b-a3b-instruct/) | $0.0010998 | $0.013442 | 0.0015 | 0.0015 | 0.002024 | 0.002008 |
+| [Qwen3 VL 235B A22B](https://singitai.app/models/qwen3-vl-235b-a22b-instruct/) | $0.0027027 | $0.024453 | 0.0015 | 0.0015 | 0.002041 | 0.002013 |
+| [Qwen3 VL 235B](https://singitai.app/models/qwen3-vl-235b-a22b-thinking/) | $0.17745 | $1.6055 | 0.002411 | 0.0015 | 0.003411 | 0.002424 |
+| [Qwen3 VL 30B A3B](https://singitai.app/models/qwen3-vl-30b-a3b-thinking/) | $0.0975 | $0.351 | 0.0015 | 0.0015 | 0.002294 | 0.002089 |
+| [Qwen 3.5 397B](https://singitai.app/models/qwen3.5-397b-a17b/) | $0.52 | $3.744 | 0.0015 | 0.0015 | 0.002189 | 0.002058 |
+| [Qwen3.5 Flash](https://singitai.app/models/qwen3.5-flash/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [Qwen3.5 Plus](https://singitai.app/models/qwen3.5-plus/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
+| [Qwen 3.6 27B](https://singitai.app/models/qwen3.6-27b/) | $0.2746432 | $2.746432 | 0.0015 | 0.0015 | 0.002202 | 0.002062 |
+| [Qwen 3.6 Plus Uncensored](https://singitai.app/models/qwen3.6-plus-uncensored/) | $0.73125 | $4.3875 | 0.004575 | 0.002074 | 0.005575 | 0.003074 |
+| [Qwen: Qwen3.7 Flash](https://singitai.app/models/qwen3.7-flash/) | $0.0156 | $0.0676 | 0.0015 | 0.0015 | 0.00201 | 0.002003 |
+| [Qwen3.8 2.4T A95B](https://singitai.app/models/qwen3.8-2.4t-a95b/) | $0.02912 | $0.08736 | 0.0015 | 0.0015 | 0.002128 | 0.002039 |
+| [Qwen3.8 Flash](https://singitai.app/models/qwen3.8-flash/) | $0.00201825 | $0.00632385 | 0.0015 | 0.0015 | 0.002011 | 0.002004 |
+| [Qwen: Qwen3.8 Max (0902)](https://singitai.app/models/qwen3.8-max-0902/) | $0.55874 | $1.67622 | 0.0015 | 0.0015 | 0.002381 | 0.002115 |
+| [Qwen: Qwen3.8 Max Prime](https://singitai.app/models/qwen3.8-max-prime/) | $2.08 | $6.24 | 0.00619 | 0.002562 | 0.00719 | 0.003562 |
+| [Qwen: Qwen3.8 Omni Flash](https://singitai.app/models/qwen3.8-omni-flash/) | $0.078 | $0.2444 | 0.0015 | 0.0015 | 0.002011 | 0.002004 |
+| [Seed 2.1 Turbo](https://singitai.app/models/seed-2-1-turbo/) | $0.1937 | $0.9685 | 0.001814 | 0.0015 | 0.002814 | 0.002245 |
+| [ByteDance Seed: Seed-2.0-Code](https://singitai.app/models/seed-2.0-code/) | $0.195 | $1.17 | 0.001975 | 0.0015 | 0.002975 | 0.002294 |
+| [Venice Uncensored 1.2](https://singitai.app/models/venice-uncensored-1.2/) | $0.025012 | $0.112554 | 0.001823 | 0.0015 | 0.002823 | 0.002249 |
+| [Venice Role Play Uncensored](https://singitai.app/models/venice-uncensored-role-play/) | $0.559 | $2.236 | 0.00283 | 0.00155 | 0.00383 | 0.00255 |
+| [MiMo-V2.5](https://singitai.app/models/xiaomi-mimo-v2-5/) | $0.156 | $0.78 | 0.001652 | 0.0015 | 0.002652 | 0.002197 |
