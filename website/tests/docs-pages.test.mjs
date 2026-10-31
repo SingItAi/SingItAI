@@ -3,7 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { test } from 'node:test';
 import { ERROR_CODES, defaultErrorCode } from '../../singit-ask/src/errors.mjs';
 const site = new URL('../', import.meta.url);
-const slugs = ['', 'errors', 'limits', 'payments', 'security', 'faq'];
+const slugs = ['', 'errors', 'limits', 'payments', 'security', 'faq', 'mcp-key'];
 const read = p => readFile(new URL(p, site), 'utf8');
 const text = s => s.replace(/<[^>]*>/g, '').replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#x27;', "'").replace(/\s+/g, ' ').trim();
 const nodes = html => JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1])['@graph'];
@@ -72,4 +72,10 @@ test('llms error guide uses current code metadata and all table codes exist', as
   for (const field of ['error.code', 'top-level code', 'accepts', 'x402Version', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After: 5']) assert.ok(errors.includes(field));
   const rows = errors.split('\n').filter(l => /^\| \d/.test(l));
   for (const row of rows) for (const code of row.split('|')[2].trim().split(', ')) assert.ok(ERROR_CODES.includes(code), code);
+});
+
+test('MCP key Claude Code command preserves the environment reference', async () => {
+  const html = await read('docs/mcp-key/index.html');
+  assert.ok(html.includes("claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'"));
+  assert.ok(html.includes("Single quotes keep ${SINGIT_API_KEY} as a reference so the key is not written into Claude Code's configuration."));
 });
