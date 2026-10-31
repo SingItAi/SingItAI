@@ -162,7 +162,7 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
     } catch (error) {
       const status = error instanceof UnknownModel ? 404 : error.status ?? 503;
       res.status(status).json({ error: { type: status === 503 ? "upstream_error" : "invalid_request_error",
-        code: status === 404 ? "model_not_found" : undefined, message: status === 503 ? "Try again shortly." : error.message } });
+        code: status === 404 ? "model_not_found" : status === 503 ? "upstream_unavailable" : "invalid_request", message: status === 503 ? "Try again shortly." : error.message } });
     }
   });
   addPaymentRoute(app, { [`POST ${IMAGE_ROUTE}`]: {
@@ -182,7 +182,7 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;
     const seen = digest(header);
-    if (used.has(seen)) return res.status(409).json({ error: { type: "invalid_request_error", message: "This payment was already used." } });
+    if (used.has(seen)) return res.status(409).json({ error: { type: "invalid_request_error", code: "payment_duplicate", message: "This payment was already used." } });
     used.set(seen, Date.now());
     for (const [k, at] of used) if (Date.now() - at > 3_600_000) used.delete(k);
     const { request, listAtomic } = priced.get(req.body);
@@ -194,13 +194,13 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
         body: JSON.stringify(request), signal: AbortSignal.timeout(150_000) });
     } catch (error) {
       log(`singit-ask: image model unreachable (${error.name})`);
-      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "No image was made. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer", message: "No image was made. You were not charged." } });
     }
     const data = await response.json().catch(() => null);
     const images = Array.isArray(data?.data) ? data.data.filter((d) => d && (d.b64_json || d.url)) : [];
     if (!response.ok || !images.length) {
       log(`singit-ask: image model ${request.model} answered HTTP ${response.status} with ${images.length} images`);
-      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "No image was made. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer", message: "No image was made. You were not charged." } });
     }
     const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);

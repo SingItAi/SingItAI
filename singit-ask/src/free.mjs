@@ -150,7 +150,7 @@ export function addFreeRoute(app, route, { config, terms, allowance = new FreeAl
     const asked = req.body?.model;
     if (typeof asked !== "string" || !asked.startsWith(FREE_PREFIX)) return next();
     const model = asked.slice(FREE_PREFIX.length);
-    const refuse = (status, message) => res.status(status).json({ error: { message, type: "invalid_request_error" } });
+    const refuse = (status, message) => res.status(status).json({ error: { message, type: "invalid_request_error", code: status >= 500 ? "upstream_unavailable" : "invalid_request" } });
     if (!terms.models.includes(model)) {
       return refuse(400, terms.models.length
         ? `Free answers come from ${terms.models.map((m) => FREE_PREFIX + m).join(", ")}.`
@@ -175,7 +175,10 @@ export function addFreeRoute(app, route, { config, terms, allowance = new FreeAl
     const turn = allowance.take(visitor);
     if (!turn.ok) {
       res.set("Retry-After", String(turn.reason === "busy" ? 5 : allowance.secondsToReset()));
-      return res.status(429).json({ error: { message: REFUSALS[turn.reason], type: "rate_limit_error" } });
+      if (turn.reason !== "busy") res.set({ "X-RateLimit-Limit": String(terms.perVisitorPerDay),
+        "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(Math.floor(allowance.now() / 1000) + allowance.secondsToReset()) });
+      return res.status(429).json({ error: { message: REFUSALS[turn.reason], type: "rate_limit_error",
+        code: turn.reason === "busy" ? "free_tier_busy" : "free_tier_exhausted" } });
     }
     const started = Date.now();
     try {
@@ -190,7 +193,7 @@ export function addFreeRoute(app, route, { config, terms, allowance = new FreeAl
     } catch (error) {
       allowance.giveBack(visitor);
       log(`singit-ask: no free answer after ${Date.now() - started} ms (${error.name})`);
-      res.set("Retry-After", "30").status(503).json({ error: { message: "No answer came back. Try again.", type: "upstream_error" } });
+      res.set("Retry-After", "30").status(503).json({ error: { message: "No answer came back. Try again.", type: "upstream_error", code: "no_billable_answer" } });
     } finally {
       allowance.done();
     }

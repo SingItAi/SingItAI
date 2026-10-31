@@ -207,7 +207,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
         prices.set(req.body, exaPrice(route, req.body));
         next();
       } catch (error) {
-        res.status(error.status ?? 400).json({ error: { type: "invalid_request_error", message: error.message } });
+        res.status(error.status ?? 400).json({ error: { type: "invalid_request_error", code: "invalid_request", message: error.message } });
       }
     });
   }
@@ -223,7 +223,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
       const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;
       const seen = digest(header);
       if (used.has(seen)) {
-        return res.status(409).json({ error: { type: "invalid_request_error", message: "This payment was already used." } });
+        return res.status(409).json({ error: { type: "invalid_request_error", code: "payment_duplicate", message: "This payment was already used." } });
       }
       used.set(seen, Date.now());
       for (const [k, at] of used) if (Date.now() - at > 3_600_000) used.delete(k);
@@ -237,7 +237,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
           body: JSON.stringify(req.body), signal: AbortSignal.timeout(60000) });
       } catch (error) {
         log(`singit-ask: Exa ${exaPath} unreachable (${error.name})`);
-        return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "Exa did not answer. You were not charged." } });
+        return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "upstream_unavailable", message: "Exa did not answer. You were not charged." } });
       }
       const data = await answer.json().catch(() => null);
       if (answer.status !== 200 || !data || typeof data !== "object") {

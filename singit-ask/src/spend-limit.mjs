@@ -2,7 +2,7 @@
 //
 //  * An unpaid request that carries `X-SingIt-Limiter: 0x<AgentAllowance address>` gets what that limiter allows
 //    right now, read from Base, in the 402: header `X-SingIt-Spend-Limit` (JSON) and the 402's JSON body
-//    (`singitSpendLimit`, the body is otherwise `{}`). Each Base offer is marked as fitting the limiter or not, so an
+//    (`singitSpendLimit`, alongside the payment challenge). Each Base offer is marked as fitting the limiter or not, so an
 //    agent learns "this will be refused" before it signs, and no attempt is wasted.
 //  * Every answer that settled carries `X-SingIt-Receipt` (JSON): our reference, the transaction, network, payer and
 //    the amount charged, next to the facilitator's own PAYMENT-RESPONSE.
@@ -155,11 +155,16 @@ export function spendLimitMiddleware({ reader = null, log = () => {} } = {}) {
       } catch (error) { log(`singit-ask: spend-limit header skipped (${error.name})`); }
       return setHeader(name, value);
     };
-    if (limit) {
+    if (typeof res.json === "function") {
       const json = res.json.bind(res);
       res.json = (body) => {
         if (res.statusCode === 402 && body && typeof body === "object" && !Array.isArray(body)) {
-          try { body = { ...body, singitSpendLimit: offersAgainstLimit(limit, seen ?? []) }; } catch { /* keep the body */ }
+          try {
+            const challenge = decodeHeader(res.getHeader("payment-required"));
+            body = { ...body, error: body.error ?? "payment_required", code: body.code ?? "payment_required",
+              ...(challenge?.accepts ? { x402Version: challenge.x402Version, accepts: challenge.accepts } : {}) };
+            if (limit) body = { ...body, singitSpendLimit: offersAgainstLimit(limit, seen ?? []) };
+          } catch { /* keep the body */ }
         }
         return json(body);
       };

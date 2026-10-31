@@ -2,6 +2,40 @@
 
 > Your agent spends. Your wallet keeps the money: set a daily and a per-purchase limit once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits.
 
+<!-- generated:ask-guide:start -->
+## I need to... -> Call -> Price
+
+| Task | Call | Price |
+| --- | --- | --- |
+| Chat completion (OpenAI format) | POST https://ask.singitai.app/v1/chat/completions | 0.001..1.225042 USDC per call |
+| Anthropic Messages | POST https://ask.singitai.app/v1/messages | 0.001..1.225042 USDC per call |
+| OpenAI Responses | POST https://ask.singitai.app/v1/responses | 0.001..1.225042 USDC per call |
+| Per-model chat routes | POST https://ask.singitai.app/v1/chat/{model} | 0.001..0.20584 USDC per call |
+| Image generation | POST https://ask.singitai.app/v1/images/generations | 0.014..2.602 USDC per call |
+| Speech | POST https://ask.singitai.app/v1/audio/speech | 0.001..0.336 USDC per call |
+| Exa web search | POST https://ask.singitai.app/v1/exa/search | 0.001..0.05 USDC per call |
+| Exa page contents | POST https://ask.singitai.app/v1/exa/contents | 0.001..0.05 USDC per call |
+| Exa cited answer | POST https://ask.singitai.app/v1/exa/answer | 0.001..0.05 USDC per call |
+| Free models (free/ prefix) | POST https://ask.singitai.app/v1/chat/completions | Free (limited daily allowance) |
+| Crypto / metal / FX prices (free) | GET https://ask.singitai.app/v1/prices; GET https://ask.singitai.app/v1/prices/crypto/{symbol}; GET https://ask.singitai.app/v1/prices/metal/{symbol}; GET https://ask.singitai.app/v1/prices/fx/{base}/{quote} | Free |
+| Models / pricing lookups (free) | GET https://ask.singitai.app/v1/models; GET https://ask.singitai.app/pricing.json | Free |
+| Health | GET https://ask.singitai.app/health | Free |
+
+## Money rules for agents
+
+Call without payment: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). Decode that header, sign one offer, and retry the same request with PAYMENT-SIGNATURE. Success is HTTP 200 with PAYMENT-RESPONSE.
+
+`upto` is listed first: pay the actual cost up to the signed ceiling. `exact` is a flat price for a typical-length answer (about 30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Do not sign above your budget.
+
+LLM, image and speech charges are model cost plus 30% markup, plus a settlement fee of $0.001 on Base or $0.002 on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup or settlement fee by default. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
+
+Charged only when a billable answer came back: an upstream 503 never charges. Do not retry a 400/413/422 on another model; fix the request. A 409 means this payment signature was already used. For 503, wait for Retry-After where supplied. A 429 on the free tier means wait for Retry-After.
+
+Free tier: 20 short answers a day per network, no wallet, no key; resets at midnight UTC.
+
+Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Per-model reference prices are in the full models list, with upto before exact.
+<!-- generated:ask-guide:end -->
+
 ## What it is
 
 SingIt lets you connect the wallet you already use, set a daily and a per-purchase limit, and approve once. Your AI agent then buys gift cards, eSIMs, mobile top-ups and live model answers inside those limits, on Base or Solana. One signature takes the allowance back.
@@ -33,6 +67,20 @@ Agents with their own wallet can skip the key: pay per answer over x402 at https
 3. Sign one offer and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200: choices[0].message.content, billing.totalAtomic (what was settled, in USDC micro-units) and a PAYMENT-RESPONSE header.
 - Walkthrough with code (x402 fetch, Coinbase Bazaar MCP, Coinbase agentic wallet): https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md
 
+## Errors
+
+The code column names existing error.type and optional error.code values; there is no universal stable code field. Messages-format errors use an Anthropic envelope and may omit error.code.
+
+| HTTP status | code | meaning | charged? | what to do |
+| --- | --- | --- | --- | --- |
+| 400 / 413 | error.type: invalid_request_error | Invalid JSON, oversized body, or invalid input | No | Fix the request; reduce body size for 413. |
+| 402 | No uniform error.type/error.code | Payment required or payment verification failed | No answer charge | Read PAYMENT-REQUIRED; check budget and sign one offer. |
+| 404 | error.type: invalid_request_error; error.code: model_not_found (image/speech), not_found (prices); Messages: not_found_error | Model or symbol not offered | No | Check the appropriate models or symbols list. |
+| 409 | error.type: invalid_request_error | This payment was already used | No new charge | Check the original request result; do not reuse the signature. |
+| 422 | error.type: invalid_request_error; error.code: max_tokens_too_small where provided | Reasoning used the output budget without an answer | No | Raise max_tokens within your budget. |
+| 429 | error.type: rate_limit_error | Free allowance exhausted or busy; price lookup rate limit | No | Wait for Retry-After. |
+| 503 | error.type: upstream_error; error.code: no_billable_answer where provided; Messages: api_error | No billable answer, unavailable seller, or catalogue unavailable | No | Wait for Retry-After where supplied, then retry. |
+
 ## For developers
 
 - Health and status: https://ask.singitai.app/health (JSON: model and payment-rail status), https://singitai.app/status/ (page), https://ask.singitai.app/numbers.json (measured numbers)
@@ -48,221 +96,13 @@ Agents with their own wallet can skip the key: pay per answer over x402 at https
 - Models: https://singitai.app/models/
 - App: https://app.singitai.app/app/
 <!-- generated:model-pages:start -->
-## Model pages and spending limits
+## Models
 
+- [Model pages with prices](https://singitai.app/llms-models.txt)
 - [All model pages](https://singitai.app/models/all/)
+- [Live models](https://ask.singitai.app/v1/models)
+- [Live reference prices](https://ask.singitai.app/pricing.json)
 - [Agent spending limits for USDC on Base](https://singitai.app/agent-spending-limits/)
 - [How to limit what an AI agent can spend](https://singitai.app/limit-ai-agent-spending/)
 - [x402 payments with a budget for AI agents](https://singitai.app/x402-budget-for-agents/)
-- [Aion 3.0](https://singitai.app/models/aion-labs-aion-3-0/)
-- [Aion 3.0 Mini](https://singitai.app/models/aion-labs-aion-3-0-mini/)
-- [Aion 2.0](https://singitai.app/models/aion-labs.aion-2-0/)
-- [Reflection: Beam 1.0 501B A23B](https://singitai.app/models/beam-1.0-501b-a23b/)
-- [Claude Fable 5](https://singitai.app/models/claude-fable-5/)
-- [Claude Fable 5.1](https://singitai.app/models/claude-fable-5.1/)
-- [Claude Haiku 4.5](https://singitai.app/models/claude-haiku-4.5/)
-- [Claude Haiku 5.5](https://singitai.app/models/claude-haiku-5.5/)
-- [Claude Opus 4.8 Fast](https://singitai.app/models/claude-opus-4-8-fast/)
-- [Claude Opus 4.5](https://singitai.app/models/claude-opus-4.5/)
-- [Claude Opus 4.6](https://singitai.app/models/claude-opus-4.6/)
-- [Claude Opus 4.7](https://singitai.app/models/claude-opus-4.7/)
-- [Claude Opus 4.8](https://singitai.app/models/claude-opus-4.8/)
-- [Claude Opus 5](https://singitai.app/models/claude-opus-5/)
-- [Claude Opus 5 (Fast)](https://singitai.app/models/claude-opus-5-fast/)
-- [Claude Opus 5.5](https://singitai.app/models/claude-opus-5.5/)
-- [Claude Sonnet 4.5](https://singitai.app/models/claude-sonnet-4.5/)
-- [Claude Sonnet 4.6](https://singitai.app/models/claude-sonnet-4.6/)
-- [Claude Sonnet 5](https://singitai.app/models/claude-sonnet-5/)
-- [Claude Sonnet 5.5](https://singitai.app/models/claude-sonnet-5.5/)
-- [Cohere: Command A+](https://singitai.app/models/command-a-plus/)
-- [DeepSeek R1](https://singitai.app/models/deepseek-r1/)
-- [DeepSeek V3.1](https://singitai.app/models/deepseek-v3.1/)
-- [DeepSeek V3.2](https://singitai.app/models/deepseek-v3.2/)
-- [DeepSeek V4 Flash](https://singitai.app/models/deepseek-v4-flash/)
-- [DeepSeek V4 Flash 0731](https://singitai.app/models/deepseek-v4-flash-0731/)
-- [DeepSeek V4 Flash 0731 Fast](https://singitai.app/models/deepseek-v4-flash-0731-fast/)
-- [DeepSeek: DeepSeek V4 Flash Vision Exp](https://singitai.app/models/deepseek-v4-flash-vision-exp/)
-- [DeepSeek V4 Pro](https://singitai.app/models/deepseek-v4-pro/)
-- [DeepSeek V4 Pro 0813](https://singitai.app/models/deepseek-v4-pro-0813/)
-- [DeepSeek V4.1 Flash](https://singitai.app/models/deepseek-v4.1-flash/)
-- [DeepSeek V4.1 Flash 1017](https://singitai.app/models/deepseek-v4.1-flash-1017/)
-- [DeepSeek V4.1 Flash Uncensored](https://singitai.app/models/deepseek-v4.1-flash-uncensored/)
-- [Devstral 2 123B](https://singitai.app/models/devstral-2-123b/)
-- [DeepSeek V4 Flash E2EE](https://singitai.app/models/e2ee-deepseek-v4-flash/)
-- [Gemma 3 27B E2EE](https://singitai.app/models/e2ee-gemma-3-27b/)
-- [Gemma 4 26B A4B Uncensored (E2EE)](https://singitai.app/models/e2ee-gemma-4-26b-a4b-uncensored-p/)
-- [Gemma 4 31B (E2EE)](https://singitai.app/models/e2ee-gemma-4-31b/)
-- [GLM 5.2 E2EE](https://singitai.app/models/e2ee-glm-5-2-p/)
-- [GLM 5.1 E2EE](https://singitai.app/models/e2ee-glm-5.1/)
-- [GPT OSS 120B](https://singitai.app/models/e2ee-gpt-oss-120b-p/)
-- [GPT OSS 20B](https://singitai.app/models/e2ee-gpt-oss-20b-p/)
-- [Qwen 2.5 7B](https://singitai.app/models/e2ee-qwen-2-5-7b-p/)
-- [Qwen 3.6 35B A3B (E2EE)](https://singitai.app/models/e2ee-qwen3-6-35b-a3b/)
-- [Qwen 3.6 35B A3B Uncensored (E2EE)](https://singitai.app/models/e2ee-qwen3-6-35b-a3b-uncensored-p/)
-- [Fireworks: Ember-1](https://singitai.app/models/ember-1/)
-- [Gemini 2.5 Flash](https://singitai.app/models/gemini-2.5-flash/)
-- [Gemini 2.5 Pro](https://singitai.app/models/gemini-2.5-pro/)
-- [Gemini 3.5 Flash](https://singitai.app/models/gemini-3-5-flash/)
-- [Gemini 3.5 Flash Lite](https://singitai.app/models/gemini-3-5-flash-lite/)
-- [Gemini 3.6 Flash](https://singitai.app/models/gemini-3-6-flash/)
-- [Gemini 3 Flash Preview](https://singitai.app/models/gemini-3-flash-preview/)
-- [Gemini 3.1 Flash Lite](https://singitai.app/models/gemini-3.1-flash-lite/)
-- [Gemini 3.1 Pro](https://singitai.app/models/gemini-3.1-pro/)
-- [Gemini 3.1 Pro Preview](https://singitai.app/models/gemini-3.1-pro-preview/)
-- [Gemini 3.7 Flash](https://singitai.app/models/gemini-3.7-flash/)
-- [Gemini 3.8 Flash](https://singitai.app/models/gemini-3.8-flash/)
-- [Google: Gemini 4 Argon](https://singitai.app/models/gemini-4-argon/)
-- [Gemma 3 12B IT](https://singitai.app/models/gemma-3-12b-it/)
-- [Gemma 3 27B](https://singitai.app/models/gemma-3-27b-it/)
-- [Gemma 3 4B IT](https://singitai.app/models/gemma-3-4b-it/)
-- [Gemma 4 26B A4B IT](https://singitai.app/models/gemma-4-26b-a4b-it/)
-- [Gemma 4 31B](https://singitai.app/models/gemma-4-31b/)
-- [Gemma 4 31B IT](https://singitai.app/models/gemma-4-31b-it/)
-- [Gemma 4 E2B](https://singitai.app/models/gemma-4-e2b/)
-- [Gemma 4 Uncensored](https://singitai.app/models/gemma-4-uncensored/)
-- [Elorian: Glimpse](https://singitai.app/models/glimpse/)
-- [GLM 4.5](https://singitai.app/models/glm-4.5/)
-- [GLM 4.5 Air](https://singitai.app/models/glm-4.5-air/)
-- [GLM 4.6](https://singitai.app/models/glm-4.6/)
-- [GLM 4.7](https://singitai.app/models/glm-4.7/)
-- [GLM 4.7 Flash](https://singitai.app/models/glm-4.7-flash/)
-- [GLM 4.7 Flash Heretic](https://singitai.app/models/glm-4.7-flash-heretic/)
-- [GLM 5](https://singitai.app/models/glm-5/)
-- [GLM-5 Turbo](https://singitai.app/models/glm-5-turbo/)
-- [GLM 5.1](https://singitai.app/models/glm-5.1/)
-- [GLM 5.2](https://singitai.app/models/glm-5.2/)
-- [GLM 5.3](https://singitai.app/models/glm-5.3/)
-- [GLM 5.3 Flash](https://singitai.app/models/glm-5.3-flash/)
-- [Z.ai: GLM 5.3 FlashX](https://singitai.app/models/glm-5.3-flashx/)
-- [Z.ai: GLM 5.3 Prime](https://singitai.app/models/glm-5.3-prime/)
-- [GLM 5V Turbo](https://singitai.app/models/glm-5v-turbo/)
-- [GPT-4o](https://singitai.app/models/gpt-4o/)
-- [GPT-4o Mini](https://singitai.app/models/gpt-4o-mini/)
-- [GPT 5 Mini](https://singitai.app/models/gpt-5-mini/)
-- [GPT 5 Nano](https://singitai.app/models/gpt-5-nano/)
-- [GPT-5.2](https://singitai.app/models/gpt-5.2/)
-- [GPT-5.2 Codex](https://singitai.app/models/gpt-5.2-codex/)
-- [GPT-5.3 Codex](https://singitai.app/models/gpt-5.3-codex/)
-- [GPT-5.4](https://singitai.app/models/gpt-5.4/)
-- [GPT-5.4 Mini](https://singitai.app/models/gpt-5.4-mini/)
-- [GPT 5.4 Nano](https://singitai.app/models/gpt-5.4-nano/)
-- [GPT-5.4 Pro](https://singitai.app/models/gpt-5.4-pro/)
-- [GPT-5.5](https://singitai.app/models/gpt-5.5/)
-- [GPT-5.5 Pro](https://singitai.app/models/gpt-5.5-pro/)
-- [GPT-5.6 Luna](https://singitai.app/models/gpt-5.6-luna/)
-- [GPT-5.6 Luna Pro](https://singitai.app/models/gpt-5.6-luna-pro/)
-- [GPT-5.6 Sol](https://singitai.app/models/gpt-5.6-sol/)
-- [GPT-5.6 Sol Pro](https://singitai.app/models/gpt-5.6-sol-pro/)
-- [GPT-5.6 Terra](https://singitai.app/models/gpt-5.6-terra/)
-- [GPT-5.6 Terra Pro](https://singitai.app/models/gpt-5.6-terra-pro/)
-- [GPT-6 Astra](https://singitai.app/models/gpt-6-astra/)
-- [GPT-6 Luna](https://singitai.app/models/gpt-6-luna/)
-- [GPT-6 Luna Pro](https://singitai.app/models/gpt-6-luna-pro/)
-- [GPT-6 Sol](https://singitai.app/models/gpt-6-sol/)
-- [GPT-6 Sol Pro](https://singitai.app/models/gpt-6-sol-pro/)
-- [GPT-6.1 Sol](https://singitai.app/models/gpt-6.1-sol/)
-- [OpenAI: GPT-6.1 Sol Pro](https://singitai.app/models/gpt-6.1-sol-pro/)
-- [OpenAI: GPT-6.1 Terra](https://singitai.app/models/gpt-6.1-terra/)
-- [OpenAI: GPT-6.1 Terra Pro](https://singitai.app/models/gpt-6.1-terra-pro/)
-- [Grok 4.20 Beta](https://singitai.app/models/grok-4.20-beta/)
-- [Grok 4.20 Multi-Agent Beta](https://singitai.app/models/grok-4.20-multi-agent-beta/)
-- [Grok 4.3](https://singitai.app/models/grok-4.3/)
-- [Grok 4.5](https://singitai.app/models/grok-4.5/)
-- [Grok 4.6](https://singitai.app/models/grok-4.6/)
-- [Grok 4.7](https://singitai.app/models/grok-4.7/)
-- [Grok Build 0.1](https://singitai.app/models/grok-build-0-1/)
-- [Hermes 3 Llama 3.1 405b](https://singitai.app/models/hermes-3-llama-3.1-405b/)
-- [Tencent HY3](https://singitai.app/models/hy3/)
-- [Kimi K2](https://singitai.app/models/kimi-k2/)
-- [Kimi K2 Thinking](https://singitai.app/models/kimi-k2-thinking/)
-- [Kimi K2.5](https://singitai.app/models/kimi-k2.5/)
-- [Kimi K2.6](https://singitai.app/models/kimi-k2.6/)
-- [Kimi K2.7 Code](https://singitai.app/models/kimi-k2.7-code/)
-- [Kimi K3](https://singitai.app/models/kimi-k3/)
-- [Kimi K3 Fast](https://singitai.app/models/kimi-k3-fast-api/)
-- [Kimi K3.1 Pro](https://singitai.app/models/kimi-k3.1-pro/)
-- [LiquidAI: LFM2.5-24B-A2B](https://singitai.app/models/lfm-2.5-24b-a2b/)
-- [inclusionAI: Ling 3.1 Flash](https://singitai.app/models/ling-3.1-flash/)
-- [Llama 3.2 3B](https://singitai.app/models/llama-3.2-3b-instruct/)
-- [Llama 3.3 70B](https://singitai.app/models/llama-3.3-70b-instruct/)
-- [Magistral Small 2509](https://singitai.app/models/magistral-small-2509/)
-- [Mercury 2](https://singitai.app/models/mercury-2/)
-- [Inception: Mercury 2.5](https://singitai.app/models/mercury-2.5/)
-- [Mercury 3](https://singitai.app/models/mercury-3/)
-- [MiMo-V2.5-Pro](https://singitai.app/models/mimo-v2.5-pro/)
-- [MiMo-V2.6-Flash](https://singitai.app/models/mimo-v2.6-flash/)
-- [MiMo-V2.6-Pro](https://singitai.app/models/mimo-v2.6-pro/)
-- [MiMo-V2.6-Pro-UltraSpeed](https://singitai.app/models/mimo-v2.6-pro-ultraspeed/)
-- [MiniMax M2](https://singitai.app/models/minimax-m2/)
-- [MiniMax M2.1](https://singitai.app/models/minimax-m2.1/)
-- [MiniMax M2.5](https://singitai.app/models/minimax-m2.5/)
-- [MiniMax M2.7](https://singitai.app/models/minimax-m2.7/)
-- [MiniMax M2.7 Highspeed](https://singitai.app/models/minimax-m2.7-highspeed/)
-- [MiniMax M3](https://singitai.app/models/minimax-m3/)
-- [MiniMax M3 Preview](https://singitai.app/models/minimax-m3-preview/)
-- [Ministral 14B 3.0](https://singitai.app/models/ministral-3-14b-instruct/)
-- [Ministral 3B](https://singitai.app/models/ministral-3-3b-instruct/)
-- [Ministral 3 8B](https://singitai.app/models/ministral-3-8b-instruct/)
-- [Venice Medium](https://singitai.app/models/mistral-large/)
-- [Mistral Large 3](https://singitai.app/models/mistral-large-3/)
-- [Mistral: Mistral Large 4](https://singitai.app/models/mistral-large-4-0/)
-- [Mistral Small 3.2 24B Instruct](https://singitai.app/models/mistral-small-3.2-24b-instruct/)
-- [Mistral Small 4](https://singitai.app/models/mistral-small-4/)
-- [Moondream: Moondream 3 Preview](https://singitai.app/models/moondream3-preview/)
-- [Moondream: Moondream 3.1](https://singitai.app/models/moondream3.1-9b-a2b/)
-- [Meta: Muse Glimmer 30B](https://singitai.app/models/muse-glimmer-30b/)
-- [Meta: Muse Spark 1.1](https://singitai.app/models/muse-spark-1.1/)
-- [Meta: Muse Spark 1.2](https://singitai.app/models/muse-spark-1.2/)
-- [Meta: Muse Spark 1.2 Contributor](https://singitai.app/models/muse-spark-1.2-contributor/)
-- [Meta: Muse Spark 1.3](https://singitai.app/models/muse-spark-1.3/)
-- [Meta: Muse Spark 1.3 Contributor](https://singitai.app/models/muse-spark-1.3-contributor/)
-- [Meta: Muse Spark Open](https://singitai.app/models/muse-spark-open/)
-- [Meta: Muse Wonder](https://singitai.app/models/muse-wonder/)
-- [NVIDIA: Nemotron 3.5 Super VL](https://singitai.app/models/nemotron-3.5-super-vl/)
-- [NVIDIA Nemotron 3 Nano 30B](https://singitai.app/models/nvidia-nemotron-3-nano-30b-a3b/)
-- [NVIDIA Nemotron 3 Super 120B](https://singitai.app/models/nvidia-nemotron-3-super-120b/)
-- [NVIDIA Nemotron 3 Ultra 550B](https://singitai.app/models/nvidia-nemotron-3-ultra-550b-a55b/)
-- [NVIDIA Nemotron Nano 12B v2 VL BF16](https://singitai.app/models/nvidia-nemotron-nano-12b-v2/)
-- [NVIDIA Nemotron Nano 9B v2](https://singitai.app/models/nvidia-nemotron-nano-9b-v2/)
-- [OpenAI GPT OSS 120B](https://singitai.app/models/openai-gpt-oss-120b/)
-- [gpt-oss-20b](https://singitai.app/models/openai-gpt-oss-20b/)
-- [GPT OSS Safeguard 120B](https://singitai.app/models/openai-gpt-oss-safeguard-120b/)
-- [GPT OSS Safeguard 20B](https://singitai.app/models/openai-gpt-oss-safeguard-20b/)
-- [Palmyra Vision 7B](https://singitai.app/models/palmyra-vision-7b/)
-- [Pareto 26.9](https://singitai.app/models/pareto-26.9/)
-- [Particle AI: Particle-1](https://singitai.app/models/particle-1/)
-- [Qwen 3.7 Max](https://singitai.app/models/qwen-3-7-max/)
-- [Qwen 3.7 Plus](https://singitai.app/models/qwen-3-7-plus/)
-- [Qwen 3.8 27B](https://singitai.app/models/qwen-3-8-27b/)
-- [Qwen 3 235B A22B Instruct 2507](https://singitai.app/models/qwen3-235b-a22b-2507/)
-- [Qwen 3 235B A22B Thinking 2507](https://singitai.app/models/qwen3-235b-a22b-thinking-2507/)
-- [Qwen3 30B A3B](https://singitai.app/models/qwen3-30b-a3b/)
-- [Qwen3 32B](https://singitai.app/models/qwen3-32b/)
-- [Qwen 3.5 35B A3B](https://singitai.app/models/qwen3-5-35b-a3b/)
-- [Qwen 3.5 9B](https://singitai.app/models/qwen3-5-9b/)
-- [Qwen 3.6 35B A3B](https://singitai.app/models/qwen3-6-35b-a3b/)
-- [Qwen 3 Coder 480b](https://singitai.app/models/qwen3-coder/)
-- [Qwen3 Coder 30B A3B Instruct](https://singitai.app/models/qwen3-coder-30b-a3b-instruct/)
-- [Qwen3 Coder Next](https://singitai.app/models/qwen3-coder-next/)
-- [Qwen 3 Coder 480B Turbo](https://singitai.app/models/qwen3-coder-turbo/)
-- [Qwen 3 Next 80b](https://singitai.app/models/qwen3-next-80b-a3b-instruct/)
-- [Qwen3 VL 235B A22B](https://singitai.app/models/qwen3-vl-235b-a22b-instruct/)
-- [Qwen3 VL 235B](https://singitai.app/models/qwen3-vl-235b-a22b-thinking/)
-- [Qwen3 VL 30B A3B](https://singitai.app/models/qwen3-vl-30b-a3b-thinking/)
-- [Qwen 3.5 397B](https://singitai.app/models/qwen3.5-397b-a17b/)
-- [Qwen3.5 Flash](https://singitai.app/models/qwen3.5-flash/)
-- [Qwen3.5 Plus](https://singitai.app/models/qwen3.5-plus/)
-- [Qwen 3.6 27B](https://singitai.app/models/qwen3.6-27b/)
-- [Qwen 3.6 Plus Uncensored](https://singitai.app/models/qwen3.6-plus-uncensored/)
-- [Qwen: Qwen3.7 Flash](https://singitai.app/models/qwen3.7-flash/)
-- [Qwen3.8 2.4T A95B](https://singitai.app/models/qwen3.8-2.4t-a95b/)
-- [Qwen3.8 Flash](https://singitai.app/models/qwen3.8-flash/)
-- [Qwen: Qwen3.8 Max (0902)](https://singitai.app/models/qwen3.8-max-0902/)
-- [Qwen: Qwen3.8 Max Prime](https://singitai.app/models/qwen3.8-max-prime/)
-- [Qwen: Qwen3.8 Omni Flash](https://singitai.app/models/qwen3.8-omni-flash/)
-- [Seed 2.1 Turbo](https://singitai.app/models/seed-2-1-turbo/)
-- [ByteDance Seed: Seed-2.0-Code](https://singitai.app/models/seed-2.0-code/)
-- [Venice Uncensored 1.2](https://singitai.app/models/venice-uncensored-1.2/)
-- [Venice Role Play Uncensored](https://singitai.app/models/venice-uncensored-role-play/)
-- [MiMo-V2.5](https://singitai.app/models/xiaomi-mimo-v2-5/)
 <!-- generated:model-pages:end -->

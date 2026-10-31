@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { renderLlms } from "./generate-llms.mjs";
 import { limits } from "./templates/spending-limits.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -206,8 +207,8 @@ export async function generate(check = false) {
   const sitemap = await readFile(path.join(website, "sitemap.xml"), "utf8");
   const llms = await readFile(path.join(website, "llms.txt"), "utf8");
   files.set("sitemap.xml", mergeBlock(sitemap, urls.map((url) => `  <url><loc>${url}</loc></url>`).join("\n"), "</urlset>"));
-  const entries = [["All model pages", `${origin}/models/all/`], ...limits.map((p) => [p.title.replace(" | SingIt", ""), `${origin}/${p.slug}/`]), ...visible.models.map((m) => [m.name ?? m.id, `${origin}/models/${m.id}/`])];
-  files.set("llms.txt", mergeBlock(llms, "## Model pages and spending limits\n\n" + entries.map(([name, url]) => `- [${name.replace(/[\[\]\\]/g, "\\$&").replace(/[\r\n]/g, " ")}](${url})`).join("\n")));
+  const routes = JSON.parse(await readFile(path.join(website, "data/ask-routes.json"), "utf8"));
+  for (const [file, content] of renderLlms(llms, visible, routes, price)) files.set(file, content);
   files.set("_redirects", hiddenRedirects(await readFile(path.join(website, "_redirects"), "utf8"), hold));
   const stale = [];
   // Model directories belong to this generator; removed models must not linger.

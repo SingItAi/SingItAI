@@ -1,0 +1,8 @@
+{
+  "paths": {
+    "/v1/chat/completions": {"post": {"summary": "Chat", "x-payment-info": {"price": {"min": "0.001", "max": "3.5", "currency": "USD"}}}},
+    "/health": {"get": {"summary": "Health", "security": []}},
+    "/v1/video/example": {"post": {"summary": "Excluded"}},
+    "/private": {"get": {"summary": "Private", "security": [{"apiKey": []}]}}
+  }
+}

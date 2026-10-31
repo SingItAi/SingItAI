@@ -110,7 +110,9 @@ test("a 402 without the header is byte-for-byte what it was: no new header, body
   const response = await post(url);
   assert.equal(response.status, 402);
   assert.equal(response.headers.get(LIMIT_HEADER), null);
-  assert.deepEqual(await response.json(), {});
+  const body = await response.json();
+  assert.deepEqual(body.accepts, JSON.parse(Buffer.from(response.headers.get("payment-required"), "base64")).accepts);
+  assert.equal(body.code, "payment_required");
   assert.equal(chain.calls.length, 0);
 });
 
