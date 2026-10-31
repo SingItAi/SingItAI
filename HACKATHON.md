@@ -338,3 +338,17 @@ Verification: `npm test` in `singit-ask` passes 351 tests; website tests pass 11
 Tests use fake facilitators and send no payments. Counters start empty at deployment, with no history
 before their creation; hourly windows are retained for 30 days and unique counts are bounded.
 This change is not deployed until it is merged and SingIt Ask is restarted.
+
+## October 30, 2026 — Restore the DeepSeek uncensored model page
+
+Uncommitted work on `feat/unhide-deepseek-uncensored` (no commit or PR yet): restores
+`deepseek-v4.1-flash-uncensored` to the generated website and discovery files and removes
+its temporary redirects. This maintains the imported SingIt website; it adds no Solana
+payment functionality. The seller recovered for six hourly checks after `no_healthy_sellers`.
+
+Verification: model-page generation and `--check` pass. Both requested Node test suites
+were run; sandbox child-process `EPERM` prevents full passes. Diagnostic runs with test
+isolation disabled report website 350 pass / 4 fail and scripts 38 pass / 1 fail / 1 skip;
+all failures depend on child processes. No endpoints were refetched or paid calls made;
+answerability after the hide remains unverified. The supplied snapshot updates pricing
+for 52 other models; DeepSeek's prices are unchanged.

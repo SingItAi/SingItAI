@@ -256,8 +256,9 @@ test("consolidated page preserves the published spend excerpt and comparison str
 });
 
 
-test("the seven visible named chat model pages contain only neutral technical copy", async () => {
+test("the eight visible named chat model pages contain only neutral technical copy", async () => {
   const ids = [
+    "deepseek-v4.1-flash-uncensored",
     "e2ee-gemma-4-26b-a4b-uncensored-p",
     "e2ee-qwen3-6-35b-a3b-uncensored-p",
     "gemma-4-uncensored",
@@ -330,4 +331,16 @@ test("held model has no page or discovery links and both temporary redirects exi
     assert.ok(rules.includes(`/models/${id} /models/all/ 302`));
     assert.ok(rules.includes(`/models/${id}/ /models/all/ 302`));
   }
+});
+
+
+test("returned DeepSeek model has a page and discovery links without temporary redirects", async () => {
+  const id = "deepseek-v4.1-flash-uncensored";
+  const hold = JSON.parse(await readFile(path.join(root, "scripts/hidden-models.json"), "utf8"));
+  assert.deepEqual(hold, { hidden: [] });
+  assert.ok((await read(`models/${id}/index.html`)).includes(`/models/${id}/`));
+  for (const file of ["sitemap.xml", "llms.txt", "models/all/index.html"]) {
+    assert.ok((await read(file)).includes(`/models/${id}/`), file);
+  }
+  assert.ok(!(await read("_redirects")).includes(`/models/${id}`));
 });
