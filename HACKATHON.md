@@ -362,3 +362,35 @@ by paid route and in 24 h / 7 d windows; they are reachable only through a read-
 `GET /internal/stats` and are not public. Limits: calls and volume recorded before the own list was configured still
 include own payments (payer-level history is not stored), and 402 counts are responses, not unique clients. See
 `singit-ask/README.md` and `docs/analytics.md`.
+
+### 31 October 2026 — six free models and a shared daily cost cap (draft PR, not deployed)
+
+SingIt Ask's free tier goes from one model to six (`free/openai-gpt-oss-20b`, `free/gemma-4-e2b`,
+`free/gemma-3-27b-it`, `free/mistral-small-3.2-24b-instruct`, `free/qwen3-coder-30b-a3b-instruct`,
+`free/deepseek-v4.1-flash`). A shared cap of $0.25 a day on what free answers cost upstream is on by default:
+each answer's worst-case cost is reserved before the call and replaced by the reported cost afterwards, and the
+day's spend and answer count are kept in a small private state file so they survive a restart. When the cap is
+spent, free routes return 429 `free_budget_exhausted` with `Retry-After` until midnight UTC. Per-network limits
+are unchanged. Limits: after a crash, answers that were in flight count as spent (stricter, never looser); an invalid state file
+fails closed until midnight UTC; per-network counters still reset on restart, and the cap is per process. Details in `docs/free-models.md`.
+
+## October 31, 2026 — Privacy pages on singitai.app
+
+Branch `privacy-singitai` (draft PR): moves the existing
+Privacy Policy and data-deletion instructions into the SingIt website's shared
+page styling at `/privacy/` and `/data-deletion/`. This maintains imported SingIt
+website functionality and adds no Solana payment functionality. Policy substance,
+contact details and the July 10, 2026 effective date are preserved; no terms page
+was added. Repository links, the shared generator template, sitemap and generated
+LLM discovery files point to the new pages.
+
+Verification: both page generators and their `--check` modes pass; a local build
+includes both pages and source-content comparisons preserve all original policy
+paragraphs and list items. Website and JavaScript script tests with isolation
+disabled report 432 pass, 5 fail and 1 skip; the same five child-process output
+failures reproduce on unchanged HEAD. All 263 Python script tests pass. All nine
+package `npm test` commands were attempted offline: `singit-risk-check` passes;
+the remaining packages lack installed dependencies (including viem, express,
+@solana/kit and rxjs). No dependencies were downloaded. The final old-host search
+returns no matches. Nothing was published, committed or pushed, and no network
+requests or payments were made.

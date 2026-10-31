@@ -40,10 +40,10 @@ def write(directory, document):
 
 
 class AnswerCostTests(unittest.TestCase):
-    def test_worst_case_is_input_chars_over_four_plus_max_output_tokens(self):
-        # 4000 chars = 1000 input tokens; 400 output tokens. $2/M in, $10/M out: 0.002 + 0.004
+    def test_worst_case_uses_dense_text_and_framing_plus_max_output_tokens(self):
+        # 4004 input tokens and 400 output tokens at $2/M input, $10/M output.
         cost = fmc.answer_cost((Decimal("2"), Decimal("10")), 4000, 400)
-        self.assertEqual(cost, Decimal("0.006"))
+        self.assertEqual(cost, Decimal("0.012008"))
 
     def test_no_price_is_no_number(self):
         self.assertIsNone(fmc.answer_cost(None, 4000, 400))
@@ -67,11 +67,11 @@ class ReportTests(unittest.TestCase):
 
     def test_list_and_expected_prices_and_monthly_cost_at_each_cap(self):
         row = self.report(["cheap"])[0]
-        # list: 1000 * 0.5 + 400 * 2 = 1300 / 1e6 ; expected: 1000 * 0.1 + 400 * 0.4 = 260 / 1e6
-        self.assertEqual(row["list"]["perAnswerUsd"], Decimal("0.0013"))
-        self.assertEqual(row["expected"]["perAnswerUsd"], Decimal("0.00026"))
-        self.assertEqual(row["list"]["perMonthUsd"]["100"], Decimal("0.0013") * 100 * 30)
-        self.assertEqual(row["expected"]["perMonthUsd"]["1000"], Decimal("0.00026") * 1000 * 30)
+        # List and expected rates use 4004 input tokens and 400 output tokens.
+        self.assertEqual(row["list"]["perAnswerUsd"], Decimal("0.002802"))
+        self.assertEqual(row["expected"]["perAnswerUsd"], Decimal("0.0005604"))
+        self.assertEqual(row["list"]["perMonthUsd"]["100"], Decimal("0.002802") * 100 * 30)
+        self.assertEqual(row["expected"]["perMonthUsd"]["1000"], Decimal("0.0005604") * 1000 * 30)
         self.assertEqual(row["expectedBasis"], "trusted")
 
     def test_missing_prices_and_models_are_reported_not_guessed(self):
@@ -85,15 +85,15 @@ class ReportTests(unittest.TestCase):
 
     def test_limits_change_the_numbers(self):
         short = self.report(["cheap"], max_chars=400, max_tokens=40)[0]
-        # 100 * 0.5 + 40 * 2 = 130 / 1e6
-        self.assertEqual(short["list"]["perAnswerUsd"], Decimal("0.00013"))
+        # 404 * 0.5 + 40 * 2 = 282 / 1e6
+        self.assertEqual(short["list"]["perAnswerUsd"], Decimal("0.000282"))
 
     def test_float_noise_in_the_file_does_not_leak_into_the_arithmetic(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = write(tmp, {"data": [{"id": "m", "usdPerMillionTokens": {"input": 0.075, "output": 0.2}}]})
             models = fmc.load_models(path)
         row = fmc.report(models, ["m"], max_chars=4000, max_tokens=400, caps=[1], days=1)[0]
-        self.assertEqual(row["list"]["perAnswerUsd"], Decimal("0.000155"))
+        self.assertEqual(row["list"]["perAnswerUsd"], Decimal("0.0003803"))
 
 
 class LoadTests(unittest.TestCase):
@@ -117,8 +117,8 @@ class CommandTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("LIST price", out)
         self.assertIn("EXPECTED price", out)
-        self.assertIn("0.00130000", out)
-        self.assertIn("0.00026000", out)
+        self.assertIn("0.00280200", out)
+        self.assertIn("0.00056040", out)
         self.assertIn("100/day/mo", out)
         self.assertIn("300/day/mo", out)
         self.assertIn("absent", out)
@@ -128,7 +128,7 @@ class CommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             code, out, _ = self.run_main(str(write(tmp, MODELS)), "--models", "cheap", "--json")
         self.assertEqual(code, 0)
-        self.assertAlmostEqual(json.loads(out)[0]["list"]["perAnswerUsd"], 0.0013)
+        self.assertAlmostEqual(json.loads(out)[0]["list"]["perAnswerUsd"], 0.002802)
 
     def test_bad_input_exits_2_with_a_message(self):
         code, _, err = self.run_main("/nonexistent/models.json")
@@ -140,11 +140,11 @@ class CommandTests(unittest.TestCase):
     def test_the_saved_snapshot_gives_the_numbers_the_proposal_quotes(self):
         code, out, _ = self.run_main(str(SNAPSHOT))
         self.assertEqual(code, 0)
-        # deepseek-v4.1-flash, list: 1000 * 0.02 + 400 * 1 = 420 / 1e6 per answer; 1000/day for 30 days
-        self.assertIn("0.00042000", out)
-        self.assertIn("12.6000", out)
-        # openai-gpt-oss-20b, list: 1000 * 0.018 + 400 * 0.09 = 54 / 1e6
-        self.assertIn("0.00005400", out)
+        # DeepSeek list: 4004 * 0.02 + 400 * 1; 1000/day for 30 days
+        self.assertIn("0.00048008", out)
+        self.assertIn("14.4024", out)
+        # GPT OSS list: 4004 * 0.018 + 400 * 0.09
+        self.assertIn("0.00010807", out)
         for model in fmc.DEFAULT_MODELS:
             self.assertIn(model, out)
 

@@ -198,3 +198,15 @@ test('402 challenge keeps existing limiter metadata and header unchanged', async
   assert.deepEqual(JSON.parse(result.headers['x-singit-spend-limit']), result.body.singitSpendLimit);
   assert.deepEqual(result.body.accepts, [{ scheme: 'exact' }]);
 });
+
+
+test('health and models publish the six default free models and cap without private spend', async () => {
+  for (const path of ['/health', '/v1/models']) {
+    const result = await request(app, path);
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body.free.models, ['free/openai-gpt-oss-20b', 'free/gemma-4-e2b', 'free/gemma-3-27b-it', 'free/mistral-small-3.2-24b-instruct', 'free/qwen3-coder-30b-a3b-instruct', 'free/deepseek-v4.1-flash']);
+    assert.equal(result.body.free.budgetUsdPerDay, .25);
+    assert.equal(result.body.free.spentMicro, undefined);
+    assert.equal(result.body.free.reservedMicro, undefined);
+  }
+});

@@ -16,9 +16,9 @@ minimum on Base):
 {"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Say hello in five words."}]}
 ```
 
-Want to try before paying? Model `free/deepseek-v4.1-flash` on the same endpoint answers with no payment: 20 answers a
+Want to try before paying? Choose from six free models, for example `free/deepseek-v4.1-flash` on the same endpoint answers with no payment: 20 answers a
 day per network (IPv4 /24, IPv6 /64), up to 400 tokens each, resetting at midnight UTC. See
-[free-models.md](free-models.md).
+[free-models.md](free-models.md). The shared daily cost cap is $0.25. Free answers may run out for the day (`free_budget_exhausted`) and return at midnight UTC.
 
 ## What you need
 
