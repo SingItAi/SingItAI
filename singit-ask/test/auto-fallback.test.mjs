@@ -13,17 +13,17 @@ import { BASE, SOLANA, TERMS, SOLANA_TERMS, billUsage, worstModelCostMicro, exac
 
 test('price rejection and fresh floor skip; escalation and exhaustion are deterministic', async () => {
   for (const rejection of [
-    { isPriceRejected: id => id === AUTO_CONFIG.tiers.eco[0] },
-    { guardShare: () => .25, liveDiscount: async id => id === AUTO_CONFIG.tiers.eco[0] ? .38 : .25 },
+    { guardShare: () => .25, isPriceRejected: id => id === AUTO_CONFIG.tiers.standard[0] },
+    { guardShare: () => .25, liveDiscount: async id => id === AUTO_CONFIG.tiers.standard[0] ? .38 : .25 },
   ]) {
     const cat = { ...catalogue, ...rejection };
-    const a = await chooseAuto({}, cat, input(), RequestError);
-    assert.equal(a.model, AUTO_CONFIG.tiers.eco[1]);
-    assert.deepEqual(await chooseAuto({}, cat, input(), RequestError), a);
+    const a = await chooseAuto({}, cat, input('hi', { min_tier: 'standard' }), RequestError);
+    assert.equal(a.model, AUTO_CONFIG.tiers.standard[1]);
+    assert.deepEqual(await chooseAuto({}, cat, input('hi', { min_tier: 'standard' }), RequestError), a);
   }
-  const cat = { ...catalogue, isPriceRejected: id => AUTO_CONFIG.tiers.standard.includes(id) };
+  const cat = { ...catalogue, guardShare: () => .25, isPriceRejected: id => AUTO_CONFIG.tiers.standard.includes(id) };
   assert.equal((await chooseAuto({}, cat, input('hi', { min_tier: 'standard' }), RequestError)).autoTier, 'premium');
-  await assert.rejects(chooseAuto({}, { ...cat, isPriceRejected: () => true }, input(), RequestError), e => e.status === 503 && e.retryAfter > 0);
+  await assert.rejects(chooseAuto({}, { ...cat, guardShare: () => .25, isPriceRejected: () => true }, input('hi', { min_tier: 'standard' }), RequestError), e => e.status === 503 && e.retryAfter > 0);
 });
 
 test('catalogue refusal TTL, bounded memory, fresh cache and concurrent dedupe fail open', async () => {
@@ -101,7 +101,7 @@ test('HTTP prepayment rejection skips and escalates, and exhaustion never verifi
         || mode === 'recent' && id === AUTO_CONFIG.tiers.standard[0],
       liveDiscount: async id => mode === 'fresh' && id === AUTO_CONFIG.tiers.standard[0] ? .38 : .25 };
     const { url, facilitator } = await serve(t, { catalogue: cat });
-    const body = { model: 'singit/auto', min_tier: 'standard', messages: [{ role: 'user', content: 'hi' }], max_tokens: 32 };
+    const body = { model: 'singit/auto', min_tier: 'standard', messages: [{ role: 'user', content: 'hi' }], max_tokens: 512 };
     const response = await post(url + ROUTE, body);
     assert.equal(response.status, mode === 'all' ? 503 : 402);
     if (mode === 'all') {
@@ -118,6 +118,10 @@ test('HTTP prepayment rejection skips and escalates, and exhaustion never verifi
     assert.equal(facilitator.calls.verify, 0);
     assert.equal(facilitator.calls.settle.length, 0);
   }
+
+  // A quote at the minimum charge sends no floor, so a recent refusal or a low book does not exclude the model.
+  const cheap = { ...catalogue, guardShare: () => .25, isPriceRejected: () => true, liveDiscount: async () => .38 };
+  assert.equal((await chooseAuto({}, cheap, input(), RequestError)).model, AUTO_CONFIG.tiers.eco[0]);
 });
 
 test('every tier model retains margin on direct and cheaper alternate priced usage, both schemes and networks', () => {

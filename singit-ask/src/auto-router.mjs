@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { priceGuard, unservableError } from "./catalogue.mjs";
 import { ceilings } from "./metered.mjs";
-import { BASE } from "./pricing.mjs";
+import { BASE, TERMS, minDiscountFor } from "./pricing.mjs";
 export const AUTO_ID = "singit/auto";
 export const AUTO_DESCRIPTION = "Picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets the minimum tier. X-SingIt-Model and X-SingIt-Tier report the choice. Only POST /v1/chat/completions. If the chosen model's seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered.";
 export const AUTO_CONFIG = JSON.parse(readFileSync(new URL("./auto-router.config.json", import.meta.url), "utf8"));
@@ -44,11 +44,16 @@ export async function chooseAuto(config, catalogue, input, ErrorClass, log = () 
       const info = await catalogue?.resolve(id).catch(() => null);
       const skip = reason => log(`singit-ask: auto skip model=${id} reason=${reason}`);
       if (!info || catalogue.isUnservable?.(info.id) || (catalogue.canAnswer && !await catalogue.canAnswer(info.id))) { skip("unhealthy"); continue; }
-      if (catalogue.isPriceRejected?.(info.id)) { skip("price_rejected_recently"); continue; }
       const candidate = { ...input, model: info.id, info, ...priceGuard(catalogue, info.id, config.priceBufferPp ?? 1),
         autoTier: tier, autoReason: classified.reason };
-      const live = await catalogue.liveDiscount?.(info.id);
-      if (live != null && candidate.minDiscount != null && 100 - live * 100 + 1e-9 < candidate.minDiscount) { skip("price_below_floor"); continue; }
+      // Same rule as the paid call: a quote whose ceiling already covers the list-price worst case sends no floor,
+      // so the seller's discount cannot refuse it and nothing to pre-check.
+      const floor = minDiscountFor(candidate, { ...TERMS, maxChargeAtomic: ceilings(info, candidate).upto[BASE] });
+      if (floor != null) {
+        if (catalogue.isPriceRejected?.(info.id)) { skip("price_rejected_recently"); continue; }
+        const live = await catalogue.liveDiscount?.(info.id);
+        if (live != null && 100 - live * 100 + 1e-9 < floor) { skip("price_below_floor"); continue; }
+      }
       candidates.push(candidate);
     }
     candidates.sort((a, b) => {
