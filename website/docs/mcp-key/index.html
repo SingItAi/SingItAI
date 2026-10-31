@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP key with spending limits | SingIt</title>
+<meta name="description" content="Give an agent a SingIt MCP key with daily and per-request limits signed by its owner. Setup, refusal and revocation.">
+<link rel="canonical" href="https://singitai.app/docs/mcp-key/">
+<meta property="og:title" content="MCP key with spending limits | SingIt">
+<meta property="og:description" content="Give an agent a SingIt MCP key with daily and per-request limits signed by its owner. Setup, refusal and revocation.">
+<meta property="og:url" content="https://singitai.app/docs/mcp-key/">
+<meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@SingItAgent">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css?v=bb7061fc">
+<link rel="stylesheet" href="/dev.css?v=1">
+<link rel="stylesheet" href="/pages.css?v=1">
+
+<!-- Umami, self-hosted and cookieless (docs/analytics.md) -->
+<script defer src="https://stats.singitai.app/s.js" data-website-id="6eab5805-b9b8-4f04-aa73-df64a8ce096e" data-domains="singitai.app,app.singitai.app"></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://singitai.app/docs/mcp-key/#webpage",
+      "url": "https://singitai.app/docs/mcp-key/",
+      "name": "MCP key with spending limits | SingIt",
+      "description": "Give an agent a SingIt MCP key with daily and per-request limits signed by its owner. Setup, refusal and revocation.",
+      "inLanguage": "en",
+      "breadcrumb": {
+        "@id": "https://singitai.app/docs/mcp-key/#breadcrumb"
+      }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://singitai.app/docs/mcp-key/#breadcrumb",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "SingIt",
+          "item": "https://singitai.app/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Documentation",
+          "item": "https://singitai.app/docs/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "MCP key",
+          "item": "https://singitai.app/docs/mcp-key/"
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="singit-mark" viewBox="0 0 240 240" fill="none">
+    <path d="M192 108 V152 Q192 176 168 176 H112 Q88 176 88 152 V88 Q88 64 112 64 H168 Q192 64 192 78"
+          stroke="currentColor" stroke-width="12.5" stroke-linecap="round"/>
+    <path d="M116 118 L139 143 L188 86 H206" stroke="currentColor" stroke-width="11.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="216" cy="86" r="8" stroke="currentColor" stroke-width="8.5"/>
+    <g stroke="currentColor" stroke-width="9" stroke-linecap="round">
+      <line x1="58" y1="94"  x2="88" y2="94"/>
+      <line x1="58" y1="121" x2="88" y2="121"/>
+      <line x1="58" y1="148" x2="88" y2="148"/>
+    </g>
+    <g fill="currentColor">
+      <circle cx="49" cy="94"  r="9"/>
+      <circle cx="49" cy="121" r="9"/>
+      <circle cx="49" cy="148" r="9"/>
+    </g>
+  </symbol>
+  <symbol id="ic-copy" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="nav-wrap">
+  <div class="nav-bar">
+    <a class="brand" href="/" aria-label="SingIt home">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/developers/">Developers</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/developers/#quickstart">Quickstart</a>
+      <a href="https://github.com/SingItAi/SingItAI" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="https://app.singitai.app/app/">
+      Open SingIt
+      <span class="btn-arrow" aria-hidden="true">&#8599;</span>
+    </a>
+  </div>
+</header>
+
+<main id="top"><section class="hero dev-hero"><div class="shell"><p class="eyebrow"><a href="/docs/">Documentation</a></p><h1>MCP key with spending limits</h1><p class="hero-sub">An MCP key with the owner’s limits.</p></div></section><section class="lp-section"><div class="shell"><h2 class="section-title">An MCP key with the owner’s limits</h2><p class="lp-text">Give an agent access to SingIt without giving it a wallet. The key's daily and per-request caps are enforced by SingIt's server for calls made with that key to SingIt's MCP and the same key's /v1 endpoint. They do not limit what an agent spends anywhere else. SingIt's contracts do not protect other people's agents' own wallets.</p></div></section>
+<section class="lp-section"><div class="shell"><h2 class="section-title">1. Set up the allowance and make a key</h2><p class="lp-text">Open <a href="https://app.singitai.app/app/">the app</a>. Set up a SingIt allowance from your wallet: a Base limiter or Solana delegation. Paid MCP search and data tools need it. Without it, the tool says “Set up your allowance first.” Then open Settings → API keys. Your wallet signs the name, daily limit, per-request limit and duration. Example terms: <strong>$1 a day, $0.05 a request, 7 days</strong>.</p><p class="lp-text">The daily limit is $0.01–$1000 (default $5). The per-request default is $0.25 and cannot exceed the daily limit. Duration is 1–365 days (default 90). Up to 10 active keys per account. The key is shown once and stored only as a hash. Read it from SINGIT_API_KEY in your client environment. Never put it in chat or logs.</p></div></section>
+<section class="lp-section"><div class="shell"><h2 class="section-title">2. Add the server to your client</h2><p class="lp-text">Use Streamable HTTP. Choose your client. Set SINGIT_API_KEY securely before launching it.</p><h3>Claude Code</h3><p class="tab-note">Verification: Repository configuration example; not run live.</p><div class="code"><pre><code data-verification="source-schema">claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_API_KEY"</code></pre></div><h3>Codex</h3><p class="tab-note">Verification: Repository configuration example; not run live.</p><div class="code"><pre><code data-verification="source-schema">codex mcp add singit --url https://app.singitai.app/mcp --bearer-token-env-var SINGIT_API_KEY</code></pre></div><h3>Cursor</h3><p class="lp-text">Add this to ~/.cursor/mcp.json, then restart Cursor.</p><p class="tab-note">Verification: Repository configuration example; not run live.</p><div class="code"><pre><code data-verification="source-schema">{
+  "mcpServers": {
+    "singit": {
+      "url": "https://app.singitai.app/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:SINGIT_API_KEY}"
+      }
+    }
+  }
+}</code></pre></div></div></section>
+<section class="lp-section"><div class="shell"><h2 class="section-title">3. Read the limits</h2><p class="lp-text">Call <code data-mcp-tool="get_limits">get_limits</code>. It is free with a key. Read today’s spend, held amounts for calls still running, remaining daily budget and expiry. <code data-mcp-tool="get_receipts">get_receipts</code> reports receipts.</p></div></section>
+<section class="lp-section"><div class="shell"><h2 class="section-title">4. Search</h2><p class="lp-text">Call <code data-mcp-tool="web_search">web_search</code> with a query. Search and <code data-mcp-tool="read_page">read_page</code> are paid per call, need the search scope, and work on Base or Solana. Data tools need the tools scope and are Base only for now. New keys include both scopes; keys made before data tools existed need a new key. MCP allows 60 requests a minute per key.</p></div></section>
+<section class="lp-section"><div class="shell"><h2 class="section-title">See it refuse</h2><p class="lp-text">Make a demo key with a $0.01 daily limit and a $0.01 per-request limit. The first web_search goes through: a search costs about a cent or less; the receipt shows the exact amount. The next search is refused once the daily limit would be exceeded. The demo costs under a cent. Before a paid call, the server adds today’s spend, what calls still running may cost, and the most this call may cost. If that exceeds the daily cap, the tool returns isError true. Nothing is bought or charged for the refused call.</p><p class="lp-text">For the $0.01 key, the exact refusal is:</p><blockquote data-refusal>This key's daily limit of 0.01 USDC is used up, counting requests still running. It starts again at 00:00 UTC, or raise it with a new key.</blockquote><p class="lp-text">Verification: derived from the code and its unit tests; not run live.</p></div></section>
+<section class="lp-section"><div class="shell"><h2 class="section-title">Revoke the key</h2><p class="lp-text">In the app, Settings → API keys, revoke the key. Revocation needs no wallet signature and is immediate. A wrong or revoked key gets HTTP 401. A missing, empty or unexpanded-variable header is keyless: free tools only. The key cannot move funds or change limits.</p></div></section>
+<section class="lp-section"><div class="shell"><h2 class="section-title">Base and Solana</h2><p class="lp-text">On Base the owner’s allowance limiter is an on-chain contract the owner can pause. On Solana the key caps are checked by SingIt’s server and the owner’s control is revoking the delegation. There is no on-chain emergency stop. A paused Solana account is unpaused only by a new grant signed after the pause. See <a href="/docs/limits/">Limits</a> and <a href="/docs/security/">Security</a>.</p></div></section>
+<section class="lp-section"><div class="shell"><h2 class="section-title">What it does not do</h2><p class="lp-text">The key's daily and per-request caps are enforced by SingIt's server for calls made with that key to SingIt's MCP and the same key's /v1 endpoint. They do not limit what an agent spends anywhere else. SingIt's contracts do not protect other people's agents' own wallets.</p><p class="lp-text">The key does not impose a budget on another service or on an agent’s own wallet. Start without a key using <code data-mcp-tool="get_price">get_price</code>, <code data-mcp-tool="list_price_symbols">list_price_symbols</code> or <code data-mcp-tool="list_models">list_models</code>.</p></div></section>
+</main>
+
+<footer class="footer">
+  <div class="shell footer-inner">
+    <a class="brand brand-footer" href="/">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/">For everyone</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/x402-gift-cards-esims/">Gift cards &amp; eSIMs</a>
+      <a href="/agent-spending-limits/">Spending limit</a>
+      <a href="https://app.singitai.app/app/">Open SingIt</a>
+      <a href="https://x.com/SingItAgent" target="_blank" rel="noopener">X</a>
+      <a href="https://github.com/SingItAi/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://singitai.app/privacy/" target="_blank" rel="noopener">Privacy policy</a>
+      <a href="mailto:contact@singitai.app">Contact</a>
+    </nav>
+    <p class="footer-fine">&copy; 2026 SingIt</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="/app.js?v=bb7061fc"></script>
+<script type="module" src="/dev.mjs?v=1"></script>
+
+</body>
+</html>

@@ -24,7 +24,7 @@ shared daily cost cap. The shared allowance may run out; it resets at midnight U
 Ask the owner to set up a SingIt allowance from their wallet (Base limiter or
 Solana delegation), then create a key at https://app.singitai.app/app/ under
 Settings → API keys. Their wallet signs the key's terms. The key is shown once.
-Read SINGIT_API_KEY from the environment. Setup: https://singitai.app/docs/mcp/#key
+Read SINGIT_API_KEY from the environment. Setup: https://singitai.app/docs/mcp-key/
 
 Claude Code:
 

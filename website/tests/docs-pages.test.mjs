@@ -3,7 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { test } from 'node:test';
 import { ERROR_CODES, defaultErrorCode } from '../../singit-ask/src/errors.mjs';
 const site = new URL('../', import.meta.url);
-const slugs = ['', 'errors', 'limits', 'payments', 'security', 'faq'];
+const slugs = ['', 'errors', 'limits', 'payments', 'security', 'faq', 'mcp-key'];
 const read = p => readFile(new URL(p, site), 'utf8');
 const text = s => s.replace(/<[^>]*>/g, '').replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#x27;', "'").replace(/\s+/g, ' ').trim();
 const nodes = html => JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1])['@graph'];
