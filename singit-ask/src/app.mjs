@@ -339,13 +339,39 @@ const EXAMPLE = {
 // envelope. Only codes a route really answers with are listed in openapi.json (test/openapi-errors.test.mjs).
 const ERROR_SCHEMA = errorRef("ErrorResponse");
 const ANTHROPIC_ERROR_SCHEMA = errorRef("AnthropicErrorResponse");
-const errorBody = (description, schema = ERROR_SCHEMA) => ({ description, content: { "application/json": { schema } } });
-const PAYMENT_REQUIRED = { description: "Payment Required: the x402 v2 challenge is in the PAYMENT-REQUIRED response header "
+const errorBody = (description, schema = ERROR_SCHEMA, example) => ({
+  description, content: { "application/json": { schema, ...(example ? { example } : {}) } },
+});
+const errorExample = (type, message, code, schema) => ({
+  ...(schema === ANTHROPIC_ERROR_SCHEMA ? { type: "error" } : {}),
+  error: { type, message, code },
+});
+// Documentation fixtures only; the live builders and handlers remain unchanged.
+const chatExampleOffers = [
+  { scheme: "upto", network: BASE, payTo: "<pay-to address>", maxTimeoutSeconds: 120,
+    asset: "<USDC contract on Base>", amount: "1500", extra: { name: "USD Coin", version: "2",
+      billing: { version: 1, mode: "actual_usage", markupBps: 3000, settlementFeeAtomic: "1000", maxChargeAtomic: "1500" } } },
+  { scheme: "exact", network: BASE, payTo: "<pay-to address>", maxTimeoutSeconds: 120,
+    asset: "<USDC contract on Base>", amount: "1500", extra: { name: "USD Coin", version: "2",
+      billing: { version: 1, mode: "exact_ceiling", markupBps: 3000, settlementFeeAtomic: "1000", maxChargeAtomic: "1500" } } },
+];
+const exactExampleOffers = timeout => [
+  { scheme: "exact", network: BASE, amount: "<amount in USDC micro-units>", asset: "<USDC contract on Base>",
+    payTo: "<pay-to address>", maxTimeoutSeconds: timeout, extra: { name: "USD Coin", version: "2" } },
+  { scheme: "exact", network: SOLANA, amount: "<amount in USDC micro-units>", asset: "<USDC mint on Solana>",
+    payTo: "<pay-to address>", maxTimeoutSeconds: timeout },
+];
+const PAYMENT_REQUIRED = (exactTimeout) => ({ description: "Payment Required: the x402 v2 challenge is in the PAYMENT-REQUIRED response header "
     + "(base64 JSON: x402Version, resource, accepts); the body contains matching x402Version and accepts only for a payment challenge. Sign one of the accepts and retry "
     + "with PAYMENT-SIGNATURE. If a payment was submitted but could not be settled, the 402 has no PAYMENT-REQUIRED header "
     + "and the body contains only error and code (payment_required).",
+  ...(exactTimeout ? {} : { description: "Chat challenge example: one Base offer per scheme. The full accepts order is upto Base, upto Solana, exact Base, exact Solana. " +
+    "The PAYMENT-REQUIRED header carries the base64 JSON challenge; settlement failures have only error and code in the body." }),
   headers: { "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
-  content: { "application/json": { schema: errorRef("PaymentRequired402") } } };
+  content: { "application/json": { schema: errorRef("PaymentRequired402"), example: {
+    x402Version: 2, accepts: exactTimeout ? exactExampleOffers(exactTimeout) : chatExampleOffers,
+    error: "payment_required", code: "payment_required",
+  } } } });
 const BAD_REQUEST = "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged";
 const TOO_LARGE = "The JSON body is over 128 kB; nothing was charged";
 const UNAVAILABLE = "The model list or a seller could not be reached; try again shortly. Nothing was charged";
@@ -356,12 +382,15 @@ const DUPLICATE = "This payment signature was already used; nothing was charged 
 const RETRY_AFTER = { "Retry-After": { description: "Seconds to wait before trying again", schema: { type: "integer" } } };
 export const MAX_TOKENS_TOO_SMALL = "max_tokens too small: a reasoning model spent it all thinking and wrote no answer; "
   + "raise max_tokens. Nothing was charged";
-const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, schema } = {}) => ({
-  400: errorBody(BAD_REQUEST, schema), 402: PAYMENT_REQUIRED, 413: errorBody(TOO_LARGE, schema),
+const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, schema, exactTimeout, exampleMessage = "Try again shortly.", exampleCode = "upstream_unavailable" } = {}) => ({
+  400: errorBody(BAD_REQUEST, schema, errorExample("invalid_request_error", "Send valid JSON.", "invalid_json", schema)),
+  402: PAYMENT_REQUIRED(exactTimeout),
+  413: errorBody(TOO_LARGE, schema, errorExample("invalid_request_error", "The request body is too large.", "payload_too_large", schema)),
   ...(notFound ? { 404: errorBody(notFound, schema) } : {}),
   ...(duplicate ? { 409: errorBody(DUPLICATE, schema) } : {}),
-  ...(reasoning ? { 422: errorBody(MAX_TOKENS_TOO_SMALL, schema) } : {}),
-  503: { ...errorBody(unavailable ?? `${UNAVAILABLE}. Also: ${noAnswer}`, schema), headers: RETRY_AFTER },
+  ...(reasoning ? { 422: errorBody(MAX_TOKENS_TOO_SMALL, schema, errorExample("invalid_request_error", MAX_TOKENS_TOO_SMALL, "max_tokens_too_small", schema)) } : {}),
+  503: { ...errorBody(unavailable ?? `${UNAVAILABLE}. Also: ${noAnswer}`, schema,
+    errorExample(schema === ANTHROPIC_ERROR_SCHEMA ? "api_error" : "upstream_error", exampleMessage, exampleCode, schema)), headers: RETRY_AFTER },
 });
 
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
@@ -540,8 +569,22 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             200: { description: "The answer, with what it was charged",
                    content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
             ...paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }),
-            429: { ...errorBody("Free answers (model free/…) used up for today, or busy; nothing was charged", errorRef("RateLimited429")),
-                   headers: { ...Object.fromEntries(Object.entries(RATE_LIMIT_HEADERS).map(([name, header]) => [name, { ...header, description: header.description + "; daily per-visitor allowance, omitted while busy" }])), "Retry-After": { description: "Seconds until the next free answer", schema: { type: "string" } } } },
+            429: {
+              description: "Free answers (model free/…) used up for today, or busy; nothing was charged",
+              content: { "application/json": { schema: errorRef("RateLimited429"), examples: {
+                daily: { summary: "Daily allowance exhausted",
+                  description: "Headers: Retry-After: 3600; X-RateLimit-Limit: 20; X-RateLimit-Remaining: 0; X-RateLimit-Reset: 1793491200 (next UTC midnight).",
+                  value: errorExample("rate_limit_error", "That is today's free answers from this network. Pay per answer instead: drop the free/ prefix (x402, USDC on Base or Solana), or come back tomorrow (UTC).", "free_tier_exhausted") },
+                busy: { summary: "Free answer concurrency full",
+                  description: "Headers: Retry-After: 5 only; X-RateLimit-* headers are omitted.",
+                  value: errorExample("rate_limit_error", "Free answers are busy right now. Try again in a few seconds, or pay per answer: drop the free/ prefix.", "free_tier_busy") },
+              } } },
+              headers: { ...Object.fromEntries(Object.entries(RATE_LIMIT_HEADERS).map(([name, header]) => [name, {
+                ...header, description: header.description + "; daily per-visitor allowance, omitted while busy",
+                example: { "X-RateLimit-Limit": 20, "X-RateLimit-Remaining": 0, "X-RateLimit-Reset": 1793491200 }[name],
+              }])), "Retry-After": { description: "Seconds until the next free answer", schema: { type: "string" },
+                examples: { daily: { value: "3600" }, busy: { value: "5" } } } },
+            },
           },
           security: [{ x402: [] }],
         } },
@@ -555,7 +598,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...exaPriceRange() }, protocols: [{ x402: {} }] },
           requestBody: exaRequestBody(route),
           responses: { 200: { description: "Exa's answer, with billing" },
-                       ...paidErrors({ duplicate: true, unavailable: "Exa did not answer; nothing charged. Retry after Retry-After" }) },
+                       ...paidErrors({ exactTimeout: 120, exampleMessage: "Exa did not answer. You were not charged.", duplicate: true, unavailable: "Exa did not answer; nothing charged. Retry after Retry-After" }) },
           security: [{ x402: [] }],
         } }])) : {}),
         // Per-model routes (#66) answer the same errors as /v1/chat/completions minus the free tier's 429, plus 404
@@ -586,7 +629,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.014", max: "2.602" }, protocols: [{ x402: {} }] },
           requestBody: IMAGE_REQUEST_BODY(),
           responses: { 200: { description: "The images, with billing" },
-                       ...paidErrors({ notFound: "No such image model; nothing was charged", duplicate: true, noAnswer: "No image; nothing charged" }) },
+                       ...paidErrors({ exactTimeout: 180, exampleMessage: "No image was made. You were not charged.", exampleCode: "no_billable_answer", notFound: "No such image model; nothing was charged", duplicate: true, noAnswer: "No image; nothing charged" }) },
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
@@ -598,7 +641,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
             requestBody: SPEECH_REQUEST_BODY(),
             responses: { 200: { description: "The audio", content: { "audio/mpeg": {} } },
-                         ...paidErrors({ notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
+                         ...paidErrors({ exactTimeout: 120, exampleMessage: "No audio was made. You were not charged.", exampleCode: "no_billable_answer", notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "List voice models and their prices",
@@ -622,7 +665,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                               description: "Set false to refuse a substitute model when the chosen one has no healthy seller; "
                                 + "the price never rises." } } } } } },
             responses: { 200: { description: "The finished clip, its file URLs, token and billing" },
-                         ...paidErrors({ notFound: "No such video model; nothing was charged", duplicate: true,
+                         ...paidErrors({ exactTimeout: 150, notFound: "No such video model; nothing was charged", duplicate: true,
                            noAnswer: "video_failed, video_timeout or no_healthy_sellers; nothing charged" }) },
             security: [{ x402: [] }],
           } },
@@ -681,7 +724,71 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } },
         "/health": { get: { operationId: "getHealth", security: [], summary: "Get service, model and payment-rail status",
           responses: { 200: { description: "Legacy service fields plus observed health",
-            content: { "application/json": { schema: { type: "object", properties: {
+            content: { "application/json": { example: {
+                "ok": true,
+                "status": "ok",
+                "generatedAt": "2026-10-31T12:00:00.000Z",
+                "windowHours": 24,
+                "statsSince": "2026-10-31T12:00:00.000Z",
+                "models": {
+                  "deepseek-v4.1-flash": {
+                    "status": "up",
+                    "windowHours": 24,
+                    "attempts": 20,
+                    "successes": 20,
+                    "failures": 0,
+                    "errorRatePct": 0,
+                    "lastSuccessAt": "2026-10-31T12:00:00.000Z",
+                    "lastFailureAt": null,
+                    "lastOutcome": "success",
+                    "sellerFailures": 0,
+                    "failureReasons": {},
+                    "reason": null
+                  },
+                  "claude-opus-5.5": {
+                    "status": "insufficient_data",
+                    "windowHours": 24,
+                    "attempts": 1,
+                    "successes": 1,
+                    "failures": 0,
+                    "errorRatePct": 0,
+                    "lastSuccessAt": "2026-10-31T12:00:00.000Z",
+                    "lastFailureAt": null,
+                    "lastOutcome": "success",
+                    "sellerFailures": 0,
+                    "failureReasons": {},
+                    "reason": null
+                  }
+                },
+                "models_summary": {
+                  "up": 1,
+                  "degraded": 0,
+                  "down": 0,
+                  "insufficient_data": 1,
+                  "unavailable": 0
+                },
+                "payments": {
+                  "facilitator": null,
+                  "networks": {
+                    "base": {
+                      "status": "unknown",
+                      "basis": "none",
+                      "settled": 0,
+                      "failed": 0,
+                      "lastSettledAt": null,
+                      "lastFailedAt": null
+                    },
+                    "solana": {
+                      "status": "unknown",
+                      "basis": "none",
+                      "settled": 0,
+                      "failed": 0,
+                      "lastSettledAt": null,
+                      "lastFailedAt": null
+                    }
+                  }
+                }
+            }, schema: { type: "object", properties: {
               ok: { type: "boolean", const: true }, status: { enum: ["ok", "degraded", "down"] },
               generatedAt: { type: "string", format: "date-time" }, windowHours: { type: "integer", const: 24 },
               statsSince: { type: "string", format: "date-time" },
