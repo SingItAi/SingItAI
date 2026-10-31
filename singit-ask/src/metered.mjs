@@ -320,8 +320,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       try { answer = await attempt(req.askInput); }
       catch (error) {
         const bucket = exact ? "exact" : "upto";
-        const alternate = error.name === "UpstreamError" && error.status > 0
-          && error.code !== "unreachable" && error.code !== "max_tokens_spent_reasoning"
+        const alternate = error.name === "UpstreamError" && error.status >= 400  // refused before any answer; a 200 with no text (no_text, max_tokens_spent_reasoning) may already be billed
           && Date.now() < deadline && req.askInput.autoAlternates?.find(candidate =>
             BigInt(ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network]) <= BigInt(paid.terms.maxChargeAtomic));
         if (!alternate) throw error;

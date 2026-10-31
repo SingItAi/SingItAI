@@ -49,7 +49,7 @@ test('catalogue refusal TTL, bounded memory, fresh cache and concurrent dedupe f
   assert.equal(cat.loadingLiveBooks.size, 0);
 });
 
-for (const scheme of ['upto', 'exact']) for (const failure of ['success', 'both', 'unreachable', 'reasoning', 'expensive']) {
+for (const scheme of ['upto', 'exact']) for (const failure of ['success', 'both', 'unreachable', 'reasoning', 'notext', 'expensive']) {
   test(`paid fallback ${scheme}: ${failure}`, async t => {
     let calls = 0;
     const directory = await mkdtemp(join(tmpdir(), 'singit-fallback-'));
@@ -63,8 +63,8 @@ for (const scheme of ['upto', 'exact']) for (const failure of ['success', 'both'
     const { url, facilitator } = await serve(t, { config, catalogue: cat, upstream: async (_c, _m, _n, _f, model) => {
       calls++;
       if (calls === 1 || failure === 'both') throw new UpstreamError('refused', {
-        status: failure === 'unreachable' ? 0 : 404,
-        code: failure === 'unreachable' ? 'unreachable' : failure === 'reasoning' ? 'max_tokens_spent_reasoning' : 'minimum_discount_not_met',
+        status: failure === 'unreachable' ? 0 : ['notext', 'reasoning'].includes(failure) ? 200 : 404,
+        code: failure === 'unreachable' ? 'unreachable' : failure === 'reasoning' ? 'max_tokens_spent_reasoning' : failure === 'notext' ? 'no_text' : 'minimum_discount_not_met',
       });
       return { content: model, finishReason: 'stop', usage: { buyer_cost_micro: 100 } };
     }});
