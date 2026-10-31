@@ -639,7 +639,7 @@ test("the model list is free and carries Surplus's prices", async (t) => {
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/models`)).json();
   assert.equal(list.default, "deepseek-v4.1-flash");
-  assert.deepEqual(list.data.map((m) => m.id), ["singit-ask", ...DEFAULT_FREE_MODELS.map(id => `free/${id}`), "cheap-model", "pro-model"]);
+  assert.deepEqual(list.data.map((m) => m.id), ["singit-ask", "singit/auto", ...DEFAULT_FREE_MODELS.map(id => `free/${id}`), "cheap-model", "pro-model"]);
   assert.equal(list.data.find(m => m.id === "pro-model").usdPerMillionTokens.output, 180);
 });
 
