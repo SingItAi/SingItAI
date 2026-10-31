@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SingIt MCP: setup and tool reference | SingIt</title>
+<meta name="description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 16 tools, and troubleshoot keys, scopes and spending limits.">
+<link rel="canonical" href="https://singitai.app/docs/mcp/">
+<meta property="og:title" content="SingIt MCP: setup and tool reference | SingIt">
+<meta property="og:description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 16 tools, and troubleshoot keys, scopes and spending limits.">
+<meta property="og:url" content="https://singitai.app/docs/mcp/">
+<meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@SingItAgent">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css?v=bb7061fc">
+<link rel="stylesheet" href="/dev.css?v=1">
+<link rel="stylesheet" href="/pages.css?v=1">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://singitai.app/docs/mcp/#webpage",
+      "url": "https://singitai.app/docs/mcp/",
+      "name": "SingIt MCP: setup and tool reference | SingIt",
+      "description": "Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 16 tools, and troubleshoot keys, scopes and spending limits.",
+      "inLanguage": "en",
+      "breadcrumb": {
+        "@id": "https://singitai.app/docs/mcp/#breadcrumb"
+      }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://singitai.app/docs/mcp/#breadcrumb",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Developers",
+          "item": "https://singitai.app/developers/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "MCP",
+          "item": "https://singitai.app/docs/mcp/"
+        }
+      ]
+    }
+  ]
+}
+</script>
+<!-- Umami, self-hosted and cookieless (docs/analytics.md) -->
+<script defer src="https://stats.singitai.app/s.js" data-website-id="6eab5805-b9b8-4f04-aa73-df64a8ce096e" data-domains="singitai.app,app.singitai.app"></script>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="singit-mark" viewBox="0 0 240 240" fill="none">
+    <path d="M192 108 V152 Q192 176 168 176 H112 Q88 176 88 152 V88 Q88 64 112 64 H168 Q192 64 192 78"
+          stroke="currentColor" stroke-width="12.5" stroke-linecap="round"/>
+    <path d="M116 118 L139 143 L188 86 H206" stroke="currentColor" stroke-width="11.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="216" cy="86" r="8" stroke="currentColor" stroke-width="8.5"/>
+    <g stroke="currentColor" stroke-width="9" stroke-linecap="round">
+      <line x1="58" y1="94"  x2="88" y2="94"/>
+      <line x1="58" y1="121" x2="88" y2="121"/>
+      <line x1="58" y1="148" x2="88" y2="148"/>
+    </g>
+    <g fill="currentColor">
+      <circle cx="49" cy="94"  r="9"/>
+      <circle cx="49" cy="121" r="9"/>
+      <circle cx="49" cy="148" r="9"/>
+    </g>
+  </symbol>
+  <symbol id="ic-copy" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="nav-wrap">
+  <div class="nav-bar">
+    <a class="brand" href="/" aria-label="SingIt home">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="/developers/">Developers</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/developers/#quickstart">Quickstart</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <a class="btn btn-primary btn-sm" href="https://app.singitai.app/app/">
+      Open SingIt
+      <span class="btn-arrow" aria-hidden="true">&#8599;</span>
+    </a>
+  </div>
+</header>
+
+<main id="top">
+<section class="lp-section" id="overview"><div class="shell"><h1 class="section-title">SingIt MCP</h1><p class="lp-text">A remote Streamable HTTP server with JSON responses only. No local server installation is needed. Endpoint: <a href="https://app.singitai.app/mcp">https://app.singitai.app/mcp</a>. Official MCP Registry name: app.singitai/singit. Server: singit, “SingIt x402”, version 0.1.3; protocol 2025-06-18.</p></div></section>
+<section class="lp-section" id="key"><div class="shell"><h2 class="section-title">Get a key</h2><p class="lp-text">Open <a href="https://app.singitai.app/app/">SingIt</a>, then Settings → API keys. Free tools and tools/list work without a key. Export SINGIT_API_KEY in the environment that launches your client. Paid tools are paid per call within the key’s caps; get_limits shows what is spent and left today. See <a href="/agent-spending-limits/">spending limits</a> and <a href="/developers/">developer setup</a>.</p></div></section>
+<section class="lp-section" id="install"><div class="shell"><h2 class="section-title">Install</h2><h3>Claude Code</h3><p class="tab-note">Verification: Command checked against <a href="https://code.claude.com/docs/en/mcp">Claude Code docs</a>, 31 October 2026; not run here.</p>
+<div class="code"><pre><code>claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_API_KEY"</code></pre></div>
+<p class="tab-note">Verification: Documented client checks; not run here.</p>
+<div class="code"><pre><code>claude mcp list
+claude mcp get singit
+# In Claude Code: /mcp</code></pre></div>
+<p class="lp-text">For a shared project, use this .mcp.json entry. Claude Code requires type: http for a URL entry.</p><p class="tab-note">Verification: From the Claude Code docs, 31 October 2026 (it expands ${VAR} in headers); not run here.</p>
+<div class="code"><pre><code>{
+  "mcpServers": {
+    "singit": {
+      "type": "http",
+      "url": "https://app.singitai.app/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SINGIT_API_KEY}"
+      }
+    }
+  }
+}</code></pre></div>
+<h3>Cursor</h3><p class="lp-text">Edit ~/.cursor/mcp.json, then restart Cursor. The deeplink adds a keyless server; configure the header for paid tools.</p><p class="tab-note">Verification: Matches the repository installation guide; not run on Cursor.</p>
+<div class="code"><pre><code>{
+  "mcpServers": {
+    "singit": {
+      "url": "https://app.singitai.app/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:SINGIT_API_KEY}"
+      }
+    }
+  }
+}</code></pre></div>
+<p><a class="btn btn-outline btn-sm" href="cursor://anysphere.cursor-deeplink/mcp/install?name=singit&amp;config=eyJ1cmwiOiJodHRwczovL2FwcC5zaW5naXRhaS5hcHAvbWNwIn0%3D">Add to Cursor</a></p><h3>Codex</h3><p class="tab-note">Verification: Run on 31 October 2026 with codex-cli 0.163.0: the flags match --help, and the command was run in a temporary CODEX_HOME.</p>
+<div class="code"><pre><code>codex mcp add singit --url https://app.singitai.app/mcp --bearer-token-env-var SINGIT_API_KEY</code></pre></div>
+<p class="tab-note">Verification: Exact config.toml written by that run. codex mcp list showed enabled with Auth “Bearer token”.</p>
+<div class="code"><pre><code>[mcp_servers.singit]
+url = "https://app.singitai.app/mcp"
+bearer_token_env_var = "SINGIT_API_KEY"</code></pre></div>
+<h3>Windsurf / Devin Desktop</h3><p class="lp-text">Windsurf was renamed Devin Desktop in June 2026. Use mcp_config.json: macOS/Linux ~/.config/devin/mcp_config.json; Windows %APPDATA%\devin\mcp_config.json. Open the config from the client to locate the active file. Remote entries accept serverUrl (or url), headers and ${env:NAME} interpolation.</p><p class="tab-note">Verification: From the <a href="https://docs.devin.ai/windsurf/plugins/cascade/mcp">vendor docs</a>; not run on a Windsurf install.</p>
+<div class="code"><pre><code>{"mcpServers":{"singit":{"serverUrl":"https://app.singitai.app/mcp","headers":{"Authorization":"Bearer ${env:SINGIT_API_KEY}"}}}}</code></pre></div>
+<h3>Generic HTTP client</h3><p class="tab-note">Verification: Copied from <a href="https://github.com/bubon-ik/SingItAI/blob/main/llms-install.md">llms-install.md</a>; check your client’s variable interpolation support.</p>
+<div class="code"><pre><code>{
+  "mcpServers": {
+    "singit": {
+      "url": "https://app.singitai.app/mcp",
+      "headers": { "Authorization": "Bearer ${env:SINGIT_API_KEY}" }
+    }
+  }
+}</code></pre></div>
+</div></section>
+<section class="lp-section" id="verify"><div class="shell"><h2 class="section-title">Verify</h2><p class="tab-note">Verification: run against the live server on 31 October 2026, no key.</p>
+<div class="code"><pre><code>curl -sS https://app.singitai.app/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"singit-docs-check","version":"1.0"}}}'</code></pre></div>
+<p class="tab-note">Verification: run against the live server on 31 October 2026, no key.</p>
+<div class="code"><pre><code>curl -sS https://app.singitai.app/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'</code></pre></div>
+<p class="lp-text">Expected: initialize returns serverInfo.version 0.1.3; tools/list returns 16 tools. Both requests are free and need no key. A missing, empty or unexpanded-variable header behaves like no key. A wrong or revoked key gets HTTP 401 (verified 31 October 2026 with an invalid key).</p></div></section>
+<section class="lp-section" id="tools"><div class="shell"><h2 class="section-title">Tools</h2><p class="lp-text">Snapshot fetched 31 October 2026. Read-only and idempotent values below are server annotation hints. Read-only paid calls still charge; repeating a non-idempotent call charges again. Account-read tools require a key but no paid-tool scope.</p>
+<!-- generated:mcp-tools:start -->
+<div class="table-wrap"><table class="mtable">
+<caption>16 tools from the keyless tools/list snapshot. Paid tools are paid per call within the key's caps; get_limits shows spent and remaining today.</caption>
+<thead><tr><th>Tool</th><th>What it does</th><th>Parameters</th><th>Needs a key?</th><th>Scope</th><th>Network</th><th>Annotation hints</th></tr></thead>
+<tbody>
+<tr><th scope="row"><code>get_price</code></th><td>Current price of a major cryptocurrency, gold or silver (Chainlink on Base), or an exchange rate between two currencies.</td><td><code>kind</code>: string, required<br><code>symbol</code>: string, optional<br><code>base</code>: string, optional<br><code>quote</code>: string, optional</td><td>No</td><td>Free; none</td><td>No payment</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
+<tr><th scope="row"><code>list_price_symbols</code></th><td>Every crypto, metal and currency symbol get_price supports.</td><td>None</td><td>No</td><td>Free; none</td><td>No payment</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
+<tr><th scope="row"><code>list_models</code></th><td>The AI models (chat, images or audio) available through SingIt, with their prices.</td><td><code>kind</code>: string, optional</td><td>No</td><td>Free; none</td><td>No payment</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
+<tr><th scope="row"><code>get_balance</code></th><td>Your SingIt API balance: available and held USDC, auto top-up and pending top-ups.</td><td>None</td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
+<tr><th scope="row"><code>get_limits</code></th><td>What your API key may still spend: its daily and per-request caps, spent and remaining today, scopes and expiry, plus your account&#39;s balance and, on Base, your allowance limiter (caps, left today, approved from your wallet, paused = emergency stop, expired).</td><td>None</td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
+<tr><th scope="row"><code>get_receipts</code></th><td>Your recent receipts, newest first: for each, its id, time, model, USDC charged, tokens and the upstream reference (kind charge, this key only), or the account&#39;s top-ups and refunds with their transaction and network.</td><td><code>limit</code>: integer, optional<br><code>kind</code>: string, optional<br><code>before</code>: integer, optional</td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
+<tr><th scope="row"><code>web_search</code></th><td>Searches the web through Exa and returns titles, URLs and snippets of matching pages.</td><td><code>query</code>: string, required<br><code>numResults</code>: integer, optional<br><code>type</code>: string, optional</td><td>Yes; paid</td><td>search</td><td>USDC on Base or Solana</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+<tr><th scope="row"><code>read_page</code></th><td>The readable text of one web page (up to 8000 characters), through Exa.</td><td><code>url</code>: string, required</td><td>Yes; paid</td><td>search</td><td>USDC on Base or Solana</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+<tr><th scope="row"><code>get_weather</code></th><td>A sample weather forecast from GoPlausible&#39;s x402 demo service on Algorand.</td><td>None</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+<tr><th scope="row"><code>get_singit_risk_check</code></th><td>SingIt&#39;s risk check on Bankr x402 Cloud, run on a fixed sample payment request (no input).</td><td>None</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+<tr><th scope="row"><code>get_x_profile</code></th><td>Public profile data for an X (Twitter) account by username, from twit.sh&#39;s x402 API.</td><td><code>username</code>: string, required</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+<tr><th scope="row"><code>get_crypto_news</code></th><td>Latest crypto market headlines with sentiment, from Otto AI.</td><td>None</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+<tr><th scope="row"><code>get_hyperliquid_market</code></th><td>One Hyperliquid perpetual market (e.g. BTC): price, funding, open interest, max leverage and size rules, from Otto AI.</td><td><code>asset</code>: string, required</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+<tr><th scope="row"><code>get_funding_rates</code></th><td>Funding rates for one symbol across exchanges, with open interest, long/short ratio, large positions and liquidations, from Otto AI.</td><td><code>symbol</code>: string, required</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+<tr><th scope="row"><code>resolve_ens</code></th><td>Turns an ENS name (e.g. vitalik.eth) into its address, or an address into its primary ENS name.</td><td><code>input</code>: string, required<br><code>network</code>: string, optional</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+<tr><th scope="row"><code>get_token_price</code></th><td>USD price of a major token by symbol from a paid x402 price API.</td><td><code>symbol</code>: string, required</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
+</tbody></table></div>
+<!-- generated:mcp-tools:end --></div></section>
+<section class="lp-section" id="troubleshooting"><div class="shell"><h2 class="section-title">Troubleshooting</h2><div class="table-wrap"><table class="mtable"><thead><tr><th>Symptom</th><th>Cause</th><th>Fix</th></tr></thead><tbody><tr><td>HTTP 401</td><td>Bad or revoked key.</td><td>Create a valid key and replace the header.</td></tr><tr><td>Paid tool asks for a key after configuration</td><td>The header contains a literal ${env:...}, or the variable was not exported to the launching process.</td><td>Export SINGIT_API_KEY in the client’s launch environment; check its interpolation syntax and restart.</td></tr><tr><td>Scope missing</td><td>The key lacks search for web_search/read_page, or tools for market data.</td><td>Create a key with the needed scope; older keys may lack tools.</td></tr><tr><td>Daily or per-request limit reached</td><td>The call exceeds the key’s caps.</td><td>Inspect get_limits for remaining spend and caps. The wallet signs a key’s limits; adjust them through the app.</td></tr><tr><td>Solana account refused by a market tool</td><td>Market-data tools are Base-only for now.</td><td>Use a Base account for these tools. web_search and read_page support Base or Solana.</td></tr><tr><td>SSE/stdio-only client cannot connect</td><td>The server uses Streamable HTTP with JSON responses only.</td><td>Use a client with remote HTTP support.</td></tr><tr><td>Tool list empty or cached after a config change</td><td>Client configuration or discovery needs refreshing.</td><td>Restart the client after editing; in Claude Code use /mcp to reconnect.</td></tr><tr><td>Claude Code reports a URL without a type</td><td>The shared .mcp.json entry lacks type.</td><td>Set &quot;type&quot;: &quot;http&quot; in the singit entry.</td></tr></tbody></table></div></div></section>
+</main>
+<footer class="footer">
+  <div class="shell footer-inner">
+    <a class="brand brand-footer" href="/">
+      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
+      <span>SingIt</span>
+    </a>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="/">For everyone</a>
+      <a href="/models/">Models &amp; prices</a>
+      <a href="/x402-gift-cards-esims/">Gift cards &amp; eSIMs</a>
+      <a href="/agent-spending-limits/">Spending limit</a>
+      <a href="https://app.singitai.app/app/">Open SingIt</a>
+      <a href="https://x.com/SingItAgent" target="_blank" rel="noopener">X</a>
+      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://bubon-ik.github.io/SingItAI/" target="_blank" rel="noopener">Privacy policy</a>
+      <a href="mailto:contact@singitai.app">Contact</a>
+    </nav>
+    <p class="footer-fine">&copy; 2026 SingIt</p>
+  </div>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+<script src="/app.js?v=bb7061fc"></script>
+<script type="module" src="/dev.mjs?v=1"></script>
+
+</body>
+</html>
