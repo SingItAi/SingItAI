@@ -341,8 +341,9 @@ const ERROR_SCHEMA = errorRef("ErrorResponse");
 const ANTHROPIC_ERROR_SCHEMA = errorRef("AnthropicErrorResponse");
 const errorBody = (description, schema = ERROR_SCHEMA) => ({ description, content: { "application/json": { schema } } });
 const PAYMENT_REQUIRED = { description: "Payment Required: the x402 v2 challenge is in the PAYMENT-REQUIRED response header "
-    + "(base64 JSON: x402Version, resource, accepts); the body also contains x402Version and accepts. Sign one of the accepts and retry "
-    + "with PAYMENT-SIGNATURE.",
+    + "(base64 JSON: x402Version, resource, accepts); the body contains matching x402Version and accepts only for a payment challenge. Sign one of the accepts and retry "
+    + "with PAYMENT-SIGNATURE. If a payment was submitted but could not be settled, the 402 has no PAYMENT-REQUIRED header "
+    + "and the body contains only error and code (payment_required).",
   headers: { "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
   content: { "application/json": { schema: errorRef("PaymentRequired402") } } };
 const BAD_REQUEST = "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged";

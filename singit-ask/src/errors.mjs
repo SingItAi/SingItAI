@@ -36,8 +36,9 @@ const detail = { type: "object", required: ["type", "message", "code"], properti
 export const ERROR_SCHEMAS = {
   ErrorResponse: { type: "object", required: ["error"], properties: { error: detail } },
   AnthropicErrorResponse: { type: "object", required: ["type", "error"], properties: { type: { const: "error" }, error: detail } },
-  PaymentRequired402: { type: "object", required: ["x402Version", "accepts", "error", "code"], properties: {
-    x402Version: { type: "integer" }, accepts: { type: "array", items: { type: "object", additionalProperties: true } },
+  PaymentRequired402: { type: "object", required: ["error", "code"], properties: {
+    x402Version: { type: "integer", description: "Present when the 402 is a payment challenge; equals x402Version in the decoded PAYMENT-REQUIRED header. Absent when a payment was submitted but could not be settled." },
+    accepts: { type: "array", description: "Present when the 402 is a payment challenge; equals accepts in the decoded PAYMENT-REQUIRED header. Absent when a payment was submitted but could not be settled.", items: { type: "object", additionalProperties: true } },
     error: { type: "string" }, code: { const: "payment_required" },
   } },
   RateLimited429: { $ref: "#/components/schemas/ErrorResponse" },

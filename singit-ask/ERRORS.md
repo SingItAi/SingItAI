@@ -35,7 +35,7 @@ An OpenAI-compatible error looks like:
 {"error":{"type":"invalid_request_error","message":"Send valid JSON.","code":"invalid_json"}}
 ```
 
-The 402 challenge body contains `x402Version`, `accepts`, `error: "payment_required"` and `code: "payment_required"`. `x402Version` and `accepts` exactly match the decoded `PAYMENT-REQUIRED` header, whose bytes remain unchanged. Existing spend-limit metadata remains available. A payment refusal without a challenge header retains its existing error and adds its code; it does not invent offers.
+The 402 challenge body contains `x402Version`, `accepts`, `error: "payment_required"` and `code: "payment_required"`. `x402Version` and `accepts` exactly match the decoded `PAYMENT-REQUIRED` header, whose bytes remain unchanged. Existing spend-limit metadata remains available. When a payment was submitted but could not be settled, the 402 has no `PAYMENT-REQUIRED` header and its body is only `{"error":"payment_required","code":"payment_required"}`. `x402Version` and `accepts` are optional in the schema: present for a payment challenge and absent for this settlement failure. A payment refusal without a challenge header retains its existing error and adds its code; it does not invent offers.
 
 429 responses retain `Retry-After` in seconds. Exhausted free daily allowances add `X-RateLimit-Limit` (configured per-visitor daily allowance), `X-RateLimit-Remaining: 0` (no free requests currently available), and `X-RateLimit-Reset` (Unix seconds at the next UTC midnight). A shared daily cap or budget can deny requests before the per-visitor allowance is spent. Busy responses include only `Retry-After: 5`; a daily allowance cannot describe the concurrency limit.
 

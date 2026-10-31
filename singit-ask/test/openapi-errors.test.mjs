@@ -81,6 +81,7 @@ test("each error response carries a short JSON schema; 402 describes the PAYMENT
       assert.equal(schema?.type, "object", `${route} ${code} has a JSON schema`);
       if (code === "402") {
         assert.ok(response.headers["PAYMENT-REQUIRED"], route);
+        assert.deepEqual(schema.required, ["error", "code"], route);
       } else {
         assert.deepEqual(schema.required.includes("error"), true, `${route} ${code}`);
       }

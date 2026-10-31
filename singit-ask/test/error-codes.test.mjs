@@ -81,6 +81,15 @@ test('402 body mirrors the header and middleware leaves header bytes intact', as
   small.get('/', (_req, res) => res.status(402).set('PAYMENT-REQUIRED', header).json({}));
   assert.equal((await request(small, '/')).headers['payment-required'], header);
 });
+test('402 settlement failure without a challenge header gets error and code only', async () => {
+  const small = express();
+  small.use(errorCodesMiddleware, spendLimitMiddleware());
+  small.get('/', (_req, res) => res.status(402).json({ error: 'payment_required' }));
+  const result = await request(small, '/');
+  assert.equal(result.status, 402);
+  assert.equal(result.headers['payment-required'], undefined);
+  assert.deepEqual(result.body, { error: 'payment_required', code: 'payment_required' });
+});
 test('fallback adds codes without changing existing fields or success bodies', async () => {
   for (const [status, original, code] of [[409, { error: { type: 'invalid_request_error', message: 'This payment was already used.' } }, 'payment_duplicate'],
     [503, { error: { type: 'upstream_error', message: 'No answer', code: 'no_billable_answer' } }, 'no_billable_answer'],
