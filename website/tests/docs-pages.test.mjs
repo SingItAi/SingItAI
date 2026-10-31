@@ -73,3 +73,9 @@ test('llms error guide uses current code metadata and all table codes exist', as
   const rows = errors.split('\n').filter(l => /^\| \d/.test(l));
   for (const row of rows) for (const code of row.split('|')[2].trim().split(', ')) assert.ok(ERROR_CODES.includes(code), code);
 });
+
+test('MCP key Claude Code command preserves the environment reference', async () => {
+  const html = await read('docs/mcp-key/index.html');
+  assert.ok(html.includes("claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'"));
+  assert.ok(html.includes("Single quotes keep ${SINGIT_API_KEY} as a reference so the key is not written into Claude Code's configuration."));
+});

@@ -43,9 +43,10 @@ test("opening, rendering and creating default to MCP and duration follows the ki
 test("MCP snippets match the documented clients and never interpolate the key", () => {
   const context = setup();
   const examples = context.mcpKeyExamples();
-  assert.equal(examples.claude, 'claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_API_KEY"');
+  assert.equal(examples.claude, "claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'");
   assert.equal(examples.codex, 'codex mcp add singit --url https://app.singitai.app/mcp --bearer-token-env-var SINGIT_API_KEY');
   const docs = readFileSync(new URL("../docs/mcp-key/index.html", import.meta.url), "utf8");
+  assert.ok(docs.includes(examples.claude));
   assert.ok(docs.includes(examples.cursor));
   assert.match(examples.cursor, /Bearer \$\{env:SINGIT_API_KEY\}/);
   const snippetHelpers = section("function mcpKeyExamples()", "function renderNewKey()");
@@ -53,6 +54,7 @@ test("MCP snippets match the documented clients and never interpolate the key", 
   const html = context.renderNewKey();
   assert.equal(html.split("copy-once-test-value").length - 1, 1);
   assert.match(html, /export SINGIT_API_KEY=… in the shell that launches your client/);
+  assert.ok(html.includes("Single quotes keep ${SINGIT_API_KEY} as a reference so the key is not written into Claude Code's configuration."));
   assert.match(html, /Check the limit: ask your agent to call get_limits/);
   assert.match(html, /free and read-only/);
   assert.match(html, /https:\/\/singitai.app\/docs\/mcp-key\//);

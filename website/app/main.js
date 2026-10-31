@@ -1781,7 +1781,7 @@ function renderKeyList() {
 
 function mcpKeyExamples() {
   return {
-    claude: 'claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_API_KEY"',
+    claude: "claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'",
     codex: 'codex mcp add singit --url https://app.singitai.app/mcp --bearer-token-env-var SINGIT_API_KEY',
     cursor: JSON.stringify({ mcpServers: { singit: {
       url: "https://app.singitai.app/mcp",
@@ -1796,6 +1796,7 @@ function renderMcpKeyExamples() {
       <p class="faint" style="margin-top:14px">export SINGIT_API_KEY=… in the shell that launches your client</p>
       <p class="faint">Claude Code:</p>
       <pre class="key-code"><code>${esc(examples.claude)}</code></pre>
+      <p class="faint">Single quotes keep \${SINGIT_API_KEY} as a reference so the key is not written into Claude Code's configuration.</p>
       <p class="faint">Codex:</p>
       <pre class="key-code"><code>${esc(examples.codex)}</code></pre>
       <p class="faint">Cursor: ~/.cursor/mcp.json</p>
