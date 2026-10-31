@@ -430,7 +430,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const pricing = { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS };
   const free = freeTerms(config);
   const freeOffer = free.models.length ? { models: free.models.map((m) => FREE_PREFIX + m), endpoint: ROUTE,
-    perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars } : null;
+    perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars, budgetUsdPerDay: free.budgetUsdPerDay } : null;
   const freeLimits = { perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars };
   const freeListed = free.models.map((m) => ({ id: FREE_PREFIX + m, object: "model", owned_by: "singit", free: true,
     limits: freeLimits }));
@@ -886,7 +886,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `
           + `${freeOffer.perVisitorPerDay} answers a day per network (IPv4 /24, IPv6 /64), up to ${freeOffer.maxTokens} `
-          + `tokens and ${freeOffer.maxChars} characters each, resetting at midnight UTC. When they are used up, drop `
+          + `tokens and ${freeOffer.maxChars} characters each, resetting at midnight UTC. `
+          + (freeOffer.budgetUsdPerDay > 0 ? `Shared daily cost cap: $${freeOffer.budgetUsdPerDay}; free answers may run out for the day (free_budget_exhausted). ` : "")
+          + `When they are used up, drop `
           + `the ${FREE_PREFIX} prefix to pay per answer, or come back tomorrow.`, ""] : []),
       "## Paid routes", "", ...discoverableRoutes().map((route) => `- POST ${base}${route}`), "",
       "## Free", "",

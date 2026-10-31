@@ -1,10 +1,43 @@
 // Free answers ("free/<model>") and the prices in the model list.
 
+import { Readable, Writable } from "node:stream";
+import { ServerResponse } from "node:http";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, ROUTE, createApp } from "../src/app.mjs";
 import { FreeAllowance, freeAnswerCost, freeTerms, networkOf } from "../src/free.mjs";
 import { UnknownModel } from "../src/catalogue.mjs";
+
+function request(app, path, { method = 'GET', body, headers = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = Readable.from(body === undefined ? [] : [Buffer.from(body)]);
+    Object.assign(req, { method, url: path, headers: { host: 'ask.test', ...headers }, httpVersionMajor: 1,
+      httpVersionMinor: 1, httpVersion: '1.1', socket: { remoteAddress: '127.0.0.1' } });
+    if (body !== undefined) req.headers['content-length'] = String(Buffer.byteLength(body));
+    const res = new ServerResponse(req);
+    const chunks = [];
+    const socket = new Writable({ write(chunk, _encoding, done) { chunks.push(Buffer.from(chunk)); done(); } });
+    res.assignSocket(socket);
+    res.on('error', reject);
+    res.on('finish', () => {
+      const raw = Buffer.concat(chunks).toString();
+      const text = raw.slice(raw.indexOf('\r\n\r\n') + 4);
+      try { resolve({ status: res.statusCode, headers: res.getHeaders(), body: text ? JSON.parse(text) : null }); }
+      catch (e) { reject(new Error(text, { cause: e })); }
+    });
+    app.handle(req, res);
+  });
+}
+const apps = new Map();
+const fetch = async (url, options = {}) => {
+  const parsed = new URL(url);
+  const result = await request(apps.get(parsed.origin), parsed.pathname, { ...options, headers: Object.fromEntries(Object.entries(options.headers ?? {}).map(([k,v]) => [k.toLowerCase(), v])) });
+  return new Response(JSON.stringify(result.body), { status: result.status, headers: result.headers });
+};
+function register(t, app) {
+  const url = `http://fake-${apps.size}.test`;
+  apps.set(url, app); t.after(() => apps.delete(url)); return url;
+}
 
 const CONFIG = {
   payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", payToBase: "0x1111111111111111111111111111111111111111",
@@ -42,9 +75,7 @@ async function serve(t, { config = CONFIG, upstream } = {}) {
   });
   const app = createApp(config, { facilitatorClient: fac, upstream: answer, log: () => {}, catalogue,
                                   observed: { share: () => null, record() {} } });
-  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
-  t.after(() => listener.close());
-  return { url: `http://127.0.0.1:${listener.address().port}`, fac, asked };
+  return { url: register(t, app), fac, asked };
 }
 
 const ask = (url, body, ip = "203.0.113.7") => fetch(`${url}${ROUTE}`, { method: "POST",
@@ -123,7 +154,7 @@ test("the model list shows our price, the saving against list price, the fees an
   const list = await response.json();
   assert.deepEqual(list.fees, { markupPct: 30, perAnswerUsd: { [BASE]: 0.001, [SOLANA]: 0.002 } });
   assert.deepEqual(list.free, { models: ["free/deepseek-v4.1-flash"], endpoint: ROUTE, perVisitorPerDay: 2,
-    maxTokens: 400, maxChars: 4000 });
+    maxTokens: 400, maxChars: 4000, budgetUsdPerDay: 0.25 });
   const pro = list.data.find((m) => m.id === "pro-model");
   assert.deepEqual(pro.usdPerMillionTokens, { input: 4, output: 20 });
   // Trusted sellers ask 20% of list; we add 30%: 26% of list, 74% below it.
@@ -190,22 +221,22 @@ test("rotating addresses inside one network does not multiply the free allowance
   assert.equal((await ask(url, FREE_Q, "2001:db8:5:6::1")).status, 200, "the next /64 is another network");
 });
 
-const BUDGET_CONFIG = { ...CONFIG, freeLimits: { perVisitorPerDay: 50, perDay: 50 }, freeBudgetUsdPerDay: 0.000003 };
+const BUDGET_CONFIG = { ...CONFIG, freeLimits: { perVisitorPerDay: 50, perDay: 50 }, freeBudgetUsdPerDay: 0.0005 };
 
 test("with no budget configured, nothing about spending is checked", async (t) => {
-  assert.equal(freeTerms(CONFIG).budgetUsdPerDay, undefined);
-  const { url } = await serve(t, { upstream: async () => ({ content: "x", finishReason: "stop", usage: null }) });
+  assert.equal(freeTerms({ ...CONFIG, freeBudgetUsdPerDay: 0 }).budgetUsdPerDay, 0);
+  const { url } = await serve(t, { config: { ...CONFIG, freeBudgetUsdPerDay: 0 }, upstream: async () => ({ content: "x", finishReason: "stop", usage: null }) });
   assert.equal((await ask(url, FREE_Q)).status, 200, "an answer with no usage is fine without a budget");
 });
 
 test("a daily budget counts each answer's reported cost and refuses with Retry-After once it is spent", async (t) => {
   const { url, asked } = await serve(t, { config: BUDGET_CONFIG, upstream: async () =>
-    ({ content: "x", finishReason: "stop", usage: { buyer_cost_micro: 2 } }) });
+    ({ content: "x", finishReason: "stop", usage: { buyer_cost_micro: 20 } }) });
   assert.equal((await ask(url, FREE_Q, "198.51.100.1")).status, 200);
-  assert.equal((await ask(url, FREE_Q, "192.0.2.1")).status, 200, "4 micro-USDC spent of 3: the budget was reached by this answer");
   const refused = await ask(url, FREE_Q, "203.0.113.1");
   assert.equal(refused.status, 429);
   assert.ok(Number(refused.headers.get("retry-after")) > 0);
+  assert.equal(refused.headers.get("x-ratelimit-limit"), null);
   assert.match((await refused.json()).error.message, /used up/);
   assert.equal(asked.length, 0);
 });
@@ -226,9 +257,7 @@ test("with a budget and a model whose price is unknown, nothing is answered or s
   let called = 0;
   const app = createApp(BUDGET_CONFIG, { facilitatorClient: fac, upstream: async () => { called += 1; return { content: "x", usage: null }; },
     log: () => {}, catalogue: unpriced, observed: { share: () => null, record() {} } });
-  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
-  t.after(() => listener.close());
-  const response = await ask(`http://127.0.0.1:${listener.address().port}`, FREE_Q);
+  const response = await ask(register(t, app), FREE_Q);
   assert.equal(response.status, 503);
   assert.equal(called, 0);
 });

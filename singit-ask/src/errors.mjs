@@ -1,7 +1,7 @@
 // Additive error metadata shared by all Ask routes. Never replace a supplied code.
 export const ERROR_CODES = Object.freeze([
   "invalid_json", "invalid_request", "payload_too_large", "model_not_found", "not_found",
-  "rate_limited", "free_tier_exhausted", "free_tier_busy", "payment_required",
+  "rate_limited", "free_tier_exhausted", "free_budget_exhausted", "free_tier_busy", "payment_required",
   "payment_duplicate", "stale_payment_permit", "no_billable_answer", "no_healthy_sellers", "max_tokens_too_small",
   "upstream_unavailable", "unauthorized", "forbidden", "internal_error",
   "invalid_identity", "request_changed", "already_prepared", "previous_quote_pending", "unknown_model",

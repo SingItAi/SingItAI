@@ -13,7 +13,8 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 | `stale_payment_permit` | Payment permit is stale; obtain a fresh challenge. |
 | `payment_duplicate` | Payment signature was already used. |
 | `rate_limited` | Request allowance exhausted. |
-| `free_tier_exhausted` | Visitor allowance, shared daily allowance or daily budget exhausted. |
+| `free_tier_exhausted` | Visitor allowance or shared daily answer allowance exhausted. |
+| `free_budget_exhausted` | Shared daily free budget spent; returns at midnight UTC. |
 | `free_tier_busy` | Free answer concurrency is full. |
 | `max_tokens_too_small` | Reasoning consumed the output allowance without an answer. |
 | `no_billable_answer` | Nothing billable was returned. |
@@ -39,6 +40,6 @@ An OpenAI-compatible error looks like:
 
 The 402 challenge body contains `x402Version`, `accepts`, `error: "payment_required"` and `code: "payment_required"`. `x402Version` and `accepts` exactly match the decoded `PAYMENT-REQUIRED` header, whose bytes remain unchanged. Existing spend-limit metadata remains available. When a payment was submitted but could not be settled, the 402 has no `PAYMENT-REQUIRED` header and its body is only `{"error":"payment_required","code":"payment_required"}`. `x402Version` and `accepts` are optional in the schema: present for a payment challenge and absent for this settlement failure. A payment refusal without a challenge header retains its existing error and adds its code; it does not invent offers.
 
-429 responses retain `Retry-After` in seconds. Exhausted free daily allowances add `X-RateLimit-Limit` (configured per-visitor daily allowance), `X-RateLimit-Remaining: 0` (no free requests currently available), and `X-RateLimit-Reset` (Unix seconds at the next UTC midnight). A shared daily cap or budget can deny requests before the per-visitor allowance is spent. Busy responses include only `Retry-After: 5`; a daily allowance cannot describe the concurrency limit.
+429 responses retain `Retry-After` in seconds. Exhausted free daily allowances add `X-RateLimit-Limit` (configured per-visitor daily allowance), `X-RateLimit-Remaining: 0` (no free requests currently available), and `X-RateLimit-Reset` (Unix seconds at the next UTC midnight). `free_budget_exhausted` includes only `Retry-After` until midnight UTC, without per-visitor X-RateLimit headers. Busy responses include only `Retry-After: 5`; a daily allowance cannot describe the concurrency limit.
 
 Prices use fixed minute windows. Their 429 headers describe the blocking allowance (60 per visitor, or 3,000 overall), zero remaining requests, and the actual next minute boundary. The existing `Retry-After: 60` remains a conservative wait and can extend past that boundary. Successful responses do not gain rate-limit headers.

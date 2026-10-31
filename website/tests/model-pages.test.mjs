@@ -344,3 +344,10 @@ test("returned DeepSeek model has a page and discovery links without temporary r
   }
   assert.ok(!(await read("_redirects")).includes(`/models/${id}`));
 });
+
+test('published free model snapshot matches Ask defaults and the shared cap', async () => {
+  const { DEFAULT_FREE_MODELS, FREE_DEFAULTS } = await import('../../singit-ask/src/free.mjs');
+  const s = JSON.parse(await readFile(path.join(website, 'data/models-snapshot.json'), 'utf8'));
+  assert.deepEqual(s.free.models, DEFAULT_FREE_MODELS.map(id => `free/${id}`));
+  assert.equal(s.free.budgetUsdPerDay, FREE_DEFAULTS.budgetUsdPerDay);
+});

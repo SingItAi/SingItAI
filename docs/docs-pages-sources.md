@@ -7,7 +7,7 @@ Line numbers refer to this checkout. These pages document existing API behavior,
 | All pages: metadata shell, SVG, navigation, footer, exact tracker | [website/x402-llm-api/index.html:1](../website/x402-llm-api/index.html#L1) |
 | Errors and FAQ: additive envelope codes; unknown codes; 402 challenge and settlement refusal; 429 headers | [singit-ask/ERRORS.md:1](../singit-ask/ERRORS.md#L1) |
 | Errors: complete stable vocabulary and default status mapping; OpenAPI component schemas | [singit-ask/src/errors.mjs:2](../singit-ask/src/errors.mjs#L2) |
-| Errors/limits/FAQ: free defaults, network identity, reset, optional budget, busy response and failure give-back | [singit-ask/src/free.mjs:16](../singit-ask/src/free.mjs#L16) |
+| Errors/limits/FAQ: free defaults, network identity, reset, default $0.25 daily budget and persistence, busy response and failure give-back | [singit-ask/src/free.mjs:16](../singit-ask/src/free.mjs#L16) |
 | Limits: IPv4 /24 and IPv6 /64 grouping | [singit-ask/src/free.mjs:57](../singit-ask/src/free.mjs#L57) |
 | Limits: reset, shared daily cap, budget and concurrency decisions | [singit-ask/src/free.mjs:69](../singit-ask/src/free.mjs#L69) |
 | Limits/errors: free token clamp, headers, failure and returned allowance | [singit-ask/src/free.mjs:147](../singit-ask/src/free.mjs#L147) |
