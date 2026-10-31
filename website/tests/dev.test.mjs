@@ -13,7 +13,7 @@ const GEMINI = { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview", o
 const PLAIN = { id: "plain-model", name: "Plain <b>Model</b>", owned_by: "someone", tags: [],
   usdPerMillionTokens: { input: 1, output: 2 } };
 const LIST = { free: { models: ["free/deepseek-v4.1-flash"] },
-  data: [{ id: "singit-ask", object: "model" }, OPUS, GEMINI, PLAIN] };
+  data: [{ id: "singit-ask", object: "model" }, { id: "singit/auto", object: "model" }, OPUS, GEMINI, PLAIN] };
 
 test("prices read short and never invent a price", () => {
   assert.equal(formatUsd(20), "$20.00");

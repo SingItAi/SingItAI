@@ -80,6 +80,7 @@ test("lists every model /v1/models exposes (answerable, or the default), never t
   const body = await (await fetch(`${url}/pricing.json`)).json();
   const ids = body.models.map((m) => m.id).sort();
   assert.deepEqual(ids, ["claude-sonnet-5.5", "deepseek-v4.1-flash", "pro-model", "singit/auto"]);
+  assert.equal(Object.hasOwn(body.models.find(m => m.id === "singit/auto"), "perMillion"), false);
 });
 
 async function offeredFor(url, modelId) {

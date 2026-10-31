@@ -641,6 +641,9 @@ test("the model list is free and carries Surplus's prices", async (t) => {
   assert.equal(list.default, "deepseek-v4.1-flash");
   assert.deepEqual(list.data.map((m) => m.id), ["singit-ask", "singit/auto", ...DEFAULT_FREE_MODELS.map(id => `free/${id}`), "cheap-model", "pro-model"]);
   assert.equal(list.data.find(m => m.id === "pro-model").usdPerMillionTokens.output, 180);
+  const auto = list.data.find(m => m.id === "singit/auto");
+  assert.equal(Object.hasOwn(auto, "usdPerMillionTokens"), false);
+  assert.equal(Object.hasOwn(auto, "singitUsdPerMillionTokens"), false);
 });
 
 test("ModelCatalogue reads text models with prices, caches them, and survives a failed refresh", async () => {

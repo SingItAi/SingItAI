@@ -537,8 +537,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       data: [...(catalogue.isUnservable?.(config.model) ? [] :
         [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model }]),
-        { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION,
-          usdPerMillionTokens: null, singitUsdPerMillionTokens: null },
+        // Virtual routes have no fixed token rate; priced-model consumers use property presence.
+        { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION },
         ...freeListed,
         ...models.map(m => {
           // The price an answer is expected to cost: what this service's own answers from the model cost, or,
@@ -586,7 +586,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }
     let autoPrice = { upto: null, exact: null };
     try { autoPrice = await pricingFor(config, catalogue, AUTO_ID); } catch { /* no eligible healthy model */ }
-    priced.push({ id: AUTO_ID, name: "SingIt Auto", description: AUTO_DESCRIPTION, ...autoPrice, perMillion: null });
+    priced.push({ id: AUTO_ID, name: "SingIt Auto", description: AUTO_DESCRIPTION, ...autoPrice });
     const chars = PRICING_REFERENCE.content.length;
     res.json({
       generatedAt: new Date().toISOString(),
