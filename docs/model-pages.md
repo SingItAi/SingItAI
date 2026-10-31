@@ -70,3 +70,11 @@ The generator maintains temporary 302 redirects from both forms of each old URL 
 To unhide a model after a paid call answers, remove its entry and run `node scripts/generate-model-pages.mjs`.
 An entry also becomes moot once the server stops listing the model and the next snapshot drops it; remove
 that stale entry when the generator warns that it is absent from the snapshot.
+
+## Agent text files
+
+`node scripts/ask-routes-snapshot.mjs` refreshes `website/data/ask-routes.json` from the free public OpenAPI endpoint. It retains sorted path/method summaries and payment price ranges, excludes unsupported media routes, and records public operations without payment metadata as zero-priced. Private operations without payment metadata have no price. For offline input use `--input openapi.json --fetched-at <UTC ISO timestamp>`; `--out` selects an output file. No model call or payment is made.
+
+Run `node scripts/generate-model-pages.mjs` after refreshing either snapshot. Its dependency-free llms renderer writes the task and money blocks in `website/llms.txt`, a short Models block, `website/llms-models.txt` (all visible model links, token prices and reference-request prices), and `website/llms-full.txt` (the llms body without markers followed by that models list). The model hold list applies to all three files. Missing required routes fail generation rather than supplying guessed prices. Route ranges come from `ask-routes.json`; markup, settlement fees and reference requests come from `models-snapshot.json`. The Errors section and existing introductory sections remain maintained by hand against the current API implementation.
+
+Verify with `node --test website/tests/*.test.mjs` and `node scripts/generate-model-pages.mjs --check`. Both use committed snapshots without network access, npm packages or imports from the Ask service. The two extra text files have explicit plain-text headers and are excluded from the sitemap. Review and commit refreshed snapshots together with generated text.

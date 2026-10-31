@@ -1,0 +1,331 @@
+{
+  "fetchedAt": "2026-10-31T08:30:49.524Z",
+  "source": "https://ask.singitai.app/openapi.json",
+  "routes": [
+    {
+      "path": "/health",
+      "method": "GET",
+      "summary": "Get service, model and payment-rail status",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/numbers.json",
+      "method": "GET",
+      "summary": "Get measured usage numbers with definitions",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/pricing.json",
+      "method": "GET",
+      "summary": "Get per-model upto/exact prices for one reference question",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/audio/models",
+      "method": "GET",
+      "summary": "List voice models and their prices",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/audio/speech",
+      "method": "POST",
+      "summary": "Generate speech with any of 11 voice models",
+      "price": {
+        "min": "0.001",
+        "max": "0.336",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/claude-haiku-5.5",
+      "method": "POST",
+      "summary": "Generate a Claude Haiku 5.5 chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.005921",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/claude-opus-5.5",
+      "method": "POST",
+      "summary": "Generate a Claude Opus 5.5 chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.165488",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/claude-sonnet-5.5",
+      "method": "POST",
+      "summary": "Generate a Claude Sonnet 5.5 chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.080416",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/completions",
+      "method": "POST",
+      "summary": "Generate an answer from a language model",
+      "price": {
+        "min": "0.001",
+        "max": "1.225042",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/deepseek-v4-pro",
+      "method": "POST",
+      "summary": "Generate a DeepSeek V4 Pro chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.030183",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/deepseek-v4.1-flash",
+      "method": "POST",
+      "summary": "Generate a DeepSeek V4.1 Flash chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.004195",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/gemini-3.1-pro-preview",
+      "method": "POST",
+      "summary": "Generate a Gemini 3.1 Pro chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.099511",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/gemini-3.8-flash",
+      "method": "POST",
+      "summary": "Generate a Gemini 3.8 Flash chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.034347",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/glm-5.3",
+      "method": "POST",
+      "summary": "Generate a GLM 5.3 chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.010129",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/gpt-5.5",
+      "method": "POST",
+      "summary": "Generate a GPT-5.5 chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.20584",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/gpt-5.6-sol",
+      "method": "POST",
+      "summary": "Generate a GPT-5.6 Sol chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.158832",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/gpt-5.6-terra",
+      "method": "POST",
+      "summary": "Generate a GPT-5.6 Terra chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.083536",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/grok-4.7",
+      "method": "POST",
+      "summary": "Generate a Grok 4.7 chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.078056",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/kimi-k3",
+      "method": "POST",
+      "summary": "Generate a Kimi K3 chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.031431",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/chat/qwen3.8-max-0902",
+      "method": "POST",
+      "summary": "Generate a Qwen3.8 Max chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.074176",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/exa/answer",
+      "method": "POST",
+      "summary": "Generate a cited answer with Exa",
+      "price": {
+        "min": "0.001",
+        "max": "0.05",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/exa/contents",
+      "method": "POST",
+      "summary": "Fetch page contents from Exa for up to 10 URLs",
+      "price": {
+        "min": "0.001",
+        "max": "0.05",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/exa/search",
+      "method": "POST",
+      "summary": "Search the web with Exa and return ranked results",
+      "price": {
+        "min": "0.001",
+        "max": "0.05",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/images/generations",
+      "method": "POST",
+      "summary": "Generate images with any of 36 image models",
+      "price": {
+        "min": "0.014",
+        "max": "2.602",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/images/models",
+      "method": "GET",
+      "summary": "List image models and their prices",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/messages",
+      "method": "POST",
+      "summary": "Create a message in Anthropic's format, any listed model",
+      "price": {
+        "min": "0.001",
+        "max": "1.225042",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/models",
+      "method": "GET",
+      "summary": "List models that can be asked for now, with prices",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/prices",
+      "method": "GET",
+      "summary": "List the crypto, metal and currency symbols offered",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/prices/crypto/{symbol}",
+      "method": "GET",
+      "summary": "Get a cryptocurrency's USD price from Chainlink on Base",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/prices/fx/{base}/{quote}",
+      "method": "GET",
+      "summary": "Get an exchange rate between two of 30 currencies",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/prices/metal/{symbol}",
+      "method": "GET",
+      "summary": "Get the USD price of gold (XAU) or silver (XAG)",
+      "price": {
+        "min": 0,
+        "max": 0,
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/responses",
+      "method": "POST",
+      "summary": "Create a response in OpenAI's format, any listed model",
+      "price": {
+        "min": "0.001",
+        "max": "1.225042",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/wallet/{address}/reconciliation",
+      "method": "GET",
+      "summary": "Get a wallet's SingIt spend and allowance (owner only)"
+    }
+  ]
+}
