@@ -40,19 +40,28 @@ test('discovery card declares MCP only, with required AgentCard fields', async (
   }
   urls(card);
 });
-test('skill names real tools and preserves limits wording', async () => {
+test('skill and key guide name real tools and preserve limits and refusal wording', async () => {
   const skill = await read('website/SKILL.md');
+  const page = await read('website/docs/mcp-key/index.html');
   assert.match(skill, /^---\nname: singit\ndescription: .+\n---/);
   assert.ok(skill.split('\n').length < 150);
-  assert.doesNotMatch(skill, forbidden);
+  assert.doesNotMatch(skill + page, forbidden);
   const tools = await servedTools();
   const toolRows = skill.split('\n').filter(l => /^\| (?:get_|list_|web_|read_|resolve_)/.test(l));
   const listed = toolRows.flatMap(l => l.split('|')[1].trim().split(', '));
   assert.deepEqual([...listed].sort(), [...tools].sort());
-  const candidates = new Set(skill.match(/\b(?:get|list|web|read|resolve)_[a-z_]+\b/g));
+  const candidates = new Set((skill + page.replace(/<[^>]+>/g, '')).match(/\b(?:get|list|web|read|resolve)_[a-z_]+\b/g));
   for (const name of candidates) assert.ok(tools.has(name), name);
-  assert.match(skill.replace(/\s+/g, ' '), /not limit (?:what an agent spends anywhere else|spending elsewhere)/);
-  assert.match(skill, /not protect other people's/);
+  for (const [, tool] of page.matchAll(/data-mcp-tool="([^"]+)"/g)) assert.ok(tools.has(tool));
+  const keys = await read('sign402-gateway/sign402_gateway/web_api_keys.py');
+  const parts = keys.match(/raise ApiError\(429, f"(This key's daily limit[^"\n]+)"\n\s+"([^"\n]+)"/);
+  const message = (parts[1] + parts[2]).replace('{daily / 1e6:g}', '0.01');
+  const refusal = page.match(/<blockquote data-refusal>([^<]+)<\/blockquote>/)[1];
+  assert.ok(message.includes(refusal));
+  for (const text of [skill, page]) {
+    assert.match(text.replace(/\s+/g, ' '), /not limit (?:what an agent spends anywhere else|spending elsewhere)/);
+    assert.match(text, /not protect other people's/);
+  }
 });
 test('onboarding files have content types, CORS and survive the static build', async () => {
   const headers = await read('website/_headers');

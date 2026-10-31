@@ -64,3 +64,28 @@ Run from the build machine against https://ask.singitai.app, unpaid and free (no
 | `curl -s -w '\n%{http_code}\n' https://ask.singitai.app/nope` | 404, `{"error":{"type":"invalid_request_error","message":"Cannot GET /nope","code":"not_found"}}` |
 | `curl -s -X POST https://ask.singitai.app/v1/chat/completions -H 'Content-Type: application/json' -d '{bad'` | 400, `{"error":{"type":"invalid_request_error","message":"Send valid JSON.","code":"invalid_json"}}` |
 | `curl -s https://ask.singitai.app/openapi.json` | `components.schemas` has ErrorResponse, AnthropicErrorResponse, PaymentRequired402, RateLimited429 |
+
+## MCP key offer and agent onboarding (31 October 2026)
+
+Documentation/discovery only. No live key, model, search or payment calls were made.
+
+| Claim / page | Repository source (starting line; related code follows) |
+| --- | --- |
+| MCP key: wallet signs name, daily/per-request caps and duration; minimum daily $0.01, per-request cannot exceed daily; defaults and maxima | [sign402-gateway/sign402_gateway/web_api_keys.py:36](../sign402-gateway/sign402_gateway/web_api_keys.py#L36), [web_api_keys.py:134](../sign402-gateway/sign402_gateway/web_api_keys.py#L134) |
+| MCP key: shown once, hashed storage, 10 active keys, default search/tools scopes | [sign402-gateway/sign402_gateway/web_accounts.py:50](../sign402-gateway/sign402_gateway/web_accounts.py#L50), [web_accounts.py:388](../sign402-gateway/sign402_gateway/web_accounts.py#L388) |
+| MCP key: immediate revocation without wallet signature; wrong/revoked key refused | [sign402-gateway/sign402_gateway/web_api_keys.py:176](../sign402-gateway/sign402_gateway/web_api_keys.py#L176), [web_api_keys.py:232](../sign402-gateway/sign402_gateway/web_api_keys.py#L232), [web_accounts.py:405](../sign402-gateway/sign402_gateway/web_accounts.py#L405) |
+| MCP key and skill: keyless lookups; keyed read-only tools; search and tools scopes; Base-only data; 60/minute and keyless unset headers | [sign402-gateway/sign402_gateway/web_mcp.py:107](../sign402-gateway/sign402_gateway/web_mcp.py#L107), [web_mcp.py:213](../sign402-gateway/sign402_gateway/web_mcp.py#L213), [web_mcp.py:470](../sign402-gateway/sign402_gateway/web_mcp.py#L470), [web_mcp.py:616](../sign402-gateway/sign402_gateway/web_mcp.py#L616), [web_api_keys.py:311](../sign402-gateway/sign402_gateway/web_api_keys.py#L311) |
+| MCP key and skill: allowance prerequisite and exact error | [sign402-gateway/sign402_gateway/web_internal.py:163](../sign402-gateway/sign402_gateway/web_internal.py#L163), [web_internal.py:332](../sign402-gateway/sign402_gateway/web_internal.py#L332) |
+| MCP key refusal: spent + held + next maximum; static refusal wording; no purchase on refusal; isError | [sign402-gateway/sign402_gateway/web_api_keys.py:325](../sign402-gateway/sign402_gateway/web_api_keys.py#L325), [web_api_keys.py:401](../sign402-gateway/sign402_gateway/web_api_keys.py#L401), [web_mcp.py:604](../sign402-gateway/sign402_gateway/web_mcp.py#L604) |
+| MCP key demo: derived $0.01 daily/per-call example, not a live measurement; search billing and cap regression | [sign402-gateway/tests/test_web_mcp.py:644](../sign402-gateway/tests/test_web_mcp.py#L644), [sign402-gateway/tests/test_api_keys.py:167](../sign402-gateway/tests/test_api_keys.py#L167), [web_api_keys.py:325](../sign402-gateway/sign402_gateway/web_api_keys.py#L325) |
+| MCP key and skill: get_limits/get_receipts report key spend, held budget and receipts | [sign402-gateway/sign402_gateway/web_mcp.py:649](../sign402-gateway/sign402_gateway/web_mcp.py#L649), [web_mcp.py:698](../sign402-gateway/sign402_gateway/web_mcp.py#L698) |
+| MCP key and skill boundary: server caps bind authenticated key routes only; no authority over external spending or other agents' wallets | [sign402-gateway/sign402_gateway/web_api_keys.py:234](../sign402-gateway/sign402_gateway/web_api_keys.py#L234), [web_api_keys.py:401](../sign402-gateway/sign402_gateway/web_api_keys.py#L401), [sdk/typescript/README.md:10](../sdk/typescript/README.md#L10), [sdk/python/README.md:3](../sdk/python/README.md#L3) |
+| MCP key and skill Base/Solana distinction and fresh post-pause grant | [website/docs/limits/index.html:143](../website/docs/limits/index.html#L143), [sign402-gateway/sign402_gateway/solana_allowance.py:249](../sign402-gateway/sign402_gateway/solana_allowance.py#L249), [website/agent-spending-limits/index.html:252](../website/agent-spending-limits/index.html#L252) |
+| MCP key and skill Claude Code, Codex and Cursor configurations; examples reused, no new live verification | [website/docs/mcp/index.html:108](../website/docs/mcp/index.html#L108) |
+| Skill: free first answer and allowance; x402 header flow, upto preference and error handling | [singit-ask/src/free.mjs:16](../singit-ask/src/free.mjs#L16), [docs/first-paid-call.md:1](../docs/first-paid-call.md#L1), [singit-ask/ERRORS.md:1](../singit-ask/ERRORS.md#L1) |
+| Skill: TypeScript and Python package capabilities, client caps and daily memory counter, Solana exact-only, framework retries | [sdk/typescript/README.md:1](../sdk/typescript/README.md#L1), [sdk/python/README.md:1](../sdk/python/README.md#L1) |
+| Card: MCP interface, discovery only; does not assert an A2A task service | [sign402-gateway/sign402_gateway/web_mcp.py:1](../sign402-gateway/sign402_gateway/web_mcp.py#L1), [web_mcp.py:550](../sign402-gateway/sign402_gateway/web_mcp.py#L550) |
+
+The suggested $1/day, $0.25/request, seven-day terms are an example, not defaults.
+The custom AgentCard binding and its protocol identifier are specified by this task;
+no A2A task capability or external conformance verification is claimed.

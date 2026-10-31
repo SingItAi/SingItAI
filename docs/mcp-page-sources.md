@@ -43,3 +43,12 @@ Free checks run from the build machine:
 - Client libraries (not on this page): the 16 tools were listed with `@langchain/mcp-adapters` 2.0.1, `@ai-sdk/mcp` 2.0.88, `langchain-mcp-adapters` 0.3.2 and the OpenAI Agents SDK 0.20.0 MCP client.
 - Claude Code: syntax and `${VAR}` header expansion read from https://code.claude.com/docs/en/mcp on 31 October 2026; not run.
 - Windsurf / Devin Desktop: read from the vendor docs; not run on an installation.
+
+## Owner-set MCP key guide
+
+The hand-written “Get a key” section now links to `/docs/mcp-key/`. The generated
+tool table is unchanged and was regenerated offline with
+`node scripts/generate-mcp-page.mjs`. Claims for the linked guide are recorded in
+`docs/docs-pages-sources.md` under “MCP key offer and agent onboarding”. No new
+live verification was performed. Client snippets reuse this page's existing
+repository-verified configurations and environment-variable credentials.

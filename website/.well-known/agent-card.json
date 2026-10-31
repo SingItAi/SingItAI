@@ -13,7 +13,7 @@
     "organization": "SingIt",
     "url": "https://singitai.app/"
   },
-  "documentationUrl": "https://singitai.app/docs/mcp/#key",
+  "documentationUrl": "https://singitai.app/docs/mcp-key/",
   "capabilities": {},
   "defaultInputModes": [
     "text/plain"
