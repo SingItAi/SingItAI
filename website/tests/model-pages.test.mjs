@@ -153,7 +153,7 @@ test("all committed pages are current, crawlable and follow content rules", asyn
     const html = await read(`${dir}/index.html`);
     const url = `https://singitai.app/${dir}/`;
     assert.ok(sitemap.includes(`<loc>${url}</loc>`), dir);
-    assert.ok(generatedLlms.includes(`](${url})`), dir);
+    assert.ok((dir.startsWith("models/") && dir !== "models/all" ? await read("llms-models.txt") : generatedLlms).includes(`](${url})`), dir);
     assert.equal((html.match(/<h1\b/g) ?? []).length, 1, dir);
     assert.ok(html.includes(`<link rel="canonical" href="${url}">`), dir);
     assert.ok(html.includes(`<meta property="og:url" content="${url}">`), dir);
@@ -325,7 +325,7 @@ test("held model has no page or discovery links and both temporary redirects exi
   const rules = (await read("_redirects")).split("\n");
   for (const { id } of hold.hidden) {
     await assert.rejects(stat(path.join(website, "models", id)), { code: "ENOENT" });
-    for (const file of ["sitemap.xml", "llms.txt", "models/all/index.html"]) {
+    for (const file of ["sitemap.xml", "llms-models.txt", "models/all/index.html"]) {
       assert.ok(!(await read(file)).includes(`/models/${id}/`), file);
     }
     assert.ok(rules.includes(`/models/${id} /models/all/ 302`));
@@ -339,7 +339,7 @@ test("returned DeepSeek model has a page and discovery links without temporary r
   const hold = JSON.parse(await readFile(path.join(root, "scripts/hidden-models.json"), "utf8"));
   assert.deepEqual(hold, { hidden: [] });
   assert.ok((await read(`models/${id}/index.html`)).includes(`/models/${id}/`));
-  for (const file of ["sitemap.xml", "llms.txt", "models/all/index.html"]) {
+  for (const file of ["sitemap.xml", "llms-models.txt", "models/all/index.html"]) {
     assert.ok((await read(file)).includes(`/models/${id}/`), file);
   }
   assert.ok(!(await read("_redirects")).includes(`/models/${id}`));
