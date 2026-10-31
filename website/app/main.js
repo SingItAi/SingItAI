@@ -1699,8 +1699,9 @@ function usdOf(x) {
 
 const TOPUP_PRESETS = [1, 5, 10, 20];
 const KEY_KINDS = {
-  code: { label: "My code", daily: "5", per: "0.25", hint: "Scripts, bots and apps: short questions." },
-  agent: { label: "Claude Code", daily: "20", per: "2", hint: "Coding agents send long contexts: up to $2 a request." },
+  mcp: { label: "Agent via MCP", daily: "1", per: "0.05", days: 7, hint: "For an agent in Claude Code, Cursor or Codex over MCP: $1 a day, $0.05 a request, 7 days." },
+  code: { label: "My code", daily: "5", per: "0.25", days: 90, hint: "Scripts, bots and apps: short questions." },
+  agent: { label: "Claude Code", daily: "20", per: "2", days: 90, hint: "Coding agents send long contexts: up to $2 a request." },
 };
 const networkFee = () => (state.session?.chain === "solana" ? 0.002 : 0.001);
 const balanceOn = () => state.balance && !state.balance.off && !state.balance.failed;
@@ -1778,6 +1779,33 @@ function renderKeyList() {
     </div></div>`;
 }
 
+function mcpKeyExamples() {
+  return {
+    claude: 'claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_API_KEY"',
+    codex: 'codex mcp add singit --url https://app.singitai.app/mcp --bearer-token-env-var SINGIT_API_KEY',
+    cursor: JSON.stringify({ mcpServers: { singit: {
+      url: "https://app.singitai.app/mcp",
+      headers: { Authorization: "Bearer ${env:SINGIT_API_KEY}" },
+    } } }, null, 2),
+  };
+}
+
+function renderMcpKeyExamples() {
+  const examples = mcpKeyExamples();
+  return `
+      <p class="faint" style="margin-top:14px">export SINGIT_API_KEY=… in the shell that launches your client</p>
+      <p class="faint">Claude Code:</p>
+      <pre class="key-code"><code>${esc(examples.claude)}</code></pre>
+      <p class="faint">Codex:</p>
+      <pre class="key-code"><code>${esc(examples.codex)}</code></pre>
+      <p class="faint">Cursor: ~/.cursor/mcp.json</p>
+      <pre class="key-code"><code>${esc(examples.cursor)}</code></pre>
+      <p class="faint">Check the limit: ask your agent to call get_limits</p>
+      <pre class="key-code"><code>${esc("get_limits")}</code></pre>
+      <p class="faint">get_limits is free and read-only. Paid MCP search and data tools need the allowance set up in the app. The key's caps apply only to calls made with that key.</p>
+      <p><a href="https://singitai.app/docs/mcp-key/">MCP key documentation</a></p>`;
+}
+
 function renderNewKey() {
   if (!state.newKey) return "";
   return `
@@ -1786,10 +1814,11 @@ function renderNewKey() {
       <p class="faint">It is shown this once. SingIt keeps only a fingerprint of it.</p>
       <div class="key-box"><code class="mono" id="new-key">${esc(state.newKey)}</code>
         <button class="btn btn-primary btn-sm" data-action="copy-key">Copy</button></div>
+      ${state.newKeyKind === "mcp" ? renderMcpKeyExamples() : `
       ${balanceOn() ? `<p class="faint" style="margin-top:14px">In Claude Code:</p>
       <pre class="key-code"><code>${esc(claudeCodeExample(state.newKey))}</code></pre>` : ""}
       <p class="faint" style="margin-top:14px">With the OpenAI SDK:</p>
-      <pre class="key-code"><code>${esc(keyExample(state.newKey))}</code></pre>
+      <pre class="key-code"><code>${esc(keyExample(state.newKey))}</code></pre>`}
       <div class="row" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-action="hide-key">I saved it</button></div>
     </div></div>`;
 }
@@ -1879,24 +1908,24 @@ function renderDevModal(m) {
       </div>`);
   }
   if (m.type === "create-key") {
-    const kind = KEY_KINDS[m.kind] || KEY_KINDS.code;
+    const kind = KEY_KINDS[m.kind] || KEY_KINDS.mcp;
     return modal(`
       <div class="approval-head"><div class="avatar">${mark()}</div>
         <div><strong>Create an API key</strong><span>Your wallet signs its limits</span></div></div>
       <div class="segmented" role="group" aria-label="For">${Object.entries(KEY_KINDS).map(([id, k]) => `
-        <button class="${id === m.kind ? "on" : ""}" data-action="key-kind" data-kind="${id}" aria-pressed="${id === m.kind}">${k.label}</button>`).join("")}</div>
+        <button class="${k === kind ? "on" : ""}" data-action="key-kind" data-kind="${id}" aria-pressed="${k === kind}">${k.label}</button>`).join("")}</div>
       <p class="faint" style="margin-top:10px">${kind.hint}</p>
       <div class="field" style="margin-top:12px"><label for="key-name">Name</label><input class="input" id="key-name" maxlength="40" value="${esc(m.name || kind.label)}"></div>
       <div class="fields" style="margin-top:12px">
         <div class="field"><label for="key-daily">$ a day</label><input class="input" id="key-daily" inputmode="decimal" value="${kind.daily}"></div>
         <div class="field"><label for="key-per">$ a request</label><input class="input" id="key-per" inputmode="decimal" value="${kind.per}"></div>
-        <div class="field"><label for="key-days">Days</label><input class="input" id="key-days" type="number" min="1" max="365" value="90"></div>
+        <div class="field"><label for="key-days">Days</label><input class="input" id="key-days" type="number" min="1" max="365" value="${kind.days}"></div>
       </div>
       <div class="actions" style="margin-top:16px">
         <button class="btn btn-primary" data-action="create-key">Create key</button>
         <button class="btn btn-ghost" data-action="dismiss-button">Cancel</button>
       </div>
-      <p class="hint">A key never spends more than these limits. It cannot move your funds or change your limits.</p>`);
+      <p class="hint">These caps apply only to calls made with this key. It cannot move your funds or change your limits.</p>`);
   }
   if (m.type === "refund") {
     return modal(`
@@ -1919,7 +1948,7 @@ function topupRows(amount, fee) {
 }
 
 async function createKey() {
-  const kind = state.modal?.kind || "code";
+  const kind = state.modal?.kind || "mcp";
   const terms = { name: $("#key-name").value.trim(), dailyUsd: Number($("#key-daily").value),
                   perRequestUsd: Number($("#key-per").value), days: Number($("#key-days").value) };
   if (!terms.name) { toast("Name the key first.", true); return; }
@@ -2202,7 +2231,7 @@ const actions = {
   "topup-preset": (el) => { state.modal = { type: "topup", amount: Number(el.dataset.amount) }; render(); },
   "open-auto-topup": () => { state.modal = { type: "auto-topup" }; render(); },
   "auto-toggle": (el) => { state.modal = { ...state.modal, on: el.dataset.on === "1" }; render(); },
-  "open-create-key": () => { state.modal = { type: "create-key", kind: "code" }; render(); },
+  "open-create-key": () => { state.modal = { type: "create-key", kind: "mcp" }; render(); },
   "key-kind": (el) => { state.modal = { type: "create-key", kind: el.dataset.kind }; render(); },
   "open-refund": () => { state.modal = { type: "refund" }; render(); },
   "balance-topup": async () => {
