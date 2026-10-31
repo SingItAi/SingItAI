@@ -43,7 +43,7 @@ export function addCreditRoute(app, config, { facilitatorClient }) {
   const { minAtomic, maxAtomic, stepAtomic } = CREDIT_LIMITS;
   app.post(CREDIT_ROUTE, (req, res, next) => {
     if (readCredit(req.body)) return next();
-    res.status(400).json({ error: { type: "invalid_request_error", message: `Send {"amountAtomic": "<USDC micro-units>"}: `
+    res.status(400).json({ error: { type: "invalid_request_error", code: "invalid_request", message: `Send {"amountAtomic": "<USDC micro-units>"}: `
       + `${minAtomic} to ${maxAtomic}, in steps of ${stepAtomic}.` } });
   });
   app.use(paymentMiddleware(withBuilderCode({ [`POST ${CREDIT_ROUTE}`]: { accepts: offers, mimeType: "application/json",

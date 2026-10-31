@@ -115,7 +115,7 @@ function limiter(now = Date.now) {
     const m = Math.floor(now() / 60_000);
     if (m !== minute) { minute = m; total = 0; visitors.clear(); }
     const used = visitors.get(visitor) ?? 0;
-    if (used >= PRICE_TERMS.perVisitorPerMinute || total >= PRICE_TERMS.perMinute) return false;
+    if (used >= PRICE_TERMS.perVisitorPerMinute || total >= PRICE_TERMS.perMinute) return { limit: used >= PRICE_TERMS.perVisitorPerMinute ? PRICE_TERMS.perVisitorPerMinute : PRICE_TERMS.perMinute, reset: (m + 1) * 60 };
     visitors.set(visitor, used + 1); total += 1;
     return true;
   };
@@ -125,8 +125,10 @@ export function addPriceRoutes(app, { book, open, now = Date.now }) {
   const allow = limiter(now);
   const visitorOf = (req) => req.get("cf-connecting-ip") || req.ip || "unknown";
   const gate = (req, res, next) => {
-    if (allow(visitorOf(req))) return next();
-    res.set("Retry-After", "60").status(429).json({ error: { type: "rate_limit_error",
+    const blocked = allow(visitorOf(req));
+    if (blocked === true) return next();
+    res.set({ "X-RateLimit-Limit": String(blocked.limit), "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(blocked.reset) });
+    res.set("Retry-After", "60").status(429).json({ error: { type: "rate_limit_error", code: "rate_limited",
       message: `Free prices: up to ${PRICE_TERMS.perVisitorPerMinute} requests a minute. Try again in a minute.` } });
   };
   const missing = (res, what) => res.status(404).json({ error: { type: "invalid_request_error", code: "not_found",

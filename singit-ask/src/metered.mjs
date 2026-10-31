@@ -143,7 +143,7 @@ function discoveryChallenge(httpServer) {
       await ready();
       result = await httpServer.processHTTPRequest(context);
     } catch {
-      return res.status(503).json({ error: { message: "Try again shortly.", type: "upstream_error" } });
+      return res.status(503).json({ error: { message: "Try again shortly.", type: "upstream_error", code: "upstream_unavailable" } });
     }
     // With no payment header ever reaching it, processHTTPRequest never verifies or settles: anything but the
     // challenge (no route matched) is left to Express's own 404.
@@ -274,7 +274,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     if (!probeBody?.model && !["GET", "HEAD"].includes(req.method) && !isDiscoveryProbe(req)) return next();
     if (!catalogue?.isUnservable?.(model)) return next();
     res.set("Retry-After", String(catalogue.unservableRetryAfter(model))).status(503).json({
-      error: { type: "upstream_error",
+      error: { type: "upstream_error", code: "no_healthy_sellers",
         message: "No seller can serve that model right now. Nothing was paid; try again later." } });
   });
   app.post(route, async (req, res, next) => {
@@ -292,6 +292,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       if (error.retryAfter) res.set("Retry-After", String(error.retryAfter));
       if (!error.status) log(`singit-ask: model list failure (${error.name})`);
       res.status(error.status ?? 503).json({ error: { message: error.status ? error.message : "Try again shortly.",
+        code: error.code ?? (error.retryAfter ? "no_healthy_sellers" : error.status === 404 ? "model_not_found" : error.status === 400 ? "invalid_request" : "upstream_unavailable"),
         type: error.status ? "invalid_request_error" : "upstream_error" } });
     }
   });

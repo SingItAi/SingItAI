@@ -126,7 +126,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
     } catch (error) {
       const status = error instanceof UnknownModel ? 404 : error.status ?? 503;
       res.status(status).json({ error: { type: status === 503 ? "upstream_error" : "invalid_request_error",
-        code: status === 404 ? "model_not_found" : undefined, message: status === 503 ? "Try again shortly." : error.message } });
+        code: status === 404 ? "model_not_found" : status === 503 ? "upstream_unavailable" : "invalid_request", message: status === 503 ? "Try again shortly." : error.message } });
     }
   });
   addPaymentRoute(app, { [`POST ${SPEECH_ROUTE}`]: {
@@ -147,7 +147,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;
     const seen = digest(header);
-    if (used.has(seen)) return res.status(409).json({ error: { type: "invalid_request_error", message: "This payment was already used." } });
+    if (used.has(seen)) return res.status(409).json({ error: { type: "invalid_request_error", code: "payment_duplicate", message: "This payment was already used." } });
     used.set(seen, Date.now());
     for (const [k, at] of used) if (Date.now() - at > 3_600_000) used.delete(k);
     const { request, listAtomic } = priced.get(req.body);
@@ -160,12 +160,12 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
       audio = Buffer.from(await response.arrayBuffer());
     } catch (error) {
       log(`singit-ask: voice model unreachable (${error.name})`);
-      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "No audio was made. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer", message: "No audio was made. You were not charged." } });
     }
     const type = response.headers.get("content-type") ?? "";
     if (!response.ok || !audio.length || !/^audio\//.test(type)) {
       log(`singit-ask: voice model ${request.model} answered HTTP ${response.status} (${type}, ${audio.length} bytes)`);
-      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", message: "No audio was made. You were not charged." } });
+      return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer", message: "No audio was made. You were not charged." } });
     }
     const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);

@@ -10,6 +10,7 @@
 // with this service's own key; the payer never sees or needs it.
 
 import express from "express";
+import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } from "./errors.mjs";
 import { HealthStats, FacilitatorCheck, healthBody, numbersBody } from "./health-stats.mjs";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
@@ -97,7 +98,7 @@ export async function chooseModel(config, catalogue, input) {
     }
     return { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) };
   } catch (error) {
-    if (error instanceof UnknownModel) throw new RequestError(400, error.message);
+    if (error instanceof UnknownModel) throw Object.assign(new RequestError(400, error.message), { code: "model_not_found" });
     throw error;
   }
 }
@@ -336,18 +337,15 @@ const EXAMPLE = {
 
 // Error bodies, as the handlers send them: `{ error: { type, message } }`; /v1/messages uses Anthropic's own
 // envelope. Only codes a route really answers with are listed in openapi.json (test/openapi-errors.test.mjs).
-const ERROR_SCHEMA = { type: "object", required: ["error"], properties: { error: { type: "object", required: ["type", "message"],
-  properties: { type: { type: "string", enum: ["invalid_request_error", "upstream_error", "rate_limit_error"] },
-                message: { type: "string" }, code: { type: "string", examples: ["model_not_found"] } } } } };
-const ANTHROPIC_ERROR_SCHEMA = { type: "object", required: ["type", "error"], properties: { type: { type: "string", enum: ["error"] },
-  error: { type: "object", required: ["type", "message"], properties: {
-    type: { type: "string", enum: ["invalid_request_error", "not_found_error", "api_error"] }, message: { type: "string" } } } } };
+const ERROR_SCHEMA = errorRef("ErrorResponse");
+const ANTHROPIC_ERROR_SCHEMA = errorRef("AnthropicErrorResponse");
 const errorBody = (description, schema = ERROR_SCHEMA) => ({ description, content: { "application/json": { schema } } });
 const PAYMENT_REQUIRED = { description: "Payment Required: the x402 v2 challenge is in the PAYMENT-REQUIRED response header "
-    + "(base64 JSON: x402Version, resource, accepts); the body is an empty JSON object. Sign one of the accepts and retry "
-    + "with PAYMENT-SIGNATURE.",
+    + "(base64 JSON: x402Version, resource, accepts); the body contains matching x402Version and accepts only for a payment challenge. Sign one of the accepts and retry "
+    + "with PAYMENT-SIGNATURE. If a payment was submitted but could not be settled, the 402 has no PAYMENT-REQUIRED header "
+    + "and the body contains only error and code (payment_required).",
   headers: { "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
-  content: { "application/json": { schema: { type: "object", maxProperties: 0 } } } };
+  content: { "application/json": { schema: errorRef("PaymentRequired402") } } };
 const BAD_REQUEST = "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged";
 const TOO_LARGE = "The JSON body is over 128 kB; nothing was charged";
 const UNAVAILABLE = "The model list or a seller could not be reached; try again shortly. Nothing was charged";
@@ -383,15 +381,17 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.disable("x-powered-by");
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");
+  app.use(errorCodesMiddleware);
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
   // ...with a JSON body like every other refusal, not Express's HTML page (documented in openapi.json).
   app.use((error, req, res, next) => {
     const tooLarge = error.type === "entity.too.large";
     if (!tooLarge && error.type !== "entity.parse.failed") return next(error);
+    const code = tooLarge ? "payload_too_large" : "invalid_json";
     const message = tooLarge ? "The request body is too large." : "Send valid JSON.";
     res.status(tooLarge ? 413 : 400).json(req.path === "/v1/messages"
-      ? { type: "error", error: { type: "invalid_request_error", message } }
-      : { error: { type: "invalid_request_error", message } });
+      ? { type: "error", error: { type: "invalid_request_error", message, code } }
+      : { error: { type: "invalid_request_error", message, code } });
   });
 
   // The caller's own spend limit in the 402 (X-SingIt-Limiter) and a receipt on every settled answer: only headers
@@ -478,7 +478,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     if (catalogue && catalogue.models === null) {
       res.set("Retry-After", "5");
       return res.status(503).json({ error: { message: "The model catalogue has not loaded yet. Try again shortly.",
-        type: "upstream_error" } });
+        type: "upstream_error", code: "upstream_unavailable" } });
     }
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
     const answerable = await Promise.all(listed.map((m) => (catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
@@ -540,8 +540,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             200: { description: "The answer, with what it was charged",
                    content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
             ...paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }),
-            429: { ...errorBody("Free answers (model free/…) used up for today, or busy; nothing was charged"),
-                   headers: { "Retry-After": { description: "Seconds until the next free answer", schema: { type: "string" } } } },
+            429: { ...errorBody("Free answers (model free/…) used up for today, or busy; nothing was charged", errorRef("RateLimited429")),
+                   headers: { ...Object.fromEntries(Object.entries(RATE_LIMIT_HEADERS).map(([name, header]) => [name, { ...header, description: header.description + "; daily per-visitor allowance, omitted while busy" }])), "Retry-After": { description: "Seconds until the next free answer", schema: { type: "string" } } } },
           },
           security: [{ x402: [] }],
         } },
@@ -636,24 +636,24 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             responses: { 200: { description: "Model list" } }, security: [] } } } : {}) } : {}),
         ...(priceBook ? {
           "/v1/prices": { get: { operationId: "listPrices", summary: "List the crypto, metal and currency symbols offered", security: [],
-            responses: { 200: { description: "Crypto, metal and currency symbols, with sources" } } } },
+            responses: { 200: { description: "Crypto, metal and currency symbols, with sources" },
+              429: { ...errorBody("Over 60 a minute", errorRef("RateLimited429")), headers: { ...RETRY_AFTER, ...RATE_LIMIT_HEADERS } } } } },
           "/v1/prices/crypto/{symbol}": { get: { operationId: "cryptoPrice", security: [],
             summary: "Get a cryptocurrency's USD price from Chainlink on Base",
             description: "Read from Chainlink on Base. No payment.",
             parameters: [{ name: "symbol", in: "path", required: true, schema: { type: "string", examples: ["BTC", "ETH", "SOL"] } }],
-            responses: { 200: { description: "The price, its time and source" }, 404: { description: "Not offered" },
-                         429: { description: "Over 60 a minute" } } } },
+            responses: { 200: { description: "The price, its time and source" }, 404: errorBody("Not offered"), 429: { ...errorBody("Over 60 a minute", errorRef("RateLimited429")), headers: { ...RETRY_AFTER, ...RATE_LIMIT_HEADERS } } } } },
           "/v1/prices/metal/{symbol}": { get: { operationId: "metalPrice", security: [],
             summary: "Get the USD price of gold (XAU) or silver (XAG)",
             description: "Read from Chainlink on Base. No payment.",
             parameters: [{ name: "symbol", in: "path", required: true, schema: { type: "string", enum: ["XAU", "XAG"] } }],
-            responses: { 200: { description: "The price, its time and source" }, 404: { description: "Not offered" } } } },
+            responses: { 200: { description: "The price, its time and source" }, 404: errorBody("Not offered"), 429: { ...errorBody("Over 60 a minute", errorRef("RateLimited429")), headers: { ...RETRY_AFTER, ...RATE_LIMIT_HEADERS } } } } },
           "/v1/prices/fx/{base}/{quote}": { get: { operationId: "fxRate", security: [],
             summary: "Get an exchange rate between two of 30 currencies",
             description: "From Chainlink on Base, or the ECB's daily rates. No payment.",
             parameters: [{ name: "base", in: "path", required: true, schema: { type: "string", examples: ["EUR"] } },
                          { name: "quote", in: "path", required: true, schema: { type: "string", examples: ["USD"] } }],
-            responses: { 200: { description: "The rate, its date and source" }, 404: { description: "Not offered" } } } },
+            responses: { 200: { description: "The rate, its date and source" }, 404: errorBody("Not offered"), 429: { ...errorBody("Over 60 a minute", errorRef("RateLimited429")), headers: { ...RETRY_AFTER, ...RATE_LIMIT_HEADERS } } } } },
         } : {}),
         // Free, and served by the sign402 gateway's web API, not by this service: hence its own server.
         "/v1/wallet/{address}/reconciliation": { servers: [{ url: config.walletReportOrigin || "https://app.singitai.app" }],
@@ -697,10 +697,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             + "question. No payment, no model call. A model entry with recommendedScheme upto (Claude Opus) is best "
             + "paid with the upto offer; its exact price carries room for thinking tokens.",
           responses: { 200: { description: "Price by model" },
-                       503: { description: "The model catalogue has never loaded yet; see Retry-After" } }, security: [],
+                       503: { ...errorBody("The model catalogue has never loaded yet; see Retry-After"), headers: RETRY_AFTER } }, security: [],
         } },
       },
-      components: { securitySchemes: { x402: { type: "apiKey", in: "header", name: "PAYMENT-SIGNATURE",
+      components: { schemas: ERROR_SCHEMAS, securitySchemes: { x402: { type: "apiKey", in: "header", name: "PAYMENT-SIGNATURE",
         description: "x402 v2 payment. Call without it, read the PAYMENT-REQUIRED header of the 402 response, sign the "
           + "`upto` or `exact` USDC authorization it offers on Base or Solana for the amount or ceiling it names, and "
           + "retry with the signature here." },
@@ -849,5 +849,6 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (config.directSolana) addSolanaQuotedRoute(app, config, { facilitatorClient, catalogue, readRequest, choose,
     upstream: learning, fetchImpl, log });
 
+  app.use((req, res) => res.status(404).json({ error: { type: "invalid_request_error", message: `Cannot ${req.method} ${req.path}`, code: "not_found" } }));
   return app;
 }

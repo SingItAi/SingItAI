@@ -56,30 +56,30 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
   };
   app.use(QUOTED_ROUTE,(req,res,next)=>{
     res.set('Cache-Control','no-store');
-    if(!authorized(req))return res.status(401).json({error:'unauthorized'});
+    if(!authorized(req))return res.status(401).json({error:'unauthorized',code:'unauthorized'});
     next();
   });
   app.post(`${QUOTED_ROUTE}/prepare`,async(req,res)=>{
     const {requestId,owner,agent}=req.body??{};
     if(!/^[a-f0-9]{32}$/.test(requestId??'')||!isAddress(owner??'')||!isAddress(agent??'')||owner===agent||[owner,agent].includes(SOLANA_PAY_TO))
-      return res.status(400).json({error:'invalid_identity'});
+      return res.status(400).json({error:'invalid_identity',code:'invalid_identity'});
     let input;
     let chosen;
-    try{input=readRequest(req.body);}catch{return res.status(400).json({error:'invalid_request'});}
+    try{input=readRequest(req.body);}catch{return res.status(400).json({error:'invalid_request',code:'invalid_request'});}
     const hash=digest({owner,agent,input});
     let old=store.get(requestId);
     if(old){
-      if(old.hash!==hash)return res.status(409).json({error:'request_changed'});
+      if(old.hash!==hash)return res.status(409).json({error:'request_changed',code:'request_changed'});
       if(old.status==='quoted'&&old.expires>=now())return res.json({quote:JSON.parse(old.offer)});
-      return res.status(409).json({error:'already_prepared'});
+      return res.status(409).json({error:'already_prepared',code:'already_prepared'});
     }
-    try{store.create(requestId,owner,agent,hash,now());}catch{return res.status(409).json({error:'previous_quote_pending'});}
+    try{store.create(requestId,owner,agent,hash,now());}catch{return res.status(409).json({error:'previous_quote_pending',code:'previous_quote_pending'});}
     try {
       chosen=await choose(input);
     }catch(e){
       store.fail(requestId);
       if(e.status!==400)res.set('Retry-After',String(e.retryAfter??30));
-      return res.status(e.status===400?400:503).json({error:e.status===400?'unknown_model':'no_billable_answer',
+      return res.status(e.status===400?400:503).json({error:e.status===400?'unknown_model':'no_billable_answer',code:e.status===400?'unknown_model':'no_billable_answer',
         message:e.status===400||e.retryAfter?e.message:'No billable answer was prepared. Nothing was paid.'});
     }
     try {
@@ -110,30 +110,30 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
     }catch(error){
       markUnservable(catalogue,chosen.model,error,log);
       store.fail(requestId);res.set('Retry-After','30');
-      return res.status(503).json({error:'no_billable_answer',
+      return res.status(503).json({error:'no_billable_answer',code:'no_billable_answer',
         message:'No billable answer was prepared. Nothing was paid.'});
     }
   });
   app.post(`${QUOTED_ROUTE}/:id`,async(req,res)=>{
     const row=store.get(req.params.id);
-    if(!row)return res.status(404).json({error:'not_found'});
-    if(row.status==='paid')return res.status(409).json({error:'already_paid'});
-    if(row.status==='settling'||row.status==='unresolved')return res.status(409).json({error:'already_submitted'});
-    if(row.status!=='quoted'||row.expires<now())return res.status(409).json({error:'quote_unavailable'});
+    if(!row)return res.status(404).json({error:'not_found',code:'not_found'});
+    if(row.status==='paid')return res.status(409).json({error:'already_paid',code:'already_paid'});
+    if(row.status==='settling'||row.status==='unresolved')return res.status(409).json({error:'already_submitted',code:'already_submitted'});
+    if(row.status!=='quoted'||row.expires<now())return res.status(409).json({error:'quote_unavailable',code:'quote_unavailable'});
     const quote=JSON.parse(row.offer),required=quote.accepts[0];
     const header=req.get('payment-signature');
-    if(!header)return res.status(402).set('PAYMENT-REQUIRED',encode(quote)).json({error:'payment_required'});
+    if(!header)return res.status(402).set('PAYMENT-REQUIRED',encode(quote)).json({error:'payment_required',code:'payment_required'});
     let payload;
-    try{payload=JSON.parse(Buffer.from(header,'base64').toString());}catch{return res.status(400).json({error:'invalid_payment'});}
+    try{payload=JSON.parse(Buffer.from(header,'base64').toString());}catch{return res.status(400).json({error:'invalid_payment',code:'invalid_payment'});}
     if(payload.x402Version!==2||digest(payload.accepted)!==digest(required)||payload.resource?.url!==quote.resource.url)
-      return res.status(400).json({error:'terms_changed'});
+      return res.status(400).json({error:'terms_changed',code:'terms_changed'});
     // Claim durably before any facilitator call; restart/concurrent requests never resettle.
-    if(!store.claim(row.id,now()))return res.status(409).json({error:'already_submitted'});
+    if(!store.claim(row.id,now()))return res.status(409).json({error:'already_submitted',code:'already_submitted'});
     // Verification never submits anything: whatever it answers, this quote was not settled.
     let verified;
     try{verified=await facilitatorClient.verify(payload,required);}
-    catch{store.fail(row.id);res.set('Retry-After','30');return res.status(503).json({error:'verification_unavailable'});}
-    if(!verified.isValid||verified.payer!==row.agent){store.fail(row.id);return res.status(402).json({error:'verification_refused'});}
+    catch{store.fail(row.id);res.set('Retry-After','30');return res.status(503).json({error:'verification_unavailable',code:'verification_unavailable'});}
+    if(!verified.isValid||verified.payer!==row.agent){store.fail(row.id);return res.status(402).json({error:'verification_refused',code:'verification_refused'});}
     try {
       const settling=Date.now();
       const receipt=await facilitatorClient.settle(payload,required);
@@ -141,7 +141,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
       if(receipt.success!==true||receipt.network!==SOLANA||receipt.payer!==row.agent||!/^([1-9A-HJ-NP-Za-km-z]){80,90}$/.test(receipt.transaction??''))throw new Error('unresolved');
       store.paid(row.id,{...receipt,amount:required.amount});
       return res.set('PAYMENT-RESPONSE',encode({...receipt,amount:required.amount})).json(JSON.parse(row.answer));
-    }catch{store.fail(row.id,'unresolved');return res.status(503).json({error:'payment_unresolved'});}
+    }catch{store.fail(row.id,'unresolved');return res.status(503).json({error:'payment_unresolved',code:'payment_unresolved'});}
   });
   return store;
 }
