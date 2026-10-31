@@ -29,7 +29,10 @@ test("the guide the page links exists, and says what was and was not run", async
   assert.ok(doc.includes("**Status: paid end to end once, on 28.10.2026.**"));
   assert.ok(doc.includes("0x419874eea3fbb4621519fe4c252bb83b7b66c1c9cb6fbba07274172bef54e2f6"));
   assert.ok(!doc.includes("not yet done"));
-  assert.match(doc, /Variants B and C rely on Coinbase\s+tooling and\s+were checked against Coinbase's docs/);
+  assert.match(doc, /Free checks of Variants B and C are recorded\s+below as of 31\.10\.2026 \(Prague\)/);
+  assert.equal((doc.match(/What was run on 31\.10\.2026 \(Prague\)/g) || []).length, 2);
+  assert.ok(doc.includes('**Not run:** creating the CDP wallet'));
+  assert.ok(doc.includes('**Not run:** auth login/verify, balance'));
   for (const heading of ["## What you need", "## Step 1: see the 402", "## Step 2: pay", "## Step 3: the 200"]) {
     assert.ok(doc.includes(heading), heading);
   }

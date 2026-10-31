@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quickstart in 5 minutes | SingIt</title>
+<meta name="description" content="Make your first x402 call: inspect the 402, fund USDC on Base, send a paid request, and read the receipt. Includes retry guidance and free checks.">
+<link rel="canonical" href="https://singitai.app/docs/quickstart/">
+<meta property="og:title" content="Quickstart in 5 minutes | SingIt">
+<meta property="og:description" content="Make your first x402 call: inspect the 402, fund USDC on Base, send a paid request, and read the receipt. Includes retry guidance and free checks.">
+<meta property="og:url" content="https://singitai.app/docs/quickstart/">
+<meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@SingItAgent">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css?v=bb7061fc">
+<link rel="stylesheet" href="/dev.css?v=1">
+<link rel="stylesheet" href="/pages.css?v=1">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebPage",
+      "@id": "https://singitai.app/docs/quickstart/#webpage",
+      "url": "https://singitai.app/docs/quickstart/",
+      "name": "Quickstart in 5 minutes | SingIt",
+      "description": "Make your first x402 call: inspect the 402, fund USDC on Base, send a paid request, and read the receipt. Includes retry guidance and free checks.",
+      "inLanguage": "en",
+      "breadcrumb": {
+        "@id": "https://singitai.app/docs/quickstart/#breadcrumb"
+      }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://singitai.app/docs/quickstart/#breadcrumb",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Developers",
+          "item": "https://singitai.app/developers/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Quickstart in 5 minutes",
+          "item": "https://singitai.app/docs/quickstart/"
+        }
+      ]
+    }
+  ]
+}
+</script>
+<!-- Umami, self-hosted and cookieless (docs/analytics.md) -->
+<script defer src="https://stats.singitai.app/s.js" data-website-id="6eab5805-b9b8-4f04-aa73-df64a8ce096e" data-domains="singitai.app,app.singitai.app"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="singit-mark" viewBox="0 0 240 240" fill="none">
+    <path d="M192 108 V152 Q192 176 168 176 H112 Q88 176 88 152 V88 Q88 64 112 64 H168 Q192 64 192 78"
+          stroke="currentColor" stroke-width="12.5" stroke-linecap="round"/>
+    <path d="M116 118 L139 143 L188 86 H206" stroke="currentColor" stroke-width="11.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="216" cy="86" r="8" stroke="currentColor" stroke-width="8.5"/>
+    <g stroke="currentColor" stroke-width="9" stroke-linecap="round">
+      <line x1="58" y1="94"  x2="88" y2="94"/>
+      <line x1="58" y1="121" x2="88" y2="121"/>
+      <line x1="58" y1="148" x2="88" y2="148"/>
+    </g>
+    <g fill="currentColor">
+      <circle cx="49" cy="94"  r="9"/>
+      <circle cx="49" cy="121" r="9"/>
+      <circle cx="49" cy="148" r="9"/>
+    </g>
+  </symbol>
+  <symbol id="ic-copy" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" stroke="currentColor" stroke-width="1.4"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="nav-wrap"><div class="nav-bar"><a class="brand" href="/developers/"><svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg><span>SingIt</span></a><nav class="nav-links" aria-label="Primary"><a href="/developers/">Developers</a><a href="/models/">Models</a><a href="/pricing/">Pricing</a></nav></div></header><main><section class="hero dev-hero"><div class="shell"><p class="eyebrow">Your first x402 answer</p><h1>Quickstart in <em>5 minutes</em></h1><p class="hero-sub">Inspect the offer for free, then pay for an answer from your own wallet. Allow extra time if you need to fund a wallet.</p></div></section><section class="lp-section" id="surfaces"><div class="shell"><h2 class="section-title">Pick your surface</h2><ul class="works-grid"><li><b>API key</b><p>OpenAI/Anthropic SDK, Claude Code or MCP: <a href="/developers/">developer guide</a>.</p></li><li><b>x402 with your own wallet</b><p>Follow the four steps below.</p></li><li><b>Free try</b><p>Use <code>free/deepseek-v4.1-flash</code> on the same endpoint: no wallet, 20 answers/day per network (IPv4 /24, IPv6 /64).</p></li></ul></div></section>
+<section class="lp-section" id="see-402"><div class="shell"><h2 class="section-title">Step 1: see the 402 (free)</h2><p class="lp-text">Send this unpaid request. Expect <code>HTTP/2 402</code> and a <code>PAYMENT-REQUIRED</code> header containing base64 JSON.</p><p class="fine">Verified in the historical checks listed below: <a href="#unpaid-curl">unpaid-curl</a>.</p><div class="code"><pre><code id="unpaid-curl" data-verified="true">curl -i https://ask.singitai.app/v1/chat/completions \
+  -H &#x27;Content-Type: application/json&#x27; \
+  -d &#x27;{&quot;model&quot;:&quot;deepseek-v4.1-flash&quot;,&quot;max_tokens&quot;:200,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Say hello in five words.&quot;}]}&#x27;</code></pre></div><p class="lp-text">Decode the header with Node:</p><p class="fine">Verified in the historical checks listed below: <a href="#decode-offers">decode-offers</a>.</p><div class="code"><pre><code id="decode-offers" data-verified="true">curl -s -o /dev/null -D - https://ask.singitai.app/v1/chat/completions \
+  -H &#x27;Content-Type: application/json&#x27; \
+  -d &#x27;{&quot;model&quot;:&quot;deepseek-v4.1-flash&quot;,&quot;max_tokens&quot;:200,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Say hello in five words.&quot;}]}&#x27; \
+  | awk &#x27;tolower($1)==&quot;payment-required:&quot;{print $2}&#x27; | tr -d &#x27;\r&#x27; \
+  | node -e &#x27;let s=&quot;&quot;;process.stdin.on(&quot;data&quot;,d=&gt;s+=d).on(&quot;end&quot;,()=&gt;{const r=JSON.parse(Buffer.from(s.trim(),&quot;base64&quot;));
+      console.log(&quot;x402Version&quot;, r.x402Version);
+      for (const a of r.accepts) console.log(a.scheme.padEnd(6), a.network.padEnd(40), a.amount, &quot;atomic USDC&quot;)})&#x27;</code></pre></div><p class="lp-text">Expected offer order: <code>upto</code> Base, <code>upto</code> Solana, <code>exact</code> Base, <code>exact</code> Solana. <code>x402Version</code> is 2. The Base upto offer for this request is 1500 atomic USDC (0.0015 USDC). Other amounts come from the current offer.</p><div class="code"><pre><code id="expected-output">HTTP/2 402
+payment-required: &lt;base64 JSON&gt;
+
+x402Version 2
+upto   Base     1500 atomic USDC
+upto   Solana   &lt;amount from offer&gt;
+exact  Base     &lt;amount from offer&gt;
+exact  Solana   &lt;amount from offer&gt;</code></pre></div><p class="lp-text">Live 31.10.2026: the 402 body also carries <code>x402Version</code> and <code>accepts</code>, matching the decoded header. <code>upto</code> authorizes a ceiling and settles actual usage; <code>exact</code> pays a flat price.</p></div></section>
+<section class="lp-section" id="fund"><div class="shell"><h2 class="section-title">Step 2: put USDC on Base</h2><p class="lp-text">You need Node 20+, a wallet private key you control for the agent, and a small USDC balance on the Base network. No ETH is needed for this <code>upto</code> path: the facilitator pays the gas through Permit2/EIP-2612 gas sponsoring.</p><p class="lp-text">Withdraw USDC to Base from an exchange that supports Base withdrawals, or bridge USDC to Base. Check the destination network before sending. Use a fresh wallet with a small balance for agents; keep its private key out of source files and logs.</p><p class="lp-text">At the 0.0015 USDC minimum ceiling, one USDC covers hundreds of short answers on cheap models: floor(1 / 0.0015) = 666 calls at that ceiling. Longer answers or other models can require more; read each offer.</p></div></section>
+<section class="lp-section" id="paid"><div class="shell"><h2 class="section-title">Step 3: the paid call — Variant A</h2><p class="lp-text"><b>Run end to end once on 28.10.2026.</b> Node with <code>@x402/fetch</code> and your own key. Set <code>AGENT_KEY</code> privately in your environment and save the script as <code>first-paid-call.mjs</code>. The wrapper signs the offer and retries with <code>PAYMENT-SIGNATURE</code>.</p><p class="fine">Verified in the historical checks listed below: <a href="#install-a">install-a</a>.</p><div class="code"><pre><code id="install-a" data-verified="true">npm install @x402/fetch@2.28.0 @x402/evm@2.28.0 viem</code></pre></div><p class="fine">Verified in the historical checks listed below: <a href="#paid-a">paid-a</a>.</p><div class="code"><pre><code id="paid-a" data-verified="true">// first-paid-call.mjs — run with: AGENT_KEY=0x... node first-paid-call.mjs
+import { wrapFetchWithPayment, x402Client } from &quot;@x402/fetch&quot;;
+import { UptoEvmScheme } from &quot;@x402/evm/upto/client&quot;;
+import { createPublicClient, http } from &quot;viem&quot;;
+import { privateKeyToAccount } from &quot;viem/accounts&quot;;
+import { base } from &quot;viem/chains&quot;;
+
+// A wallet holding a little USDC on Base. No ETH: the facilitator pays the gas.
+const account = privateKeyToAccount(process.env.AGENT_KEY);
+const chain = createPublicClient({ chain: base, transport: http() });
+const client = x402Client.fromConfig({ schemes: [{ network: &quot;eip155:8453&quot;,
+  client: new UptoEvmScheme({ address: account.address, signTypedData: account.signTypedData,
+                              readContract: chain.readContract.bind(chain) }) }] });
+const pay = wrapFetchWithPayment(fetch, client);
+
+const res = await pay(&quot;https://ask.singitai.app/v1/chat/completions&quot;, {
+  method: &quot;POST&quot;,
+  headers: { &quot;Content-Type&quot;: &quot;application/json&quot; },
+  body: JSON.stringify({ model: &quot;deepseek-v4.1-flash&quot;, max_tokens: 200,
+                         messages: [{ role: &quot;user&quot;, content: &quot;Say hello in five words.&quot; }] }),
+});
+const answer = await res.json();
+console.log(res.status, answer.choices?.[0]?.message?.content);
+console.log(&quot;charged (atomic USDC):&quot;, answer.billing?.totalAtomic);
+console.log(&quot;PAYMENT-RESPONSE:&quot;, res.headers.get(&quot;payment-response&quot;));</code></pre></div></div></section>
+<section class="lp-section" id="result"><div class="shell"><h2 class="section-title">Step 4: read the result</h2><p class="lp-text">A successful paid answer returns HTTP 200. Read <code>choices[0].message.content</code> for the answer and <code>billing.totalAtomic</code> for the settled amount in USDC micro-units. For <code>upto</code>, it is at most the ceiling you signed.</p><p class="lp-text"><code>PAYMENT-RESPONSE</code> is base64 JSON describing the facilitator settlement (transaction, network, payer). <code>X-SingIt-Receipt</code> is JSON with SingIt’s reference, transaction, network, payer and amount charged.</p></div></section>
+<section class="lp-section" id="retry"><div class="shell"><h2 class="section-title">If you get 402 again</h2><table class="mtable"><thead><tr><th scope="col">Cause</th><th scope="col">What to do</th></tr></thead><tbody><tr><th scope="row">No signature sent / client did not retry</th><td>Use a payment-aware client and retry the same request with PAYMENT-SIGNATURE.</td></tr><tr><th scope="row">Wrong network or asset</th><td>Select the network and USDC asset in the offer. For Variant A, fund USDC on Base.</td></tr><tr><th scope="row">USDC balance below the ceiling</th><td>Ensure the wallet can cover the full amount in the offer, even if actual settlement may be lower.</td></tr><tr><th scope="row">409 payment_duplicate: signature already used</th><td>Sign a fresh one; do not replay the used signature.</td></tr><tr><th scope="row">stale_payment_permit: stale permit</th><td>Fetch a new 402 and sign the fresh offer.</td></tr><tr><th scope="row">Settlement failed: 402 with only error + code, no PAYMENT-REQUIRED header</th><td>The body is {&quot;error&quot;:&quot;payment_required&quot;,&quot;code&quot;:&quot;payment_required&quot;}. No answer came back. Whether the payment settled was not confirmed, so check your wallet&#x27;s USDC balance and recent Base transactions before you sign again, then retry with a fresh signature.</td></tr><tr><th scope="row">Ceiling below the price</th><td>Read amount in the offer; raise --max-amount / maxPerCall to cover it.</td></tr></tbody></table></div></section>
+<section class="lp-section" id="variant-b"><div class="shell"><h2 class="section-title">Variant B: Coinbase Bazaar MCP</h2><details><summary>Free discovery checked; paid step not run</summary><p class="lp-text">What was run on 31.10.2026 (Prague): Free steps against <code>https://api.cdp.coinbase.com/platform/v2/x402/discovery/mcp</code> (no auth): initialize OK (server <code>x402-discovery</code> 1.0.0); <code>tools/list</code> shows <code>proxy_tool_call</code>, <code>search_resources</code>, <code>validate_endpoint</code>. <code>search_resources</code> with <code>curatedOnly:false</code> and query &quot;SingIt Ask chat completions&quot; returns SingIt&#x27;s chat route tools whose names start with <code>x402_post_https___ask_singitai_app_v1_chat_completions_</code>; per-model routes also appear. Always use a fresh search result, never a hard-coded full name. <code>validate_endpoint</code> for POST <code>https://ask.singitai.app/v1/chat/completions</code> returned <code>active:true</code>, <code>indexed:true</code>, <code>hasBazaarExtension:true</code>, 402 with 4 accepts, x402 version 2.</p><p class="lp-text">With <code>@coinbase/cdp-sdk</code> 1.60.0 the documented install line was not enough: <code>@x402/extensions</code> and <code>@x402/svm</code> (its peer dependencies) must be installed too, otherwise <code>import { CdpX402Client } from &quot;@coinbase/cdp-sdk/x402&quot;</code> fails with <code>ERR_MODULE_NOT_FOUND</code>. With them all four imports resolve and the free search runs.</p><p class="lp-text">Not run: creating the CDP wallet, funding it, or <code>proxy_tool_call</code> (the paid step). These need a Coinbase CDP account, and a funded wallet.</p><p class="lp-text">Install dependencies (the two peer dependencies are required for the CDP x402 import):</p><p class="fine">Verified in the historical checks listed below: <a href="#install-b">install-b</a>.</p><div class="code"><pre><code id="install-b" data-verified="true">npm install @coinbase/cdp-sdk @modelcontextprotocol/sdk @x402/core @x402/evm @x402/mcp @x402/extensions @x402/svm</code></pre></div><p class="lp-text">The complete CDP wallet example is in the <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md">first paid call guide</a>.</p></details></div></section>
+<section class="lp-section" id="variant-c"><div class="shell"><h2 class="section-title">Variant C: Coinbase agentic wallet CLI</h2><details><summary>Free CLI checks completed; paid step not run</summary><p class="lp-text">What was run on 31.10.2026 (Prague): <code>npx awal@2.12.1 --version</code> returned 2.12.1 (Node 24.22.1). <code>npx awal@2.12.1 x402 details https://ask.singitai.app/v1/chat/completions</code> works with no login and prints the 402 requirements. It auto-detects the method and takes no <code>-X</code>/<code>-d</code> options: passing them gives <code>error: unknown option &#x27;-X&#x27;</code>. <code>npx awal@2.12.1 x402 bazaar search &quot;SingIt Ask&quot;</code> works with no login and lists SingIt&#x27;s chat route (price 0.0015 USDC, Base, upto). <code>npx awal@2.12.1 status</code> needs an authenticated wallet and prints the auth login instructions. <code>x402 pay</code> has <code>-X</code>/<code>--method</code>, <code>-d</code>/<code>--data</code>, <code>--max-amount</code>, <code>--scheme</code> as documented.</p><p class="lp-text">Not run: auth login/verify, balance, or <code>x402 pay</code> (the paid step). These need an email login to a Coinbase agentic wallet and USDC on Base. Needs Node 24+.</p><p class="fine">Verified in the historical checks listed below: <a href="#cli-free">cli-free</a>.</p><div class="code"><pre><code id="cli-free" data-verified="true">npx awal@2.12.1 --version
+npx awal@2.12.1 x402 details https://ask.singitai.app/v1/chat/completions
+npx awal@2.12.1 x402 bazaar search &quot;SingIt Ask&quot;</code></pre></div><p class="lp-text">Paid command template — <b>not run</b>; requires login and USDC on Base:</p><div class="code"><pre><code id="cli-paid">npx awal@2.12.1 x402 pay https://ask.singitai.app/v1/chat/completions -X POST \
+  -d &#x27;{&quot;model&quot;:&quot;deepseek-v4.1-flash&quot;,&quot;max_tokens&quot;:200,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Say hello in five words.&quot;}]}&#x27; \
+  --max-amount 2000</code></pre></div><p class="lp-text"><code>--max-amount</code> uses USDC micro-units: 2000 = 0.002 USDC, above this request’s 0.0015 ceiling. See the <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md">full guide</a>.</p></details></div></section>
+<section class="lp-section" id="next"><div class="shell"><h2 class="section-title">Next steps</h2><p class="lp-text"><a href="/developers/">Developers</a> · <a href="/models/">Models</a> · <a href="/pricing/">Pricing</a> · <a href="/agent-spending-limits/">Agent spending limits</a> · <a href="https://ask.singitai.app/openapi.json">OpenAPI</a> · <a href="https://ask.singitai.app/llms.txt">llms.txt</a></p></div></section>
+</main><footer class="footer"><div class="shell footer-inner"><span class="brand brand-footer">SingIt</span><nav class="footer-links" aria-label="Footer"><a href="/developers/">Developers</a><a href="https://ask.singitai.app/llms.txt">llms.txt</a></nav><p class="footer-fine">&copy; 2026 SingIt</p></div></footer></body>
+</html>

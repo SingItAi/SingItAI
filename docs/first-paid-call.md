@@ -4,8 +4,8 @@ One paid answer from SingIt Ask, paid per call in USDC over x402: no account and
 
 **Status: paid end to end once, on 28.10.2026.** `deepseek-v4.1-flash`, `upto` on Base: HTTP 200, $0.001 settled, about 3.3 s, transaction [`0x419874ee…f54e2f6`](https://basescan.org/tx/0x419874eea3fbb4621519fe4c252bb83b7b66c1c9cb6fbba07274172bef54e2f6).
 
-Step 1 (the 402 and its offers) was also checked live on 27.10.2026. Variants B and C rely on Coinbase tooling and
-were checked against Coinbase's docs and package types; the paid run above is not a run of B or C.
+Step 1 (the 402 and its offers) was also checked live on 27.10.2026. Free checks of Variants B and C are recorded
+below as of 31.10.2026 (Prague); the paid run above is not a run of B or C.
 
 Endpoint: `POST https://ask.singitai.app/v1/chat/completions` (OpenAI chat completions format).
 
@@ -112,7 +112,11 @@ console.log("PAYMENT-RESPONSE:", res.headers.get("payment-response"));
 
 ### B. Coinbase Bazaar MCP (CDP wallet)
 
-Not run; checked against Coinbase's docs and the `@x402/mcp` / `@coinbase/cdp-sdk` package types.
+**What was run on 31.10.2026 (Prague):** Free steps against `https://api.cdp.coinbase.com/platform/v2/x402/discovery/mcp` (no auth): initialize OK (server `x402-discovery` 1.0.0); `tools/list` shows `proxy_tool_call`, `search_resources`, `validate_endpoint`. `search_resources` with `curatedOnly:false` and query "SingIt Ask chat completions" returns SingIt's chat route tools whose names start with `x402_post_https___ask_singitai_app_v1_chat_completions_`; per-model routes also appear. Always use a fresh search result, never a hard-coded full name. `validate_endpoint` for POST `https://ask.singitai.app/v1/chat/completions` returned `active:true`, `indexed:true`, `hasBazaarExtension:true`, 402 with 4 accepts, x402 version 2.
+
+With `@coinbase/cdp-sdk` 1.60.0 the documented install line was not enough: `@x402/extensions` and `@x402/svm` (its peer dependencies) must be installed too, otherwise `import { CdpX402Client } from "@coinbase/cdp-sdk/x402"` fails with `ERR_MODULE_NOT_FOUND`. With them all four imports resolve and the free search runs.
+
+**Not run:** creating the CDP wallet, funding it, or `proxy_tool_call` (the paid step). These need a Coinbase CDP account and a funded wallet.
 
 Coinbase's x402 Bazaar has an MCP endpoint, `https://api.cdp.coinbase.com/platform/v2/x402/discovery/mcp` (no auth),
 with the tools `search_resources`, `proxy_tool_call` and `validate_endpoint`. SingIt is not curated there yet, so
@@ -122,7 +126,7 @@ The `toolName` for SingIt's route looks like
 never hard-code it.
 
 ```sh
-npm install @coinbase/cdp-sdk @modelcontextprotocol/sdk @x402/core @x402/evm @x402/mcp
+npm install @coinbase/cdp-sdk @modelcontextprotocol/sdk @x402/core @x402/evm @x402/mcp @x402/extensions @x402/svm
 ```
 
 ```js
@@ -153,7 +157,9 @@ console.log(JSON.stringify(result, null, 2));
 
 ### C. Coinbase agentic wallet CLI (`awal`)
 
-Not run; checked against Coinbase's docs. Needs Node 24+.
+**What was run on 31.10.2026 (Prague):** `npx awal@2.12.1 --version` returned 2.12.1 (Node 24.22.1). `npx awal@2.12.1 x402 details https://ask.singitai.app/v1/chat/completions` works with no login and prints the 402 requirements. It auto-detects the method and takes no `-X`/`-d` options: passing them gives `error: unknown option '-X'`. `npx awal@2.12.1 x402 bazaar search "SingIt Ask"` works with no login and lists SingIt's chat route (price 0.0015 USDC, Base, upto). `npx awal@2.12.1 status` needs an authenticated wallet and prints the auth login instructions. `x402 pay` has `-X`/`--method`, `-d`/`--data`, `--max-amount`, `--scheme` as documented.
+
+**Not run:** auth login/verify, balance, or `x402 pay` (the paid step). These need an email login to a Coinbase agentic wallet and USDC on Base. Needs Node 24+.
 
 ```sh
 npx skills add coinbase/agentic-wallet-skills   # optional: the same commands as agent skills
