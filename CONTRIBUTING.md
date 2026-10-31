@@ -18,7 +18,7 @@ Use **Python 3.12** and **Node.js 22** to match CI (`solana-x402-service` needs 
 whole repository: the gateway imports shared code from sibling directories.
 
 ```bash
-git clone https://github.com/bubon-ik/SingItAI.git
+git clone https://github.com/SingItAi/SingItAI.git
 cd SingItAI
 python3.12 -m venv sign402-gateway/.venv
 sign402-gateway/.venv/bin/python -m pip install -e ./sign402-gateway

@@ -6,7 +6,7 @@
 # SingIt
 
 <p>
-  <a href="https://github.com/bubon-ik/SingItAI/actions/workflows/security-gate.yml"><img alt="Security gate" src="https://github.com/bubon-ik/SingItAI/actions/workflows/security-gate.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/SingItAi/SingItAI/actions/workflows/security-gate.yml"><img alt="Security gate" src="https://github.com/SingItAi/SingItAI/actions/workflows/security-gate.yml/badge.svg?branch=main"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <a href="https://www.npmjs.com/package/@singitai/plugin-singit"><img alt="npm: @singitai/plugin-singit" src="https://img.shields.io/npm/v/@singitai/plugin-singit?label=elizaos%20plugin"></a>
   <a href="https://registry.modelcontextprotocol.io/v0/servers?search=app.singitai"><img alt="MCP Registry: app.singitai/singit" src="https://img.shields.io/badge/MCP%20Registry-app.singitai%2Fsingit-informational"></a>
@@ -203,7 +203,7 @@ Node.js 24). Clone the full repository: the gateway imports shared code from
 sibling directories.
 
 ```bash
-git clone https://github.com/bubon-ik/SingItAI.git
+git clone https://github.com/SingItAi/SingItAI.git
 cd SingItAI
 python3.12 -m venv sign402-gateway/.venv
 sign402-gateway/.venv/bin/python -m pip install -e ./sign402-gateway

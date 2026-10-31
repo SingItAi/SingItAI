@@ -412,7 +412,7 @@ test("GET /llms.txt describes only what is live: Exa, free tier, prices, no vide
   assert.ok(on.text.indexOf("`upto`, listed first") > 0);
   assert.ok(on.text.indexOf("`upto`") < on.text.indexOf("`exact`"));
   assert.match(on.text, /`exact` \(a flat price for a typical-length answer, about 30% of max_tokens\)/);
-  assert.ok(on.text.includes("https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md"));
+  assert.ok(on.text.includes("https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md"));
   assert.ok(on.text.includes("MCP server (API key, not x402): https://app.singitai.app/mcp"));
 
   const off = await llms({ exaKey: null }, { ...CONFIG, freeModels: [] });

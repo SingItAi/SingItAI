@@ -240,7 +240,7 @@ uncommitted; no PR.
 
 ## October 3: committed Ask integration
 
-Implementation: [0e5762b](https://github.com/bubon-ik/SingItAI/commit/0e5762bc328f6a94e0f24c17a6e2a8c40dcf7887)
+Implementation: [0e5762b](https://github.com/SingItAi/SingItAI/commit/0e5762bc328f6a94e0f24c17a6e2a8c40dcf7887)
 on `trezor-local-sidecar`. Includes Base and Solana actual-usage adapters, English
 operator test page, conversation-location continuity, provider-specific errors
 and the Base extension-echo fix. Verification: 33 Node tests locally and on the
@@ -253,7 +253,7 @@ working-tree states; no PR was created for this integration.
 
 ## October 3: user-funded Solana network fees
 
-Implementation: [91e9a07](https://github.com/bubon-ik/SingItAI/commit/91e9a07bf2c1461fc8c436454e4828074c04c092).
+Implementation: [91e9a07](https://github.com/SingItAi/SingItAI/commit/91e9a07bf2c1461fc8c436454e4828074c04c092).
 
 The owner rejected operator-funded gas. Ask now checks the user's agent SOL
 balance against live network-fee and token-account-rent quotes before funding,
@@ -308,7 +308,7 @@ Greetings should not trigger unsolicited wallet checklists. All 297 isolated web
 tests pass; the two-file source-hash preflight passes. This context correction is
 staged pending operator activation; it does not change the payment implementation.
 
-Context correction: [1cd8e64](https://github.com/bubon-ik/SingItAI/commit/1cd8e646d59e7d358371eeebadfa232ccc250e60).
+Context correction: [1cd8e64](https://github.com/SingItAi/SingItAI/commit/1cd8e646d59e7d358371eeebadfa232ccc250e60).
 
 The operator activated the context correction at 2026-10-03 12:20:36 UTC,
 with private rollback snapshot `20261003T122036Z-before-chat-payment-context`.

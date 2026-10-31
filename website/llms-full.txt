@@ -54,7 +54,7 @@ SingIt lets you connect the wallet you already use, set a daily and a per-purcha
    - Paid per call from the key's limits (USDC on Base or Solana): web_search, read_page.
    - Paid, Base accounts for now: get_x_profile, get_crypto_news, get_hyperliquid_market, get_funding_rates, resolve_ens, get_token_price; demo calls get_weather, get_singit_risk_check.
    - Claude Code: claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer sk_singit_..."
-   - Install guide: https://github.com/bubon-ik/SingItAI/blob/main/llms-install.md
+   - Install guide: https://github.com/SingItAi/SingItAI/blob/main/llms-install.md
 
 Agents with their own wallet can skip the key: pay per answer over x402 at https://ask.singitai.app (USDC on Base or Solana).
 
@@ -63,7 +63,7 @@ Agents with their own wallet can skip the key: pay per answer over x402 at https
 1. POST https://ask.singitai.app/v1/chat/completions with no payment, e.g. {"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Hello"}]}. The answer is HTTP 402 with a PAYMENT-REQUIRED header: base64 JSON, x402Version 2.
 2. Its accepts list `upto` first (Base, then Solana): you sign a ceiling and pay the answer's actual cost + 30% + a 0.001 USDC fee on Base (0.002 on Solana). `exact` follows on both networks: a flat price for a typical-length answer (about 30% of max_tokens), for wallets that sign only exact. For Claude Opus, sign `upto`: its `exact` price carries room for thinking tokens and is usually dearer than the answer used (recommendedScheme in https://ask.singitai.app/pricing.json). USDC on Base needs no ETH (gas is sponsored).
 3. Sign one offer and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200: choices[0].message.content, billing.totalAtomic (what was settled, in USDC micro-units) and a PAYMENT-RESPONSE header.
-- Walkthrough with code (x402 fetch, Coinbase Bazaar MCP, Coinbase agentic wallet): https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md
+- Walkthrough with code (x402 fetch, Coinbase Bazaar MCP, Coinbase agentic wallet): https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md
 
 ## Errors
 
@@ -96,7 +96,7 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 - FAQ: https://singitai.app/docs/faq/
 - SingIt Ask OpenAPI: https://ask.singitai.app/openapi.json
 - SingIt Ask x402 discovery: https://ask.singitai.app/.well-known/x402
-- Source: https://github.com/bubon-ik/SingItAI
+- Source: https://github.com/SingItAi/SingItAI
 
 ## Links
 

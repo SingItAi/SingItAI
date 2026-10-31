@@ -23,7 +23,7 @@ plan is not evidence that a feature is deployed.
 
 The 86 old implementation plans and design specifications have been removed
 from the working tree. They remain available in
-[Git history](https://github.com/bubon-ik/SingItAI/tree/29670c2ed644b584768dae7bb9dc629c26c52958/docs/superpowers).
+[Git history](https://github.com/SingItAi/SingItAI/tree/29670c2ed644b584768dae7bb9dc629c26c52958/docs/superpowers).
 Those documents contain superseded decisions and unfinished proposals; use the
 current code, tests and operating instructions to establish feature status.
 
@@ -33,7 +33,7 @@ these files locally, use `git restore --source=84d8ee8 -- <path>`.
 
 The demo resource server, HTML dashboard, presentation script and local demo
 launcher have been removed. They remain in
-[Git history](https://github.com/bubon-ik/SingItAI/tree/d4380f431b04633f27bc726178fd24a3836a7934).
+[Git history](https://github.com/SingItAi/SingItAI/tree/d4380f431b04633f27bc726178fd24a3836a7934).
 The gateway still imports shared code from `sign402-bridge/`,
 `payment-executor/` and `live-demo/`; these remain runtime dependencies.
 

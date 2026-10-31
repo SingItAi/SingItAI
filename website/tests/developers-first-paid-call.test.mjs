@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const website = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = await readFile(path.join(website, "developers", "index.html"), "utf8");
-const DOC = "https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md";
+const DOC = "https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md";
 
 test("the first paid call tab is wired to its panel, copies its code and links the guide", () => {
   assert.match(html, /role="tab" id="tab-paid" aria-controls="panel-paid" aria-selected="false" tabindex="-1"/);

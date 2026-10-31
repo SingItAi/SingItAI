@@ -162,7 +162,7 @@
       <a href="/models/">Models &amp; prices</a>
       <a href="/pricing/">Pricing</a>
       <a href="/developers/#quickstart">Quickstart</a>
-      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/SingItAi/SingItAI" target="_blank" rel="noopener">GitHub</a>
     </nav>
     <a class="btn btn-primary btn-sm" href="https://app.singitai.app/app/">
       Open SingIt
@@ -185,9 +185,9 @@
   -H &#39;Content-Type: application/json&#39; \
   -d &#39;{&quot;model&quot;:&quot;deepseek-v4-pro&quot;,&quot;max_tokens&quot;:200,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Hello&quot;}]}&#39;</code></pre></div>
 <p>The unpaid POST returns HTTP 402 and a PAYMENT-REQUIRED header: base64 JSON, x402 v2. Sign one offer (upto first, then exact; Base then Solana) and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200 returns choices[0].message.content and billing.totalAtomic.</p>
-<p>Follow the <a href="https://github.com/bubon-ik/SingItAI/blob/main/docs/first-paid-call.md">first paid call walkthrough</a>, <a href="/developers/">developer guide</a> and <a href="https://singitai.app/llms.txt">llms.txt</a>.</p><p>For a free try, choose from 6 free models, for example <code>free/deepseek-v4.1-flash</code>: 20 answers a day per network, no wallet. The shared daily cost cap is $0.25; free answers may run out for the day (free_budget_exhausted) and return at midnight UTC.</p>
+<p>Follow the <a href="https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md">first paid call walkthrough</a>, <a href="/developers/">developer guide</a> and <a href="https://singitai.app/llms.txt">llms.txt</a>.</p><p>For a free try, choose from 6 free models, for example <code>free/deepseek-v4.1-flash</code>: 20 answers a day per network, no wallet. The shared daily cost cap is $0.25; free answers may run out for the day (free_budget_exhausted) and return at midnight UTC.</p>
 </div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Use it from an agent</h2>
-<p>MCP: <a href="https://app.singitai.app/mcp">https://app.singitai.app/mcp</a>. Free tools without a key: list_models, get_price, list_price_symbols.</p><p>The elizaOS plugin <a href="https://github.com/bubon-ik/SingItAI/tree/main/integrations/elizaos-plugin">@singitai/plugin-singit</a> has a paid-chat action that pays on Base. Its per-call and per-day caps are held in the plugin's memory: in-process, reset on restart, not on-chain, not enforced by SingIt's servers. It does not use AgentAllowance.</p>
+<p>MCP: <a href="https://app.singitai.app/mcp">https://app.singitai.app/mcp</a>. Free tools without a key: list_models, get_price, list_price_symbols.</p><p>The elizaOS plugin <a href="https://github.com/SingItAi/SingItAI/tree/main/integrations/elizaos-plugin">@singitai/plugin-singit</a> has a paid-chat action that pays on Base. Its per-call and per-day caps are held in the plugin's memory: in-process, reset on restart, not on-chain, not enforced by SingIt's servers. It does not use AgentAllowance.</p>
 </div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Give your agent a budget</h2>
 <p><a href="/agent-spending-limits/">Agent spending limits for USDC on Base</a> · <a href="/limit-ai-agent-spending/">How to limit what an AI agent can spend</a> · <a href="/x402-budget-for-agents/">x402 payments with a budget for AI agents</a></p>
 </div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Related models</h2>
@@ -218,7 +218,7 @@
       <a href="/x402-llm-api/">LLM API over x402</a>
       <a href="https://app.singitai.app/app/">Open SingIt</a>
       <a href="https://x.com/SingItAgent" target="_blank" rel="noopener">X</a>
-      <a href="https://github.com/bubon-ik/SingItAI" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/SingItAi/SingItAI" target="_blank" rel="noopener">GitHub</a>
       <a href="https://singitai.app/privacy/" target="_blank" rel="noopener">Privacy policy</a>
       <a href="mailto:contact@singitai.app">Contact</a>
     </nav>

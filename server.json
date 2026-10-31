@@ -6,7 +6,7 @@
   "version": "0.1.3",
   "websiteUrl": "https://singitai.app/developers/",
   "repository": {
-    "url": "https://github.com/bubon-ik/SingItAI",
+    "url": "https://github.com/SingItAi/SingItAI",
     "source": "github",
     "subfolder": "sign402-gateway"
   },
