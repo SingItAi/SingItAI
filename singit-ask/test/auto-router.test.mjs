@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import express from 'express';
 import { createApp, ROUTE, readRequest, RequestError } from '../src/app.mjs';
 import { AUTO_CONFIG, classifyAuto, chooseAuto, validateAutoConfig } from '../src/auto-router.mjs';
 import { ceilings } from '../src/metered.mjs';
@@ -80,7 +81,7 @@ function fakeFacilitator() {
     } };
 }
 
-async function serve(t, { upstream, catalogue: selectedCatalogue = catalogue } = {}) {
+async function serve(t, { upstream, catalogue: selectedCatalogue = catalogue, middleware } = {}) {
   const facilitator = fakeFacilitator();
   const asked = [];
   const answer = upstream ?? (async (_config, messages, maxTokens, _fetchImpl, model) => {
@@ -88,10 +89,19 @@ async function serve(t, { upstream, catalogue: selectedCatalogue = catalogue } =
     return { content: "Try Caffè Propaganda.", finishReason: "stop", usage: { total_tokens: 42, buyer_cost_micro: 100 } };
   });
   const app = createApp(CONFIG, { facilitatorClient: facilitator, upstream: answer, log: () => {}, catalogue: selectedCatalogue });
-  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
+  const server = middleware ? express().use(middleware, app) : app;
+  const listener = await new Promise((resolve) => { const l = server.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
   return { url: `http://127.0.0.1:${listener.address().port}`, facilitator, asked };
 }
+
+const exposed = response => (response.headers.get('access-control-expose-headers') ?? '').split(',').map(s => s.trim().toLowerCase());
+const assertExposed = (response, origin = null) => {
+  const names = exposed(response);
+  for (const name of ['x-singit-model', 'x-singit-tier']) assert.ok(names.includes(name));
+  assert.equal(names.length, new Set(names).size);
+  assert.equal(response.headers.get('access-control-allow-origin'), origin);
+};
 
 const post = (url, body, headers = {}) => fetch(url, { method: "POST",
   headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
@@ -103,18 +113,18 @@ const pay = (required, network, scheme = "upto") => ({ "PAYMENT-SIGNATURE": enco
 for (const path of [ROUTE, METERED_ROUTE]) test(`auto headers, paid model and price, validation: ${path}`, async t=>{
  const {url,asked,facilitator}=await serve(t);
  const body={model:'singit/auto',messages:[{role:'user',content:'Hi'}],max_tokens:512};
- const r=await post(url+path,body); assert.equal(r.status,402);
+ const r=await post(url+path,body); assert.equal(r.status,402); assertExposed(r);
  const required=decode(r.headers.get('payment-required'));
  const concrete=await chooseAuto(CONFIG,catalogue,readRequest(body),RequestError);
  assert.equal(r.headers.get('x-singit-model'),concrete.model);
  const expected=ceilings(concrete.info,concrete);
  for(const offer of required.accepts) assert.equal(offer.amount,expected[offer.scheme][offer.network]);
  const paid=await post(url+path,body,pay(required,BASE));
- assert.equal(paid.status,200); assert.equal(r.headers.get('x-singit-tier'),'eco');
+ assert.equal(paid.status,200); assertExposed(paid); assert.equal(r.headers.get('x-singit-tier'),'eco');
  assert.equal(paid.headers.get('x-singit-model'),r.headers.get('x-singit-model'));
  assert.equal(paid.headers.get('x-singit-tier'),'eco'); assert.equal(asked[0].model,r.headers.get('x-singit-model'));
  for(const extra of [{min_tier:null},{min_tier:'bad'},{model:CONFIG.model,min_tier:'eco'}]) {
-  const bad=await post(url+path,{...body,...extra}); assert.equal(bad.status,400);
+  const bad=await post(url+path,{...body,...extra}); assert.equal(bad.status,400); assertExposed(bad);
   assert.equal((await bad.json()).error.code,'invalid_request'); assert.equal(bad.headers.get('payment-required'),null);
  }
  for(const path of ['/v1/messages','/v1/responses']) {
@@ -141,6 +151,7 @@ test('chosen headers survive unpaid and paid retries on both chat routes, includ
   assert.equal(challenge.status,402);
   const response=await post(url+path,body,pay(decode(challenge.headers.get('payment-required')),BASE));
   assert.equal(response.status,code?422:503);
+  assertExposed(response);
   for(const header of ['x-singit-model','x-singit-tier']) {
    assert.ok(challenge.headers.get(header)); assert.equal(response.headers.get(header),challenge.headers.get(header));
   }
@@ -162,4 +173,69 @@ test('HTTP health escalation never goes down and exhaustion refuses payment',asy
   }
   assert.equal(facilitator.calls.verify,0); assert.equal(facilitator.calls.settle.length,0);
  }
+});
+
+test('exposed headers merge only at writeHead without patching setters', () => {
+ const app = createApp(CONFIG, { facilitatorClient: fakeFacilitator(), catalogue, log() {} });
+ for (const form of ['none', 'object', 'array', 'status-message']) {
+  const headers = new Map();
+  let written;
+  const res = {
+   getHeader(name) { return headers.get(name.toLowerCase()); },
+   setHeader(name, value) { headers.set(name.toLowerCase(), value); },
+   writeHead(...args) { written = args; return this; },
+  };
+  const setter = res.setHeader;
+  app.router.stack[2].handle({}, res, () => {});
+  assert.equal(res.setHeader, setter);
+  assert.equal(headers.size, 0);
+  res.setHeader('Access-Control-Expose-Headers', [' X-Test, x-test, ', 'x-singit-model']);
+  const value = ['X-Other, X-Test', 'x-singit-tier, X-OTHER'];
+  const explicit = form === 'array'
+   ? ['X-Keep', 'yes', 'ACCESS-CONTROL-EXPOSE-HEADERS', value]
+   : { 'X-Keep': 'yes', 'access-control-expose-headers': value };
+  const args = form === 'none' ? [200] : form === 'status-message' ? [200, 'OK', explicit] : [200, explicit];
+  assert.equal(res.writeHead(...args), res);
+  assert.equal(res.getHeader('Access-Control-Expose-Headers'), form === 'none'
+   ? 'X-Test, x-singit-model, X-SingIt-Tier'
+   : 'X-Test, x-singit-model, X-Other, x-singit-tier');
+  assert.deepEqual(written, form === 'none' ? [200] : form === 'array'
+   ? [200, ['X-Keep', 'yes']] : form === 'status-message'
+   ? [200, 'OK', { 'X-Keep': 'yes' }] : [200, { 'X-Keep': 'yes' }]);
+  assert.equal(headers.size, 1);
+ }
+});
+
+test('exposed headers on models merge current entries and explicit writeHead headers', async t => {
+ for (const form of ['object', 'array', 'status-message']) {
+  const { url } = await serve(t, { middleware: (req, res, next) => {
+   res.set('Access-Control-Expose-Headers', 'PAYMENT-REQUIRED, payment-required');
+   res.json = function (body) {
+    this.set('access-control-expose-headers', 'PAYMENT-RESPONSE, x-singit-model');
+    this.append('Access-Control-Expose-Headers', ['X-SingIt-Receipt', 'payment-response']);
+    const value = 'x-singit-tier, PAYMENT-REQUIRED, X-Test';
+    if (form === 'array') this.writeHead(200, ['Access-Control-Expose-Headers', value]);
+    else if (form === 'status-message') this.writeHead(200, 'OK', { 'access-control-expose-headers': value });
+    else this.writeHead(200, { 'Access-Control-Expose-Headers': value });
+    this.end(JSON.stringify(body));
+    return this;
+   };
+   next();
+  } });
+  const response = await fetch(url + '/v1/models');
+  assert.equal(response.status, 200);
+  assertExposed(response, '*');
+  assert.deepEqual(exposed(response), ['payment-response', 'x-singit-model', 'x-singit-receipt',
+   'x-singit-tier', 'payment-required', 'x-test']);
+ }
+});
+
+test('models expose the chosen-model header names without payment', async t => {
+ const { url } = await serve(t);
+ const response = await fetch(url + '/v1/models');
+ assert.equal(response.status, 200);
+ assertExposed(response, '*');
+ const missing = await fetch(url + '/missing');
+ assert.equal(missing.status, 404);
+ assertExposed(missing);
 });

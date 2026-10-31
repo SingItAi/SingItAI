@@ -430,6 +430,38 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     });
     next();
   });
+  app.use((req, res, next) => {
+    const header = "Access-Control-Expose-Headers";
+    const writeHead = res.writeHead;
+    res.writeHead = function (...args) {
+      const values = [this.getHeader(header) ?? []];
+      const index = typeof args[1] === "string" ? 2 : 1;
+      const headers = args[index];
+      if (headers) {
+        const entries = Array.isArray(headers)
+          ? Array.from({ length: headers.length / 2 }, (_, i) => [headers[i * 2], headers[i * 2 + 1]])
+          : Object.entries(headers);
+        const rest = entries.filter(([name, value]) => {
+          if (name.toLowerCase() !== header.toLowerCase()) return true;
+          values.push(value);
+          return false;
+        });
+        args[index] = Array.isArray(headers) ? rest.flat() : Object.fromEntries(rest);
+      }
+      const seen = new Set();
+      const merged = [...values, "X-SingIt-Model", "X-SingIt-Tier"]
+        .flat().flatMap(value => String(value).split(",")).map(value => value.trim())
+        .filter(value => {
+          const key = value.toLowerCase();
+          if (!value || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      this.setHeader(header, merged.join(", "));
+      return writeHead.apply(this, args);
+    };
+    next();
+  });
   if (config.statsToken && config.statsToken.length < 32) log("singit-ask: SINGIT_ASK_STATS_TOKEN must be at least 32 characters; internal stats disabled");
   if (config.statsToken?.length >= 32) {
     const digest = value => createHash("sha256").update(value).digest();
