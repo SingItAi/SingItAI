@@ -31,7 +31,7 @@ LLM, image and speech charges are model cost plus 30% markup, plus a settlement 
 
 Charged only when a billable answer came back: an upstream 503 never charges. Do not retry a 400/413/422 on another model; fix the request. A 409 means this payment signature was already used. For 503, wait for Retry-After where supplied. A 429 on the free tier means wait for Retry-After.
 
-Free tier: 20 short answers a day per network, no wallet, no key; resets at midnight UTC.
+Free tier: 6 free models, up to 20 answers a day per network, with a shared daily cost cap of $0.25. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required.
 
 Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Per-model reference prices are in the full models list, with upto before exact.
 <!-- generated:ask-guide:end -->
@@ -48,7 +48,7 @@ SingIt lets you connect the wallet you already use, set a daily and a per-purcha
 
 ## Start here: free, then a key, then MCP
 
-1. Free: POST https://ask.singitai.app/v1/chat/completions with model "free/deepseek-v4.1-flash". 20 short answers a day per network, no wallet, no key; resets at midnight UTC.
+1. Free: POST https://ask.singitai.app/v1/chat/completions with model "free/deepseek-v4.1-flash". One of 6 free models; up to 20 answers a day per network, shared $0.25/day cost cap. May run out for the day (free_budget_exhausted); resets at midnight UTC. No wallet or key.
 2. API key: in the SingIt app (https://app.singitai.app/app/), Settings → API keys. The wallet signs the key's limits (per day, per request, how many days); top up $1 to $50 at a time in USDC. With a key, OpenAI SDK, Anthropic SDK and Claude Code work at https://app.singitai.app/v1 (cost + 30%, no per-call fee).
 3. MCP: https://app.singitai.app/mcp (Streamable HTTP), official MCP Registry name app.singitai/singit.
    - Free, no key: get_price, list_price_symbols, list_models.
@@ -83,7 +83,7 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 | 404 | model_not_found, not_found | Model, route or symbol unavailable | No | Check route or catalogue. |
 | 409 | payment_duplicate, stale_payment_permit | Signature used or permit nonce stale | No new charge | Check original result; wait for settlement before signing a fresh permit. |
 | 422 | max_tokens_too_small, invalid_request | No answer within output budget or invalid request | No | Fix request; raise max_tokens within budget. |
-| 429 | rate_limited, free_tier_exhausted, free_tier_busy | Allowance exhausted or busy | No | Wait Retry-After. |
+| 429 | rate_limited, free_tier_exhausted, free_budget_exhausted, free_tier_busy | Allowance exhausted or busy | No | Wait Retry-After. |
 | 503 | no_billable_answer, no_healthy_sellers, upstream_unavailable | No billable answer or upstream unavailable | Never | Wait Retry-After where supplied, then retry. |
 
 ## For developers

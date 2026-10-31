@@ -1,136 +1,43 @@
-# Free models: proposal and cost (SI-69)
+# Free models in SingIt Ask
 
-Status: **proposal.** The code for it is in the tree, and everything that could spend money is off or unset
-until the owner decides (see "What needs the owner's OK"). Nothing here has been deployed.
+31 October 2026 (draft PR, not deployed). The free tier offers six models on `POST /v1/chat/completions` with no wallet or key:
 
-## What exists
+- `free/openai-gpt-oss-20b`
+- `free/gemma-4-e2b`
+- `free/gemma-3-27b-it`
+- `free/mistral-small-3.2-24b-instruct`
+- `free/qwen3-coder-30b-a3b-instruct`
+- `free/deepseek-v4.1-flash`
 
-| Where | What | Limits | Default |
-|---|---|---|---|
-| `singit-ask` (`src/free.mjs`) | `free/<id>` on `POST /v1/chat/completions`, no payment | 20 a day per visitor, 1000 a day for everyone, 4 at once, 400 answer tokens, 4000 characters of question | On, with `free/deepseek-v4.1-flash` (already in production) |
-| `sign402-gateway` (`web_free.py`) | `free/<id>` on the API-key `/v1/chat/completions` for signed-in wallets | 20 a day per account, 40 a day per client network, 1000 a day for everyone, 400 answer tokens, 4000 characters | **Off** (`SIGN402_WEB_FREE_MODELS` empty) |
+Use `free/deepseek-v4.1-flash` for a single working example. Requests without `free/` retain the paid x402 flow on Base or Solana.
 
-What SI-69 adds on top:
+The shared free tier allows up to 20 answers a day per network (IPv4 /24 or IPv6 /64), 1000 answers a day overall, four concurrent answers, 400 output tokens and 4000 question characters. A shared upstream cost cap of **$0.25/day** is enabled by default. This bounds the configured daily spend at $0.25, approximately **$7.50 per 30-day month**. The free tier may run out before a visitor uses their allowance.
 
-- **singit-ask: a visitor is a network.** Free answers are counted per IPv4 /24 or IPv6 /64 (an IPv4-mapped IPv6
-  address counts as its IPv4 /24), so changing address inside one subnet no longer gives a fresh allowance.
-- **singit-ask: optional daily dollar budget**, `SINGIT_ASK_FREE_BUDGET_USD_PER_DAY`. **Unset by default: no
-  budget is checked.** When set, each free answer is counted at the cost Surplus reports for it, else at the
-  model's list price for its worst case; a model with no known price is not answered free (503); once the day's
-  spend reaches the budget, answers are refused with 429 and `Retry-After` until midnight UTC.
-- **singit-ask: free models are marked.** `GET /v1/models` lists `free/<id>` entries with `free: true` and their
-  `limits` (the old top-level `free` object stays); `/openapi.json` documents the prefix on the chat route and
-  has an `x-free-models` extension; the Bazaar input schema's `model` field mentions them.
-- **Gateway: free models for wallets**, separate from the paid limits (it is not counted in a key's 60 requests a
-  minute, its caps or its balance, and spends none of them). OFF unless configured.
-- **No wallet limit on singit-ask.** A free answer there is asked without payment, so it carries no wallet. The
-  network is the only identity it has. The wallet limit exists only in the gateway version.
+Before calling upstream, the service reserves the answer's worst-case cost at the model's list price, with one input token per character, message framing, and all reasoning headroom sent upstream. Reservations count against the cap concurrently. A completed answer replaces its reservation with the validated reported upstream cost; missing or invalid usage uses the worst-case fallback. A failed upstream call releases the reservation and returns the answer count. Unknown model prices pause free answers with 503 while the budget is enabled.
 
-## What a free answer can cost
+A budget refusal returns 429, `free_budget_exhausted`, and `Retry-After` in seconds until midnight UTC, without per-visitor X-RateLimit headers. Visitor and shared answer-count exhaustion retain `free_tier_exhausted` and their existing headers; concurrency retains `free_tier_busy`.
 
-Reproduce with the saved snapshot of `/v1/models` (read 24 October 2026, `docs/data/singit-models-2026-10-24.json`):
+The `sign402-gateway` API-key route has its own separate free path (`web_free.py`, `SIGN402_WEB_FREE_MODELS`); it is off unless configured, is not part of this change, and has its own counters and limits.
 
-```
-python scripts/free-model-cost.py docs/data/singit-models-2026-10-24.json
-```
+## Persistence and configuration
 
-Worst case per answer means the question at its longest (4000 characters, counted as 1000 input tokens at 4
-characters per token) and the answer at its longest (400 tokens). **List price** is `usdPerMillionTokens`, the
-seller's published price. **Expected price** is `expectedUsdPerMillionTokens`, what the snapshot says a call
-usually costs; its `basis` is `observed` for `deepseek-v4.1-flash` and `trusted` for the others. A month is 30 days
-with the global daily cap used up every day.
+`SINGIT_ASK_FREE_MODELS` defaults to the six models above; an explicitly empty value turns free answers off. `SINGIT_ASK_FREE_BUDGET_USD_PER_DAY` defaults to 0.25; positive values override it, 0 disables the dollar cap, and invalid or negative values use the default. Network and daily answer limits remain configurable as before.
 
-```
-Worst case per free answer: question 4000 chars (= 1000 input tokens at 4 chars/token), answer 400 tokens.
-Month = 30 days with the global daily cap used up every day. USD.
+`SINGIT_ASK_FREE_STATE_FILE` defaults to `$HOME/.config/singit-ask/free-budget.json`. Atomic mode-0600 JSON stores only the version, UTC day number, spent micro-USDC, pending (in-flight) micro-USDC and total answers. Valid state for today survives restarts; yesterday's state starts fresh; an invalid file fails closed (see below). Visitor network identifiers are never persisted. Tests without a configured state file use memory only.
 
-LIST price
-model                           in $/M   out $/M  per answer  100/day/mo  300/day/mo  1000/day/mo
-------------------------------  ------  --------  ----------  ----------  ----------  -----------
-deepseek-v4.1-flash               0.02         1  0.00042000      1.2600      3.7800      12.6000
-openai-gpt-oss-20b               0.018      0.09  0.00005400      0.1620      0.4860       1.6200
-qwen3.7-flash                     0.03      0.13  0.00008200      0.2460      0.7380       2.4600
-glm-5.3-flash                     0.15       0.5  0.00035000      1.0500      3.1500      10.5000
-mistral-small-3.2-24b-instruct   0.075  0.200000  0.00015500      0.4650      1.3950       4.6500
+Limitations: in-flight reservations are saved with the state and, after a crash or restart, counted as spent (the cap can only get stricter). An unreadable or invalid state file for today is treated as a spent budget until midnight UTC (fail closed). Visitor limits reset on restart. Persistence errors are logged once and never fail an answer; a failed write cannot guarantee restart continuity. This is a single-process allowance, not a distributed lock across replicas. The cap relies on upstream costs staying within the advertised worst-case model pricing. SingIt's gateway free lane is separate from this public Ask tier.
 
-EXPECTED price
-model                                in $/M      out $/M  per answer  100/day/mo  300/day/mo  1000/day/mo
-------------------------------  -----------  -----------  ----------  ----------  ----------  -----------
-deepseek-v4.1-flash                       0            0  0.00000000      0.0000      0.0000       0.0000
-openai-gpt-oss-20b              0.000158400  0.000792000  0.00000048      0.0014      0.0043       0.0143
-qwen3.7-flash                         0.009        0.039  0.00002460      0.0738      0.2214       0.7380
-glm-5.3-flash                   0.000240000  0.000800000  0.00000056      0.0017      0.0050       0.0168
-mistral-small-3.2-24b-instruct      0.00375         0.01  0.00000775      0.0232      0.0698       0.2325
+## Offline cost reference
 
-Expected-price basis in the file: deepseek-v4.1-flash: observed; glm-5.3-flash: trusted; mistral-small-3.2-24b-instruct: trusted; openai-gpt-oss-20b: trusted; qwen3.7-flash: trusted
-```
+Generated from the saved 24 October catalogue with `python3 scripts/free-model-cost.py docs/data/singit-models-2026-10-24.json`. These are list-price worst cases for **one message**, 4000 characters plus four framing tokens and 400 output tokens; more messages add framing. These six models have no configured reasoning headroom. Runtime reservations round up to whole micro-USDC; the table shows the unrounded estimate. Live catalogue prices may change. Expected seller prices are not guarantees.
 
-How to read it:
+| Model | Worst-case upstream USD per answer |
+| --- | ---: |
+| openai-gpt-oss-20b | 0.000108072 |
+| gemma-4-e2b | 0.00019216 |
+| gemma-3-27b-it | 0.00040032 |
+| mistral-small-3.2-24b-instruct | 0.00038030 |
+| qwen3-coder-30b-a3b-instruct | 0.00039228 |
+| deepseek-v4.1-flash | 0.00048008 |
 
-- At list price, even the current cap of 1000 free answers a day on the current model is **12.60 USD a month at
-  the very most**, and only if every answer is the longest allowed.
-- The expected price of `deepseek-v4.1-flash` in the snapshot is 0 (`observed`). That is what Surplus reported when
-  the snapshot was taken, not a promise that it stays 0; the list price is the number to plan the ceiling on.
-- The prices are as of the snapshot. Re-run the script on a fresh `/v1/models` before deciding.
-- The script estimates input at chars/4, like singit-ask's default price estimate; the live budget check counts a question without a cost report at one token per character, the looser bound. It does not include the 30% markup or
-  settlement fee, because a free answer pays neither.
-
-## What is actually used
-
-From the VPS journal, last 30 days, read 24 October: **10 free answers in total** on singit-ask: 4 on 14 October,
-1 on 16 October, 2 on 17 October and 3 on 24 October. That is about 0.3 a day on average against a cap of 1000.
-The gateway free path is off, so it has none. Ten answers at the worst-case list price of the current model is
-0.0042 USD (10 x 0.00042).
-
-So the caps are not what limits cost today; demand is. The caps and the budget exist for the day someone finds
-the endpoint and scripts it.
-
-## Recommendation
-
-1. **Keep `deepseek-v4.1-flash` as the free model on singit-ask.** It is the model already live and the one
-   free answers are tested against. Its worst case is the highest of the five at list price (12.60 USD a month at
-   1000 a day), but that is a ceiling that real usage (10 answers in 30 days) is nowhere near, and it needs no
-   change and no new approval.
-2. **If a second free model is wanted, add `openai-gpt-oss-20b`.** It has the lowest worst case of the five at list price
-   (1.62 USD a month at 1000 a day, about 8 times below deepseek's 12.60) and 0.0143 at expected price (deepseek's
-   expected is 0, observed). It also protects the budget if deepseek's observed price of 0 stops holding. `qwen3.7-flash` is the
-   alternative if a model with vision and reasoning tags and a 1M context is wanted: 2.46 USD a month at list and
-   1000 a day.
-3. **Not recommended now:** `glm-5.3-flash` (10.50 USD a month at list, close to deepseek) and
-   `mistral-small-3.2-24b-instruct` (4.65), which cost more than the options above without a reason in these
-   numbers to prefer them.
-
-This compares prices only. I did not run any model for answer quality; that is not in this task's data. For the
-gateway, if it is turned on, start with the same single model.
-
-## What needs the owner's OK
-
-Nothing below has been done; each is a switch the owner flips.
-
-1. **Turn on the gateway part.** `SIGN402_WEB_FREE_MODELS=deepseek-v4.1-flash` on the web API (with its Surplus key
-   and internal token already set). Defaults: 20 per account, 40 per network, 1000 a day, 400 tokens. This is new free
-   spending that does not exist today. Its counters are separate from singit-ask's: with both on, the worst case
-   is up to 1000 + 1000 answers a day, not 1000 in total.
-2. **The budget value** for `SINGIT_ASK_FREE_BUDGET_USD_PER_DAY` (unset now, so no budget is checked). Reference
-   points from the table, worst case at deepseek's list price: 100 answers a day is 0.042 USD, 300 is 0.126,
-   1000 is 0.42. A budget below 0.42 USD a day makes the budget, not the 1000 cap, the limit; one at or above it
-   never binds. The number is the owner's choice.
-3. **Change or add a free model.** `SINGIT_ASK_FREE_MODELS` (singit-ask) and `SIGN402_WEB_FREE_MODELS` (gateway).
-   See the recommendation above.
-4. **Lower or keep the caps** (`SINGIT_ASK_FREE_PER_VISITOR`, `SINGIT_ASK_FREE_PER_DAY`, the gateway's
-   `SIGN402_WEB_FREE_*`). The defaults were left as they were.
-
-## Limits of this design
-
-- **Counters are in memory** in both services; a restart starts the day over, which can give out one more day's
-  allowance at most, bounded by the daily ceiling (and the budget, if set).
-- **A network is not a person.** A shared office or mobile carrier network shares one allowance; someone with many
-  networks (VPN, many IPv6 /64s) can still collect more. The daily ceiling and the budget are what bound that.
-- **Gateway accounts are cheap to make** (any wallet that signs in), so on the gateway the network limit, not the
-  account limit, is the real brake against many wallets from one place.
-- **Discovery text:** the task asked for the Bazaar description to stay within 300 characters. The bound the
-  discovery tests enforce is 500 (`singit-ask/test/app.test.mjs`), and the top-level description was not touched.
-  Free models are named only in the Bazaar input schema's `model` field. The test sizes only
-  `resource.description`; I have not checked whether Coinbase's facilitator limits the input schema. Check
-  discovery against the real facilitator before deploying, or drop the schema change (`inputSchema` in
-  `singit-ask/src/app.mjs`) if it objects.
+No real upstream calls or paid calls were made while preparing this change; the tests use fake upstreams and fake addresses. Before enabling on a server, check each of the six models once with a short free question (they answer at most 400 tokens): a model that returns no text within that budget answers 503 `no_billable_answer` and is not counted.

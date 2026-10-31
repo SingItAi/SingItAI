@@ -352,3 +352,14 @@ isolation disabled report website 350 pass / 4 fail and scripts 38 pass / 1 fail
 all failures depend on child processes. No endpoints were refetched or paid calls made;
 answerability after the hide remains unverified. The supplied snapshot updates pricing
 for 52 other models; DeepSeek's prices are unchanged.
+
+### 31 October 2026 — six free models and a shared daily cost cap (draft PR, not deployed)
+
+SingIt Ask's free tier goes from one model to six (`free/openai-gpt-oss-20b`, `free/gemma-4-e2b`,
+`free/gemma-3-27b-it`, `free/mistral-small-3.2-24b-instruct`, `free/qwen3-coder-30b-a3b-instruct`,
+`free/deepseek-v4.1-flash`). A shared cap of $0.25 a day on what free answers cost upstream is on by default:
+each answer's worst-case cost is reserved before the call and replaced by the reported cost afterwards, and the
+day's spend and answer count are kept in a small private state file so they survive a restart. When the cap is
+spent, free routes return 429 `free_budget_exhausted` with `Retry-After` until midnight UTC. Per-network limits
+are unchanged. Limits: after a crash, answers that were in flight count as spent (stricter, never looser); an invalid state file
+fails closed until midnight UTC; per-network counters still reset on restart, and the cap is per process. Details in `docs/free-models.md`.

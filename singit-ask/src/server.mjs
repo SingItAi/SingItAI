@@ -16,11 +16,11 @@
 //                              ~/.config/singit-ask/observed-prices.json
 //   SINGIT_ASK_STATS_FILE      persistent private counters, default ~/.config/singit-ask/health-stats.json
 //   SINGIT_ASK_OWN_PAYERS_FILE optional own payers, one per line with # comments
-//   SINGIT_ASK_FREE_MODELS     models answered free as "free/<id>" (comma-separated); unset means the default model,
+//   SINGIT_ASK_FREE_MODELS     models answered free as "free/<id>" (comma-separated); unset means six default free models,
 //                              empty turns free answers off
 //   SINGIT_ASK_FREE_PER_VISITOR, SINGIT_ASK_FREE_PER_DAY  free answers a day per visitor and for everyone together
 //                              (defaults in src/free.mjs); visitors are counted by network (IPv4 /24, IPv6 /64)
-//   SINGIT_ASK_FREE_BUDGET_USD_PER_DAY  optional daily dollar budget for free answers; unset means none
+//   SINGIT_ASK_FREE_BUDGET_USD_PER_DAY  daily dollar budget for free answers; default 0.25; 0 disables
 //   SINGIT_ASK_EXA_API_KEY     SingIt's Exa API key: turns on /v1/exa/search, /contents and /answer, resold over x402
 //                              at Exa's list price with no markup (src/search.mjs)
 //   SINGIT_ASK_BASE_RPC        the Base RPC free prices read Chainlink from (https://mainnet.base.org)
@@ -46,6 +46,7 @@ import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 import { createApp, parseReasoningEffort } from "./app.mjs";
 import { PriceBook } from "./prices.mjs";
+import { DEFAULT_FREE_MODELS, FREE_DEFAULTS } from "./free.mjs";
 import { DEFAULT_EXACT_OUTPUT_FRACTION, parseReasoningHeadroom, setReasoningHeadroomOverrides, parseExactReserve, setExactReserve } from "./pricing.mjs";
 
 function required(name) {
@@ -99,16 +100,17 @@ config.ownPayers = process.env.SINGIT_ASK_OWN_PAYERS_FILE
     .map(line => line.split("#")[0].trim()).filter(Boolean) : [];
 console.error(`singit-ask: own payer exclusions: ${config.ownPayers.length}`);
 const model = config.model;
-config.freeModels = process.env.SINGIT_ASK_FREE_MODELS === undefined ? [model]
+config.freeModels = process.env.SINGIT_ASK_FREE_MODELS === undefined ? DEFAULT_FREE_MODELS
   : process.env.SINGIT_ASK_FREE_MODELS.split(",").map((m) => m.trim()).filter(Boolean);
 const positive = (name) => { const n = Number(process.env[name]); return Number.isInteger(n) && n > 0 ? n : undefined; };
 config.freeLimits = Object.fromEntries(Object.entries({
   perVisitorPerDay: positive("SINGIT_ASK_FREE_PER_VISITOR"), perDay: positive("SINGIT_ASK_FREE_PER_DAY"),
 }).filter(([, v]) => v !== undefined));
-// Unset: no dollar budget is checked on free answers, as before.
+config.freeStateFile = process.env.SINGIT_ASK_FREE_STATE_FILE ?? `${process.env.HOME}/.config/singit-ask/free-budget.json`;
 {
-  const budget = Number(process.env.SINGIT_ASK_FREE_BUDGET_USD_PER_DAY);
-  if (process.env.SINGIT_ASK_FREE_BUDGET_USD_PER_DAY && Number.isFinite(budget) && budget > 0) config.freeBudgetUsdPerDay = budget;
+  const raw = process.env.SINGIT_ASK_FREE_BUDGET_USD_PER_DAY;
+  const budget = raw?.trim() ? Number(raw) : NaN;
+  config.freeBudgetUsdPerDay = Number.isFinite(budget) && budget >= 0 ? budget : FREE_DEFAULTS.budgetUsdPerDay;
 }
 const port = Number(process.env.SINGIT_ASK_PORT || 8140);
 

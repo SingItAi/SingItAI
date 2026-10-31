@@ -1,5 +1,6 @@
 // SingIt Ask against a fake CDP facilitator and a fake model: who is charged, when, and for what.
 
+import { DEFAULT_FREE_MODELS } from "../src/free.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
@@ -638,8 +639,8 @@ test("the model list is free and carries Surplus's prices", async (t) => {
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/models`)).json();
   assert.equal(list.default, "deepseek-v4.1-flash");
-  assert.deepEqual(list.data.map((m) => m.id), ["singit-ask", "cheap-model", "pro-model"]);
-  assert.equal(list.data[2].usdPerMillionTokens.output, 180);
+  assert.deepEqual(list.data.map((m) => m.id), ["singit-ask", ...DEFAULT_FREE_MODELS.map(id => `free/${id}`), "cheap-model", "pro-model"]);
+  assert.equal(list.data.find(m => m.id === "pro-model").usdPerMillionTokens.output, 180);
 });
 
 test("ModelCatalogue reads text models with prices, caches them, and survives a failed refresh", async () => {
@@ -1003,7 +1004,8 @@ test("free and failed model observations do not invent paid calls", async t => {
 
 
 test("free model answers contribute health but no settled usage", async t => {
-  const { url } = await serve(t, { config: { ...CONFIG, freeModels: [CONFIG.model] } });
+  const { url } = await serve(t, { config: { ...CONFIG, freeModels: [CONFIG.model] },
+    catalogue: { ...fakeCatalogue, async resolve(id) { return id === CONFIG.model ? { ...CHEAP, id } : fakeCatalogue.resolve(id); } } });
   const answer = await post(url, { ...QUESTION, model: `free/${CONFIG.model}` });
   assert.equal(answer.status, 200); await answer.json();
   const health = await (await fetch(`${url}/health`)).json();

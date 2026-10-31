@@ -2,7 +2,7 @@
 """What a free answer can cost, per model, from a saved `/v1/models` JSON file.
 
 Offline and read-only: it reads the file it is given and prints. Per model it shows the worst-case cost of
-one free answer (the question at its longest, `--max-chars` characters at 4 characters per token, and the
+one free answer (the question at its longest, `--max-chars` characters at one character per token plus four framing tokens, and the
 answer at its longest, `--max-tokens`), once at the list price (`data[].usdPerMillionTokens`) and once at the
 expected price (`data[].expectedUsdPerMillionTokens`), then the month's cost if the global daily cap is
 used up every day (`--caps`, `--days` per month).
@@ -25,17 +25,18 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_MODELS = (
-    "deepseek-v4.1-flash",
     "openai-gpt-oss-20b",
-    "qwen3.7-flash",
-    "glm-5.3-flash",
+    "gemma-4-e2b",
+    "gemma-3-27b-it",
     "mistral-small-3.2-24b-instruct",
+    "qwen3-coder-30b-a3b-instruct",
+    "deepseek-v4.1-flash",
 )
 DEFAULT_CAPS = (100, 300, 1000)
 DEFAULT_MAX_CHARS = 4000
 DEFAULT_MAX_TOKENS = 400
 DEFAULT_DAYS = 30
-CHARS_PER_TOKEN = 4  # the same bound singit-ask's pricing uses for an input it has not counted
+CHARS_PER_TOKEN = 1  # freeAnswerCost uses the conservative dense-text bound
 MILLION = Decimal(1_000_000)
 
 
@@ -62,10 +63,10 @@ def _price(raw: Any) -> tuple[Decimal, Decimal] | None:
 
 
 def answer_cost(price: tuple[Decimal, Decimal] | None, max_chars: int, max_tokens: int) -> Decimal | None:
-    """Worst-case USD of one answer: max_chars/4 input tokens plus max_tokens output tokens."""
+    """Worst-case USD of one answer: max_chars + four framing input tokens (one message) plus max_tokens output tokens."""
     if price is None:
         return None
-    input_tokens = Decimal(max_chars) / CHARS_PER_TOKEN
+    input_tokens = Decimal(max_chars) / CHARS_PER_TOKEN + 4
     return (input_tokens * price[0] + Decimal(max_tokens) * price[1]) / MILLION
 
 
@@ -97,7 +98,7 @@ def _usd(value: Decimal | None, places: int = 6) -> str:
 
 def render(rows: list[dict[str, Any]], *, max_chars: int, max_tokens: int, caps: list[int], days: int) -> str:
     lines = [
-        f"Worst case per free answer: question {max_chars} chars (= {max_chars // CHARS_PER_TOKEN} input tokens at "
+        f"Worst case per free answer: question {max_chars} chars (= {max_chars // CHARS_PER_TOKEN + 4} input tokens including framing at "
         f"{CHARS_PER_TOKEN} chars/token), answer {max_tokens} tokens.",
         f"Month = {days} days with the global daily cap used up every day. USD.",
         "",

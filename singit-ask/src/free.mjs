@@ -2,18 +2,21 @@
 // small limits per visitor and per day. Anything else on the route is paid as before, so an unpaid question without
 // the prefix still gets the 402 offer that directories and paying agents expect.
 //
-// The limits bound what free answers can cost this service: short questions and answers, a few a day per visitor
-// network, a ceiling for everyone together, optionally a budget in dollars, a few at a time. Counters live in
-// memory and start again on a restart; that can give out at most one more day's allowance, which the daily
-// ceiling keeps small. Free answers carry no wallet, so there is no per-wallet limit here: the network is the
-// only identity they have.
+// Shared daily spend and answer counts persist; visitor networks remain in memory only.
 
+import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { randomBytes } from "node:crypto";
 import { isIP } from "node:net";
 import { TERMS, billUsage, worstModelCostMicro } from "./pricing.mjs";
+
+export const DEFAULT_FREE_MODELS = Object.freeze(["openai-gpt-oss-20b", "gemma-4-e2b", "gemma-3-27b-it", "mistral-small-3.2-24b-instruct", "qwen3-coder-30b-a3b-instruct", "deepseek-v4.1-flash"]);
+export const DEFAULT_FREE_EXAMPLE = "deepseek-v4.1-flash";
 
 export const FREE_PREFIX = "free/";
 
 export const FREE_DEFAULTS = Object.freeze({
+  budgetUsdPerDay: 0.25,
   perVisitorPerDay: 20,
   perDay: 1_000,
   concurrent: 4,
@@ -24,13 +27,13 @@ export const FREE_DEFAULTS = Object.freeze({
 const dayOf = (now) => Math.floor(now / 86_400_000);
 const secondsToMidnight = (now) => Math.ceil((86_400_000 - (now % 86_400_000)) / 1000);
 
-// The free models and limits from configuration; none when the list is empty. `budgetUsdPerDay` is absent unless
-// configured: then no dollar budget is checked.
+// An empty model list disables free answers; a zero budget disables the dollar cap.
 export function freeTerms(config) {
-  const models = (config.freeModels ?? []).filter((m) => typeof m === "string" && m.trim()).map((m) => m.trim());
+  const models = (config.freeModels ?? DEFAULT_FREE_MODELS).filter((m) => typeof m === "string" && m.trim()).map((m) => m.trim());
   const budget = config.freeBudgetUsdPerDay;
   return { ...FREE_DEFAULTS, ...(config.freeLimits ?? {}), models,
-    ...(Number.isFinite(budget) && budget > 0 ? { budgetUsdPerDay: budget } : {}) };
+    budgetUsdPerDay: Number.isFinite(budget) && budget >= 0 ? budget : FREE_DEFAULTS.budgetUsdPerDay,
+    stateFile: config.freeStateFile };
 }
 
 // The 8 sixteen-bit groups of an IPv6 address, or null. An IPv4 tail (::ffff:1.2.3.4) counts as two groups.
@@ -67,49 +70,83 @@ export function networkOf(address) {
 }
 
 export class FreeAllowance {
-  constructor(terms, now = Date.now) {
-    Object.assign(this, { terms, now, day: dayOf(now()), total: 0, spentMicro: 0, visitors: new Map(), running: 0 });
+  constructor(terms, now = Date.now, log = () => {}) {
+    Object.assign(this, { terms, now, day: dayOf(now()), total: 0, spentMicro: 0, reservedMicro: 0, visitors: new Map(), running: 0, log: message => { try { log(message); } catch {} } });
+    if (terms.stateFile) {
+      try {
+        const s = JSON.parse(readFileSync(terms.stateFile, "utf8"));
+        if (s.version !== 1 || ![s.day, s.spentMicro, s.answers].every(n => Number.isSafeInteger(n) && n >= 0)) throw new Error("invalid");
+        // Answers that were in flight when the process stopped may have been billed upstream: count their
+        // reserved worst case as spent, so a crash can only make the cap stricter, never looser.
+        const pending = s.pendingMicro === undefined ? 0 : s.pendingMicro;
+        if (!Number.isSafeInteger(pending) || pending < 0) throw new Error("invalid");
+        if (s.day === this.day) Object.assign(this, { spentMicro: s.spentMicro + pending, total: s.answers });
+      } catch (e) {
+        if (e.code !== "ENOENT" && e.code !== "ENOTDIR") {
+          // An unreadable or invalid file cannot say what today's spend was: fail closed (today's budget is
+          // treated as spent until midnight UTC) rather than hand out a second allowance.
+          this.log("singit-ask: invalid free budget state; today's free budget is treated as spent");
+          if (terms.budgetUsdPerDay > 0) this.spentMicro = Math.round(terms.budgetUsdPerDay * 1e6);
+        }
+      }
+    }
   }
 
   #roll() {
     const today = dayOf(this.now());
-    if (today !== this.day) Object.assign(this, { day: today, total: 0, spentMicro: 0, visitors: new Map() });
+    if (today !== this.day) Object.assign(this, { day: today, total: 0, spentMicro: 0, reservedMicro: 0, visitors: new Map() });
   }
 
   // One free answer for this visitor, or the reason there is none now.
-  take(visitor) {
+  take(visitor, worstCost = 0) {
     this.#roll();
     const used = this.visitors.get(visitor) ?? 0;
     if (used >= this.terms.perVisitorPerDay) return { ok: false, reason: "visitor" };
     if (this.total >= this.terms.perDay) return { ok: false, reason: "day" };
-    if (this.budgetUsed()) return { ok: false, reason: "budget" };
+    if (this.terms.budgetUsdPerDay > 0 && this.spentMicro + this.reservedMicro + worstCost > Math.round(this.terms.budgetUsdPerDay * 1e6)) return { ok: false, reason: "budget" };
     if (this.running >= this.terms.concurrent) return { ok: false, reason: "busy" };
     this.visitors.set(visitor, used + 1);
     this.total += 1;
     this.running += 1;
-    return { ok: true, left: this.terms.perVisitorPerDay - used - 1 };
+    this.reservedMicro += worstCost;
+    this.save();
+    return { ok: true, day: this.day, reserved: worstCost, left: this.terms.perVisitorPerDay - used - 1 };
   }
 
-  // Whether the day's dollar budget, when there is one, is spent.
-  budgetUsed() {
-    const budget = this.terms.budgetUsdPerDay;
-    return budget !== undefined && this.spentMicro >= Math.round(budget * 1e6);
+  save() {
+    // In-flight reservations are saved as `pendingMicro` and counted as spent after a restart (see the constructor).
+    if (!this.terms.stateFile) return;
+    try {
+      mkdirSync(dirname(this.terms.stateFile), { recursive: true });
+      const tmp = `${this.terms.stateFile}.${randomBytes(6).toString("hex")}.tmp`;
+      writeFileSync(tmp, JSON.stringify({ version: 1, day: this.day, spentMicro: this.spentMicro, answers: this.total, pendingMicro: this.reservedMicro }), { mode: 0o600, flag: "wx" });
+      renameSync(tmp, this.terms.stateFile);
+    } catch { if (!this.writeFailed) { this.writeFailed = true; this.log("singit-ask: free budget state write failed"); } }
   }
 
-  // What one answer cost, in USDC micro-units, counted toward the day's budget.
-  spend(micro) {
+  spend(micro, turn = { reserved: 0, day: this.day }) {
     this.#roll();
+    if (turn.day !== this.day) return;
+    this.reservedMicro = Math.max(0, this.reservedMicro - turn.reserved);
+    const before = this.spentMicro;
     this.spentMicro += Number(micro);
+    const cap = this.terms.budgetUsdPerDay * 1e6;
+    for (const percent of [50, 90, 100]) if (cap > 0 && before < cap * percent / 100 && this.spentMicro >= cap * percent / 100)
+      this.log(`singit-ask: free budget used ${percent}%`);
+    this.save();
   }
 
   done() { this.running = Math.max(0, this.running - 1); }
 
   // A free answer that did not come back is not counted against the visitor.
-  giveBack(visitor) {
+  giveBack(visitor, turn = { reserved: 0, day: this.day }) {
     this.#roll();
+    if (turn.day !== this.day) return;
+    this.reservedMicro = Math.max(0, this.reservedMicro - turn.reserved);
     const used = this.visitors.get(visitor) ?? 0;
     if (used > 0) this.visitors.set(visitor, used - 1);
     this.total = Math.max(0, this.total - 1);
+    this.save();
   }
 
   secondsToReset() { return secondsToMidnight(this.now()); }
@@ -138,14 +175,15 @@ const REFUSALS = {
     + "(x402, USDC on Base or Solana), or come back tomorrow (UTC).",
   day: "Today's free answers are used up. Pay per answer instead: drop the free/ prefix "
     + "(x402, USDC on Base or Solana), or come back tomorrow (UTC).",
-  budget: "Today's free answers are used up. Pay per answer instead: drop the free/ prefix "
-    + "(x402, USDC on Base or Solana), or come back tomorrow (UTC).",
+  budget: "Today's free answers are used up (the shared daily free budget is spent). Free answers return after midnight UTC. Pay per answer instead: drop the free/ prefix "
+    + "(x402, USDC on Base or Solana).",
   busy: "Free answers are busy right now. Try again in a few seconds, or pay per answer: drop the free/ prefix.",
 };
 
 // The free route goes in front of the paid one: it answers "free/" questions and passes everything else on.
-export function addFreeRoute(app, route, { config, terms, allowance = new FreeAllowance(terms), readRequest,
+export function addFreeRoute(app, route, { config, terms, allowance, readRequest,
                                             RequestError, upstream, catalogue = null, fetchImpl, log }) {
+  allowance ??= new FreeAllowance(terms, Date.now, log);
   app.post(route, async (req, res, next) => {
     const asked = req.body?.model;
     if (typeof asked !== "string" || !asked.startsWith(FREE_PREFIX)) return next();
@@ -167,31 +205,33 @@ export function addFreeRoute(app, route, { config, terms, allowance = new FreeAl
     // With a budget, the model's price must be known before anything is spent: it prices an answer whose cost
     // is not reported. Unknown, nothing is spent.
     let info = null;
-    if (terms.budgetUsdPerDay !== undefined) {
+    if (terms.budgetUsdPerDay > 0) {
       info = catalogue ? await catalogue.resolve(model).catch(() => null) : null;
       if (!info) return refuse(503, "Free answers are paused: this model's price is not known right now. Try again later, or pay per answer.");
     }
     const visitor = visitorOf(req);
-    const turn = allowance.take(visitor);
+    const maxTokens = Math.min(input.maxTokens, terms.maxTokens);
+    const worstCost = terms.budgetUsdPerDay > 0 ? freeAnswerCost(null, info, input, maxTokens) : 0;
+    if (!Number.isSafeInteger(worstCost) || worstCost < 0) return refuse(503, "Free answers are paused: price unknown.");
+    const turn = allowance.take(visitor, worstCost);
     if (!turn.ok) {
       res.set("Retry-After", String(turn.reason === "busy" ? 5 : allowance.secondsToReset()));
-      if (turn.reason !== "busy") res.set({ "X-RateLimit-Limit": String(terms.perVisitorPerDay),
+      if (["visitor", "day"].includes(turn.reason)) res.set({ "X-RateLimit-Limit": String(terms.perVisitorPerDay),
         "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(Math.floor(allowance.now() / 1000) + allowance.secondsToReset()) });
       return res.status(429).json({ error: { message: REFUSALS[turn.reason], type: "rate_limit_error",
-        code: turn.reason === "busy" ? "free_tier_busy" : "free_tier_exhausted" } });
+        code: turn.reason === "budget" ? "free_budget_exhausted" : turn.reason === "busy" ? "free_tier_busy" : "free_tier_exhausted" } });
     }
     const started = Date.now();
     try {
-      const maxTokens = Math.min(input.maxTokens, terms.maxTokens);
       const answer = await upstream(config, input.messages, maxTokens, fetchImpl, model);
-      if (terms.budgetUsdPerDay !== undefined) allowance.spend(freeAnswerCost(answer.usage, info, input, maxTokens));
+      if (terms.budgetUsdPerDay > 0) allowance.spend(freeAnswerCost(answer.usage, info, input, maxTokens), turn);
       log(`singit-ask: free answer in ${Date.now() - started} ms`);
       res.set({ "X-SingIt-Free": "true", "X-SingIt-Free-Remaining": String(turn.left) });
       res.json({ id: `singit-ask-free-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: asked, choices: [{ index: 0, message: { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing: { free: true } });
     } catch (error) {
-      allowance.giveBack(visitor);
+      allowance.giveBack(visitor, turn);
       log(`singit-ask: no free answer after ${Date.now() - started} ms (${error.name})`);
       res.set("Retry-After", "30").status(503).json({ error: { message: "No answer came back. Try again.", type: "upstream_error", code: "no_billable_answer" } });
     } finally {

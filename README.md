@@ -38,7 +38,7 @@ curl -i https://ask.singitai.app/v1/chat/completions \
 ```
 
 Use the model `free/deepseek-v4.1-flash` in the same request to get an answer with no payment
-(20 a day per network). To pay for an answer from your own wallet, see
+(one of six free models; up to 20 answers a day per network, shared $0.25/day cost cap). The shared free tier may run out for the day (`free_budget_exhausted`); it resets at midnight UTC. To pay for an answer from your own wallet, see
 [Your first paid x402 call](docs/first-paid-call.md).
 
 **2. Add the MCP server** to Claude Code. Price and model lookups work without a key; add
