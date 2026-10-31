@@ -2,6 +2,13 @@
 
 > Your agent spends. Your wallet keeps the money: set a daily and a per-purchase limit once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits.
 
+Agents with no wallet of their own: use an MCP key with limits your owner sets: https://singitai.app/docs/mcp/#key
+Caps apply only to calls made with the key to SingIt's MCP and /v1 endpoint; they do not limit spending elsewhere or protect an agent's own wallet.
+Free first call: POST https://ask.singitai.app/v1/chat/completions with model free/deepseek-v4.1-flash; no key or wallet, subject to the free allowance below.
+
+Agent instructions: https://singitai.app/SKILL.md
+Discovery card (MCP, not an A2A task endpoint): https://singitai.app/.well-known/agent-card.json
+
 ## I need to... -> Call -> Price
 
 | Task | Call | Price |
@@ -53,7 +60,8 @@ SingIt lets you connect the wallet you already use, set a daily and a per-purcha
    - Free with a key (read-only): get_balance, get_limits, get_receipts.
    - Paid per call from the key's limits (USDC on Base or Solana): web_search, read_page.
    - Paid, Base accounts for now: get_x_profile, get_crypto_news, get_hyperliquid_market, get_funding_rates, resolve_ens, get_token_price; demo calls get_weather, get_singit_risk_check.
-   - Claude Code: claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer sk_singit_..."
+   - Claude Code: claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'
+     Single quotes keep ${SINGIT_API_KEY} as a reference so the key is not written into Claude Code's configuration.
    - Install guide: https://github.com/SingItAi/SingItAI/blob/main/llms-install.md
 
 Agents with their own wallet can skip the key: pay per answer over x402 at https://ask.singitai.app (USDC on Base or Solana).
