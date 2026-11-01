@@ -37,3 +37,31 @@ the key's scopes (`get_price`, `list_price_symbols` and `list_models` need none 
 same as an empty or unexpanded `${env:SINGIT_API_KEY}` header (e.g. the client never substituted the
 environment variable): both are treated as no key, not as a wrong one. A revoked or otherwise wrong key
 gets `401`, never a silent empty tool list.
+
+## Cline
+
+Cline needs one extra field. When `type` is missing it assumes the legacy SSE transport, and
+SingIt's endpoint is Streamable HTTP only (a `GET` returns 405), so the generic block above fails
+to connect in Cline. Set `"type": "streamableHttp"`.
+
+Open the MCP settings JSON (Cline panel → MCP Servers → Configure → Configure MCP Servers;
+Cline CLI: `~/.cline/data/settings/cline_mcp_settings.json`) and add:
+
+```json
+{
+  "mcpServers": {
+    "singit": {
+      "type": "streamableHttp",
+      "url": "https://app.singitai.app/mcp",
+      "headers": { "Authorization": "Bearer ${env:SINGIT_API_KEY}" },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+Cline expands `${env:SINGIT_API_KEY}` from the environment that launches it (supported since
+Cline v3.43.0), so the key stays out of the file. Alternatively use the Remote Servers tab:
+URL `https://app.singitai.app/mcp`, transport **Streamable HTTP**, and the `Authorization` header.
+Then run step 3: `tools/list` shows 16 tools without a key; paid tools need the key.
