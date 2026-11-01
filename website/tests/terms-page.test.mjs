@@ -42,6 +42,14 @@ test('terms page matches how SingIt works', () => {
   assert.ok(html.includes('mailto:contact@singitai.app'));
 });
 
+test('terms allow lawful adult content and only prohibit illegal content', () => {
+  assert.match(text, /Lawful adult \(18\+\) content is allowed/);
+  assert.match(text, /CSAM/);
+  assert.match(text, /without that person&rsquo;s consent/);
+  assert.doesNotMatch(text, /No adult content/i);
+  assert.doesNotMatch(text, /not a service for producing 18\+ content/i);
+});
+
 test('every page that links the privacy policy in its footer also links the terms', () => {
   let n = 0;
   for (const file of pages(site)) {
