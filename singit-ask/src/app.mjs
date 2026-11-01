@@ -565,16 +565,23 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
     + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
     + "price; nothing is charged without an answer. Exact payers instead pay a flat price for a typical-length answer.";
-  // <=500 characters (CDP rejects longer; the other routes stay <=300): Coinbase's Bazaar ranks listings by metadata
-  // completeness, and a description that is half about billing reads as incomplete on what the endpoint does. Billing
-  // stays in DESCRIPTION above (openapi.json, /.well-known/x402) for the humans/agents that read terms there. It opens
-  // with the category words a buyer searches for and names the brand once, later, not as a prefix (SI-90: Bazaar's
-  // search is semantic). It also says what the model field accepts beyond a model id: singit/auto and free/ models.
-  const DISCOVERY_DESCRIPTION = "LLM chat completions API, OpenAI-compatible: one endpoint for 100+ models (Claude, "
-    + "GPT, Gemini, Grok, DeepSeek, Qwen), no API key or account, pay per call in USDC. Call it when an agent needs an "
-    + "LLM answer, a second opinion, or a model it has no key for. The model singit/auto picks one by tier (eco, "
-    + `standard, premium)${freeOffer ? `; models with the ${FREE_PREFIX} prefix answer with no payment, within a daily limit` : ""}. `
-    + "SingIt Ask; models at GET /v1/models.";
+  // Keep every route within 160 characters so directories show the capability first.
+  // CDP's hard limit is 500 (enforced by the lint); billing stays in DESCRIPTION.
+  const DISCOVERY_DESCRIPTION = "OpenAI-compatible chat API: 200+ models, or singit/auto to pick by tier. "
+    + `Pay per call in USDC on Base or Solana${freeOffer ? `; ${FREE_PREFIX} models need no payment` : ""}.`;
+  const LLMS_INTRO = "OpenAI-compatible chat API: 200+ models (Claude, GPT, Gemini, Grok, DeepSeek, Qwen), "
+    + "or singit/auto to pick one by tier. One endpoint, pay per call in USDC on Base or Solana, no account."
+    + (freeOffer ? ` Free first call, no wallet: model ${freeOffer.models[0]}.` : "");
+  const AUTO_GUIDE = "\"model\":\"singit/auto\" on POST /v1/chat/completions picks an eco, standard or premium model for "
+    + "text prompts by simple rules; optional \"min_tier\" (eco, standard or premium) sets the minimum "
+    + "tier. X-SingIt-Model and X-SingIt-Tier identify the model and tier that answered. If the chosen "
+    + "model's seller refuses before payment, the router tries the next model of the tier or the next "
+    + "tier up, never below min_tier. Only POST /v1/chat/completions.";
+  const FALLBACK_GUIDE = "fallback_models is optional on paid POST /v1/chat/completions with a pinned model: 1 to 3 unique "
+    + "model ids (not the pinned model, not singit/auto). If the pinned model is unavailable before "
+    + "payment, the first healthy priced candidate whose Base upto ceiling is no higher than the pinned "
+    + "one answers (same auto tier if the pinned model has one). X-SingIt-Model and "
+    + "X-SingIt-Fallback-From identify which model answered and which was replaced.";
   app.get("/health", open, (_req, res) => {
     res.set("Cache-Control", "no-store");
     res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model, catalogue?.unservableSnapshot?.(), catalogue?.suspensionSnapshot?.()),
@@ -592,6 +599,15 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     const models = listed.filter((m, i) => answerable[i] || (m.id === config.model && !catalogue.isUnservable?.(m.id)));
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
+      savings: {
+        field: "savingsVsListPct",
+        definition: "How far SingIt's expected price per million tokens (expected price plus the 30% markup, "
+          + "settlement fees excluded) is below the model's list price. It is an estimate, not a guaranteed "
+          + "discount, and it is absent when no expected price is known.",
+        listPrice: "usdPerMillionTokens, the list price in Surplus's model catalogue",
+        expectedPrice: "expectedUsdPerMillionTokens.basis: observed = median of what SingIt's own paid answers for this "
+          + "model cost against list, last 20; trusted = Surplus's best trusted-seller offer as a share of "
+          + "list" },
       data: [...(catalogue.isUnservable?.(config.model) ? [] :
         [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model }]),
         // Virtual routes have no fixed token rate; priced-model consumers use property presence.
@@ -606,11 +622,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             ...(m.priceBasis === "reference" ? { priceBasis: "reference", priceDescription: "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0" } : {}),
             ...schemeAdvice(m.id),
             usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
-            ...(share === null ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
+            ...(share === null || !basis ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
               output: m.completionUsdPerToken * 1e6 * share, basis } }),
+            // Savings need the same expected price and source shown above.
             ...(ours === null ? {} : {
               singitUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * ours, output: m.completionUsdPerToken * 1e6 * ours },
-              savingsVsListPct: savingsFor(ours) }) };
+              ...(share !== null && basis ? { savingsVsListPct: savingsFor(ours) } : {}) }) };
         })] });
   });
 
@@ -748,7 +765,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           security: [{ x402: [] }],
         } }])) : {}),
         ...(catalogue ? { [IMAGE_ROUTE]: { post: {
-          operationId: "createImage", summary: "Generate images with any of 36 image models",
+          operationId: "createImage", summary: "Generate images with any listed image model",
           description: "OpenAI images request (model, prompt, n, size). Paid per request over x402: the model's list price "
             + "+ 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models and prices: GET /v1/images/models. "
             + "Nothing is charged without an image.",
@@ -760,7 +777,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
           [SPEECH_ROUTE]: { post: {
-            operationId: "createSpeech", summary: "Generate speech with any of 11 voice models",
+            operationId: "createSpeech", summary: "Generate speech with any listed voice model",
             description: "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: the "
               + "model's list price for the text + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models: "
               + "GET /v1/audio/models. Nothing is charged without audio.",
@@ -970,7 +987,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                          ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
                          ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
-      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
+      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
@@ -997,7 +1014,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       ...(exaKey ? ["Exa web search, page contents and cited answers"] : [])];
     const exactShare = Math.round((config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION) * 100);
     const lines = [
-      "# SingIt Ask", "", `> ${DISCOVERY_DESCRIPTION}`, "",
+      "# SingIt Ask", "", `> ${LLMS_INTRO}`, "",
+      "Spending limits: SingIt's limits protect only SingIt's own agent. On Base the owner's allowance limiter enforces them in an on-chain contract. On a SingIt API key (MCP at https://app.singitai.app/mcp, /v1 at https://app.singitai.app/v1) SingIt's server checks the owner's daily and per-request caps. A call you pay for here with your own wallet is not covered: you sign each payment yourself. Details: https://singitai.app/docs/mcp-key/", "",
+      `Start here: POST ${base}/v1/chat/completions with "model":"singit/auto" (optional "min_tier") or a named model; the unpaid call returns 402 with the offers.`, "",
       "## What it is", "",
       `An x402 seller: ${sold.length > 1 ? `${sold.slice(0, -1).join(", ")} and ${sold.at(-1)}` : sold[0]}, `
         + "each paid per call. No accounts or API keys.", "",
@@ -1009,6 +1028,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + `${base}/openapi.json and ${base}/v1/models. For Claude Opus, sign \`upto\`: its \`exact\` price carries room `
         + "for thinking tokens and is usually dearer than the answer used (recommendedScheme in "
         + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC}`, "",
+      "## Model selection", "", AUTO_GUIDE, "", FALLBACK_GUIDE, "",
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `
           + `${freeOffer.perVisitorPerDay} answers a day per network (IPv4 /24, IPv6 /64), up to ${freeOffer.maxTokens} `

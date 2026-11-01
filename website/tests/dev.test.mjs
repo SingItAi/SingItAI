@@ -93,3 +93,10 @@ test("free list input keeps a positive SingIt output visible", () => {
   assert.match(rowHtml(model), /\$5\.07/);
   assert.equal(sortModels([PLAIN, model], "featured")[0], model);
 });
+
+test("missing savings and unsold video tags stay hidden", () => {
+  const model = { ...OPUS };
+  delete model.savingsVsListPct;
+  assert.doesNotMatch(rowHtml(model), /(?:&minus;|−)\d+%/);
+  assert.deepEqual(tagsOf([{ tags: ["video", "vision"] }]), ["vision"]);
+});

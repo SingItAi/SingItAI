@@ -45,7 +45,7 @@
     {
       "path": "/v1/audio/speech",
       "method": "POST",
-      "summary": "Generate speech with any of 11 voice models",
+      "summary": "Generate speech with any listed voice model",
       "price": {
         "min": "0.001",
         "max": "0.336",
@@ -235,7 +235,7 @@
     {
       "path": "/v1/images/generations",
       "method": "POST",
-      "summary": "Generate images with any of 36 image models",
+      "summary": "Generate images with any listed image model",
       "price": {
         "min": "0.014",
         "max": "2.602",

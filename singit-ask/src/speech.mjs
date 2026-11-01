@@ -79,11 +79,8 @@ export function speechPrice(listAtomic, network) {
            totalAtomic: (list + markup + BigInt(FEES[network])).toString() };
 }
 
-// <=300 characters, opening with the category words and naming the brand once, later (see app.mjs's
-// DISCOVERY_DESCRIPTION for why).
-const DESCRIPTION = "Text to speech (TTS) API: text read aloud by 11 voice models (Kokoro, ElevenLabs, Gemini, xAI, "
-  + "MiniMax and more; list at GET /v1/audio/models), no API key needed. OpenAI speech request format. mp3 "
-  + "(audio/mpeg) by default, other response_format values return their own type. Served by SingIt.";
+// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
+const DESCRIPTION = "Text-to-speech API (Kokoro, ElevenLabs, Gemini and more), OpenAI speech format. Pay per request in USDC on Base or Solana, no key.";
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["venice-kokoro-tts"], description: "A speech model id from GET /v1/audio/models." },

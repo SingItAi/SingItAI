@@ -227,7 +227,7 @@ test("an empty unpaid request gets the standing offer, so directories can regist
     assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]),
       [[BASE, "3000"], [SOLANA, "3000"], [BASE, "3000"], [SOLANA, "3000"]]);
     assert.ok(required.extensions?.bazaar?.info, "x402scan needs the input schema to index the route");
-    assert.match(required.resource.description, /models at GET \/v1\/models/);
+    assert.match(required.resource.description, /200\+ models/);
     assert.doesNotMatch(required.resource.description, /at most 0\.003/);
   }
   assert.equal(asked.length, 0);
@@ -237,9 +237,9 @@ test("an empty unpaid request gets the standing offer, so directories can regist
 test("the listing tells agents what to send and what comes back, within Coinbase's limits", async (t) => {
   const { url } = await serve(t);
   const required = await offer(url);
-  // Coinbase's facilitator rejects descriptions over 500 characters.
-  assert.ok(required.resource.description.length <= 500, `description is ${required.resource.description.length} characters`);
-  assert.match(required.resource.description, /Claude, GPT, Gemini/);
+  // Directory descriptions stay short even though CDP accepts up to 500 characters.
+  assert.ok(required.resource.description.length <= 160, `description is ${required.resource.description.length} characters`);
+  assert.match(required.resource.description, /^OpenAI-compatible chat API/);
   const bazaar = required.extensions.bazaar;
   const body = bazaar.schema.properties.input.properties.body;
   assert.deepEqual(body.properties.messages.items.properties.role.enum, ["system", "user", "assistant"]);
@@ -399,6 +399,12 @@ test("GET /llms.txt describes only what is live: Exa, free tier, prices, no vide
   };
   const on = await llms({ exaKey: "exa_test", priceBook: {} },
     { ...CONFIG, freeModels: ["deepseek-v4.1-flash"], freeLimits: { perVisitorPerDay: 7, maxTokens: 300 } });
+  for (const term of ["singit/auto", "min_tier", "fallback_models"]) {
+    assert.ok(on.text.includes(term), term);
+    const manifest = await (await fetch(`${on.url}/.well-known/x402`)).json();
+    assert.ok(manifest.instructions.includes(term), term);
+  }
+  assert.match(on.text, /Free first call, no wallet: model free\/deepseek-v4\.1-flash/);
   assert.ok(!on.text.includes("when enabled"));
   assert.match(on.text, /Exa web search/);
   for (const route of Object.keys(SEARCH_ROUTES)) assert.ok(on.text.includes(`- POST ${on.url}${route}`), route);
@@ -423,6 +429,7 @@ test("GET /llms.txt describes only what is live: Exa, free tier, prices, no vide
   assert.ok(!off.text.includes("when enabled"));
   assert.ok(!/Exa|\/v1\/exa\//.test(off.text));
   assert.ok(!off.text.includes("## Free to try"));
+  assert.ok(!off.text.includes("Free first call, no wallet"));
   assert.ok(!off.text.includes("/v1/prices"));
 });
 
@@ -434,7 +441,12 @@ test("health and the model list are free, and the old test page is gone", async 
   assert.deepEqual(health.pricing, { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS });
   const models = await fetch(`${url}/v1/models`);
   assert.equal(models.status, 200);
-  assert.equal((await models.json()).data[0].id, "singit-ask");
+  const modelList = await models.json();
+  assert.equal(modelList.data[0].id, "singit-ask");
+  assert.equal(modelList.savings.field, "savingsVsListPct");
+  assert.match(modelList.savings.listPrice, /Surplus/);
+  for (const model of modelList.data) if (Object.hasOwn(model, "savingsVsListPct"))
+    assert.ok(model.expectedUsdPerMillionTokens?.basis, model.id);
   assert.equal((await fetch(`${url}/test/`)).status, 404);
   assert.equal((await fetch(`${url}/v1/chat/completions/metered/solana`, { method: "POST" })).status, 404);
   assert.equal(facilitator.calls.verify, 0);
@@ -834,7 +846,7 @@ test("capabilities name what a model can do in the picker's category keys", asyn
   assert.deepEqual(capabilities(entry("kimi-k2.7-code:web"), ["text"]), ["code"]);
   assert.deepEqual(capabilities(entry("barcode-reader"), ["text"]), [], "a name merely containing 'code' is not a coder");
   assert.deepEqual(capabilities(entry("e2ee-glm-4.7", ["reasoning"]), ["text"]), ["reasoning", "private"]);
-  assert.deepEqual(capabilities(entry("omni", ["audio"]), ["text", "video", "audio"]), ["video", "audio"]);
+  assert.deepEqual(capabilities(entry("omni", ["audio"]), ["text", "video", "audio"]), ["audio"]);
 });
 
 test("a model no trusted seller can answer now is not listed, and is refused before any payment", async (t) => {

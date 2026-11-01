@@ -103,7 +103,7 @@ test("every model route's description is short, billing-free, and the resource c
     const required = decode((await fetch(`${url}${route}`, { method: "GET" })).headers.get("payment-required"));
     const description = required.resource.description;
     assert.equal(description, discoveryDescription(model), route);
-    assert.ok(description.length <= 300, `${route}: ${description.length} chars`);
+    assert.ok(description.length <= 160, `${route}: ${description.length} chars`);
     assert.doesNotMatch(description, BILLING_WORDS, route);
     assert.match(required.resource.iconUrl ?? "", /\.png$/, route);
     assert.equal(required.resource.serviceName, `SingIt ${model.name} Chat`, route);
@@ -223,7 +223,7 @@ test("pinned route schemas exclude generic-only fields while generic chat retain
   assert.ok(doc.paths[ROUTE].post.requestBody.content["application/json"].schema.properties.fallback_models);
   const generic = decode((await fetch(url + ROUTE)).headers.get("payment-required"));
   assert.ok(generic.extensions.bazaar.schema.properties.input.properties.body.properties.fallback_models);
-  assert.ok(generic.resource.description.length <= 500);
+  assert.ok(generic.resource.description.length <= 160);
   assert.match(generic.resource.description, /singit\/auto/);
   assert.match(generic.resource.description, /free\//);
   assert.match(doc.paths[ROUTE].post.description, /settlement fee/, "openapi keeps the billing terms");

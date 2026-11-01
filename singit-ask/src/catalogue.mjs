@@ -27,7 +27,6 @@ export function capabilities(entry, inputs) {
   if (inputs.includes("image") || features.has("vision")) tags.push("vision");
   if (features.has("code") || CODE_NAME.test(String(entry?.id ?? ""))) tags.push("code");
   if (features.has("reasoning")) tags.push("reasoning");
-  if (inputs.includes("video")) tags.push("video");
   if (inputs.includes("audio") || features.has("audio")) tags.push("audio");
   if (features.has("e2ee") || features.has("tee_attestation") || String(entry?.id ?? "").startsWith("e2ee-")) tags.push("private");
   return tags;

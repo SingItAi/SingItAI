@@ -1,6 +1,6 @@
 # SingIt
 
-> Your agent spends. Your wallet keeps the money: set a daily and a per-purchase limit once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits.
+> SingIt: pay for AI with USDC and keep spending limits. Your agent spends, your wallet keeps the money: set a daily and a per-purchase limit once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits. Limits protect only SingIt's own agent: on Base they are enforced by an on-chain contract, on a SingIt API key the server checks them.
 
 Agents and scripts: fetch machine-readable files from https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt); this host serves the human site.
 
@@ -37,8 +37,6 @@ Call without payment: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Versi
 
 LLM, image and speech charges are model cost plus 30% markup, plus a settlement fee of $0.001 on Base or $0.002 on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup, plus a flat settlement fee of $0.001 on both Base and Solana. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
 
-Paid chat requests may opt in with fallback_models (1–3 unique model ids): an unavailable pinned model can switch before the 402 to the first healthy priced model with no higher Base upto ceiling and the same auto tier where defined; X-SingIt-Model and X-SingIt-Fallback-From identify the choice.
-
 Charged only when a billable answer came back: an upstream 503 never charges. Do not retry a 400/413/422 on another model; fix the request. A 409 means this payment signature was already used. For 503, wait for Retry-After where supplied. A 429 on the free tier means wait for Retry-After.
 
 Free tier: 6 free models, up to 20 answers a day per network, with a shared daily cost cap of $0.25. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required.
@@ -56,6 +54,10 @@ SingIt lets you connect the wallet you already use, set a daily and a per-purcha
 - A remote MCP server at https://app.singitai.app/mcp (free tools without a key; a SingIt API key for paid tools).
 
 ## Start here: free, then a key, then MCP
+
+"model":"singit/auto" on POST /v1/chat/completions picks an eco, standard or premium model for text prompts by simple rules; optional "min_tier" (eco, standard or premium) sets the minimum tier. X-SingIt-Model and X-SingIt-Tier identify the model and tier that answered. If the chosen model's seller refuses before payment, the router tries the next model of the tier or the next tier up, never below min_tier. Only POST /v1/chat/completions.
+
+fallback_models is optional on paid POST /v1/chat/completions with a pinned model: 1 to 3 unique model ids (not the pinned model, not singit/auto). If the pinned model is unavailable before payment, the first healthy priced candidate whose Base upto ceiling is no higher than the pinned one answers (same auto tier if the pinned model has one). X-SingIt-Model and X-SingIt-Fallback-From identify which model answered and which was replaced.
 
 1. Free: POST https://ask.singitai.app/v1/chat/completions with model "free/deepseek-v4.1-flash". One of 6 free models; up to 20 answers a day per network, shared $0.25/day cost cap. May run out for the day (free_budget_exhausted); resets at midnight UTC. No wallet or key.
 2. API key: in the SingIt app (https://app.singitai.app/app/), Settings → API keys. The wallet signs the key's limits (per day, per request, how many days); top up $1 to $50 at a time in USDC. With a key, OpenAI SDK, Anthropic SDK and Claude Code work at https://app.singitai.app/v1 (cost + 30%, no per-call fee).
