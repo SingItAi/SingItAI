@@ -207,7 +207,7 @@ claude</code></pre>
             <div class="code">
 <pre><code id="code-mcp"><span class="c"># Claude Code. The free tools work without the header; paid ones need your key.</span>
 claude mcp add --transport http singit https://app.singitai.app/mcp \
-  --header "Authorization: Bearer sk_singit_..."
+  --header 'Authorization: Bearer ${SINGIT_API_KEY}'
 
 <span class="c"># Cursor and other clients: mcp.json</span>
 {
@@ -336,7 +336,7 @@ npm install ./SingItAI/integrations/elizaos-plugin</code></pre>
           <h3>Claude Code</h3>
           <p class="tab-note">Connect MCP; free tools work without the header.</p>
             <div class="code">
-<pre><code id="install-claude-mcp">claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_API_KEY"</code></pre>
+<pre><code id="install-claude-mcp">claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'</code></pre>
               <button type="button" class="copy-btn" data-copy="install-claude-mcp" aria-label="Copy Claude Code MCP setup">
                 <span class="copy-icon" aria-hidden="true"><svg class="ic-copy"><use href="#ic-copy"/></svg><svg class="ic-check"><use href="#ic-check"/></svg></span>
                 <span data-copy-label>Copy</span>

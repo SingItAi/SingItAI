@@ -572,7 +572,7 @@ Install:
 
 ```bash
 # Claude Code
-claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_KEY"
+claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'
 ```
 
 Cursor (`~/.cursor/mcp.json`):

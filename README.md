@@ -42,7 +42,7 @@ Use the model `free/deepseek-v4.1-flash` in the same request to get an answer wi
 [Your first paid x402 call](docs/first-paid-call.md).
 
 **2. Add the MCP server** to Claude Code. Price and model lookups work without a key; add
-`--header "Authorization: Bearer $SINGIT_API_KEY"` for the paid tools. Other clients:
+`--header 'Authorization: Bearer ${SINGIT_API_KEY}'` for the paid tools. Other clients:
 [`llms-install.md`](llms-install.md).
 
 ```bash

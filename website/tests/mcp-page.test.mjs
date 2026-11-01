@@ -80,7 +80,7 @@ test('Every snippet has verification status and required client configuration', 
     assert.ok(before.lastIndexOf('Verification:') > before.lastIndexOf('</pre>'));
   }
   const decoded = decode(html);
-  assert.ok(decoded.includes('claude mcp add --transport http singit https://app.singitai.app/mcp --header "Authorization: Bearer $SINGIT_API_KEY"'));
+  assert.ok(decoded.includes("claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'"));
   assert.ok(decoded.includes('codex mcp add singit --url https://app.singitai.app/mcp --bearer-token-env-var SINGIT_API_KEY'));
   assert.ok(decoded.includes('[mcp_servers.singit]\nurl = "https://app.singitai.app/mcp"\nbearer_token_env_var = "SINGIT_API_KEY"'));
   assert.match(decoded, /"type": "http"/);
