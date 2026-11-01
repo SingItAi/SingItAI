@@ -302,6 +302,7 @@ async function pricingFor(config, catalogue, modelId) {
 // The same expected-price-per-million-tokens shown at GET /v1/models (observed cost if this service has answered
 // that model before, else the trusted market's cheapest qualifying share), null when neither is known.
 function perMillionFor(m, observed, market) {
+  if (m.priceBasis === "reference") return null;
   const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
   const share = seen ?? trusted ?? null;
   const listed = m.promptUsdPerToken > 0 || m.completionUsdPerToken > 0;
@@ -559,14 +560,17 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           // The price an answer is expected to cost: what this service's own answers from the model cost, or,
           // before the first, the share of list price Surplus's trusted sellers ask. Never the best offer.
           const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
-          const share = seen ?? trusted ?? null;
+          // A reference-priced model has no list price to take a share of: its price moves with the order books, so a
+          // share recorded earlier would not describe today's price. The audit line below watches it instead.
+          const share = m.priceBasis === "reference" ? null : seen ?? trusted ?? null;
           // What a payer is expected to pay per million tokens: that cost plus the markup (the per-answer fee is in
           // `fees`), and how much below the model's list price that is.
           // A model Surplus lists at no price has no saving to show.
-          const listed = m.promptUsdPerToken > 0 || m.completionUsdPerToken > 0;
+          const listed = m.priceBasis !== "reference" && (m.promptUsdPerToken > 0 || m.completionUsdPerToken > 0);
           const ours = share === null || !listed ? null : share * (1 + TERMS.markupBps / 10_000);
           return { id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name, contextLength: m.contextLength,
             tags: m.tags ?? [],
+            ...(m.priceBasis === "reference" ? { priceBasis: "reference", priceDescription: "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0" } : {}),
             ...schemeAdvice(m.id),
             usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
             ...(share === null ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
@@ -597,7 +601,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       let p;
       try { p = await pricingFor(config, catalogue, m.id); } catch { continue; } // not resolvable right now; omit it
       const perMillion = perMillionFor(m, observed, market);
-      priced.push({ id: m.id, name: m.name, ...p, ...(perMillion ? { perMillion } : {}), ...schemeAdvice(m.id) });
+      priced.push({ id: m.id, name: m.name, ...p,
+        ...(m.priceBasis === "reference" ? { priceBasis: "reference",
+          priceDescription: "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
+          usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
+          } : {}), ...(perMillion ? { perMillion } : {}), ...schemeAdvice(m.id) });
     }
     let autoPrice = { upto: null, exact: null };
     try { autoPrice = await pricingFor(config, catalogue, AUTO_ID); } catch { /* no eligible healthy model */ }
@@ -1009,7 +1017,17 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       throw error;
     }
     try { app.locals.healthStats.recordModel(model, { ok: true }); } catch {}
-    catalogue?.resolve(model).then((list) => observed.record(model, answer.usage, list)).catch(() => {});
+    catalogue?.resolve(model, { allowUnpriced: true }).then((list) => {
+      if (list.priceBasis === "reference") {
+        const usage = answer.usage;
+        const estimateMicro = Math.ceil((usage?.prompt_tokens * list.promptUsdPerToken
+          + usage?.completion_tokens * list.completionUsdPerToken) * 1e6);
+        const costMicro = Number(usage?.buyer_cost_micro);
+        if (Number.isFinite(costMicro) && Number.isFinite(estimateMicro) && costMicro > estimateMicro + 1)
+          log(`singit-ask: reference_price_low ${JSON.stringify({ model, costMicro, estimateMicro })}`);
+      }
+      if (list.priceBasis !== "reference") observed.record(model, answer.usage, list);
+    }).catch(() => {});
     return answer;
   };
   const route = { facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };

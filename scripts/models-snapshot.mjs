@@ -33,7 +33,7 @@ export function snapshot(models, pricing, fetchedAt) {
     seen.add(m.id);
     if (!Object.hasOwn(m, "usdPerMillionTokens") || !byId.has(m.id)) continue;
     const result = { id: m.id };
-    for (const key of ["name", "owned_by", "contextLength", "tags", "recommendedScheme", "recommendedSchemeWhy"]) {
+    for (const key of ["priceBasis", "priceDescription", "name", "owned_by", "contextLength", "tags", "recommendedScheme", "recommendedSchemeWhy"]) {
       if (!Object.hasOwn(m, key)) continue;
       requireShape(key === "tags" ? Array.isArray(m[key]) && m[key].every((v) => typeof v === "string") : key === "contextLength" ? number(m[key]) : typeof m[key] === "string", key);
       result[key] = m[key];

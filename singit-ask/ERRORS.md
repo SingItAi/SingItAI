@@ -7,7 +7,7 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 | `invalid_json` | Request body is unreadable JSON. |
 | `invalid_request` | Request fields cannot be accepted, including fallback_models unless it is an array of 1–3 unique nonempty model ids excluding the pinned model and singit/auto. |
 | `payload_too_large` | Request exceeds the 128 kB JSON limit. |
-| `model_not_found` | Requested model is unavailable. |
+| `model_not_found` | Requested model is unavailable. A model Surplus lists at price 0 is sold only if it has a reviewed reference price; others are not sold. |
 | `not_found` | Route or price symbol is unavailable. |
 | `payment_required` | Payment challenge; select an offer and retry with a signature. |
 | `stale_payment_permit` | Payment permit is stale; obtain a fresh challenge. |

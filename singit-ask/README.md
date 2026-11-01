@@ -69,6 +69,8 @@ what it actually cost; nothing is charged without an answer.
 - **Model:** `deepseek-v4.1-flash` via the merchant's private Surplus API key.
 - **Settlement fee:** charged consistently, also while CDP's free allowance lasts;
   it does not assert that CDP invoices every individual transaction during that allowance.
+Zero-list-price models are sold only through the reviewed allowlist in `src/reference-prices.mjs`. Each zero side uses the greater of the static reference floor and the dearest trusted live book price times a 1.10 margin, regardless of seller health. Discovery marks this as `priceBasis: "reference"`: a conservative per-token estimate, not Surplus's list price (which is 0), with no claimed list-price savings. To add a model, add a `REFERENCE_PRICES` entry with a source and check date, then run `node scripts/check-zero-list-prices.mjs` from the repository root.
+
 - **Pricing transparency:** free `GET /pricing.json` lists, for every chat model `GET /v1/models`
   offers, what a single reference question (one short message, the `max_tokens` a request gets when
   it omits the field) is offered over `upto` and `exact` on Base and Solana — computed by the exact

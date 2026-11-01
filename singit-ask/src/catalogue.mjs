@@ -1,3 +1,4 @@
+import { bookPrices, derivedPrice, matchesBook } from "./reference-prices.mjs";
 // Every text model Surplus sells, read from Surplus itself: a hand-kept list of 400+ models would be stale
 // the day a seller adds one. The list is public; the prices are per token in USD.
 
@@ -7,6 +8,11 @@ const MARKET_TTL_MS = 10 * 60 * 1000;
 const VIDEO_HEALTH_TTL_MS = 60 * 1000;
 
 export class UnknownModel extends Error {}
+export class UnpricedModel extends UnknownModel {
+  constructor() {
+    super("That model has no usable list price right now and is not sold. You were not charged. See GET /v1/models.");
+  }
+}
 
 // What a model can do, in the picker's own category keys (the ones Venice's list uses). Surplus says it through the
 // inputs a model accepts and its features; coding models are mostly marked only by name.
@@ -23,7 +29,7 @@ export function capabilities(entry, inputs) {
   return tags;
 }
 
-function parseModels(data) {
+export function parseModels(data) {
   const models = new Map();
   for (const entry of Array.isArray(data?.data) ? data.data : []) {
     const id = typeof entry?.id === "string" ? entry.id.trim() : "";
@@ -35,11 +41,12 @@ function parseModels(data) {
     const [from, to] = String(arch?.modality ?? "").split("->");
     const inputs = arch?.input_modalities ?? from.split("+");
     const outputs = arch?.output_modalities ?? to?.split("+") ?? [];
-    if (!id || !(prompt >= 0) || !(completion >= 0)) continue;
+    if (!id || !Number.isFinite(prompt) || !Number.isFinite(completion) || !(prompt >= 0) || !(completion >= 0)) continue;
     if (!inputs.includes("text") || outputs.length !== 1 || outputs[0] !== "text") continue;
     if (!entry.supported_parameters?.includes("max_tokens")) continue;
     models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""),
       contextLength: Number(entry.context_length) || 0, promptUsdPerToken: prompt, completionUsdPerToken: completion,
+      ...(prompt <= 0 || completion <= 0 ? { listZero: true } : {}),
       tags: capabilities(entry, inputs), params: entry.supported_parameters.map(String) });
   }
   return models;
@@ -125,10 +132,6 @@ function qualifies(offer, blocked, id) {
     && !(typeof offer.cap_remaining === "number" && offer.cap_remaining <= 0)
     && !blocked.has(String(offer.provider_id ?? "").toLowerCase());
 }
-function matchesBook(book, id) {
-  const model = book?.model ?? book?.data?.model;
-  return typeof model !== "string" || model.toLowerCase() === String(id).toLowerCase();
-}
 export function canServe(book, blocked, id) {
   if (!matchesBook(book, id)) return false;
   const offers = book?.data?.offers ?? book?.offers ?? [];
@@ -182,6 +185,8 @@ export class ModelCatalogue {
     this.servedAt = 0;
     this.loadingServed = null;
     this.models = null;
+    this.rawModels = null;
+    this.bookPrices = new Map();
     this.images = null;   // image models, from the same list
     this.voice = null;    // { speech, transcription } models, from the same list
     this.videos = null;   // text-to-video models, from the same list
@@ -204,7 +209,7 @@ export class ModelCatalogue {
         const response = await this.fetchImpl(`${this.url}/v1/models`, { signal: AbortSignal.timeout(10_000) });
         const body = response.ok ? await response.json().catch(() => null) : null;
         const models = parseModels(body), images = parseImageModels(body);
-        if (models.size) { this.models = models; this.loadedAt = this.now(); }
+        if (models.size) { this.rawModels = models; this.decorate(); this.loadedAt = this.now(); }
         if (images.size) this.images = images;
         const voice = parseVoiceModels(body);
         if (voice.speech.size) this.voice = voice;
@@ -215,6 +220,19 @@ export class ModelCatalogue {
     })();
     return this.loadingModels;
   }
+
+  decorate() {
+    this.models = new Map([...(this.rawModels ?? [])].map(([id, model]) => {
+      if (!model.listZero) return [id, model];
+      const price = derivedPrice(id, this.bookPrices.get(id));
+      return [id, price ? { ...model, priceBasis: "reference",
+        promptUsdPerToken: model.promptUsdPerToken > 0 ? model.promptUsdPerToken : price.inputUsdPerToken,
+        completionUsdPerToken: model.completionUsdPerToken > 0 ? model.completionUsdPerToken : price.outputUsdPerToken }
+        : { ...model, unpriced: true }];
+    }));
+  }
+
+  bookPrice(id) { return this.bookPrices.get(id) ?? null; }
 
   loadPrices() {
     this.loadingPrices ??= (async () => {
@@ -247,6 +265,10 @@ export class ModelCatalogue {
               const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`,
                                                     { signal: AbortSignal.timeout(10_000) });
               const book = response.ok ? await response.json() : null;
+              if (this.rawModels?.get(id)?.listZero && book && matchesBook(book, id)) {
+                const price = bookPrices(book, this.blocked);
+                if (price) this.bookPrices.set(id, price);
+              }
               if (book ? canServe(book, this.blocked, id) : (this.served?.has(id) ?? true)) served.add(id);
               const share = book ? cheapestShare(book, this.blocked, id) : null;
               if (share !== null) guards.set(id, share);
@@ -259,6 +281,7 @@ export class ModelCatalogue {
           }
         };
         await Promise.all(Array.from({ length: 2 }, worker));
+        this.decorate();
         const floor = this.served ? this.served.size / 2 : ids.length / 4;
         if (ids.length && served.size >= floor) { this.served = served; this.guardShares = guards; this.servedAt = this.now(); }
         else if (ids.length) this.servedAt = this.now();  // keep what was offered; try again next time
@@ -392,6 +415,9 @@ export class ModelCatalogue {
   // (same pass as `served`): null until read, or when none qualified. Used to price a ceiling's worst case closer
   // to what Surplus would really charge (pricing.mjs's `priceGuard`), never to lower it unguarded.
   guardShare(id) {
+    // A reference-priced model is bought at an absolute price, never against a discount: its list price is 0, so a
+    // discount_pct on its book (Surplus has none today) must not lower the ceiling or send X-Min-Discount.
+    if (this.rawModels?.get(id)?.listZero) return null;
     return this.guardShares.has(id) ? this.guardShares.get(id) : null;
   }
 
@@ -422,14 +448,16 @@ export class ModelCatalogue {
     this.timer.unref?.();
   }
 
-  async resolve(id) {
+  async resolve(id, { allowUnpriced = false } = {}) {
     const model = (await this.all()).get(String(id ?? "").trim());
     if (!model) throw new UnknownModel("That model is not available.");
+    if (model.unpriced === true && !allowUnpriced) throw new UnpricedModel();
     return model;
   }
 
   async list() {
-    return [...(await this.all()).values()].sort((a, b) => a.completionUsdPerToken - b.completionUsdPerToken);
+    // Observed prices are shares of list price and cannot supply a missing list price.
+    return [...(await this.all()).values()].filter(m => m.unpriced !== true).sort((a, b) => a.completionUsdPerToken - b.completionUsdPerToken);
   }
 
   async imageModels() {
