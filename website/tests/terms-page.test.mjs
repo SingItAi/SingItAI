@@ -28,11 +28,20 @@ test('terms page has metadata, schema and one sitemap entry', () => {
 });
 
 test('terms page states the operator without inventing a company', () => {
-  assert.match(text, /Kostiantyn Zubarev, an individual based in Prague/);
+  assert.match(text, /SingIt \(\s*&ldquo;SingIt&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;\s*\) operates this service from Prague, Czech Republic/);
+  assert.doesNotMatch(text, /operated by (Kostiantyn|an individual)/i);
   assert.match(text, /not operated by a registered company/);
   assert.doesNotMatch(text, /\b(s\.r\.o|Ltd|LLC|Inc\.|GmbH|IČO|ICO|VAT)\b/i);
   assert.ok(!html.includes('⟦'), 'no unfilled placeholder');
   assert.ok(!/@proton\.me/.test(html));
+});
+
+test('no personal name appears on the terms or privacy pages or in agent-facing files', () => {
+  const name = /kostiantyn|kostya|kostia|konstantin|zubarev|zubarov|зубарев|костя|костянтин|константин/i;
+  for (const file of ['terms/index.html', 'privacy/index.html', 'llms.txt', 'llms-full.txt', 'llms-models.txt', 'SKILL.md']) {
+    assert.doesNotMatch(read(file), name, `${file} names a person`);
+  }
+  assert.ok(html.includes('mailto:contact@singitai.app'));
 });
 
 test('terms page matches how SingIt works', () => {
