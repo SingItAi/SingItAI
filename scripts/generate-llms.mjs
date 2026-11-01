@@ -2,6 +2,11 @@
 import { limits } from './templates/spending-limits.mjs';
 import { DEFAULT_FREE_MODELS, FREE_DEFAULTS } from '../singit-ask/src/free.mjs';
 
+const hasTokenPrice = (m) => ["input", "output"].every((key) => {
+  const v = m.singitUsdPerMillionTokens?.[key];
+  return Number.isFinite(v) && v >= 0 && (v > 0 || m.usdPerMillionTokens?.[key] === 0);
+}) && ["input", "output"].some((key) => m.singitUsdPerMillionTokens?.[key] > 0);
+
 export const tasks = [
   ['Chat completion (OpenAI format)', 'POST', ['/v1/chat/completions']],
   ['Anthropic Messages', 'POST', ['/v1/messages']],
@@ -50,7 +55,7 @@ export function renderLlms(text, s, routes, format) {
 export function renderModelList(s, format) {
   return '# SingIt model pages\n\nsingit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets a minimum. X-SingIt-Model and X-SingIt-Tier report the choice. If the chosen model\'s seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered. Prices depend on the chosen model; use the live 402 quote.\n\n> Generated from models-snapshot.json; USD per 1M tokens includes markup. Settlement fees are additional. Reference request prices are USDC per call; live 402 offers are authoritative.\n\n' +
     '| Model page | Input / 1M | Output / 1M | Base upto | Base exact | Solana upto | Solana exact |\n| --- | --- | --- | --- | --- | --- | --- |\n' +
-    s.models.map(m => `| [${label(m.name ?? m.id)}](https://singitai.app/models/${m.id}/) | ${m.singitUsdPerMillionTokens ? '$' + format(m.singitUsdPerMillionTokens.input) : 'Not listed'} | ${m.singitUsdPerMillionTokens ? '$' + format(m.singitUsdPerMillionTokens.output) : 'Not listed'} | ${['base', 'solana'].flatMap(n => ['upto', 'exact'].map(scheme => format(m[scheme][n].usd))).join(' | ')} |`).join('\n') + '\n';
+    s.models.map(m => `| [${label(m.name ?? m.id)}](https://singitai.app/models/${m.id}/) | ${hasTokenPrice(m) ? '$' + format(m.singitUsdPerMillionTokens.input) : 'Not listed'} | ${hasTokenPrice(m) ? '$' + format(m.singitUsdPerMillionTokens.output) : 'Not listed'} | ${['base', 'solana'].flatMap(n => ['upto', 'exact'].map(scheme => format(m[scheme][n].usd))).join(' | ')} |`).join('\n') + '\n';
 }
 
 export function renderModelLinks() {

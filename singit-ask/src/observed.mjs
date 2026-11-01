@@ -24,14 +24,16 @@ export class ObservedPrices {
     const listMicro = (Number(usage?.prompt_tokens) * list.promptUsdPerToken
                        + Number(usage?.completion_tokens) * list.completionUsdPerToken) * 1e6;
     if (!(cost >= 0) || !(listMicro >= MIN_LIST_MICRO)) return;
-    const shares = [...(this.shares.get(model) ?? []), Math.round((cost / listMicro) * 1e4) / 1e4].slice(-KEEP);
+    // Whole-micro rounding is not evidence of a free answer.
+    const share = Math.max(cost, 1) / listMicro;
+    const shares = [...(this.shares.get(model) ?? []), Math.round(share * 1e4) / 1e4 || share].slice(-KEEP);
     this.shares.set(model, shares);
     this.save();
   }
 
   // The median share of list price, or null when this service has not paid for an answer from it yet.
   share(model) {
-    const list = [...(this.shares.get(model) ?? [])].sort((a, b) => a - b);
+    const list = [...(this.shares.get(model) ?? [])].filter((x) => x > 0).sort((a, b) => a - b);
     if (!list.length) return null;
     const middle = list.length >> 1;
     return list.length % 2 ? list[middle] : (list[middle - 1] + list[middle]) / 2;

@@ -77,3 +77,19 @@ test("rows escape what the model list says and mark the free model", () => {
   assert.equal(providerLabel("x-ai"), "xAI");
   assert.equal(providerLabel("someone"), "Someone");
 });
+
+test("zero token prices are absent from popular picks, rankings and rows", () => {
+  const zero = { ...OPUS, singitUsdPerMillionTokens: { input: 0, output: 0 }, savingsVsListPct: 100 };
+  assert.deepEqual(pickPopular([zero]), []);
+  assert.equal(sortModels([zero, GEMINI], "featured")[0], GEMINI);
+  assert.equal(sortModels([zero, GEMINI], "saving")[0], GEMINI);
+  assert.doesNotMatch(rowHtml(zero), /\$0|100%|99%/);
+});
+
+test("free list input keeps a positive SingIt output visible", () => {
+  const model = { ...OPUS, usdPerMillionTokens: { input: 0, output: 20 },
+    singitUsdPerMillionTokens: { input: 0, output: 5.07 } };
+  assert.deepEqual(pickPopular([model]), [model]);
+  assert.match(rowHtml(model), /\$5\.07/);
+  assert.equal(sortModels([PLAIN, model], "featured")[0], model);
+});

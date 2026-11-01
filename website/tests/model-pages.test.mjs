@@ -365,3 +365,32 @@ test('a newer live snapshot warns to release a held model', () => {
   visibleSnapshot({ ...s, fetchedAt: '2026-10-31T00:00:00Z' }, hold, line => warnings.push(line));
   assert.deepEqual(warnings, []);
 });
+
+test("snapshot and descriptions omit rounded zero prices", () => {
+  const { models, pricing } = fixtures();
+  models.data[0].singitUsdPerMillionTokens = { input: 0, output: 0 };
+  assert.equal(snapshot(models, pricing, fetchedAt).models[0].singitUsdPerMillionTokens, undefined);
+  assert.doesNotMatch(modelDescription(models.data[0]), /Price:|\$0/);
+});
+
+test("model pages put non-positive token prices in the unlisted branch", async () => {
+  const { models, pricing } = fixtures();
+  const s = snapshot(models, pricing, fetchedAt);
+  s.models[0].singitUsdPerMillionTokens = { input: 0, output: 0 };
+  const shell = await readFile(path.join(root, "scripts/templates/model-shell.html"), "utf8");
+  const html = renderPages(s, shell).get('models/fixture-0/index.html');
+  assert.match(html, /No per-token price is listed/);
+  assert.doesNotMatch(html, /Price: \$0|100%|SingIt price \(expected/);
+});
+
+test("model pages show a positive SingIt output when list input is free", async () => {
+  const { models, pricing } = fixtures();
+  models.data[0].usdPerMillionTokens.input = 0;
+  models.data[0].singitUsdPerMillionTokens = { input: 0, output: 0.2 };
+  const s = snapshot(models, pricing, fetchedAt);
+  assert.match(modelDescription(s.models[0]), /Price: \$0\/1M input, \$0\.2\/1M output/);
+  const shell = await readFile(path.join(root, "scripts/templates/model-shell.html"), "utf8");
+  const html = renderPages(s, shell).get('models/fixture-0/index.html');
+  assert.match(html, /SingIt price \(expected/);
+  assert.doesNotMatch(html, /No per-token price is listed/);
+});

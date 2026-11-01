@@ -3,6 +3,11 @@
 // Without JavaScript every page is complete: all code panels show, the terminal shows its whole run, and the
 // tables say where the live prices are.
 
+const hasTokenPrice = (m) => ["input", "output"].every((key) => {
+  const v = m.singitUsdPerMillionTokens?.[key];
+  return Number.isFinite(v) && v >= 0 && (v > 0 || m.usdPerMillionTokens?.[key] === 0);
+}) && ["input", "output"].some((key) => m.singitUsdPerMillionTokens?.[key] > 0);
+
 export const MODELS_URL = "https://ask.singitai.app/v1/models";
 export const POPULAR = ["claude-opus-5.5", "gpt-5.5", "claude-sonnet-5.5", "gemini-3.1-pro", "grok-4.1-fast", "deepseek-v4.1-flash"];
 
@@ -33,7 +38,7 @@ export function choosable(list) {
 // The popular models that have a price to show, in the order given.
 export function pickPopular(models, ids = POPULAR) {
   const byId = new Map(models.map((m) => [m.id, m]));
-  return ids.map((id) => byId.get(id)).filter((m) => m && m.singitUsdPerMillionTokens);
+  return ids.map((id) => byId.get(id)).filter((m) => m && hasTokenPrice(m));
 }
 
 export function filterModels(models, { query = "", tag = "all", free = [] } = {}) {
@@ -47,13 +52,13 @@ export function filterModels(models, { query = "", tag = "all", free = [] } = {}
 }
 
 // What a buyer pays per million output tokens: ours when known, else the list price.
-export const outputPrice = (m) => m.singitUsdPerMillionTokens?.output ?? m.usdPerMillionTokens?.output ?? Infinity;
+export const outputPrice = (m) => hasTokenPrice(m) ? m.singitUsdPerMillionTokens.output : m.usdPerMillionTokens?.output ?? Infinity;
 
 // "featured": the popular models first, then every model with a price of ours, then the rest; by name within each.
 export function sortModels(models, key = "saving", dir = "descending") {
   if (key === "featured") {
     const rank = (m) => {
-      if (!m.singitUsdPerMillionTokens) return POPULAR.length + 1;
+      if (!hasTokenPrice(m)) return POPULAR.length + 1;
       const i = POPULAR.indexOf(m.id);
       return i >= 0 ? i : POPULAR.length;
     };
@@ -62,10 +67,10 @@ export function sortModels(models, key = "saving", dir = "descending") {
   }
   const sign = dir === "ascending" ? 1 : -1;
   const value = {
-    saving: (m) => m.savingsVsListPct ?? -1,
+    saving: (m) => hasTokenPrice(m) ? m.savingsVsListPct ?? -1 : -1,
     price: outputPrice,
     name: (m) => String(m.name || m.id).toLowerCase(),
-  }[key] ?? ((m) => m.savingsVsListPct ?? -1);
+  }[key] ?? ((m) => hasTokenPrice(m) ? m.savingsVsListPct ?? -1 : -1);
   return [...models].sort((a, b) => {
     const x = value(a), y = value(b);
     if (x === y) return String(a.id).localeCompare(String(b.id));
@@ -89,8 +94,8 @@ export const shownSaving = (pct) => (typeof pct === "number" && pct > 0 ? Math.m
 export const isEstimate = (m) => m.expectedUsdPerMillionTokens?.basis === "trusted";
 
 export function rowHtml(m, { free = [] } = {}) {
-  const ours = m.singitUsdPerMillionTokens, list = m.usdPerMillionTokens;
-  const saving = shownSaving(m.savingsVsListPct);
+  const ours = hasTokenPrice(m) ? m.singitUsdPerMillionTokens : null, list = m.usdPerMillionTokens;
+  const saving = ours ? shownSaving(m.savingsVsListPct) : null;
   const est = isEstimate(m) ? ' <abbr class="est" title="From sellers\' quotes; not yet confirmed by answers we paid for">est.</abbr>' : "";
   const freeTag = free.includes(m.id) ? '<span class="tag-free">Free to try</span>' : "";
   return `<tr>
