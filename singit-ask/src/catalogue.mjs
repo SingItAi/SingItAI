@@ -313,10 +313,17 @@ export class ModelCatalogue {
           for (const [id, r] of this.rejections) {
             // Only a book requested after the latest rejection says anything about that rejection.
             if (!(readable.get(id) >= (r.seq ?? 0))) continue;
+            if (!served.has(id)) { r.gone = true; continue; }
+            // Rejected before any book was read: this pass only sets the seller baseline, it proves no recovery.
+            if (r.unknown) {
+              const all = [...(sellers.get(id) ?? [])];
+              Object.assign(r, { providers: all.slice(0, MAX_PROVIDERS), truncated: all.length > MAX_PROVIDERS, unknown: false });
+              if (r.gone) this.noteAnswered(id);
+              continue;
+            }
             // A truncated provider list cannot tell which sellers are new, so it only releases through gone/answers.
             const fresh = !r.truncated && [...(sellers.get(id) ?? [])].some(p => !r.providers.includes(p));
-            if (!served.has(id)) r.gone = true;
-            else if (r.gone || fresh) this.noteAnswered(id);
+            if (r.gone || fresh) this.noteAnswered(id);
           }
           this.saveSuspensions(); }
         else if (ids.length) this.servedAt = this.now();  // keep what was offered; try again next time
@@ -387,7 +394,7 @@ export class ModelCatalogue {
     if (!this.suspensionsFile) return;
     clearTimeout(this.suspensionsTimer);
     this.suspensionsTimer = setTimeout(() => {
-      const data = Object.fromEntries([...this.rejections].map(([id, r]) => [id, { count: r.count, lastAt: r.lastAt, providers: r.providers, truncated: r.truncated === true, gone: r.gone, until: this.unservable.get(id) ?? 0 }]));
+      const data = Object.fromEntries([...this.rejections].map(([id, r]) => [id, { count: r.count, lastAt: r.lastAt, providers: r.providers, truncated: r.truncated === true || r.unknown === true, gone: r.gone, until: this.unservable.get(id) ?? 0 }]));
       this.suspensionsWrite = (this.suspensionsWrite ?? Promise.resolve()).then(() => writeSuspensions(this.suspensionsFile, data));
     }, 20);
     this.suspensionsTimer.unref?.();
@@ -407,7 +414,7 @@ export class ModelCatalogue {
       this.rejections.delete(oldest); this.unservable.delete(oldest);
     }
     this.rejections.set(id, { count, seq: ++this.rejectionSeq, lastAt: this.now(), providers: [...(this.sellers.get(id) ?? [])].slice(0, MAX_PROVIDERS),
-      truncated: (this.sellers.get(id)?.size ?? 0) > MAX_PROVIDERS, gone: false });
+      truncated: (this.sellers.get(id)?.size ?? 0) > MAX_PROVIDERS, unknown: !this.sellers.has(id), gone: false });
     this.markUnservable(id, Math.min(7200000, this.unservableTtlMs * 2 ** Math.min(count - 1, 30)));
     this.saveSuspensions();
   }

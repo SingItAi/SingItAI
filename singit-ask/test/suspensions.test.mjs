@@ -228,3 +228,19 @@ test('a complete provider list at the bound still releases on a new seller', asy
   await c.loadServed(0);
   assert.equal(c.isSuspended('m'), false);
 });
+test('a rejection recorded before any book was read is not released by the first pass', async () => {
+  const { c } = fixture();
+  c.models = new Map(['m', 'other'].map(id => [id, { id }]));
+  c.rawModels = c.models;
+  c.noteRejected('m'); c.noteRejected('m');
+  const offer = provider_id => ({ provider_id, trusted: true, healthy: true, available: true });
+  c.fetchImpl = async () => Response.json({ offers: [offer('seller')] });
+  await c.loadServed(0);
+  assert.equal(c.isSuspended('m'), true);
+  assert.deepEqual(c.rejections.get('m').providers, ['seller']);
+  await c.loadServed(0);
+  assert.equal(c.isSuspended('m'), true);
+  c.fetchImpl = async () => Response.json({ offers: [offer('seller'), offer('new-seller')] });
+  await c.loadServed(0);
+  assert.equal(c.isSuspended('m'), false);
+});
