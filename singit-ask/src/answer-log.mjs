@@ -3,10 +3,10 @@
 // output budget do real answers use (the p50/p90/p99 that decide an `exact` ceiling)?
 //
 // One JSON line per settled answer, appended to SINGIT_ASK_ANSWER_LOG (off when unset). Kept on purpose:
-//   hour (UTC, rounded down), route, model, scheme, network, maxTokens, promptTokens, completionTokens,
+//   hour (UTC, rounded down), route, model, isDefault (body omitted model; null when unknown), scheme, network, maxTokens, promptTokens, completionTokens,
 //   reasoningTokens, upstreamMicro (what the model cost), billedAtomic (what was settled), ceilingAtomic, overrunAtomic.
 // Never kept: the question, the answer, the payer, a transaction, a header, an IP, a timestamp finer than the hour.
-// Every value is coerced to a number or a short token from a fixed alphabet, so nothing free-form can be written.
+// Every value is coerced to a boolean, number or a short token from a fixed alphabet, so nothing free-form can be written.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -55,14 +55,14 @@ export class AnswerLog {
     } catch { /* record() reports it once */ }
   }
 
-  // `entry`: { route, model, scheme, network, maxTokens, usage, billing }. Never throws and never waits for the disk:
+  // `entry`: { route, model, modelOmitted, scheme, network, maxTokens, usage, billing }. Never throws and never waits for the disk:
   // the line is queued and appended in order, so a slow or stalled disk cannot hold up an answer or its settlement.
   // Resolves nothing; `flush()` waits for the queue (tests, shutdown).
-  record({ route, model, scheme, network, maxTokens, usage, billing } = {}) {
+  record({ route, model, modelOmitted, scheme, network, maxTokens, usage, billing } = {}) {
     if (!this.file) return false;
     try {
       const hour = new Date(Math.floor(this.now() / 3_600_000) * 3_600_000).toISOString().slice(0, 13) + ":00Z";
-      const line = { hour, route: word(route), model: word(model), scheme: word(scheme), network: word(network), maxTokens: int(maxTokens),
+      const line = { hour, route: word(route), model: word(model), isDefault: modelOmitted == null ? null : modelOmitted === true, scheme: word(scheme), network: word(network), maxTokens: int(maxTokens),
         ...tokensOf(usage), upstreamMicro: int(billing?.providerCostAtomic ?? usage?.buyer_cost_micro),
         billedAtomic: int(billing?.totalAtomic), ceilingAtomic: int(billing?.maxChargeAtomic), overrunAtomic: int(billing?.overrunAtomic) ?? 0 };
       const text = `${JSON.stringify(line)}\n`;

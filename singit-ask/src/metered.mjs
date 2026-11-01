@@ -7,6 +7,7 @@ import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // and a facilitator cannot settle an exact payment for less than what was signed), so it is priced at the full
 // ceiling and that is disclosed in the offer's own `extra.billing.mode`. `upto` is unaffected and keeps paying
 // only the answer's actual cost.
+import { paymentFailureLine, paymentExtractor } from "./payment-diagnostics.mjs";
 import { markUnservable } from "./catalogue.mjs";
 import { ExpressAdapter, paymentMiddlewareFromHTTPServer, x402HTTPResourceServer, x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { SETTLEMENT_OVERRIDES_HEADER } from "@x402/core/http";
@@ -194,20 +195,17 @@ export function addPaymentRoute(app, routes, server,
     server.onAfterSettle(record(true)); server.onSettleFailure(record(false));
   }
   server.onAfterSettle(ctx => { permitGuard.record(ctx.paymentPayload, ctx.requirements, ctx.result); });
-  // Only diagnostic fields are logged: facilitator errors can embed payer addresses or signatures, so redact
-  // long encoded values even in the reason string rather than serializing any part of the payment payload.
   const failure = phase => ctx => {
-    const { network, scheme, amount } = ctx.requirements ?? {};
-    const reason = String(ctx.error?.errorReason ?? ctx.error?.message ?? "unknown")
-      .replace(/0x[a-fA-F0-9]+|[A-Za-z0-9+/=_-]{32,}/g, "[redacted]").replace(/[\r\n]/g, " ");
-    log(`singit-ask: ${Object.keys(routes).join(",")} ${phase}`
-      + ` network=${network} scheme=${scheme} amount=${amount} reason=${reason}`);
+    try { log(paymentFailureLine(Object.keys(routes).join(","), phase, ctx)); } catch {}
   };
   server.onSettleFailure(failure("settle failed"));
   server.onVerifyFailure(failure("verify failed"));
+  // A negative verify response runs afterVerify, not onVerifyFailure, in core 2.28.
+  server.onAfterVerify(ctx => { if (ctx.result?.isValid === false) failure("verify failed")(ctx); });
   if (!server.hasExtension("bazaar")) server.registerExtension(bazaarResourceServerExtension);
   routes = withBuilderCode(routes, server);
   const httpServer = new x402HTTPResourceServer(server, routes);
+  httpServer.extractPayment = paymentExtractor(log);
   for (const pattern of Object.keys(routes)) {
     const [verb, route] = pattern.split(" ");
     if (verb === "POST") app.post(route, permitGuard.middleware);
@@ -341,9 +339,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       // service absorbs the difference instead of discarding an otherwise-good answer.
       const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: paid.terms.maxChargeAtomic } : usage;
       if (exact && usage.overrunAtomic) log(`singit-ask: exact overrun ${usage.overrunAtomic} micro-USDC`);
-      recordWhenSettled(res, answerLog, { route, model: req.askInput.model, ...acceptedOf(req), maxTokens: req.askInput.maxTokens, usage: answer.usage, billing });
+      recordWhenSettled(res, answerLog, { route, model: req.askInput.model, modelOmitted: req.askInput.modelOmitted, ...acceptedOf(req), maxTokens: req.askInput.maxTokens, usage: answer.usage, billing });
       if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
-      log(`singit-ask: answer ready in ${Date.now() - started} ms, settling ${billing.totalAtomic} micro-USDC`);
+      log(`singit-ask: answer ready in ${Date.now() - started} ms, isDefault=${req.askInput.modelOmitted == null ? null : req.askInput.modelOmitted === true}, settling ${billing.totalAtomic} micro-USDC`);
       res.locals.singitReceipt = { ref: `singit-ask-${started}`, chargedAtomic: billing.totalAtomic };
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: "singit-ask", choices: [{ index: 0, message: { role: "assistant", content: answer.content },

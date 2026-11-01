@@ -87,6 +87,7 @@ for (const scheme of ['upto', 'exact']) for (const failure of ['success', 'both'
       const entries = (await readFile(config.answerLogFile, 'utf8')).trim().split('\n').map(JSON.parse);
       assert.equal(entries.length, 1);
       assert.equal(entries[0].model, AUTO_CONFIG.tiers.eco[1]);
+      assert.equal(entries[0].isDefault, false);
       assert.equal(entries[0].upstreamMicro, 100);
       assert.ok(amount <= BigInt(required.accepts.find(a => a.network === BASE && a.scheme === scheme).amount));
     }
