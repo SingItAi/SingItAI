@@ -318,10 +318,10 @@ export function savingsFor(ours) {
   return ours > 0 ? Math.min(99, saving) : saving;
 }
 
-// The one place both /v1/models and /pricing.json take the displayed price from.
+// Both discovery endpoints use positive display observations; free-tier accounting uses share().
 export function displayPrice(m, observed, market) {
   if (m.priceBasis === "reference") return null;
-  const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
+  const seen = observed.displayShare(m.id), trusted = market.get(m.id)?.trustedShare;
   const share = seen > 0 ? seen : trusted > 0 ? trusted : null;
   if (share === null) return null;
   const ours = share * (1 + TERMS.markupBps / 10_000);

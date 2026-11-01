@@ -1175,22 +1175,20 @@ test("display prices ignore rounded zeros and never promise free tokens", async 
   const { ObservedPrices } = await import("../src/observed.mjs");
   const { displayPrice, savingsFor } = await import("../src/app.mjs");
   const observed = new ObservedPrices();
-  observed.record("rounded", { buyer_cost_micro: 0, prompt_tokens: 500, completion_tokens: 0 }, { promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 });
-  assert.ok(observed.shares.get("rounded")[0] > 0);
   observed.shares.set("legacy", [0.0114, 0.0114, 0, 0, 0, 0.0044]);
-  assert.equal(observed.share("legacy"), 0.0114);
+  assert.equal(observed.displayShare("legacy"), 0.0114);
   observed.shares.set("empty", [0, 0, 0]);
-  assert.equal(observed.share("empty"), null);
+  assert.equal(observed.displayShare("empty"), null);
   const trusted = new Map([[CHEAP.id, { trustedShare: 0.0006 }]]);
-  const price = displayPrice(CHEAP, { share: () => 0 }, trusted);
+  const price = displayPrice(CHEAP, { displayShare: () => 0 }, trusted);
   assert.equal(price.basis, "trusted");
   assert.equal(savingsFor(price.ours), 99);
-  assert.equal(displayPrice(CHEAP, { share: () => 0 }, new Map()), null);
-  assert.equal(displayPrice(CHEAP, { share: () => Infinity }, trusted), null);
+  assert.equal(displayPrice(CHEAP, { displayShare: () => 0 }, new Map()), null);
+  assert.equal(displayPrice(CHEAP, { displayShare: () => Infinity }, trusted), null);
   assert.equal(savingsFor(0), 100);
   assert.equal(savingsFor(1.3), -30);
   assert.equal(savingsFor(0.39), 61);
-  assert.equal(displayPrice({ ...CHEAP, promptUsdPerToken: Number.MIN_VALUE }, { share: () => Number.MIN_VALUE }, new Map()), null);
+  assert.equal(displayPrice({ ...CHEAP, promptUsdPerToken: Number.MIN_VALUE }, { displayShare: () => Number.MIN_VALUE }, new Map()), null);
 });
 
 test("discovery endpoints agree on positive prices and omit unknown prices", async (t) => {
@@ -1224,4 +1222,21 @@ test("discovery endpoints agree on positive prices and omit unknown prices", asy
   }
   assert.equal(listed.find(m => m.id === "openai-gpt-oss-20b").savingsVsListPct, 99);
   assert.equal(listed.find(m => m.id === "uncensored").savingsVsListPct, -30);
+});
+
+
+test("zero observations retain main's free-answer list-price budget debit", async () => {
+  const { ObservedPrices } = await import("../src/observed.mjs");
+  const { freeAnswerCost } = await import("../src/free.mjs");
+  const observed = new ObservedPrices();
+  const model = { promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 };
+  const usage = { buyer_cost_micro: 0, prompt_tokens: 500, completion_tokens: 0 };
+  for (let i = 0; i < 3; i++) observed.record("m", usage, model);
+  assert.deepEqual(observed.shares.get("m"), [0, 0, 0]);
+  assert.equal(observed.share("m"), 0);
+  assert.equal(observed.displayShare("m"), null);
+  const input = { chars: 500, messages: [{ role: "user", content: "hello" }] };
+  assert.equal(freeAnswerCost(usage, model, input, 400, observed.share("m")), 500);
+  assert.equal(freeAnswerCost(usage, model, input, 400, observed.share("m")),
+    freeAnswerCost(usage, model, input, 400));
 });

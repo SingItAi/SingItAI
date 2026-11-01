@@ -74,7 +74,7 @@ async function serve(t, { config = CONFIG, upstream } = {}) {
     return { content: "Hi!", finishReason: "stop", usage: { total_tokens: 5, buyer_cost_micro: 1 } };
   });
   const app = createApp(config, { facilitatorClient: fac, upstream: answer, log: () => {}, catalogue,
-                                  observed: { share: () => null, record() {} } });
+                                  observed: { share: () => null, displayShare: () => null, record() {} } });
   return { url: register(t, app), fac, asked };
 }
 
@@ -256,7 +256,7 @@ test("with a budget and a model whose price is unknown, nothing is answered or s
   const fac = facilitator();
   let called = 0;
   const app = createApp(BUDGET_CONFIG, { facilitatorClient: fac, upstream: async () => { called += 1; return { content: "x", usage: null }; },
-    log: () => {}, catalogue: unpriced, observed: { share: () => null, record() {} } });
+    log: () => {}, catalogue: unpriced, observed: { share: () => null, displayShare: () => null, record() {} } });
   const response = await ask(register(t, app), FREE_Q);
   assert.equal(response.status, 503);
   assert.equal(called, 0);
