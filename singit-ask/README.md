@@ -382,3 +382,9 @@ quote, and none of its amounts (upto or exact, on Base or Solana) may exceed the
 The answer's `model` and `singit_fallback_from` also identify the substitution.
 Send `X-SingIt-Fallback: off` to disable defaults for one request; explicit lists
 still work. Operators can disable defaults globally with `SINGIT_ASK_DEFAULT_FALLBACKS=off`.
+
+The free GET/HEAD routes `/SKILL.md`, `/.well-known/agent-card.json`,
+`/llms-models.txt` and `/llms-full.txt` serve the original bytes from `../website`
+through a fixed, case-sensitive allowlist. Agents can fetch them on Ask without
+the browser check on singitai.app. Files are read on every request, with open
+CORS, a five-minute public cache and strong ETags for conditional requests.

@@ -75,7 +75,7 @@ test('onboarding files have content types, CORS and survive the static build', a
     for (const [path, type] of [['/SKILL.md','text/markdown'], ['/.well-known/agent-card.json','application/json']]) {
       assert.ok(headers.includes(`${path}\n  Content-Type: ${type}; charset=utf-8\n  Access-Control-Allow-Origin: *`));
       assert.equal(await readFile(join(out, path), 'utf8'), await read('website' + path));
-      assert.ok((await read('website/llms.txt')).includes('https://singitai.app' + path));
+      assert.ok((await read('website/llms.txt')).includes('https://ask.singitai.app' + path));
       assert.ok(!(await read('website/sitemap.xml')).includes(path));
     }
   } finally { await rm(out, { recursive:true, force:true }); }

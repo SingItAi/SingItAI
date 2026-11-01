@@ -380,6 +380,8 @@ test("GET /llms.txt lists every discoverable route and the OpenAPI/model links",
   assert.match(text, new RegExp(`POST ${url}${ROUTE.replace(/\//g, "\\/")}`));
   for (const route of [ROUTE, ...Object.keys(FORMAT_ROUTES)]) assert.ok(text.includes(`${url}${route}`), route);
   assert.ok(text.includes(`${url}/openapi.json`));
+  for (const path of ["/SKILL.md", "/.well-known/agent-card.json", "/llms-models.txt", "/llms-full.txt"])
+    assert.ok(text.includes(`${url}${path}`), path);
   assert.ok(text.includes(`${url}/v1/models`));
 });
 

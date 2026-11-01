@@ -11,6 +11,7 @@
 
 import { parseBestDiscount } from "./reject-log.mjs";
 import express from "express";
+import { addAgentFiles } from "./agent-files.mjs";
 import { AUTO_CONFIG, AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback } from "./auto-router.mjs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } from "./errors.mjs";
@@ -448,7 +449,7 @@ const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, sch
 });
 
 export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
-                                    exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
+                                    agentFilesDir, exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({
                                       url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
                                       suspensionsFile: config.suspensionsFile, neverHide: [config.model, ...Object.values(AUTO_CONFIG.tiers).flat(), ...freeTerms(config).models], unservableTtlMs: config.unservableTtlMs }) : null,
@@ -531,6 +532,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       ? { type: "error", error: { type: "invalid_request_error", message, code } }
       : { error: { type: "invalid_request_error", message, code } });
   });
+
+  // Free website documents (SKILL.md, agent card, llms-models, llms-full): answered before the spend-limit reader and
+  // every payment middleware below, so they never touch the limiter or a 402.
+  addAgentFiles(app, { log, websiteDir: agentFilesDir });
 
   // The caller's own spend limit in the 402 (X-SingIt-Limiter) and a receipt on every settled answer: only headers
   // and the 402's body; no price, offer or settlement changes. Before every paid route below.
@@ -1020,6 +1025,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       `- OpenAPI: ${base}/openapi.json`,
       `- x402 discovery: ${base}/.well-known/x402`,
       `- llms.txt: ${base}/llms.txt`,
+      `- Agent instructions: ${base}/SKILL.md`,
+      `- Agent card: ${base}/.well-known/agent-card.json`,
+      `- Model pages with prices: ${base}/llms-models.txt`,
+      `- Full documentation: ${base}/llms-full.txt`,
       `- Models: ${base}/v1/models`,
       "- Docs: https://singitai.app/developers/",
       `- First paid x402 call: ${FIRST_PAID_CALL_DOC}`,
