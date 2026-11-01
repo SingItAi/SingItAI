@@ -113,6 +113,10 @@ test("paid reference answers settle actual offer cost, omit discount headers and
     assert.ok(Number(settled.at(-1)) <= Number(accepted.amount));
     assert.equal(logs.filter(l => l.includes("reference_price_low")).length, low ? 1 : 0);
   }
+  // Answers from a reference-priced model teach no share: its price moves with the order books.
+  const listed = (await request(app, "/v1/models")).body.data.find(m => m.id === id);
+  assert.equal(listed.priceBasis, "reference");
+  for (const field of ["expectedUsdPerMillionTokens", "singitUsdPerMillionTokens", "savingsVsListPct"]) assert.equal(listed[field], undefined);
   assert.equal(headers.length, 2);
   for (const h of headers) assert.equal(new Headers(h).has("X-Min-Discount"), false);
 });

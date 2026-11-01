@@ -560,7 +560,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           // The price an answer is expected to cost: what this service's own answers from the model cost, or,
           // before the first, the share of list price Surplus's trusted sellers ask. Never the best offer.
           const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
-          const share = seen ?? (m.priceBasis === "reference" ? null : trusted) ?? null;
+          // A reference-priced model has no list price to take a share of: its price moves with the order books, so a
+          // share recorded earlier would not describe today's price. The audit line below watches it instead.
+          const share = m.priceBasis === "reference" ? null : seen ?? trusted ?? null;
           // What a payer is expected to pay per million tokens: that cost plus the markup (the per-answer fee is in
           // `fees`), and how much below the model's list price that is.
           // A model Surplus lists at no price has no saving to show.
@@ -603,8 +605,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         ...(m.priceBasis === "reference" ? { priceBasis: "reference",
           priceDescription: "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
           usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
-          ...(observed.share(m.id) == null ? {} : { expectedUsdPerMillionTokens: {
-            input: m.promptUsdPerToken * 1e6 * observed.share(m.id), output: m.completionUsdPerToken * 1e6 * observed.share(m.id), basis: "observed" } }) } : {}), ...(perMillion ? { perMillion } : {}), ...schemeAdvice(m.id) });
+          } : {}), ...(perMillion ? { perMillion } : {}), ...schemeAdvice(m.id) });
     }
     let autoPrice = { upto: null, exact: null };
     try { autoPrice = await pricingFor(config, catalogue, AUTO_ID); } catch { /* no eligible healthy model */ }
@@ -1025,7 +1026,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         if (Number.isFinite(costMicro) && Number.isFinite(estimateMicro) && costMicro > estimateMicro + 1)
           log(`singit-ask: reference_price_low ${JSON.stringify({ model, costMicro, estimateMicro })}`);
       }
-      observed.record(model, answer.usage, list);
+      if (list.priceBasis !== "reference") observed.record(model, answer.usage, list);
     }).catch(() => {});
     return answer;
   };
