@@ -27,7 +27,7 @@ import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { CREDIT_ROUTE, addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody, exaPriceRange } from "./search.mjs";
 import { IMAGE_ROUTE, IMAGE_REQUEST_BODY, addImageRoutes } from "./images.mjs";
-import { SPEECH_ROUTE, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
+import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
@@ -711,7 +711,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               + "GET /v1/audio/models. Nothing is charged without audio.",
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
             requestBody: SPEECH_REQUEST_BODY(),
-            responses: { 200: { description: "The audio", content: { "audio/mpeg": {} } },
+            responses: { 200: { description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type.", content: Object.fromEntries([...Object.values(SPEECH_CONTENT_TYPES), "audio/mp4"].map((type) => [type, {}])) },
                          ...paidErrors({ exactTimeout: 120, exampleMessage: "No audio was made. You were not charged.", exampleCode: "no_billable_answer", notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },
