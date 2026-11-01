@@ -1,11 +1,11 @@
 // SingIt speech: the list price for the text + 30% + the fee, Surplus asked once with this service's key, the audio
-// passed on as it came, nothing charged without audio.
+// checked before settlement and served with its requested Content-Type, nothing charged without audio.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { UnknownModel, parseVoiceModels } from "../src/catalogue.mjs";
-import { SPEECH_ROUTE, readSpeechRequest, speechListAtomic, speechPrice } from "../src/speech.mjs";
+import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, matchesSpeechFormat, readSpeechRequest, speechListAtomic, speechPrice } from "../src/speech.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -147,3 +147,79 @@ test("prices, and the free list of voice models", async (t) => {
     ["venice-elevenlabs-tts-turbo-v2-5", "speech"], ["venice-whisper-1", "transcription"]]);
   assert.equal(list.data[0].singitUsdPer1kChars, 0.00455);
 });
+
+const FORMAT_BODIES = {
+  mp3: AUDIO, wav: Buffer.from("RIFF0000WAVE"), flac: Buffer.from("fLaC"),
+  opus: Buffer.from("OggS"), aac: Buffer.from([0xff, 0xf1]), pcm: Buffer.from([0, 1]),
+};
+
+for (const [format, body] of Object.entries(FORMAT_BODIES)) {
+  test(`speech signature check: ${format}`, () => {
+    assert.equal(matchesSpeechFormat(body, format), true);
+    if (format === "pcm") {
+      assert.equal(matchesSpeechFormat(Buffer.alloc(0), format), true); // Handler separately rejects empty bodies.
+      return;
+    }
+    assert.equal(matchesSpeechFormat(Buffer.from("{}<html>xxxx"), format), false);
+    for (let length = 0; length < (format === "mp3" ? 2 : body.length); length++) {
+      assert.equal(matchesSpeechFormat(body.subarray(0, length), format), false, `length ${length}`);
+    }
+  });
+}
+
+test("speech signature alternatives and reserved sync bits", () => {
+  assert.equal(matchesSpeechFormat(Buffer.from("ID")), false);
+  assert.equal(matchesSpeechFormat(Buffer.from("RIFF0000NOPE"), "wav"), false);
+  assert.equal(matchesSpeechFormat(Buffer.from("NOPE0000WAVE"), "wav"), false);
+  for (const second of [0xfb, 0xf3, 0xe2]) assert.equal(matchesSpeechFormat(Buffer.from([0xff, second])), true);
+  for (const second of [0xf0, 0xf8, 0xe0, 0xdf]) assert.equal(matchesSpeechFormat(Buffer.from([0xff, second])), false);
+  for (const body of [Buffer.from("ADIF"), Buffer.from("0000ftyp"), Buffer.from([0xff, 0xf9])]) {
+    assert.equal(matchesSpeechFormat(body, "aac"), true);
+    assert.equal(matchesSpeechFormat(body.subarray(0, body.length - 1), "aac"), false);
+  }
+  assert.equal(matchesSpeechFormat(Buffer.from([0xff, 0xf3]), "aac"), false);
+  assert.equal(matchesSpeechFormat(AUDIO, "unknown"), false);
+});
+
+for (const [format, type] of [["mp3", "audio/mp3"], ["mp3", "application/octet-stream"],
+  ...["wav", "flac", "opus", "aac", "pcm"].map((f) => [f, "application/octet-stream"])]) {
+  test(`paid ${format} with upstream ${type} uses our Content-Type and settles once`, async (t) => {
+    const { url, facilitator, logs } = await serve(t, { surplus: fakeSurplus({ type, body: FORMAT_BODIES[format] }) });
+    const body = format === "mp3" ? SPEECH : { ...SPEECH, response_format: format };
+    const required = decode((await post(`${url}${SPEECH_ROUTE}`, body)).headers.get("payment-required"));
+    assert.equal(required.resource.mimeType, "audio/mpeg");
+    assert.match(required.resource.description, /mp3 \(audio\/mpeg\) by default, other response_format values return their own type/);
+    const paid = await post(`${url}${SPEECH_ROUTE}`, body, pay(required, BASE));
+    assert.equal(paid.status, 200);
+    assert.equal(paid.headers.get("content-type"), SPEECH_CONTENT_TYPES[format]);
+    assert.deepEqual(Buffer.from(await paid.arrayBuffer()), FORMAT_BODIES[format]);
+    assert.equal(facilitator.calls.settle.length, 1);
+    const success = logs.find((line) => line.includes("characters read by"));
+    assert.ok(success.includes(`upstream content-type "${type}"`));
+    assert.ok(success.includes(`format ${format}`));
+    assert.ok(success.includes(`${FORMAT_BODIES[format].length} bytes`));
+    assert.ok(!logs.some((line) => line.includes(TEXT)));
+  });
+}
+
+for (const [format, type, audio] of [
+  ["mp3", "audio/mpeg", Buffer.from('{"error":true}')],
+  ["mp3", "audio/mpeg", Buffer.from("<html>error</html>")],
+  ...["wav", "flac", "opus", "aac"].map((f) => [f, "audio/mpeg", AUDIO]),
+  ...["application/json", "text/plain", "text/html"].map((type) => ["pcm", type, Buffer.from("error")]),
+]) {
+  test(`invalid ${format} body from ${type} is never settled (${audio.subarray(0, 4).toString("hex")})`, async (t) => {
+    const { url, facilitator, logs } = await serve(t, { surplus: fakeSurplus({ type, body: audio }) });
+    const body = { ...SPEECH, response_format: format };
+    const required = decode((await post(`${url}${SPEECH_ROUTE}`, body)).headers.get("payment-required"));
+    const refused = await post(`${url}${SPEECH_ROUTE}`, body, pay(required, BASE));
+    assert.equal(refused.status, 503);
+    assert.equal(refused.headers.get("retry-after"), "30");
+    assert.deepEqual((await refused.json()).error, { type: "upstream_error", code: "no_billable_answer",
+      message: "No audio was made. You were not charged." });
+    assert.equal(facilitator.calls.settle.length, 0);
+    assert.ok(logs.some((line) => line.includes(SPEECH.model) && line.includes(`format ${format}`)
+      && line.includes(`upstream content-type "${type}"`) && line.includes(`${audio.length} bytes`)
+      && line.includes(`first4 ${audio.subarray(0, 4).toString("hex")}`)));
+  });
+}

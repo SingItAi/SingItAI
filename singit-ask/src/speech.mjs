@@ -3,7 +3,7 @@
 //
 // The price follows from the text before the payer is asked (the models are priced per 1000 characters); the
 // payment is verified, Surplus makes the audio, and only then is the payment settled: no audio, no charge. The audio
-// comes back as it is (mp3 by default), with what was charged in the X-SingIt-* headers.
+// is checked against the requested format (mp3 by default), with what was charged in the X-SingIt-* headers.
 import crypto from "node:crypto";
 import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -17,6 +17,26 @@ export const SPEECH_ROUTE = "/v1/audio/speech";
 export const AUDIO_MODELS_ROUTE = "/v1/audio/models";
 export const SPEECH_TERMS = Object.freeze({ markupBps: 3000, maxChars: 4096 });
 const FORMATS = new Set(["mp3", "opus", "aac", "flac", "wav", "pcm"]);
+export const SPEECH_CONTENT_TYPES = Object.freeze({
+  mp3: "audio/mpeg", wav: "audio/wav", flac: "audio/flac", opus: "audio/ogg", aac: "audio/aac", pcm: "audio/L16",
+});
+
+// Container signatures only: this is a pre-settlement sanity check, not a decoder.
+export function matchesSpeechFormat(audio, format = "mp3") {
+  const starts = (magic, offset = 0) => audio.length >= offset + magic.length
+    && audio.subarray(offset, offset + magic.length).equals(Buffer.from(magic));
+  switch (format) {
+    case "mp3": return starts("ID3") || (audio.length >= 2 && audio[0] === 0xff
+      && (audio[1] & 0xe0) === 0xe0 && (audio[1] & 0x06) !== 0);
+    case "wav": return starts("RIFF") && starts("WAVE", 8);
+    case "flac": return starts("fLaC");
+    case "opus": return starts("OggS");
+    case "aac": return (audio.length >= 2 && audio[0] === 0xff && (audio[1] & 0xf6) === 0xf0)
+      || starts("ADIF") || starts("ftyp", 4);
+    case "pcm": return true;
+    default: return false;
+  }
+}
 const FEES = { [BASE]: TERMS.settlementFeeAtomic, [SOLANA]: SOLANA_TERMS.settlementFeeAtomic };
 
 export class SpeechError extends Error {
@@ -59,14 +79,14 @@ export function speechPrice(listAtomic, network) {
 // <=300 characters, opening with the category words and naming the brand once, later (see app.mjs's
 // DISCOVERY_DESCRIPTION for why).
 const DESCRIPTION = "Text to speech (TTS) API: text read aloud by 11 voice models (Kokoro, ElevenLabs, Gemini, xAI, "
-  + "MiniMax and more; list at GET /v1/audio/models), no API key needed. Call it when an agent needs spoken audio made "
-  + "from text. OpenAI speech request format, mp3 by default. Served by SingIt.";
+  + "MiniMax and more; list at GET /v1/audio/models), no API key needed. OpenAI speech request format. mp3 "
+  + "(audio/mpeg) by default, other response_format values return their own type. Served by SingIt.";
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["venice-kokoro-tts"], description: "A speech model id from GET /v1/audio/models." },
   input: { type: "string", minLength: 1, maxLength: SPEECH_TERMS.maxChars, description: "The text to read aloud." },
   voice: { type: "string", maxLength: 60, examples: ["af_heart"], description: "A voice of the model; they are listed at GET /v1/audio/models." },
-  response_format: { type: "string", enum: [...FORMATS], default: "mp3", description: "The audio format." },
+  response_format: { type: "string", enum: [...FORMATS], default: "mp3", description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type." },
   speed: { type: "number", minimum: 0.25, maximum: 4, description: "Speaking speed." },
 }, required: ["model", "input"] };
 
@@ -163,15 +183,17 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
       return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer", message: "No audio was made. You were not charged." } });
     }
     const type = response.headers.get("content-type") ?? "";
-    if (!response.ok || !audio.length || !/^audio\//.test(type)) {
-      log(`singit-ask: voice model ${request.model} answered HTTP ${response.status} (${type}, ${audio.length} bytes)`);
+    const format = request.response_format ?? "mp3";
+    const pcmError = format === "pcm" && /(?:json|text|html)/i.test(type);
+    if (!response.ok || !audio.length || !matchesSpeechFormat(audio, format) || pcmError) {
+      log(`singit-ask: voice model ${request.model} answered HTTP ${response.status} (format ${format}, upstream content-type ${JSON.stringify(type)}, ${audio.length} bytes, first4 ${audio.subarray(0, 4).toString("hex")})`);
       return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer", message: "No audio was made. You were not charged." } });
     }
     const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);
     const billing = speechPrice(listAtomic, network);
-    log(`singit-ask: ${request.input.length} characters read by ${request.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
-    res.set({ "Content-Type": type, "X-SingIt-Charged-Atomic": billing.totalAtomic, "X-SingIt-List-Atomic": billing.listAtomic,
+    log(`singit-ask: ${request.input.length} characters read by ${request.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC (format ${format}, upstream content-type ${JSON.stringify(type)}, ${audio.length} bytes)`);
+    res.set({ "Content-Type": SPEECH_CONTENT_TYPES[format], "X-SingIt-Charged-Atomic": billing.totalAtomic, "X-SingIt-List-Atomic": billing.listAtomic,
               "Cache-Control": "no-store" });
     res.send(audio);
   });
