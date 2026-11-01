@@ -111,7 +111,9 @@ function table(headers, rows) {
 function modelPage(shell, s, m) {
   const name = m.name ?? m.id;
   const p = m.singitUsdPerMillionTokens;
-  const priceTable = p ? table(["USD per 1M tokens", "Input", "Output"], [
+  const priceTable = m.priceBasis === "reference" ? table(["Conservative reference estimate per 1M tokens", "Input", "Output"], [
+    ["Surplus lists this model at 0; no list-price savings claimed", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
+  ]) : p ? table(["USD per 1M tokens", "Input", "Output"], [
     ["SingIt price (expected, markup included)", `$${price(p.input)}`, `$${price(p.output)}`],
     ["List price of the model (for reference)", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
   ]) : "<p>No per-token price is listed for this model. A request costs the minimum request price below.</p>";
