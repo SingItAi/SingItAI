@@ -123,9 +123,15 @@ export async function modelPriceRange(catalogue, model) {
 // One x402 resource per model in MODEL_ROUTES, reusing addUsageRoute (metered.mjs) for the actual payment and
 // settlement work: this only supplies the pinned `choose` and each route's own discovery metadata and probe price.
 // Registered only when there is a catalogue to resolve models against, same gate as addFormatRoutes/addImageRoutes.
+// Pinned routes ignore fallback_models and cannot select singit/auto for min_tier.
+const modelInputSchema = (schema) => ({ ...schema,
+  properties: Object.fromEntries(Object.entries(schema.properties).filter(([name]) => !["fallback_models", "min_tier"].includes(name))),
+});
+
 export function addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest, upstream, fetchImpl, log,
                                               inputSchema, outputSchema, exampleOutput }) {
   const bufferPp = config.priceBufferPp ?? 1;
+  inputSchema = modelInputSchema(inputSchema);
   for (const model of MODEL_ROUTES) {
     // The discovery probes are quoted for this route's own Bazaar example body (metered.mjs's `exampleProbe`).
     addUsageRoute(app, routePath(model.id), (quotes, fallback) => [
@@ -157,6 +163,7 @@ export function addModelRoutes(app, config, { facilitatorClient, catalogue, read
 // Every model route's openapi.json path entry, priced at that model's own range when the catalogue can resolve it
 // right now, else the generic `fallbackPrice` (the same one /v1/chat/completions shows).
 export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, exampleOutput, fallbackPrice }) {
+  inputSchema = modelInputSchema(inputSchema);
   const entries = await Promise.all(MODEL_ROUTES.filter(m => !catalogue?.isSuspended?.(m.id)).map(async (model) => {
     const own = await modelPriceRange(catalogue, model);
     return [routePath(model.id), { post: {

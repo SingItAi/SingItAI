@@ -208,3 +208,23 @@ test("/v1/chat/completions keeps taking model in the body, unaffected by the per
   assert.equal(paid.status, 200);
   assert.equal(asked[0].model, CHEAP.id);
 });
+
+test("pinned route schemas exclude generic-only fields while generic chat retains fallback", async (t) => {
+  const { url } = await serve(t);
+  const doc = await (await fetch(`${url}/openapi.json`)).json();
+  for (const route of modelRoutePaths()) {
+    const schema = doc.paths[route].post.requestBody.content["application/json"].schema;
+    const challenge = decode((await fetch(url + route)).headers.get("payment-required"));
+    for (const fields of [schema.properties, challenge.extensions.bazaar.schema.properties.input.properties.body.properties]) {
+      assert.ok(!Object.hasOwn(fields, "fallback_models"), route);
+      assert.ok(!Object.hasOwn(fields, "min_tier"), route);
+    }
+  }
+  assert.ok(doc.paths[ROUTE].post.requestBody.content["application/json"].schema.properties.fallback_models);
+  const generic = decode((await fetch(url + ROUTE)).headers.get("payment-required"));
+  assert.ok(generic.extensions.bazaar.schema.properties.input.properties.body.properties.fallback_models);
+  assert.ok(generic.resource.description.length <= 500);
+  assert.match(generic.resource.description, /singit\/auto/);
+  assert.match(generic.resource.description, /free\//);
+  assert.match(doc.paths[ROUTE].post.description, /settlement fee/, "openapi keeps the billing terms");
+});

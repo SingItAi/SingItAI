@@ -9,6 +9,20 @@
     { "url": "https://ask.singitai.app/v1/audio/speech", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/exa/search", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/exa/contents", "method": "POST" },
-    { "url": "https://ask.singitai.app/v1/exa/answer", "method": "POST" }
+    { "url": "https://ask.singitai.app/v1/exa/answer", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/claude-opus-5.5", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/claude-sonnet-5.5", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/claude-haiku-5.5", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/gpt-5.6-sol", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/gpt-5.6-terra", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/gpt-5.5", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/gemini-3.1-pro-preview", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/gemini-3.8-flash", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/grok-4.7", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/kimi-k3", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/deepseek-v4-pro", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/deepseek-v4.1-flash", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/qwen3.8-max-0902", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/glm-5.3", "method": "POST" }
   ]
 }

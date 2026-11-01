@@ -104,7 +104,7 @@
 </header>
 
 <main id="top">
-<section class="lp-section" id="overview"><div class="shell"><h1 class="section-title">SingIt MCP</h1><p class="lp-text">A remote Streamable HTTP server with JSON responses only. No local server installation is needed. Endpoint: <a href="https://app.singitai.app/mcp">https://app.singitai.app/mcp</a>. Official MCP Registry name: app.singitai/singit. Server: singit, “SingIt x402”, version 0.1.3; protocol 2025-06-18.</p></div></section>
+<section class="lp-section" id="overview"><div class="shell"><h1 class="section-title">SingIt MCP</h1><p class="lp-text">A remote Streamable HTTP server with JSON responses only. No local server installation is needed. Endpoint: <a href="https://app.singitai.app/mcp">https://app.singitai.app/mcp</a>. Official MCP Registry name: app.singitai/singit. Server: singit, “SingIt x402”, version 0.1.4; protocol 2025-06-18.</p></div></section>
 <section class="lp-section" id="key"><div class="shell"><h2 class="section-title">Get a key</h2><p class="lp-text"><a href="/docs/mcp-key/">MCP key with spending limits</a>: setup, refusal and revocation.</p><p class="lp-text">Open <a href="https://app.singitai.app/app/">SingIt</a>, then Settings → API keys. Free tools and tools/list work without a key. Export SINGIT_API_KEY in the environment that launches your client. Paid tools are paid per call within the key’s caps; get_limits shows what is spent and left today. See <a href="/agent-spending-limits/">spending limits</a> and <a href="/developers/">developer setup</a>.</p></div></section>
 <section class="lp-section" id="install"><div class="shell"><h2 class="section-title">Install</h2><h3>Claude Code</h3><p class="tab-note">Verification: Command checked against <a href="https://code.claude.com/docs/en/mcp">Claude Code docs</a>, 31 October 2026; not run here.</p>
 <div class="code"><pre><code>claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'</code></pre></div>
@@ -163,7 +163,7 @@ bearer_token_env_var = "SINGIT_API_KEY"</code></pre></div>
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'</code></pre></div>
-<p class="lp-text">Expected: initialize returns serverInfo.version 0.1.3; tools/list returns 16 tools. Both requests are free and need no key. A missing, empty or unexpanded-variable header behaves like no key. A wrong or revoked key gets HTTP 401 (verified 31 October 2026 with an invalid key).</p></div></section>
+<p class="lp-text">Expected: initialize returns serverInfo name singit and title SingIt x402; tools/list returns 16 tools. Both requests are free and need no key. A missing, empty or unexpanded-variable header behaves like no key. A wrong or revoked key gets HTTP 401 (verified 31 October 2026 with an invalid key).</p></div></section>
 <section class="lp-section" id="tools"><div class="shell"><h2 class="section-title">Tools</h2><p class="lp-text">Snapshot fetched 31 October 2026. Read-only and idempotent values below are server annotation hints. Read-only paid calls still charge; repeating a non-idempotent call charges again. Account-read tools require a key but no paid-tool scope.</p>
 <!-- generated:mcp-tools:start -->
 <div class="table-wrap"><table class="mtable">
