@@ -1023,7 +1023,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       `- Models: ${base}/v1/models`,
       "- Docs: https://singitai.app/developers/",
       `- First paid x402 call: ${FIRST_PAID_CALL_DOC}`,
-      `- MCP server (API key, not x402): ${MCP_URL}, see https://singitai.app/llms.txt`,
+      `- MCP server (API key, not x402): ${MCP_URL}. Free tools work without a key; paid tools need a SingIt API key created in the app at https://app.singitai.app/app/.`,
     ];
     res.set("Content-Type", "text/plain; charset=utf-8").send(lines.join("\n") + "\n");
   });
