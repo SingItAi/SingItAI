@@ -4,8 +4,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
-import { createApp } from "../src/app.mjs";
+import { createApp, readRequest, chooseModel } from "../src/app.mjs";
 import { AnswerLog, acceptedOf, recordWhenSettled, tokensOf, answerLogFor } from "../src/answer-log.mjs";
+import { readFormatRequest } from "../src/formats.mjs";
 import { BASE, PAY_TO, METERED_ROUTE } from "../src/pricing.mjs";
 
 const SOL = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -30,7 +31,7 @@ test("a line keeps tokens, money and an hour; nothing else", async () => {
     billing: { totalAtomic: "3350", maxChargeAtomic: "3767", providerCostAtomic: "1700", payTo: "0xDEST" } }), true);
   await log.flush();
   const [line] = read(file);
-  assert.deepEqual(line, { hour: "2026-10-28T15:00Z", route: "/v1/chat/claude-opus-5.5", model: "claude-opus-5.5", scheme: "upto", network: BASE,
+  assert.deepEqual(line, { hour: "2026-10-28T15:00Z", route: "/v1/chat/claude-opus-5.5", model: "claude-opus-5.5", isDefault: null, scheme: "upto", network: BASE,
     maxTokens: 500, promptTokens: 40, completionTokens: 210, reasoningTokens: 12, upstreamMicro: 1700, billedAtomic: 3350, ceilingAtomic: 3767, overrunAtomic: 0 });
   const raw = fs.readFileSync(file, "utf8");
   for (const leak of ["SECRET", "0xPAYER", "0xDEST", "15:47"]) assert.ok(!raw.includes(leak), leak);
@@ -138,7 +139,7 @@ test("acceptedOf reads the signed scheme and network, and tolerates junk", () =>
   assert.deepEqual(acceptedOf(req(undefined)), {});
 });
 
-async function paidAnswer(t, { scheme, answerLogFile, maxTokens = 500, upstreamUsage, settleOk = true }) {
+async function paidAnswer(t, { scheme, answerLogFile, maxTokens = 500, upstreamUsage, settleOk = true, route = METERED_ROUTE, model, consoleLines = [] }) {
   const facilitator = {
     getSupported: async () => ({ kinds: [{ x402Version: 2, scheme: "exact", network: BASE }, { x402Version: 2, scheme: "exact", network: SOL, extra: { feePayer: "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu" } },
       { x402Version: 2, scheme: "upto", network: BASE, extra: { facilitatorAddress: "0x2A89407a98A0732b7fD578c4E156B7166540EB5A" } },
@@ -147,12 +148,17 @@ async function paidAnswer(t, { scheme, answerLogFile, maxTokens = 500, upstreamU
     verify: async () => ({ isValid: true, payer: account.address }),
     settle: async () => (settleOk ? { success: true, network: BASE, transaction: "0x" + "aa".repeat(32), payer: account.address }
       : { success: false, errorReason: "insufficient_funds", network: BASE, transaction: "" }) };
+  const info = { id: "claude-sonnet-5.5", promptUsdPerToken: 3e-6, completionUsdPerToken: 15e-6 };
+  const catalogue = { async resolve(id) { return { ...info, id }; }, async canAnswer() { return true; },
+    async list() { return [info]; }, async imageModels() { return new Map(); } };
   const app = createApp({ payToBase: PAY_TO, payToSolana: "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu", model: "test", answerLogFile },
-    { facilitatorClient: facilitator, upstream: async () => ({ content: "Hello", finishReason: "stop", usage: upstreamUsage }), log: () => {} });
+    { facilitatorClient: facilitator, catalogue,
+      fetchImpl: async () => new Response(JSON.stringify({ id: "resp_1", output: [], usage: upstreamUsage })),
+      upstream: async () => ({ content: "Hello", finishReason: "stop", usage: upstreamUsage }), log: (line) => consoleLines.push(line) });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
-  const url = `http://127.0.0.1:${listener.address().port}${METERED_ROUTE}`;
-  const send = (headers) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify({ messages: [{ role: "user", content: "a private question" }], max_tokens: maxTokens }) });
+  const url = `http://127.0.0.1:${listener.address().port}${route}`;
+  const send = (headers) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify({ model, input: "a private question", messages: [{ role: "user", content: "a private question" }], max_tokens: maxTokens }) });
   const first = await send({});
   const q = decode(first.headers.get("payment-required"));
   const accepted = q.accepts.find((a) => a.scheme === scheme && a.network === BASE);
@@ -222,4 +228,52 @@ test("the Messages route logs its settled answer with the Anthropic-style token 
     ["/v1/messages", "claude-sonnet-5.5", "upto", 300, 12, 30, 2000]);
   assert.equal(line.billedAtomic, Number((await paid.json()).billing.totalAtomic));
   assert.ok(!fs.readFileSync(file, "utf8").includes("x402?"));
+});
+
+test("isDefault keeps booleans, uses null for unknown, and never writes free-form values", async () => {
+  const file = tmp();
+  const log = new AnswerLog({ file });
+  for (const modelOmitted of [true, false, undefined, null, "SECRET", 1]) log.record({ modelOmitted });
+  await log.flush();
+  const entries = read(file);
+  assert.deepEqual(entries.map((entry) => entry.isDefault), [true, false, null, null, false, false]);
+  assert.ok(!fs.readFileSync(file, "utf8").includes("SECRET"));
+  for (const entry of entries) assert.deepEqual(Object.keys(entry).sort(), [
+    "hour", "route", "model", "isDefault", "scheme", "network", "maxTokens", "promptTokens",
+    "completionTokens", "reasoningTokens", "upstreamMicro", "billedAtomic", "ceilingAtomic", "overrunAtomic",
+  ].sort());
+});
+
+// /v1/responses has always required a model (a body without one is a 400 before any payment), so it only ever logs false.
+for (const route of ["/v1/chat/completions", "/v1/responses"]) {
+  for (const model of route === "/v1/chat/completions" ? [undefined, null, "claude-sonnet-5.5", "test", "singit-ask"] : ["claude-sonnet-5.5", "test"]) {
+    test(`${route} model=${model} logs body omission in JSONL and console`, async (t) => {
+      const file = tmp();
+      const consoleLines = [];
+      const { paid } = await paidAnswer(t, { scheme: "upto", answerLogFile: file, route, model, consoleLines,
+        upstreamUsage: { prompt_tokens: 20, completion_tokens: 31, buyer_cost_micro: 100 } });
+      assert.equal(paid.status, 200);
+      const [line] = await lines(file);
+      assert.equal(line.isDefault, model == null);
+      const success = consoleLines.filter((text) => text.includes("answer ready"));
+      assert.equal(success.length, 1);
+      assert.match(success[0], new RegExp(`isDefault=${model == null}\\b`));
+    });
+  }
+}
+
+test("model omission survives parsing and model choice independently of the pricing default flag", async () => {
+  const config = { model: "test" };
+  const catalogue = { async resolve(id) { return { id }; } };
+  for (const model of [undefined, null, "test", "singit-ask", "claude-sonnet-5.5", "singit/auto"]) {
+    const input = readRequest({ model, messages: [{ role: "user", content: "hi" }] });
+    assert.equal(input.modelOmitted, model == null);
+    if (model !== "singit/auto") {
+      const chosen = await chooseModel(config, catalogue, input);
+      assert.equal(chosen.modelOmitted, model == null);
+      if (model == null || model === "test" || model === "singit-ask") assert.equal(chosen.isDefault, true);
+    }
+    if (model != null) assert.equal(readFormatRequest("/v1/responses", { model, input: "hi" }).modelOmitted, false);
+  }
+  assert.throws(() => readFormatRequest("/v1/responses", { input: "hi" }), /Name a model/);
 });

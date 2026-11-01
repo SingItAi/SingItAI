@@ -80,15 +80,14 @@ test('reasoning headroom is fully included in fallback and reservation pricing',
 
 // Exercise the HTTP handler with fake request/response objects: no listener or network.
 import { addFreeRoute } from '../src/free.mjs';
-function routeHarness({ budget = .0005, upstream, now = () => Date.UTC(2026, 9, 31, 23, 59, 30), file, perVisitor = 20 } = {}) {
+function routeHarness({ budget = .0005, upstream, now = () => Date.UTC(2026, 9, 31, 23, 59, 30), file, perVisitor = 20, perDay = 1000, info = { id: 'm', promptUsdPerToken: 0, completionUsdPerToken: 1e-6 }, observedShare, log = () => {} } = {}) {
   let handler;
-  const terms = freeTerms({ freeModels: ['m'], freeBudgetUsdPerDay: budget, freeStateFile: file, freeLimits: { perVisitorPerDay: perVisitor } });
+  const terms = freeTerms({ freeModels: ['m'], freeBudgetUsdPerDay: budget, freeStateFile: file, freeLimits: { perVisitorPerDay: perVisitor, perDay } });
   const allowance = new FreeAllowance(terms, now);
-  const info = { id: 'm', promptUsdPerToken: 0, completionUsdPerToken: 1e-6 };
   addFreeRoute({ post(_path, fn) { handler = fn; } }, '/v1/chat/completions', {
     config: {}, terms, allowance, readRequest: () => ({ chars: 5, messages: [{}], maxTokens: 400 }), RequestError: class extends Error {},
     upstream: upstream ?? (async () => ({ content: 'ok', usage: { buyer_cost_micro: 110 } })),
-    catalogue: { async resolve() { return info; } }, log() {},
+    catalogue: { async resolve() { return info; } }, log, observedShare,
   });
   return { allowance, async ask(ip = '203.0.113.1') {
     const res = { statusCode: 200, headers: {}, set(k, v) { Object.assign(this.headers, typeof k === 'string' ? { [k.toLowerCase()]: v } : Object.fromEntries(Object.entries(k).map(([a,b]) => [a.toLowerCase(), b]))); return this; }, status(n) { this.statusCode = n; return this; }, json(body) { this.body = body; return this; } };
@@ -154,4 +153,69 @@ test('write failure logs once and never interrupts answers; milestones only repo
   assert.equal(logs.filter(s => s.includes('write failed')).length, 1);
   assert.deepEqual(logs.filter(s => s.includes('budget used')), ['singit-ask: free budget used 50%', 'singit-ask: free budget used 90%', 'singit-ask: free budget used 100%']);
   assert.equal(a.spentMicro, 100);
+});
+
+const priced = { id: 'm', promptUsdPerToken: .1e-6, completionUsdPerToken: .2e-6 };
+const tokenUsage = { buyer_cost_micro: 0, prompt_tokens: 10, completion_tokens: 20 };
+const smallInput = { chars: 5, messages: [{}] };
+
+test('zero reports with tokens use rounded list cost or a positive observed share', () => {
+  for (const share of [undefined, null, 0]) assert.equal(freeAnswerCost(tokenUsage, priced, smallInput, 400, share), 5);
+  assert.equal(freeAnswerCost(tokenUsage, priced, smallInput, 400, .25), 2);
+  assert.equal(freeAnswerCost({ ...tokenUsage, buyer_cost_micro: '0' }, priced, smallInput, 400, .01), 1);
+  for (const info of [null, { ...priced, promptUsdPerToken: 0 }, { ...priced, completionUsdPerToken: 0 },
+    { ...priced, promptUsdPerToken: 0, completionUsdPerToken: 0 }]) {
+    assert.ok(freeAnswerCost(tokenUsage, info, smallInput, 400) >= 1);
+  }
+  assert.equal(freeAnswerCost({ ...tokenUsage, buyer_cost_micro: 7 }, priced, smallInput, 400, .25), 7);
+  assert.equal(freeAnswerCost({ prompt_tokens: 10, completion_tokens: 20 }, priced, smallInput, 400, .25),
+    freeAnswerCost(null, priced, smallInput, 400));
+  assert.equal(freeAnswerCost({ buyer_cost_micro: 0 }, priced, smallInput, 400), 0);
+});
+
+test('estimated spend binds the budget and persists, with and without observed prices', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'free-estimate-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  for (const share of [undefined, null, 0, .25]) {
+    const file = join(dir, `${share}.json`);
+    const logs = [];
+    const h = routeHarness({ budget: .0001, file, info: priced,
+      observedShare: share === undefined ? undefined : model => { assert.equal(model, 'm'); return share; },
+      log: s => logs.push(s), upstream: async () => ({ content: 'ok', usage: tokenUsage }) });
+    const estimate = share === .25 ? 2 : 5;
+    let answers = 0;
+    let res;
+    while ((res = await h.ask()).statusCode === 200) {
+      answers++;
+      assert.equal(h.allowance.spentMicro, answers * estimate);
+      assert.ok(answers < 20);
+    }
+    assert.ok(answers > 1);
+    assert.equal(res.statusCode, 429);
+    assert.equal(res.body.error.code, 'free_budget_exhausted');
+    assert.equal(res.headers['retry-after'], '30');
+    const restored = new FreeAllowance(h.allowance.terms, h.allowance.now);
+    assert.equal(restored.spentMicro, answers * estimate);
+    assert.equal(restored.total, answers);
+    const estimates = logs.filter(s => s.includes('free cost estimate'));
+    assert.equal(estimates.length, 1);
+    assert.deepEqual(JSON.parse(estimates[0].slice(estimates[0].indexOf('{'))), {
+      model: 'm', reported: 0, estimated: estimate, prompt_tokens: 10, completion_tokens: 20,
+    });
+  }
+});
+
+test('daily and visitor caps bind zero-cost answers independently of the dollar budget', async () => {
+  for (const budget of [0, .0005]) {
+    const upstream = async () => ({ content: 'ok', usage: { buyer_cost_micro: 0 } });
+    const h = routeHarness({ budget, perDay: 2, perVisitor: 1, upstream });
+    assert.equal((await h.ask()).statusCode, 200);
+    assert.equal((await h.ask()).body.error.code, 'free_tier_exhausted');
+    assert.equal((await h.ask('198.51.100.1')).statusCode, 200);
+    const res = await h.ask('192.0.2.1');
+    assert.equal(res.statusCode, 429);
+    assert.equal(res.body.error.code, 'free_tier_exhausted');
+    assert.equal(res.headers['retry-after'], '30');
+    assert.equal(h.allowance.spentMicro, 0);
+  }
 });

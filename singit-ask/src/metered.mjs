@@ -340,9 +340,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       // service absorbs the difference instead of discarding an otherwise-good answer.
       const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: paid.terms.maxChargeAtomic } : usage;
       if (exact && usage.overrunAtomic) log(`singit-ask: exact overrun ${usage.overrunAtomic} micro-USDC`);
-      recordWhenSettled(res, answerLog, { route, model: req.askInput.model, ...acceptedOf(req), maxTokens: req.askInput.maxTokens, usage: answer.usage, billing });
+      recordWhenSettled(res, answerLog, { route, model: req.askInput.model, modelOmitted: req.askInput.modelOmitted, ...acceptedOf(req), maxTokens: req.askInput.maxTokens, usage: answer.usage, billing });
       if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
-      log(`singit-ask: answer ready in ${Date.now() - started} ms, settling ${billing.totalAtomic} micro-USDC`);
+      log(`singit-ask: answer ready in ${Date.now() - started} ms, isDefault=${req.askInput.modelOmitted == null ? null : req.askInput.modelOmitted === true}, settling ${billing.totalAtomic} micro-USDC`);
       res.locals.singitReceipt = { ref: `singit-ask-${started}`, chargedAtomic: billing.totalAtomic };
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: "singit-ask", choices: [{ index: 0, message: { role: "assistant", content: answer.content },
