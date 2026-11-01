@@ -1,10 +1,10 @@
-// SingIt search: Exa's list price without markup or fee, Exa asked once with SingIt's key, nothing charged without an
+// SingIt search: Exa's list price plus a flat $0.001 settlement fee, Exa asked once with SingIt's key, nothing charged without an
 // answer, nothing sold beyond what is listed.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
-import { exaPrice, searchPrice, parseExaMarkupBps, parseExaFeeAtomic, setExaMarkupBps, setExaFeeAtomic, exaPriceRange, exaRequestBody, SEARCH_ROUTES } from "../src/search.mjs";
+import { exaPrice, searchPrice, parseExaMarkupBps, parseExaFeeAtomic, setExaMarkupBps, setExaFeeAtomic, exaPriceRange, exaRequestBody, SEARCH_ROUTES, EXA_DEFAULT_FEE_ATOMIC } from "../src/search.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", model: "deepseek-v4.1-flash" };
@@ -59,13 +59,13 @@ const pay = (required, network) => ({ "PAYMENT-SIGNATURE": encode({ x402Version:
   extensions: required.extensions }) });
 const SEARCH = { query: "x402 facilitators", numResults: 5 };
 
-test("a search is offered at Exa's list price with no markup, and listed for discovery", async (t) => {
+test("a search is offered at Exa's list price plus the flat settlement fee, and listed for discovery", async (t) => {
   const { url, facilitator, exa } = await serve(t);
   const unpaid = await post(`${url}/v1/exa/search`, SEARCH);
   assert.equal(unpaid.status, 402);
   const required = decode(unpaid.headers.get("payment-required"));
   assert.deepEqual(required.accepts.map((a) => [a.scheme, a.network, a.amount, a.payTo]), [
-    ["exact", BASE, "7000", CONFIG.payToBase], ["exact", SOLANA, "7000", CONFIG.payToSolana]]);
+    ["exact", BASE, "8000", CONFIG.payToBase], ["exact", SOLANA, "8000", CONFIG.payToSolana]]);
   assert.ok(required.extensions?.bazaar, "listed for discovery");
   assert.deepEqual(exa.calls, [], "Exa is not asked before the payer pays");
   assert.deepEqual(facilitator.calls.settle, []);
@@ -82,9 +82,9 @@ test("a paid search asks Exa once with SingIt's key, then settles the payer", as
   const body = await paid.json();
   assert.equal(body.results[0].url, "https://x402.org");
   assert.equal(body.costDollars, undefined, "Exa's own cost stays here");
-  assert.deepEqual(body.billing, { exaAtomic: "7000", markupAtomic: "0", feeAtomic: "0", totalAtomic: "7000", currency: "USDC" });
+  assert.deepEqual(body.billing, { exaAtomic: "7000", markupAtomic: "0", feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
   assert.deepEqual(exa.calls.map((c) => [c.url, c.key, c.body]), [["https://api.exa.ai/search", "exa_test_key", SEARCH]]);
-  assert.deepEqual(facilitator.calls.settle, [[BASE, "7000"]]);
+  assert.deepEqual(facilitator.calls.settle, [[BASE, "8000"]]);
   const again = await post(`${url}/v1/exa/search`, SEARCH, pay(required, BASE));
   assert.equal(again.status, 409, "the same payment buys nothing twice");
   assert.equal(exa.calls.length, 1);
@@ -96,7 +96,9 @@ test("contents and answers are priced from Exa's list", async (t) => {
     ["/v1/exa/answer", { query: "What is x402?" }, "5000"],
     ["/v1/exa/search", { query: "x", numResults: 20, contents: { text: true } }, "37000"]]) {
     const required = decode((await post(`${url}${path}`, body)).headers.get("payment-required"));
-    assert.equal(required.accepts.find((a) => a.network === BASE).amount, base, path);
+    for (const network of [BASE, SOLANA]) {
+      assert.equal(required.accepts.find((a) => a.network === network).amount, String(BigInt(base) + 1000n), path);
+    }
   }
 });
 
@@ -146,6 +148,8 @@ test("x402scan's empty, unpaid probe gets the standing offer; a payment header d
       const example = required.extensions.bazaar.info.input.body;
       const quoted = decode((await post(`${url}${route}`, example)).headers.get("payment-required"));
       assert.deepEqual(required.accepts.map((a) => a.amount), quoted.accepts.map((a) => a.amount));
+      assert.deepEqual(required.accepts.map((a) => a.amount),
+        [BASE, SOLANA].map(() => String(exaPrice(route, example) + 1000)));
       assert.deepEqual(required.extensions.bazaar.info.output.example.billing,
         { ...searchPrice(exaPrice(route, example), BASE), currency: "USDC" });
     }
@@ -156,7 +160,7 @@ test("x402scan's empty, unpaid probe gets the standing offer; a payment header d
 });
 
 test("prices and bounds", () => {
-  assert.deepEqual(searchPrice("7000", SOLANA), { exaAtomic: "7000", markupAtomic: "0", feeAtomic: "0", totalAtomic: "7000" });
+  assert.deepEqual(searchPrice("7000", SOLANA), { exaAtomic: "7000", markupAtomic: "0", feeAtomic: "1000", totalAtomic: "8000" });
   assert.equal(searchPrice("1", BASE).markupAtomic, "0");
   assert.equal(exaPrice("/v1/exa/search", { query: "x", type: "instant" }), 4000);
   assert.throws(() => exaPrice("/v1/exa/search", null), /JSON/);
@@ -168,13 +172,23 @@ test("without an Exa key there is no search", async (t) => {
 });
 
 
-test("default Exa totals equal list prices for every route on both networks", () => {
+test("default Exa totals equal list prices plus one settlement fee for every route on both networks", () => {
   for (const route of Object.keys(SEARCH_ROUTES)) {
     const body = exaRequestBody(route).content["application/json"].example;
     const listed = exaPrice(route, body);
-    for (const network of [BASE, SOLANA]) assert.equal(searchPrice(listed, network).totalAtomic, String(listed));
+    for (const network of [BASE, SOLANA]) assert.equal(searchPrice(listed, network).totalAtomic, String(listed + 1000));
   }
-  assert.deepEqual(exaPriceRange(), { min: "0.001", max: "0.05" });
+  for (const [route, body, listed] of [
+    ["/v1/exa/contents", { urls: ["https://a.test"] }, 1000],
+    ["/v1/exa/search", { query: "x", type: "instant" }, 4000],
+    ["/v1/exa/search", { query: "x", type: "auto" }, 7000],
+    ["/v1/exa/search", { query: "x", type: "fast" }, 7000],
+    ["/v1/exa/answer", { query: "x" }, 5000],
+  ]) {
+    assert.equal(exaPrice(route, body), listed);
+    for (const network of [BASE, SOLANA]) assert.equal(searchPrice(listed, network).totalAtomic, String(listed + 1000));
+  }
+  assert.deepEqual(exaPriceRange(), { min: "0.002", max: "0.051" });
 });
 
 test("Exa settings restore former prices and round markup upward", () => {
@@ -187,7 +201,7 @@ test("Exa settings restore former prices and round markup upward", () => {
     assert.deepEqual(exaPriceRange(), { min: "0.0023", max: "0.067" });
     setExaFeeAtomic("123");
     for (const network of [BASE, SOLANA]) assert.equal(searchPrice(1000, network).feeAtomic, "123");
-  } finally { setExaMarkupBps(0); setExaFeeAtomic("0,0"); }
+  } finally { setExaMarkupBps(0); setExaFeeAtomic(EXA_DEFAULT_FEE_ATOMIC); }
 });
 
 test("Exa parsers default invalid values without throwing", () => {
@@ -195,8 +209,10 @@ test("Exa parsers default invalid values without throwing", () => {
     assert.equal(parseExaMarkupBps(value), 0);
   }
   for (const value of [undefined, "", "garbage", "-1", "1.5", "1,", ",2", "1,2,3", "1e3", "1,-2"]) {
-    assert.deepEqual(parseExaFeeAtomic(value), ["0", "0"]);
+    assert.deepEqual(parseExaFeeAtomic(value), [EXA_DEFAULT_FEE_ATOMIC, EXA_DEFAULT_FEE_ATOMIC]);
   }
+  assert.deepEqual(parseExaFeeAtomic("0"), ["0", "0"]);
+  assert.deepEqual(parseExaFeeAtomic("1000,2000"), ["1000", "2000"]);
   assert.equal(parseExaMarkupBps("10000"), 10000);
   assert.deepEqual(parseExaFeeAtomic("9007199254740993"), ["9007199254740993", "9007199254740993"]);
 });
@@ -205,7 +221,7 @@ test("Exa parsers default invalid values without throwing", () => {
 test("configured Exa probe and Bazaar billing match the example offer", async (t) => {
   setExaMarkupBps(3000);
   setExaFeeAtomic("1000,2000");
-  t.after(() => { setExaMarkupBps(0); setExaFeeAtomic("0,0"); });
+  t.after(() => { setExaMarkupBps(0); setExaFeeAtomic(EXA_DEFAULT_FEE_ATOMIC); });
   const { url } = await serve(t);
   for (const route of Object.keys(SEARCH_ROUTES)) {
     const probe = decode((await fetch(`${url}${route}`, { method: "POST" })).headers.get("payment-required"));
@@ -215,4 +231,39 @@ test("configured Exa probe and Bazaar billing match the example offer", async (t
     assert.deepEqual(probe.extensions.bazaar.info.output.example.billing,
       { ...searchPrice(exaPrice(route, example), BASE), currency: "USDC" });
   }
+});
+
+test("default settlement fee is added once at every list-price boundary", () => {
+  for (const [listed, total] of [[1000, 2000], [4000, 5000], [7000, 8000], [5000, 6000], [50000, 51000]]) {
+    for (const network of [BASE, SOLANA]) {
+      assert.equal(searchPrice(listed, network).feeAtomic, "1000");
+      assert.equal(searchPrice(listed, network).totalAtomic, String(total));
+    }
+  }
+  try {
+    setExaFeeAtomic("0");
+    for (const network of [BASE, SOLANA]) assert.equal(searchPrice(7000, network).totalAtomic, "7000");
+  } finally { setExaFeeAtomic(EXA_DEFAULT_FEE_ATOMIC); }
+});
+
+test("OpenAPI and llms disclose the Exa settlement fee and range", async (t) => {
+  const { url } = await serve(t);
+  const spec = await (await fetch(`${url}/openapi.json`)).json();
+  for (const route of Object.keys(SEARCH_ROUTES)) {
+    const operation = spec.paths[route].post;
+    assert.match(operation.description, /plus a flat 0.001 USDC settlement fee/);
+    assert.deepEqual(operation["x-payment-info"].price, { mode: "dynamic", currency: "USD", min: "0.002", max: "0.051" });
+  }
+  const text = await (await fetch(`${url}/llms.txt`)).text();
+  assert.doesNotMatch(text, /no markup or settlement fee/);
+});
+
+test("a paid Solana search bills the same single settlement fee", async (t) => {
+  const { url, facilitator } = await serve(t);
+  const required = decode((await post(`${url}/v1/exa/search`, SEARCH)).headers.get("payment-required"));
+  const paid = await post(`${url}/v1/exa/search`, SEARCH, pay(required, SOLANA));
+  assert.equal(paid.status, 200);
+  assert.deepEqual((await paid.json()).billing,
+    { exaAtomic: "7000", markupAtomic: "0", feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
+  assert.deepEqual(facilitator.calls.settle, [[SOLANA, "8000"]]);
 });

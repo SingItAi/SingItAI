@@ -716,7 +716,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           summary: { "/v1/exa/search": "Search the web with Exa and return ranked results",
                      "/v1/exa/contents": "Fetch page contents from Exa for up to 10 URLs",
                      "/v1/exa/answer": "Generate a cited answer with Exa" }[route],
-          description: "Exa's own request and answer, paid per request over x402: Exa's list price with no markup by default. "
+          description: "Exa's own request and answer, paid per request over x402: Exa's list price plus a flat 0.001 USDC settlement fee, the same on Base and Solana. "
             + "Nothing is charged without an answer.",
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...exaPriceRange() }, protocols: [{ x402: {} }] },
           requestBody: exaRequestBody(route),

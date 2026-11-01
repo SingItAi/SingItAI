@@ -1,5 +1,5 @@
-// SingIt search: Exa's web search, page contents and cited answers, sold over x402 at Exa's list price with no markup or
-// settlement fee by default, and bought from Exa with SingIt's own Exa API key, as BlockRun does
+// SingIt search: Exa's web search, page contents and cited answers, sold over x402 at Exa's list price plus a flat $0.001 settlement fee
+// on both Base and Solana, and bought from Exa with SingIt's own Exa API key, as BlockRun does
 // (docs/singit-gateway-spec.md, 4.2).
 //
 // The price is worked out from the request and Exa's price list before the payer is asked; the payer's payment is
@@ -21,18 +21,19 @@ export const SEARCH_TERMS = Object.freeze({ markupBps: 0, maxExaAtomic: 50_000 }
 // 10, each page per content kind (text, highlights, summary), an answer.
 export const EXA_PRICES = Object.freeze({ search: { instant: 4000, fast: 7000, auto: 7000 }, result: 1000, page: 1000,
   answer: 5000 });
-// Invalid environment values fall back independently to pass-through pricing.
+export const EXA_DEFAULT_FEE_ATOMIC = "1000";
+// Invalid environment values fall back independently to zero markup and the default settlement fee.
 export function parseExaMarkupBps(value) {
   const text = String(value ?? "").trim();
   return /^\d+$/.test(text) && Number(text) <= 10000 ? Number(text) : 0;
 }
 export function parseExaFeeAtomic(value) {
   const parts = String(value ?? "").trim().split(",").map((part) => part.trim());
-  if (parts.length < 1 || parts.length > 2 || parts.some((part) => !/^\d+$/.test(part))) return ["0", "0"];
+  if (parts.length < 1 || parts.length > 2 || parts.some((part) => !/^\d+$/.test(part))) return [EXA_DEFAULT_FEE_ATOMIC, EXA_DEFAULT_FEE_ATOMIC];
   return [BigInt(parts[0]).toString(), BigInt(parts[1] ?? parts[0]).toString()];
 }
 let markupBps = SEARCH_TERMS.markupBps;
-let fees = ["0", "0"];
+let fees = [EXA_DEFAULT_FEE_ATOMIC, EXA_DEFAULT_FEE_ATOMIC];  // one fee per call on either network
 export function setExaMarkupBps(value) { markupBps = parseExaMarkupBps(value); }
 export function setExaFeeAtomic(value) { fees = parseExaFeeAtomic(Array.isArray(value) ? value.join(",") : value); }
 

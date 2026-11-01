@@ -207,8 +207,8 @@
       "method": "POST",
       "summary": "Generate a cited answer with Exa",
       "price": {
-        "min": "0.001",
-        "max": "0.05",
+        "min": "0.002",
+        "max": "0.051",
         "currency": "USD"
       }
     },
@@ -217,8 +217,8 @@
       "method": "POST",
       "summary": "Fetch page contents from Exa for up to 10 URLs",
       "price": {
-        "min": "0.001",
-        "max": "0.05",
+        "min": "0.002",
+        "max": "0.051",
         "currency": "USD"
       }
     },
@@ -227,8 +227,8 @@
       "method": "POST",
       "summary": "Search the web with Exa and return ranked results",
       "price": {
-        "min": "0.001",
-        "max": "0.05",
+        "min": "0.002",
+        "max": "0.051",
         "currency": "USD"
       }
     },
