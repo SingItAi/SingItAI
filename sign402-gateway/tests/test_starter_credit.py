@@ -131,9 +131,9 @@ class StoreFixture(unittest.TestCase):
 
     def granted(self, n=1, fund=HARD_CAP_ATOMIC):
         if self.credit.budget()["fundedAtomic"] == 0:
-            self.credit.fund(fund, "kostya", "test", NOW)
+            self.credit.fund(fund, "owner", "test", NOW)
         row = self.pending(n)
-        return self.credit.approve(row["claim_id"], "kostya", NOW, self.recheck)
+        return self.credit.approve(row["claim_id"], "owner", NOW, self.recheck)
 
 
 class ClaimTests(StoreFixture):
@@ -166,7 +166,7 @@ class ClaimTests(StoreFixture):
 
     def test_a_rejected_claim_still_uses_up_the_github_and_the_wallet(self):
         row = self.pending(1, gid=77)
-        self.credit.reject(row["claim_id"], "kostya", "spam", NOW)
+        self.credit.reject(row["claim_id"], "owner", "spam", NOW)
         with self.assertRaises(StarterRefused):
             self.pending(2, gid=77)
         with self.assertRaises(StarterRefused):
@@ -183,10 +183,10 @@ class ClaimTests(StoreFixture):
         with self.assertRaises(StarterCreditOff):
             off.claim(account(1), 5, "x", NOW - 400 * DAY, NOW)
         with self.assertRaises(StarterCreditOff):
-            off.fund(1_000_000, "kostya", "x", NOW)
+            off.fund(1_000_000, "owner", "x", NOW)
         row = self.granted(1)
         with self.assertRaises(StarterCreditOff):
-            off.approve(row["claim_id"], "kostya", NOW, self.recheck)
+            off.approve(row["claim_id"], "owner", NOW, self.recheck)
         self.assertFalse(off.hold(account(1), "hold_a", 10_000, NOW))
 
 
@@ -214,7 +214,7 @@ class EligibilityTests(StoreFixture):
         self.assertRefused("solana:FakeSo1anaAddress111111111111111111111111", "solana_not_supported")
 
     def test_approval_rechecks_the_allowance(self):
-        self.credit.fund(HARD_CAP_ATOMIC, "kostya", "test", NOW)
+        self.credit.fund(HARD_CAP_ATOMIC, "owner", "test", NOW)
         for n, breaks in ((1, lambda: self.allowance.broken.__setitem__(account(1), "paused")),
                           (2, lambda: self.allowance.give(account(2), on_chain=wallet(99))),
                           (3, lambda: self.allowance.give(account(3), owner=wallet(99))),
@@ -223,7 +223,7 @@ class EligibilityTests(StoreFixture):
                 row = self.pending(n)
                 breaks()
                 with self.assertRaises(StarterRefused):
-                    self.credit.approve(row["claim_id"], "kostya", NOW, self.recheck)
+                    self.credit.approve(row["claim_id"], "owner", NOW, self.recheck)
                 self.assertEqual(self.credit.get(row["claim_id"])["state"], "pending")
         self.assertEqual(self.credit.budget()["grants"], 0)
 
@@ -232,18 +232,18 @@ class BudgetTests(StoreFixture):
     def test_nothing_is_approved_before_funding(self):
         row = self.pending(1)
         with self.assertRaises(BudgetExhausted):
-            self.credit.approve(row["claim_id"], "kostya", NOW, self.recheck)
+            self.credit.approve(row["claim_id"], "owner", NOW, self.recheck)
         self.assertEqual(self.credit.get(row["claim_id"])["state"], "pending")
         self.assertIn(("refused", "budget_exhausted"), audit_actions(self.credit))
 
     def test_funding_never_passes_the_cap(self):
-        self.credit.fund(15_000_000, "kostya", "a", NOW)
+        self.credit.fund(15_000_000, "owner", "a", NOW)
         with self.assertRaises(StarterRefused) as caught:
-            self.credit.fund(5_000_001, "kostya", "b", NOW)
+            self.credit.fund(5_000_001, "owner", "b", NOW)
         self.assertEqual(caught.exception.reason, "fund_over_cap")
-        self.credit.fund(5_000_000, "kostya", "c", NOW)
+        self.credit.fund(5_000_000, "owner", "c", NOW)
         with self.assertRaises(StarterRefused):
-            self.credit.fund(1, "kostya", "d", NOW)
+            self.credit.fund(1, "owner", "d", NOW)
         self.assertEqual(self.credit.budget()["fundedAtomic"], HARD_CAP_ATOMIC)
 
     def test_env_may_lower_the_cap_and_never_raise_it(self):
@@ -253,21 +253,21 @@ class BudgetTests(StoreFixture):
         self.assertEqual(StarterCredit(self.path, enabled=True, cap_atomic=10 ** 9).cap, HARD_CAP_ATOMIC)
         high = StarterCredit.from_env(self.path, {sc.ENABLED_ENV: "1", sc.CAP_ENV: "100000000"})
         with self.assertRaises(StarterRefused):
-            high.fund(HARD_CAP_ATOMIC + 1, "kostya", "x", NOW)
+            high.fund(HARD_CAP_ATOMIC + 1, "owner", "x", NOW)
         low = StarterCredit.from_env(self.path, {sc.ENABLED_ENV: "1", sc.CAP_ENV: "2000000"})
         with self.assertRaises(StarterRefused):
-            low.fund(2_000_001, "kostya", "x", NOW)
+            low.fund(2_000_001, "owner", "x", NOW)
 
     def test_approving_twice_reserves_once(self):
         row = self.granted(1)
-        again = self.credit.approve(row["claim_id"], "kostya", NOW + 9, self.recheck)
+        again = self.credit.approve(row["claim_id"], "owner", NOW + 9, self.recheck)
         self.assertEqual((again["state"], again["approved_at"]), ("approved", NOW))
         budget = self.credit.budget()
         self.assertEqual((budget["grants"], budget["committedAtomic"]), (1, GRANT_ATOMIC))
         self.assertEqual(row["expires_at"], NOW + 7 * DAY)
 
     def race(self, funded, claims=25, threads=25):
-        self.credit.fund(funded, "kostya", "race", NOW)
+        self.credit.fund(funded, "owner", "race", NOW)
         ids = [self.pending(n)["claim_id"] for n in range(1, claims + 1)]
         barrier = threading.Barrier(threads)
         outcomes = []
@@ -276,7 +276,7 @@ class BudgetTests(StoreFixture):
             mine = StarterCredit(self.path, enabled=True)
             barrier.wait()
             try:
-                mine.approve(claim_id, "kostya", NOW, self.recheck)
+                mine.approve(claim_id, "owner", NOW, self.recheck)
                 outcomes.append("ok")
             except BudgetExhausted:
                 outcomes.append("budget")
@@ -305,7 +305,7 @@ class BudgetTests(StoreFixture):
     def test_rejecting_needs_a_pending_claim(self):
         row = self.granted(1)
         with self.assertRaises(StarterRefused):
-            self.credit.reject(row["claim_id"], "kostya", "late", NOW)
+            self.credit.reject(row["claim_id"], "owner", "late", NOW)
 
 
 class SpendingTests(StoreFixture):
@@ -420,7 +420,7 @@ class SpendingTests(StoreFixture):
     def test_every_action_is_audited(self):
         row = self.granted(1)
         other = self.pending(2)
-        self.credit.reject(other["claim_id"], "kostya", "dupe", NOW)
+        self.credit.reject(other["claim_id"], "owner", "dupe", NOW)
         self.credit.hold(account(1), "hold_a", 10_000, NOW)
         self.credit.bill(account(1), "hold_a", 5_000, NOW)
         self.credit.hold(account(1), "hold_b", 10_000, NOW)
@@ -430,7 +430,7 @@ class SpendingTests(StoreFixture):
             self.assertIn(expected, actions)
         approve = [r for r in self.credit.audit_log(100) if r["action"] == "approve"][0]
         self.assertEqual((approve["actor"], approve["claim_id"], approve["amount_atomic"]),
-                         ("kostya", row["claim_id"], GRANT_ATOMIC))
+                         ("owner", row["claim_id"], GRANT_ATOMIC))
 
 
 class CliTests(StoreFixture):
@@ -449,10 +449,10 @@ class CliTests(StoreFixture):
         self.assertIn("400d", out)
         self.assertIn("wallet:0x0000…1234", out)
         self.assertNotIn(wallet(0x1234), out)
-        self.assertEqual(self.run_cli("approve", row["claim_id"], "--by", "kostya")[0], 1)  # not funded yet
-        self.assertEqual(self.run_cli("fund", "20000001", "--by", "kostya", "--ref", "too much")[0], 1)
-        self.assertEqual(self.run_cli("fund", "2000000", "--by", "kostya", "--ref", "tx 0xfeed")[0], 0)
-        code, out, _ = self.run_cli("approve", row["claim_id"], "--by", "kostya")
+        self.assertEqual(self.run_cli("approve", row["claim_id"], "--by", "owner")[0], 1)  # not funded yet
+        self.assertEqual(self.run_cli("fund", "20000001", "--by", "owner", "--ref", "too much")[0], 1)
+        self.assertEqual(self.run_cli("fund", "2000000", "--by", "owner", "--ref", "tx 0xfeed")[0], 0)
+        code, out, _ = self.run_cli("approve", row["claim_id"], "--by", "owner")
         self.assertEqual(code, 0)
         self.assertIn("approved", out)
         code, out, _ = self.run_cli("budget")
@@ -463,10 +463,10 @@ class CliTests(StoreFixture):
 
     def test_off_refuses_approve_and_fund_but_reads(self):
         row = self.pending(1)
-        code, _, err = self.run_cli("fund", "1000000", "--by", "kostya", "--ref", "x", on=False)
+        code, _, err = self.run_cli("fund", "1000000", "--by", "owner", "--ref", "x", on=False)
         self.assertEqual(code, 1)
         self.assertIn("starter_credit_off", err)
-        code, _, err = self.run_cli("approve", row["claim_id"], "--by", "kostya", on=False)
+        code, _, err = self.run_cli("approve", row["claim_id"], "--by", "owner", on=False)
         self.assertEqual(code, 1)
         self.assertEqual(self.credit.get(row["claim_id"])["state"], "pending")
         for read in (("queue",), ("budget",), ("audit",)):
@@ -474,10 +474,10 @@ class CliTests(StoreFixture):
 
     def test_reject_and_bad_usage(self):
         row = self.pending(1)
-        self.assertEqual(self.run_cli("reject", row["claim_id"], "--by", "kostya")[0], 2)  # needs --reason
-        self.assertEqual(self.run_cli("reject", row["claim_id"], "--by", "kostya", "--reason", "bot")[0], 0)
+        self.assertEqual(self.run_cli("reject", row["claim_id"], "--by", "owner")[0], 2)  # needs --reason
+        self.assertEqual(self.run_cli("reject", row["claim_id"], "--by", "owner", "--reason", "bot")[0], 0)
         self.assertEqual(self.credit.get(row["claim_id"])["state"], "rejected")
-        self.assertEqual(self.run_cli("approve", row["claim_id"], "--by", "kostya")[0], 1)
+        self.assertEqual(self.run_cli("approve", row["claim_id"], "--by", "owner")[0], 1)
         self.assertEqual(self.run_cli("nonsense")[0], 2)
 
 
@@ -819,9 +819,9 @@ class ProxyStarterTests(RouteFixture):
         _, made, _ = self.call("POST", "/api-keys", {"message": prepared["message"],
                                                    "signature": sign(self.user, prepared["message"])})
         self.key = made["key"]
-        self.credit.fund(HARD_CAP_ATOMIC, "kostya", "test", NOW)
+        self.credit.fund(HARD_CAP_ATOMIC, "owner", "test", NOW)
         self.callback(self.start())
-        self.credit.approve(self.credit.claim_for(self.account)["claim_id"], "kostya", NOW,
+        self.credit.approve(self.credit.claim_for(self.account)["claim_id"], "owner", NOW,
                             lambda acct: check_allowance(self.allowance, acct))
 
     def _send(self, path, body, headers):

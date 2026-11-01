@@ -38,7 +38,7 @@ Read-only: a rollback-journal store is opened in place with `mode=ro`; a WAL sto
 still create its -shm file. Only a missing table is tolerated (an older store); any other read error
 stops the run instead of turning into a zero.
 
-Until Kostya confirms the own-wallet list, every number is PROVISIONAL; pass --confirmed only when
+Until the operator confirms the own-wallet list, every number is PROVISIONAL; pass --confirmed only when
 the exclusion list was confirmed.
 
     python3 scripts/external-wallets.py
