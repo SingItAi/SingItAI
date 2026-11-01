@@ -66,14 +66,14 @@ same environment as sign402-web-api so the allowance re-check uses the same lane
 
 ```sh
 python -m sign402_gateway.starter_credit queue                       # pending: claim id, GitHub login, age, wallet:0x1234…abcd
-python -m sign402_gateway.starter_credit fund 20000000 --by kostya --ref "sent 20 USDC, tx 0x…"
-python -m sign402_gateway.starter_credit approve sc_… --by kostya    # re-checks the allowance, reserves $1
-python -m sign402_gateway.starter_credit reject sc_… --by kostya --reason "looks like a farm"
+python -m sign402_gateway.starter_credit fund 20000000 --by owner --ref "sent 20 USDC, tx 0x…"
+python -m sign402_gateway.starter_credit approve sc_… --by owner    # re-checks the allowance, reserves $1
+python -m sign402_gateway.starter_credit reject sc_… --by owner --reason "looks like a farm"
 python -m sign402_gateway.starter_credit budget                      # funded, committed, grants, spent, held
 python -m sign402_gateway.starter_credit audit --limit 50
 ```
 
-* Nothing can be approved until `fund` has run. `fund` records money that Kostya actually put aside; the funded total
+* Nothing can be approved until `fund` has run. `fund` records money that the operator actually put aside; the funded total
   can never exceed the cap.
 * `approve` refuses when the flag is off, the claim isn't pending, the allowance re-check fails, 20 grants already
   exist, or the funded budget is fully committed. Running it again on an approved claim does nothing.
