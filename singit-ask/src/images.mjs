@@ -75,11 +75,8 @@ export function imagePrice(listAtomic, network) {
            totalAtomic: (list + markup + BigInt(FEES[network])).toString() };
 }
 
-// <=300 characters, opening with the category words and naming the brand once, later, and no prices (see app.mjs's
-// DISCOVERY_DESCRIPTION for why; prices are in openapi.json).
-const DESCRIPTION = "Image generation API, text to image: images from 36 models (Nano Banana, GPT Image, Flux, Seedream, "
-  + "Recraft, Qwen and more; list at GET /v1/images/models), no API key needed. Call it when an agent needs an image "
-  + "made from a text prompt. OpenAI images request format. Served by SingIt.";
+// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
+const DESCRIPTION = "Text-to-image API (Nano Banana, GPT Image, Flux, Seedream and more), OpenAI images format. Pay per image in USDC on Base or Solana, no key.";
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["venice-seedream-v5-lite"], description: "An image model id from GET /v1/images/models." },

@@ -18,13 +18,13 @@ test('discovery card declares MCP only, with required AgentCard fields', async (
   for (const field of ['name', 'description', 'version', 'supportedInterfaces', 'capabilities', 'defaultInputModes', 'defaultOutputModes', 'skills']) assert.ok(card[field]);
   for (const field of ['name', 'description', 'version']) assert.equal(typeof card[field], 'string');
   assert.deepEqual(card.supportedInterfaces, [{url:'https://app.singitai.app/mcp', protocolBinding:binding, protocolVersion:'2025-06-18'}]);
-  assert.deepEqual(card.capabilities, {});
+  assert.deepEqual(card.capabilities, { streaming: false, pushNotifications: false, stateTransitionHistory: false });
   assert.match(card.description, /not an A2A task endpoint/);
   assert.match(card.description, /MCP version/);
   assert.ok(card.provider.organization && card.provider.url && card.documentationUrl);
   for (const field of ['defaultInputModes', 'defaultOutputModes']) assert.ok(Array.isArray(card[field]) && card[field].length);
   assert.equal(new Set(card.skills.map(s => s.id)).size, card.skills.length);
-  assert.deepEqual(card.skills.map(s => s.id), ['free-model-answers','paid-model-answers-x402','web-search-and-page-reading','price-lookups','key-spending-limits']);
+  assert.deepEqual(card.skills.map(s => s.id), ['key-spending-limits','free-model-answers','paid-model-answers-x402','web-search-and-page-reading','price-lookups']);
   for (const s of card.skills) {
     for (const f of ['id','name','description']) assert.equal(typeof s[f], 'string');
     assert.match(s.id, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);

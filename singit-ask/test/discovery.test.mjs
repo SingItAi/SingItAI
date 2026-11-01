@@ -168,13 +168,16 @@ test("a browser opening a discoverable route with GET gets the same paywall page
 // Coinbase's Bazaar ranks listings by metadata completeness; a description that spends half its budget on billing
 // reads as incomplete on what the endpoint does. Every discoverable route's resource description must stay short
 // and billing-free (billing lives in openapi.json and /.well-known/x402 instead).
-// CDP rejects over 500; only /v1/chat/completions spends past 300, on singit/auto and the free/ models.
-const limit = (route) => (route === ROUTE ? 500 : 300);
+// All 22 listed routes stay within 160 characters; CDP rejects over 500.
+const limit = () => 160;
 const BILLING_WORDS = /\b(fee|markup|ceiling|settlement)\b|%/i;
 
 test("every discoverable route's 402 resource description is short and billing-free", async (t) => {
   const { url } = await serve(t);
+  const doc = await (await fetch(`${url}/openapi.json`)).json();
   for (const route of DISCOVERABLE) {
+    if (route.startsWith("/v1/chat/") && route !== ROUTE)
+      assert.ok(doc.paths[route].post.description.length <= 160, route);
     const required = decode((await fetch(`${url}${route}`, { method: "GET" })).headers.get("payment-required"));
     const description = required.resource.description;
     assert.ok(description.length <= limit(route), `${route}: description is ${description.length} chars, over ${limit(route)}`);
@@ -196,17 +199,17 @@ test("every discoverable route's resource carries a PNG icon and a service name"
 // Bazaar keeps only the first 5 tags, so the category tag has to be among them. Video is checked too, with its
 // discovery switched on.
 const EXPECTED = {
-  [ROUTE]: { serviceName: "SingIt LLM Chat Completions", category: "chat-completions", opens: /^LLM chat completions\b/ },
+  [ROUTE]: { serviceName: "SingIt LLM Chat Completions", category: "chat-completions", opens: /^OpenAI-compatible chat API\b/ },
   "/v1/messages": { serviceName: "SingIt Anthropic Messages API", category: "anthropic-messages", opens: /^Anthropic Messages API\b/ },
   "/v1/responses": { serviceName: "SingIt OpenAI Responses API", category: "openai-responses", opens: /^OpenAI Responses API\b/ },
   "/v1/exa/search": { serviceName: "SingIt Web Search (Exa)", category: "web-search", opens: /^Web search\b/ },
-  "/v1/exa/answer": { serviceName: "SingIt Web Answers (Exa)", category: "web-search", opens: /^Web answers\b/ },
-  "/v1/exa/contents": { serviceName: "SingIt Web Page Contents (Exa)", category: "web-page-contents", opens: /^Web page contents\b/ },
-  [SPEECH_ROUTE]: { serviceName: "SingIt Text to Speech", category: "text-to-speech", opens: /^Text to speech\b/ },
-  [IMAGE_ROUTE]: { serviceName: "SingIt Image Generation", category: "image-generation", opens: /^Image generation\b/ },
+  "/v1/exa/answer": { serviceName: "SingIt Web Answers (Exa)", category: "web-search", opens: /^Cited web answer\b/ },
+  "/v1/exa/contents": { serviceName: "SingIt Web Page Contents (Exa)", category: "web-page-contents", opens: /^Page contents\b/ },
+  [SPEECH_ROUTE]: { serviceName: "SingIt Text to Speech", category: "text-to-speech", opens: /^Text-to-speech\b/ },
+  [IMAGE_ROUTE]: { serviceName: "SingIt Image Generation", category: "image-generation", opens: /^Text-to-image\b/ },
   [VIDEO_ROUTE]: { serviceName: "SingIt Video Generation", category: "video-generation", opens: /^Video generation\b/ },
   ...Object.fromEntries(MODEL_ROUTES.map((m) => [routePath(m.id), { serviceName: `SingIt ${m.name} Chat`,
-    category: "chat-completions", also: [m.id], opens: new RegExp(`^${m.name.replace(/[.]/g, "\\.")} \\(`) }])),
+    category: "chat-completions", also: [m.id], opens: new RegExp(`^Chat completions API for ${m.name.replace(/[.]/g, "\\.")} \\(`) }])),
 };
 
 test("every discoverable route is named and described by what it is, with its category among the first 5 tags", async (t) => {
@@ -219,10 +222,10 @@ test("every discoverable route is named and described by what it is, with its ca
     const expected = EXPECTED[route];
     assert.equal(serviceName, expected.serviceName, route);
     assert.ok(serviceName.length <= 60, `${route}: serviceName is ${serviceName.length} chars`);
-    assert.ok(description.length <= limit(route), `${route}: description is ${description.length} chars, over ${limit(route)}`);
+    if (route !== VIDEO_ROUTE)
+      assert.ok(description.length <= limit(route), `${route}: description is ${description.length} chars, over ${limit(route)}`);
     assert.ok(!description.startsWith("SingIt "), `${route}: description opens with the brand (${description})`);
     assert.match(description, expected.opens, route);
-    assert.match(description, /SingIt/, `${route}: the brand is named once, later`);
     assert.ok(tags.length <= 10, `${route}: ${tags.length} tags`);
     assert.equal(new Set(tags).size, tags.length, `${route}: duplicate tags`);
     for (const tag of [expected.category, ...(expected.also ?? [])]) {

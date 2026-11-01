@@ -195,7 +195,7 @@ for (const [format, type] of [["mp3", "audio/mp3"], ["mp3", "application/octet-s
     const body = format === "mp3" ? SPEECH : { ...SPEECH, response_format: format };
     const required = decode((await post(`${url}${SPEECH_ROUTE}`, body)).headers.get("payment-required"));
     assert.equal(required.resource.mimeType, "audio/mpeg");
-    assert.match(required.resource.description, /mp3 \(audio\/mpeg\) by default, other response_format values return their own type/);
+    assert.match(required.resource.description, /OpenAI speech format/);
     const paid = await post(`${url}${SPEECH_ROUTE}`, body, pay(required, BASE));
     assert.equal(paid.status, 200);
     assert.equal(paid.headers.get("content-type"), SPEECH_CONTENT_TYPES[format]);

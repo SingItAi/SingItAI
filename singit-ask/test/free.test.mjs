@@ -22,7 +22,7 @@ function request(app, path, { method = 'GET', body, headers = {} } = {}) {
     res.on('finish', () => {
       const raw = Buffer.concat(chunks).toString();
       const text = raw.slice(raw.indexOf('\r\n\r\n') + 4);
-      try { resolve({ status: res.statusCode, headers: res.getHeaders(), body: text ? JSON.parse(text) : null }); }
+      try { resolve({ status: res.statusCode, headers: res.getHeaders(), body: text ? (res.getHeader("content-type")?.startsWith("application/json") ? JSON.parse(text) : text) : null }); }
       catch (e) { reject(new Error(text, { cause: e })); }
     });
     app.handle(req, res);
@@ -161,6 +161,7 @@ test("the model list shows our price, the saving against list price, the fees an
   assert.ok(Math.abs(pro.singitUsdPerMillionTokens.output - 5.2) < 1e-9);
   assert.ok(Math.abs(pro.singitUsdPerMillionTokens.input - 1.04) < 1e-9);
   assert.equal(pro.savingsVsListPct, 74);
+  assert.equal(pro.expectedUsdPerMillionTokens.basis, "trusted");
   const plain = list.data.find((m) => m.id === "deepseek-v4.1-flash");
   assert.equal(plain.singitUsdPerMillionTokens, undefined, "no price is claimed before one is known");
   const listedFree = list.data.filter((m) => String(m.id).startsWith("free/"));
@@ -296,3 +297,50 @@ for (const code of ["max_tokens_spent_reasoning", "no_text"]) {
     assert.equal(fac.calls.settle, 0);
   });
 }
+
+
+test("all 22 directory descriptions fit 160 characters and model operations agree", async () => {
+  const { modelRoutePaths } = await import("../src/model-routes.mjs");
+  const { lintChallenge } = await import("../../scripts/bazaar-lint.mjs");
+  const app = createApp(CONFIG, { facilitatorClient: facilitator(), log: () => {}, exaKey: "exa_test",
+    catalogue: { ...catalogue, async imageModels() { return new Map(); },
+      async voiceModels() { return { speech: new Map(), transcription: new Map() }; } },
+    fetchImpl: async () => { throw new Error("no upstream calls"); } });
+  const routes = [ROUTE, "/v1/messages", "/v1/responses", "/v1/images/generations", "/v1/audio/speech",
+    "/v1/exa/search", "/v1/exa/contents", "/v1/exa/answer", ...modelRoutePaths()];
+  assert.equal(routes.length, 22);
+  const doc = (await request(app, "/openapi.json")).body;
+  for (const route of routes) {
+    const result = await request(app, route, { headers: { "x-forwarded-proto": "https" } });
+    assert.equal(result.status, 402, route);
+    const challenge = JSON.parse(Buffer.from(result.headers["payment-required"], "base64"));
+    const { resource } = challenge;
+    assert.deepEqual(lintChallenge(challenge, { route, networks: [BASE, SOLANA] }).filter(f => f.level === "FAIL"), [], route);
+    assert.ok(resource.description.length <= 160, route);
+    assert.doesNotMatch(resource.description, /\b(fee|markup|ceiling|settlement)\b|%/i, route);
+    assert.ok(!resource.description.startsWith("SingIt "), route);
+    if (modelRoutePaths().includes(route)) assert.equal(doc.paths[route].post.description, resource.description, route);
+  }
+  const list = (await request(app, "/v1/models")).body;
+  assert.equal(list.savings.field, "savingsVsListPct");
+  for (const model of list.data) if (Object.hasOwn(model, "savingsVsListPct"))
+    assert.ok(model.expectedUsdPerMillionTokens?.basis, model.id);
+});
+
+
+test("agent intro and model selection guidance follow the free offer configuration", async () => {
+  for (const freeModels of [["deepseek-v4.1-flash"], []]) {
+    const app = createApp({ ...CONFIG, freeModels }, { catalogue, facilitatorClient: facilitator(), log: () => {} });
+    const text = (await request(app, "/llms.txt")).body;
+    assert.match(text, /^# SingIt Ask\n\n> OpenAI-compatible chat API: 200\+ models/);
+    assert.match(text, /Spending limits: SingIt's limits protect only SingIt's own agent/);
+    assert.match(text, /Start here: POST http:\/\/ask.test\/v1\/chat\/completions/);
+    assert.equal(text.includes("Free first call, no wallet: model free/deepseek-v4.1-flash."), freeModels.length > 0);
+    const manifest = (await request(app, "/.well-known/x402")).body;
+    for (const term of ["singit/auto", "min_tier", "fallback_models"])
+      for (const guide of [text, manifest.instructions]) assert.ok(guide.includes(term), term);
+    const response = await request(app, ROUTE);
+    const discovery = JSON.parse(Buffer.from(response.headers["payment-required"], "base64"));
+    assert.equal(discovery.resource.description.includes("free/ models need no payment"), freeModels.length > 0);
+  }
+});

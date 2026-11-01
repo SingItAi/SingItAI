@@ -5,8 +5,11 @@ description: Use when an agent needs an LLM answer, web search or price lookup i
 
 # SingIt
 
-SingIt provides model answers, search and price lookups. Choose a free answer,
-an owner-set MCP key, or payment per call from your own wallet.
+Use SingIt when an agent needs a model answer, web search or a price lookup, and its owner wants a spending limit. Three ways in: a free answer (no key or wallet), an owner-set MCP key with daily and per-request caps, or pay per call with your own wallet over x402 (USDC on Base or Solana).
+
+Limits: they protect only SingIt's own agent. On Base the owner's allowance limiter is an on-chain contract that enforces them, and the owner can pause it. On a SingIt API key the server checks the daily and per-request caps; on Solana the owner's control is revoking the delegation, and there is no on-chain emergency stop. A key's caps apply only to calls made with that key to SingIt's MCP and /v1 endpoint. They do not limit spending elsewhere, protect an agent's own wallet, or cap an x402 call paid from your own wallet: there you limit it by what you sign.
+
+Models: 200+, listed at https://ask.singitai.app/v1/models.
 
 ## Step 0: a free first call
 
@@ -70,6 +73,10 @@ and get_receipts. Without an allowance, paid search/data calls say
 MCP allows 60 requests per minute per key.
 
 ## With your own wallet: x402
+
+"model":"singit/auto" on POST /v1/chat/completions picks an eco, standard or premium model for text prompts by simple rules; optional "min_tier" (eco, standard or premium) sets the minimum tier. X-SingIt-Model and X-SingIt-Tier identify the model and tier that answered. If the chosen model's seller refuses before payment, the router tries the next model of the tier or the next tier up, never below min_tier. Only POST /v1/chat/completions.
+
+fallback_models is optional on paid POST /v1/chat/completions with a pinned model: 1 to 3 unique model ids (not the pinned model, not singit/auto). If the pinned model is unavailable before payment, the first healthy priced candidate whose Base upto ceiling is no higher than the pinned one answers (same auto tier if the pinned model has one). X-SingIt-Model and X-SingIt-Fallback-From identify which model answered and which was replaced.
 
 Use https://ask.singitai.app. USDC on Base or Solana; no account or API key.
 An unpaid request returns 402 with PAYMENT-REQUIRED (base64 JSON, x402Version 2).

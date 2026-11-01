@@ -106,12 +106,9 @@ export function searchPrice(exaAtomic, network) {
 // <=300 characters, opening with the category words and naming the brand once, later (see app.mjs's
 // DISCOVERY_DESCRIPTION for why): each route does something different, so each gets its own text, and its own tags.
 const DESCRIPTIONS = {
-  "/v1/exa/search": "Web search API from Exa: up to 25 results with optional page contents. Call it when an agent "
-    + "needs current web results, with no API key or account. Served by SingIt.",
-  "/v1/exa/contents": "Web page contents from Exa: page text, highlights or a summary from up to 10 URLs. Call it when "
-    + "an agent already has URLs and needs their content, with no API key or account. Served by SingIt.",
-  "/v1/exa/answer": "Web answers with citations from Exa: a cited answer to a question. Call it when an agent needs a "
-    + "sourced answer rather than raw search results, with no API key or account. Served by SingIt.",
+  "/v1/exa/search": "Web search API (Exa): up to 25 ranked results, optional page contents. Pay per call in USDC on Base or Solana, no key. Exa list price plus $0.001.",
+  "/v1/exa/contents": "Page contents API (Exa): text, highlights or a summary from up to 10 URLs. Pay per call in USDC on Base or Solana, no key. Exa list price plus $0.001.",
+  "/v1/exa/answer": "Cited web answer API (Exa): a sourced answer, not raw results. Pay per call in USDC on Base or Solana, no key. Exa list price plus $0.001.",
 };
 const TAGS = {
   "/v1/exa/search": discoveryTags("web-search", "search", "exa", "web-results", "page-contents", "pay-per-use",

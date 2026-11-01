@@ -110,3 +110,31 @@ test('free list input keeps a positive SingIt output listed', async () => {
   assert.match(text, /\$0 \| \$0\.2 \|/);
   assert.doesNotMatch(text, /Not listed/);
 });
+
+test('200+ claim has at least 200 visible models and agent guides explain routing', async () => {
+  const s = await json('data/models-snapshot.json');
+  const hold = JSON.parse(await readFile(new URL('../../scripts/hidden-models.json', import.meta.url), 'utf8'));
+  assert.ok(visibleSnapshot(s, hold).models.length >= 200);
+  for (const file of ['llms.txt', 'SKILL.md', 'llms-full.txt']) {
+    const text = await read(file);
+    for (const term of ['singit/auto', 'min_tier', 'fallback_models']) assert.ok(text.includes(term), `${file}: ${term}`);
+  }
+});
+
+test('agent card supplies discovery, security, examples and safe HTTPS links', async () => {
+  const card = await json('.well-known/agent-card.json');
+  for (const key of ['name', 'description', 'url', 'iconUrl', 'version', 'provider', 'documentationUrl', 'supportedInterfaces', 'capabilities', 'defaultInputModes', 'defaultOutputModes', 'securitySchemes', 'security', 'skills', 'links']) assert.ok(card[key], key);
+  assert.deepEqual(card.capabilities, { streaming: false, pushNotifications: false, stateTransitionHistory: false });
+  assert.deepEqual(card.defaultInputModes, ['application/json', 'text/plain']);
+  assert.deepEqual(card.defaultOutputModes, card.defaultInputModes);
+  assert.equal(card.url, 'https://ask.singitai.app');
+  assert.equal(card.iconUrl, 'https://singitai.app/assets/icons/icon-512.png');
+  assert.equal(card.securitySchemes.x402.name, 'PAYMENT-SIGNATURE');
+  assert.equal(card.securitySchemes.bearer.scheme, 'bearer');
+  assert.deepEqual(card.security, [{ x402: [] }, { bearer: [] }]);
+  assert.equal(card.skills[0].id, 'key-spending-limits');
+  for (const skill of card.skills) assert.equal(skill.examples.length, 1, skill.id);
+  for (const name of ['llms', 'llmsFull', 'openapi', 'x402Manifest', 'skill', 'models', 'pricing', 'mcpKeyDocs']) assert.match(card.links[name], /^https:\/\//);
+  const urls = JSON.stringify(card).match(/https:[^"\s]+/g);
+  for (const url of urls) assert.doesNotMatch(url, /0x[a-fA-F0-9]{40}/);
+});

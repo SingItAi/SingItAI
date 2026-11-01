@@ -1,6 +1,6 @@
 {
   "name": "SingIt",
-  "description": "This is a discovery card for SingIt's MCP server and x402 API, not an A2A task endpoint. The interface protocolVersion is the MCP version, 2025-06-18.",
+  "description": "SingIt: x402 USDC payments for AI agents, with spending limits. MCP server (free tools without a key; paid tools within owner-set key limits) and an OpenAI-compatible x402 API: 200+ models, web search, images and speech on Base and Solana. This is a discovery card, not an A2A task endpoint. The interface protocolVersion is the MCP version, 2025-06-18.",
   "version": "1.0.0",
   "supportedInterfaces": [
     {
@@ -14,14 +14,32 @@
     "url": "https://singitai.app/"
   },
   "documentationUrl": "https://singitai.app/docs/mcp-key/",
-  "capabilities": {},
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
   "defaultInputModes": [
+    "application/json",
     "text/plain"
   ],
   "defaultOutputModes": [
+    "application/json",
     "text/plain"
   ],
   "skills": [
+    {
+      "id": "key-spending-limits",
+      "name": "Key spending limits",
+      "description": "get_limits and get_receipts read key limits and spend. Caps apply only to calls with that key to SingIt MCP and its /v1 endpoint; they do not limit spending elsewhere or protect an agent\u2019s own wallet.",
+      "tags": [
+        "limits",
+        "receipts"
+      ],
+      "examples": [
+        "Show my daily spending limit and receipts."
+      ]
+    },
     {
       "id": "free-model-answers",
       "name": "Free model answers",
@@ -29,15 +47,21 @@
       "tags": [
         "llm",
         "free"
+      ],
+      "examples": [
+        "Answer a question for free."
       ]
     },
     {
       "id": "paid-model-answers-x402",
       "name": "Paid model answers over x402",
-      "description": "Pay per call in USDC on Base or Solana through the x402 API.",
+      "description": "Pay per call in USDC on Base or Solana through the x402 API. Use singit/auto to pick a model by tier.",
       "tags": [
         "llm",
         "x402"
+      ],
+      "examples": [
+        "Choose a model with singit/auto and explain x402."
       ]
     },
     {
@@ -47,6 +71,9 @@
       "tags": [
         "search",
         "mcp"
+      ],
+      "examples": [
+        "Search the web for recent AI research."
       ]
     },
     {
@@ -56,16 +83,43 @@
       "tags": [
         "prices",
         "free"
-      ]
-    },
-    {
-      "id": "key-spending-limits",
-      "name": "Key spending limits",
-      "description": "get_limits and get_receipts read key limits and spend. Caps apply only to calls with that key to SingIt MCP and its /v1 endpoint; they do not limit spending elsewhere or protect an agent’s own wallet.",
-      "tags": [
-        "limits",
-        "receipts"
+      ],
+      "examples": [
+        "What is the current ETH price?"
       ]
     }
-  ]
+  ],
+  "url": "https://ask.singitai.app",
+  "iconUrl": "https://singitai.app/assets/icons/icon-512.png",
+  "securitySchemes": {
+    "x402": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "PAYMENT-SIGNATURE",
+      "description": "x402 v2 payment signature from the 402 response; USDC on Base or Solana."
+    },
+    "bearer": {
+      "type": "http",
+      "scheme": "bearer",
+      "description": "SingIt API key (sk_singit_...) for the MCP server and app.singitai.app/v1; the owner's limits apply to calls made with it."
+    }
+  },
+  "security": [
+    {
+      "x402": []
+    },
+    {
+      "bearer": []
+    }
+  ],
+  "links": {
+    "llms": "https://ask.singitai.app/llms.txt",
+    "llmsFull": "https://ask.singitai.app/llms-full.txt",
+    "openapi": "https://ask.singitai.app/openapi.json",
+    "x402Manifest": "https://ask.singitai.app/.well-known/x402",
+    "skill": "https://ask.singitai.app/SKILL.md",
+    "models": "https://ask.singitai.app/v1/models",
+    "pricing": "https://ask.singitai.app/pricing.json",
+    "mcpKeyDocs": "https://singitai.app/docs/mcp-key/"
+  }
 }

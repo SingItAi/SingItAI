@@ -57,6 +57,7 @@ async function setup() {
 }
 test("all twelve reference models offer paid quotes above the floor and expose honest discovery", async () => {
   const app = await setup();
+  assert.equal((await request(app, "/v1/models")).body.savings.field, "savingsVsListPct");
   for (const [id, ref] of Object.entries(REFERENCE_PRICES)) {
     for (const length of [2, 24000]) {
       const res = await request(app, "/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json" },

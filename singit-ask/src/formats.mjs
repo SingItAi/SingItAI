@@ -137,15 +137,10 @@ const refusal = (route, status, message, code) => (route === "/v1/messages"
   ? { type: "error", error: { type: status === 400 || status === 422 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message, code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request") } }
   : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request"), message } });
 
-// <=300 characters, opening with the category words and naming the brand once, later (see app.mjs's
-// DISCOVERY_DESCRIPTION for why): what each format does and when to call it, not what it costs.
+// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
 const DESCRIPTIONS = {
-  "/v1/messages": "Anthropic Messages API for LLM inference (what Claude Code and the Anthropic SDK speak), any model "
-    + "listed at GET /v1/models, Claude included. Call it when an agent needs a Claude-format answer with no API key "
-    + "or account, or wants to try another model the same way. Served by SingIt.",
-  "/v1/responses": "OpenAI Responses API for LLM inference, any model listed at GET /v1/models (GPT, Claude, Gemini, "
-    + "DeepSeek and more). Call it when an agent needs an answer in OpenAI's Responses format with no API key or "
-    + "account. Served by SingIt.",
+  "/v1/messages": "Anthropic Messages API format for any listed model (Claude, GPT, Gemini, DeepSeek). Pay per call in USDC on Base or Solana, no key; you sign a price cap.",
+  "/v1/responses": "OpenAI Responses API for any listed model (GPT, Claude, Gemini, DeepSeek). Pay per call in USDC on Base or Solana, no key; you sign a price cap.",
 };
 const EXAMPLES = {
   "/v1/messages": { model: "claude-sonnet-5.5", max_tokens: 300, messages: [{ role: "user", content: "What is x402?" }] },
