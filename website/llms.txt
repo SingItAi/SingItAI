@@ -36,6 +36,8 @@ Call without payment: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Versi
 
 LLM, image and speech charges are model cost plus 30% markup, plus a settlement fee of $0.001 on Base or $0.002 on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup or settlement fee by default. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
 
+Paid chat requests may opt in with fallback_models (1–3 unique model ids): an unavailable pinned model can switch before the 402 to the first healthy priced model with no higher Base upto ceiling and the same auto tier where defined; X-SingIt-Model and X-SingIt-Fallback-From identify the choice.
+
 Charged only when a billable answer came back: an upstream 503 never charges. Do not retry a 400/413/422 on another model; fix the request. A 409 means this payment signature was already used. For 503, wait for Retry-After where supplied. A 429 on the free tier means wait for Retry-After.
 
 Free tier: 6 free models, up to 20 answers a day per network, with a shared daily cost cap of $0.25. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required.

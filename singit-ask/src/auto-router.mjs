@@ -3,7 +3,7 @@
 // Thresholds and phrases live in config. Selection prices the request's upto ceiling on Base;
 // network fees are constant across candidates. Escalation is upward only; alternates stay in the chosen tier.
 import { readFileSync } from "node:fs";
-import { priceGuard, unservableError } from "./catalogue.mjs";
+import { UnknownModel, priceGuard, unservableError } from "./catalogue.mjs";
 import { ceilings } from "./metered.mjs";
 import { BASE, TERMS, minDiscountFor } from "./pricing.mjs";
 export const AUTO_ID = "singit/auto";
@@ -48,12 +48,8 @@ export async function chooseAuto(config, catalogue, input, ErrorClass, log = () 
         autoTier: tier, autoReason: classified.reason };
       // Same rule as the paid call: a quote whose ceiling already covers the list-price worst case sends no floor,
       // so the seller's discount cannot refuse it and nothing to pre-check.
-      const floor = minDiscountFor(candidate, { ...TERMS, maxChargeAtomic: ceilings(info, candidate).upto[BASE] });
-      if (floor != null) {
-        if (catalogue.isPriceRejected?.(info.id)) { skip("price_rejected_recently"); continue; }
-        const live = await catalogue.liveDiscount?.(info.id);
-        if (live != null && 100 - live * 100 + 1e-9 < floor) { skip("price_below_floor"); continue; }
-      }
+      const signal = await priceProtectionSignal(catalogue, candidate);
+      if (signal) { skip(signal); continue; }
       candidates.push(candidate);
     }
     candidates.sort((a, b) => {
@@ -67,4 +63,51 @@ export async function chooseAuto(config, catalogue, input, ErrorClass, log = () 
     }
   }
   throw unservableError(catalogue, AUTO_ID, ErrorClass);
+}
+
+// Shared pre-payment protection: a list-price-covering quote sends no discount floor.
+export async function priceProtectionSignal(catalogue, candidate) {
+  const floor = minDiscountFor(candidate, { ...TERMS, maxChargeAtomic: ceilings(candidate.info, candidate).upto[BASE] });
+  if (floor == null) return null;
+  if (catalogue.isPriceRejected?.(candidate.model)) return "price_rejected_recently";
+  const live = await catalogue.liveDiscount?.(candidate.model);
+  return live != null && 100 - live * 100 + 1e-9 < floor ? "price_below_floor" : null;
+}
+
+// Caller order is stable; pinned fallbacks never become post-payment alternates.
+export async function choosePinnedFallback(config, catalogue, input, choosePinned, ErrorClass, log = () => {}) {
+  // Resolve outside availability handling: unknown ids and catalogue errors never trigger substitution.
+  const info = await catalogue?.resolve(input.model).catch(error => {
+    if (error instanceof UnknownModel) throw Object.assign(new ErrorClass(400, error.message), { code: "model_not_found" });
+    throw error;
+  });
+  if (!info) return choosePinned(config, catalogue, input);
+  const pinned = { ...input, info, isDefault: input.model === config.model,
+    ...priceGuard(catalogue, info.id, config.priceBufferPp ?? 1) };
+  const unpriced = model => !Number.isFinite(model.promptUsdPerToken) || !Number.isFinite(model.completionUsdPerToken)
+    || model.promptUsdPerToken < 0 || model.completionUsdPerToken < 0
+    || !(model.promptUsdPerToken > 0 || model.completionUsdPerToken > 0) || model.unpriced === true;
+  const signalFor = async candidate => catalogue.isUnservable?.(candidate.model) ? "unhealthy"
+    : catalogue.canAnswer && !await catalogue.canAnswer(candidate.model) ? "unhealthy"
+    : unpriced(candidate.info) ? "unpriced" : await priceProtectionSignal(catalogue, candidate);
+  const signal = await signalFor(pinned);
+  if (!signal) return choosePinned(config, catalogue, input);
+  // Without numeric list prices there is no safe ceiling to compare against.
+  if (!Number.isFinite(info.promptUsdPerToken) || !Number.isFinite(info.completionUsdPerToken)
+    || info.promptUsdPerToken < 0 || info.completionUsdPerToken < 0) throw unservableError(catalogue, input.model, ErrorClass);
+  const ceiling = BigInt(ceilings(info, pinned).upto[BASE]);
+  const tiers = TIERS.filter(tier => AUTO_CONFIG.tiers[tier].includes(input.model));
+  for (const id of input.fallbackModels) {
+    const next = await catalogue.resolve(id).catch(error => {
+      if (error instanceof UnknownModel) return null;
+      throw error;
+    });
+    if (!next || tiers.some(tier => !AUTO_CONFIG.tiers[tier].includes(next.id))) continue;
+    const candidate = { ...input, model: next.id, info: next, isDefault: next.id === config.model,
+      ...priceGuard(catalogue, next.id, config.priceBufferPp ?? 1) };
+    if (await signalFor(candidate) || BigInt(ceilings(next, candidate).upto[BASE]) > ceiling) continue;
+    log(`singit-ask: pinned fallback from=${input.model} to=${next.id} signal=${signal}`);
+    return { ...candidate, fallbackFrom: input.model };
+  }
+  throw unservableError(catalogue, input.model, ErrorClass);
 }

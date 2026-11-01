@@ -11,7 +11,7 @@
 
 import { parseBestDiscount } from "./reject-log.mjs";
 import express from "express";
-import { AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto } from "./auto-router.mjs";
+import { AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback } from "./auto-router.mjs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } from "./errors.mjs";
 import { HealthStats, FacilitatorCheck, healthBody, numbersBody, privateStatsBody } from "./health-stats.mjs";
@@ -53,7 +53,7 @@ export class RequestError extends Error {
 }
 
 // The messages and size of an answer, or a RequestError: checked before the model is asked.
-export function readRequest(body) {
+export function readRequest(body, { allowFallback = true } = {}) {
   if (!body || typeof body !== "object") throw new RequestError(400, "Send a JSON body with messages.");
   if (body.stream) throw new RequestError(400, "Streaming is not offered; send stream: false.");
   const messages = body.messages;
@@ -79,7 +79,18 @@ export function readRequest(body) {
   if (Object.hasOwn(body, "min_tier") && (model?.trim() !== AUTO_ID || !TIERS.includes(body.min_tier))) {
     throw new RequestError(400, "min_tier must be eco, standard or premium and requires model singit/auto.");
   }
-  return { ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, modelOmitted, model: model?.trim(), messageCount: clean.length };
+  let fallbackModels;
+  if (allowFallback && Object.hasOwn(body, "fallback_models")) {
+    const values = body.fallback_models;
+    if (!Array.isArray(values) || values.length < 1 || values.length > 3
+      || values.some(id => typeof id !== "string" || !id.trim() || id.trim().length > 120
+        || id.trim() === AUTO_ID || id.trim() === model?.trim())
+      || new Set(values.map(id => id.trim())).size !== values.length) {
+      throw new RequestError(400, "fallback_models must contain 1 to 3 unique model ids, excluding the pinned model and singit/auto.");
+    }
+    fallbackModels = values.map(id => id.trim());
+  }
+  return { ...(fallbackModels ? { fallbackModels } : {}), ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, modelOmitted, model: model?.trim(), messageCount: clean.length };
 }
 
 // The model an answer is bought from and what it may cost. No model, or the default one, is still looked up on
@@ -219,8 +230,8 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
 // Directories rank a listing by how completely it says what to send and what comes back (Coinbase's Bazaar:
 // docs.cdp.coinbase.com/x402/seller/get-discovered), so every field an agent fills in is described.
-const autoHeaders = Object.fromEntries(["X-SingIt-Model", "X-SingIt-Tier"].map(name => [name,
-  { description: "Concrete model or tier selected for the quote, or actually used for a successful singit/auto answer.", schema: { type: "string" } }]));
+const autoHeaders = Object.fromEntries(["X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From"].map(name => [name,
+  { description: "Model actually selected, auto tier, or original pinned model when pre-payment fallback was used.", schema: { type: "string" } }]));
 const INPUT_SCHEMA = {
   properties: {
     messages: { type: "array", minItems: 1, maxItems: LIMITS.messages, description: "The conversation, oldest first.",
@@ -232,6 +243,8 @@ const INPUT_SCHEMA = {
       description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
     model: { type: "string", examples: ["deepseek-v4.1-flash", "claude-opus-5.5", "gpt-5.5", "gemini-3.1-pro"],
       description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
+    fallback_models: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string" },
+      description: "Optional on paid /v1/chat/completions only: 1–3 trimmed unique model ids, excluding the pinned model and singit/auto. Before payment, an unavailable pinned model may use the first healthy priced candidate whose Base upto ceiling is no higher than the pinned ceiling, and in the same auto tier if the pinned model has one. The chosen model determines the quote and usage charge." },
     stream: { type: "boolean", enum: [false], description: "Streaming is not offered." },
   },
   required: ["messages"],
@@ -451,7 +464,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         args[index] = Array.isArray(headers) ? rest.flat() : Object.fromEntries(rest);
       }
       const seen = new Set();
-      const merged = [...values, "X-SingIt-Model", "X-SingIt-Tier"]
+      const merged = [...values, "X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From"]
         .flat().flatMap(value => String(value).split(",")).map(value => value.trim())
         .filter(value => {
           const key = value.toLowerCase();
@@ -984,6 +997,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
 
   const choose = input => input.model === AUTO_ID
     ? chooseAuto(config, catalogue, input, RequestError, log) : chooseModel(config, catalogue, input);
+  const chooseChat = input => input.model && input.model !== AUTO_ID && input.fallbackModels
+    ? choosePinnedFallback(config, catalogue, input, chooseModel, RequestError, log) : choose(input);
+  const readOtherRequest = body => readRequest(body, { allowFallback: false });
   // Every answer that came back teaches the price shown for its model. It never delays or fails the answer.
   const learning = async (config_, messages, maxTokens, fetchImpl_, model = config.model, options) => {
     let answer;
@@ -996,7 +1012,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     catalogue?.resolve(model).then((list) => observed.record(model, answer.usage, list)).catch(() => {});
     return answer;
   };
-  const route = { facilitatorClient, catalogue, config, readRequest, choose, upstream: learning, fetchImpl, log };
+  const route = { facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };
   // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
   addCreditRoute(app, config, { facilitatorClient });
   // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
@@ -1009,14 +1025,14 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
-  if (catalogue) addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest, upstream: learning, fetchImpl, log,
+  if (catalogue) addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
     inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Video from Surplus's text-to-video models, as jobs.
   if (catalogue) addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
   if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
-  addFreeRoute(app, ROUTE, { config, terms: free, readRequest, RequestError, upstream: learning, catalogue, fetchImpl, log,
+  addFreeRoute(app, ROUTE, { config, terms: free, readRequest: readOtherRequest, RequestError, upstream: learning, catalogue, fetchImpl, log,
     observedShare: model => observed.share(model) });
   // Public: any x402 agent pays on Solana or Base for actual usage with `upto`, or the same ceiling flat with
   // `exact` for buyers that sign only that scheme. Listed for discovery. `upto` leads `accepts` (Base, then Solana;
@@ -1049,9 +1065,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     description: "SingIt Ask: actual model cost + 30% markup + 0.001 USDC settlement fee. Authorize at most 0.003 USDC. "
       + "Exact payers are instead charged that ceiling flat, with no metering.",
     extensions: declareEip2612GasSponsoringExtension(),
-  }, route);
+  }, { ...route, readRequest: readOtherRequest, choose });
   // The web agent's Solana payments: measured privately, then paid directly from the owner's delegated USDC.
-  if (config.directSolana) addSolanaQuotedRoute(app, config, { facilitatorClient, catalogue, readRequest, choose,
+  if (config.directSolana) addSolanaQuotedRoute(app, config, { facilitatorClient, catalogue, readRequest: readOtherRequest, choose,
     upstream: learning, fetchImpl, log });
 
   app.use((req, res) => res.status(404).json({ error: { type: "invalid_request_error", message: `Cannot ${req.method} ${req.path}`, code: "not_found" } }));
