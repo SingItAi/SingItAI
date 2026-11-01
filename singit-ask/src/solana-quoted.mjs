@@ -1,3 +1,4 @@
+import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // Private preparation, then one delegated x402 exact payment for measured usage.
 // The answer is withheld until settlement. No agent funding or native-gas wallet.
 import { markUnservable } from './catalogue.mjs';
@@ -112,7 +113,9 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
       return res.json({quote});
     }catch(error){
       markUnservable(catalogue,chosen.model,error,log);
-      store.fail(requestId);res.set('Retry-After','30');
+      store.fail(requestId);
+      if(error.code==='max_tokens_spent_reasoning')return res.status(422).json({error:'max_tokens_too_small',code:'max_tokens_too_small',message:MAX_TOKENS_TOO_SMALL});
+      res.set('Retry-After','30');
       return res.status(503).json({error:'no_billable_answer',code:'no_billable_answer',
         message:'No billable answer was prepared. Nothing was paid.'});
     }

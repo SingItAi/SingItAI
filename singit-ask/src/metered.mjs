@@ -1,3 +1,4 @@
+import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // Pay for actual usage: the payer authorizes a ceiling with x402 `upto`, and CDP settles only what the
 // answer cost, after it came back. A request that ends in 400 or above is never charged.
 //
@@ -305,7 +306,6 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     { discoverable: offerEmptyProbe, log });
   app.post(route, async (req, res) => {
     const started = Date.now();
-    let retried = false;
     try {
       const paid = paidTerms(req);
       if (!paid) throw new Error("payment on an unknown network");
@@ -325,7 +325,6 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         markUnservable(catalogue, req.askInput.model, error, log);
         log(`singit-ask: auto fallback from=${req.askInput.model} to=${alternate.model} code=${error.code} status=${error.status}`);
         req.askInput = alternate;
-        retried = true;
         answer = await attempt(alternate);
       }
       if (req.askInput.autoTier) {
@@ -352,9 +351,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       // Not settled (status >= 400): on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
       // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
       log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
-      if (!retried && error.code === "max_tokens_spent_reasoning") {
+      if (error.code === "max_tokens_spent_reasoning") {
         return res.status(422).json({ error: { type: "invalid_request_error", code: "max_tokens_too_small",
-          message: "This model spent the whole max_tokens budget reasoning and wrote no answer. Raise max_tokens. You were not charged." } });
+          message: MAX_TOKENS_TOO_SMALL } });
       }
       res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer",
         message: "No billable answer was produced. You were not charged; try again." } });

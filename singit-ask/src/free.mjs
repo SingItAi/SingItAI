@@ -1,3 +1,4 @@
+import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // Free answers, to try SingIt Ask before paying: a model asked for as "free/<id>" answers with no payment, within
 // small limits per visitor and per day. Anything else on the route is paid as before, so an unpaid question without
 // the prefix still gets the 402 offer that directories and paying agents expect.
@@ -256,6 +257,9 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
     } catch (error) {
       allowance.giveBack(visitor, turn);
       log(`singit-ask: no free answer after ${Date.now() - started} ms (${safeDiagnostic(error.name)}${error.name === "UpstreamError" ? ` code=${safeDiagnostic(error.code)} status=${safeDiagnostic(error.status)}` : ""})`);
+      if (error.code === "max_tokens_spent_reasoning") {
+        return res.status(422).json({ error: { type: "invalid_request_error", code: "max_tokens_too_small", message: MAX_TOKENS_TOO_SMALL } });
+      }
       res.set("Retry-After", "30").status(503).json({ error: { message: "No answer came back. Try again.", type: "upstream_error", code: "no_billable_answer" } });
     } finally {
       allowance.done();

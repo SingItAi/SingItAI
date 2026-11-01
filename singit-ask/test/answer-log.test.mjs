@@ -153,7 +153,7 @@ async function paidAnswer(t, { scheme, answerLogFile, maxTokens = 500, upstreamU
     async list() { return [info]; }, async imageModels() { return new Map(); } };
   const app = createApp({ payToBase: PAY_TO, payToSolana: "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu", model: "test", answerLogFile },
     { facilitatorClient: facilitator, catalogue,
-      fetchImpl: async () => new Response(JSON.stringify({ id: "resp_1", output: [], usage: upstreamUsage })),
+      fetchImpl: async () => new Response(JSON.stringify({ id: "resp_1", output: [{ type: "message", content: [{ type: "output_text", text: "Hello" }] }], usage: upstreamUsage })),
       upstream: async () => ({ content: "Hello", finishReason: "stop", usage: upstreamUsage }), log: (line) => consoleLines.push(line) });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
