@@ -180,6 +180,19 @@ export function parseReasoningEffort(text) {
   return out;
 }
 
+// OpenAPI text for the reviewed server-side default fallbacks (auto-router.config.json `pinnedDefaultFallbacks`). Empty when
+// there are none or the operator switched them off, so the document never promises a substitution that cannot happen.
+const defaultFallbackNote = (config) => {
+  const pairs = Object.entries(AUTO_CONFIG.pinnedDefaultFallbacks ?? {});
+  if (!pairs.length || config?.defaultFallbacks === false) return "";
+  return " Reviewed default fallback, only on POST /v1/chat/completions and only before payment: "
+    + pairs.map(([id, ids]) => `a pinned ${id} may be answered by ${ids.join(" or ")}`).join("; ")
+    + ", when the pinned model has no usable seller, quoted at its own ceiling, never above the pinned model's. "
+    + "The 402 and the answer carry X-SingIt-Model, X-SingIt-Fallback-From and X-SingIt-Fallback-Policy: default, and the "
+    + "answer's model field names the model that answered. Send fallback_models to choose your own list, or the header "
+    + "X-SingIt-Fallback: off to stay strictly pinned.";
+};
+
 export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs } = {}) {
   const sends = (name) => !params || params.includes(name);
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
@@ -230,7 +243,7 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
 // Directories rank a listing by how completely it says what to send and what comes back (Coinbase's Bazaar:
 // docs.cdp.coinbase.com/x402/seller/get-discovered), so every field an agent fills in is described.
-const autoHeaders = Object.fromEntries(["X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From"].map(name => [name,
+const autoHeaders = Object.fromEntries(["X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From", "X-SingIt-Fallback-Policy"].map(name => [name,
   { description: "Model actually selected, auto tier, or original pinned model when pre-payment fallback was used.", schema: { type: "string" } }]));
 const INPUT_SCHEMA = {
   properties: {
@@ -466,7 +479,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         args[index] = Array.isArray(headers) ? rest.flat() : Object.fromEntries(rest);
       }
       const seen = new Set();
-      const merged = [...values, "X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From"]
+      const merged = [...values, "X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From", "X-SingIt-Fallback-Policy"]
         .flat().flatMap(value => String(value).split(",")).map(value => value.trim())
         .filter(value => {
           const key = value.toLowerCase();
@@ -573,6 +586,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           const ours = share === null || !listed ? null : share * (1 + TERMS.markupBps / 10_000);
           return { id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name, contextLength: m.contextLength,
             tags: m.tags ?? [],
+            ...(config.defaultFallbacks !== false && Object.hasOwn(AUTO_CONFIG.pinnedDefaultFallbacks, m.id) ? { defaultFallback: AUTO_CONFIG.pinnedDefaultFallbacks[m.id] } : {}),
             ...(m.priceBasis === "reference" ? { priceBasis: "reference", priceDescription: "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0" } : {}),
             ...schemeAdvice(m.id),
             usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
@@ -659,7 +673,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           requestBody: { required: true, content: { "application/json": {
             schema: { type: "object", ...inputSchema, properties: { ...inputSchema.properties,
               min_tier: { type: "string", enum: TIERS, description: "Minimum tier; only valid with model singit/auto." },
-              model: { ...inputSchema.properties.model, description: inputSchema.properties.model.description + " " + AUTO_DESCRIPTION } } }, example: EXAMPLE.input } } },
+              model: { ...inputSchema.properties.model, description: inputSchema.properties.model.description + " " + AUTO_DESCRIPTION + defaultFallbackNote(config) } } }, example: EXAMPLE.input } } },
           responses: {
             200: { description: "The answer, with what it was charged", headers: autoHeaders,
                    content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
@@ -1008,8 +1022,19 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
 
   const choose = input => input.model === AUTO_ID
     ? chooseAuto(config, catalogue, input, RequestError, log) : chooseModel(config, catalogue, input);
-  const chooseChat = input => input.model && input.model !== AUTO_ID && input.fallbackModels
-    ? choosePinnedFallback(config, catalogue, input, chooseModel, RequestError, log) : choose(input);
+  const chooseChat = (input, req) => {
+    if (!input.model || input.model === AUTO_ID) return choose(input);
+    if (input.fallbackModels) return choosePinnedFallback(config, catalogue,
+      { ...input, fallbackPolicy: "request" }, chooseModel, RequestError, log);
+    const defaults = Object.hasOwn(AUTO_CONFIG.pinnedDefaultFallbacks, input.model)
+      ? AUTO_CONFIG.pinnedDefaultFallbacks[input.model] : undefined;
+    if (input.model !== config.model && defaults && config.defaultFallbacks !== false
+      && !String(req?.get("X-SingIt-Fallback") ?? "").split(",").some(value => value.trim().toLowerCase() === "off")) {
+      return choosePinnedFallback(config, catalogue,
+        { ...input, fallbackModels: defaults, fallbackPolicy: "default" }, chooseModel, RequestError, log);
+    }
+    return choose(input);
+  };
   const readOtherRequest = body => readRequest(body, { allowFallback: false });
   // Every answer that came back teaches the price shown for its model. It never delays or fails the answer.
   const learning = async (config_, messages, maxTokens, fetchImpl_, model = config.model, options) => {

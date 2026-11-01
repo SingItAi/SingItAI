@@ -7,6 +7,7 @@
 //   SINGIT_ASK_DIRECT_SOLANA   1 turns on the web agent's private Solana route, with
 //   SINGIT_ASK_QUOTE_TOKEN     its shared secret (32+ characters) and
 //   SINGIT_ASK_QUOTE_DB        its private SQLite file
+//   SINGIT_ASK_DEFAULT_FALLBACKS off disables reviewed pinned defaults; otherwise on
 //   SINGIT_ASK_MODEL           upstream model, default deepseek-v4.1-flash
 //   SINGIT_ASK_UNSERVABLE_TTL_MINUTES  seller rejection cache, default 15 minutes; 0 disables
 //   SINGIT_ASK_PORT            default 8140
@@ -62,6 +63,7 @@ function required(name) {
 }
 
 const config = {
+  defaultFallbacks: String(process.env.SINGIT_ASK_DEFAULT_FALLBACKS ?? "").trim().toLowerCase() !== "off",
   directSolana: process.env.SINGIT_ASK_DIRECT_SOLANA === "1",
   // Video is off unless SINGIT_ASK_VIDEO_SOLD=1 (a paid job can fail after settlement; see video.mjs). When sold,
   // SINGIT_ASK_VIDEO_DISCOVERABLE=1 also lists it for x402 discovery.

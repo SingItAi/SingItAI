@@ -285,9 +285,12 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       return next();
     }
     try {
-      req.askInput = await choose(readRequest(req.body));
+      req.askInput = await choose(readRequest(req.body), req);
       if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
-      if (req.askInput.fallbackFrom) res.set("X-SingIt-Fallback-From", req.askInput.fallbackFrom);
+      if (req.askInput.fallbackFrom) {
+        res.set("X-SingIt-Fallback-From", req.askInput.fallbackFrom);
+        res.set("X-SingIt-Fallback-Policy", req.askInput.fallbackPolicy ?? "request");
+      }
       if (req.askInput.autoTier) {
         res.set("X-SingIt-Tier", req.askInput.autoTier);
         log(`singit-ask: auto tier=${req.askInput.autoTier} reason=${req.askInput.autoReason}`);
@@ -329,7 +332,10 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         answer = await attempt(alternate);
       }
       if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
-      if (req.askInput.fallbackFrom) res.set("X-SingIt-Fallback-From", req.askInput.fallbackFrom);
+      if (req.askInput.fallbackFrom) {
+        res.set("X-SingIt-Fallback-From", req.askInput.fallbackFrom);
+        res.set("X-SingIt-Fallback-Policy", req.askInput.fallbackPolicy ?? "request");
+      }
       if (req.askInput.autoTier) {
         res.set("X-SingIt-Tier", req.askInput.autoTier);
       }
@@ -346,7 +352,8 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       log(`singit-ask: answer ready in ${Date.now() - started} ms, isDefault=${req.askInput.modelOmitted == null ? null : req.askInput.modelOmitted === true}, settling ${billing.totalAtomic} micro-USDC`);
       res.locals.singitReceipt = { ref: `singit-ask-${started}`, chargedAtomic: billing.totalAtomic };
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
-        model: "singit-ask", choices: [{ index: 0, message: { role: "assistant", content: answer.content },
+        model: req.askInput.fallbackFrom ? req.askInput.model : "singit-ask",
+        ...(req.askInput.fallbackFrom ? { singit_fallback_from: req.askInput.fallbackFrom } : {}), choices: [{ index: 0, message: { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing });
     } catch (error) {
       markUnservable(catalogue, req.askInput?.model, error, log);
