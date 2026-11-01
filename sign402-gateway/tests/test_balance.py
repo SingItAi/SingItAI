@@ -943,6 +943,10 @@ class GatewaySearchTests(unittest.TestCase):
         self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/exa/contents", {"urls": ["https://a.test"]})
         self.assertEqual(self.pay.call_args.args[3].cap_atomic, 67_000)
 
+    def test_search_ceiling_covers_the_dearest_exa_price_with_its_settlement_fee(self):
+        # singit-ask sells Exa at list (at most 50_000) + a flat 1_000 settlement fee: the key path pays what Ask quotes.
+        self.assertGreaterEqual(self.web_data.SEARCH_CAP_ATOMIC, 50_000 + 1_000)
+
     def test_a_video_job_has_its_own_ceiling(self):
         self.web_data.search(self.server, self.gw, ACCOUNT, "/v1/video/generations", {"model": "m", "prompt": "x"})
         tool, method, url = self.pay.call_args.args[3:6]
