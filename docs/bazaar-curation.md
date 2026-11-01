@@ -1,76 +1,75 @@
 # Bazaar curation readiness
 
-Coinbase's Bazaar lists x402 services that pass its curation rules
-([Get discovered](https://docs.cdp.coinbase.com/x402/seller/get-discovered)).
-This page checks `ask.singitai.app` against those rules, says what the code and
-CI now prove, and marks what only the owner can do.
-
-Status as of 24 October 2026. **No uptime figure appears here: none has been
-measured yet.** The probe in this change has not been installed anywhere, so the
-30-day number is empty, not 100%. Nothing below was verified against live
-Coinbase systems by this change; the CDP validator ran only against fakes.
+Status as of 1 November 2026. The directory observations below were read from
+the public CDP, x402scan, nohumans.directory, agentic.market and MCP Registry
+endpoints on that day; the code checks run offline. No uptime figure has been
+measured here.
 
 ## Checklist
 
 | # | CDP requirement | Status | Evidence / next step |
 | --- | --- | --- | --- |
-| 1 | Live mainnet payments | **Owner** | Base agent-paid settlement is recorded in [CHECKS.md](../singit-ask/CHECKS.md); Solana settlement and Bazaar registration are listed there as unverified. Indexing needs one real paid call through CDP's facilitator against a listed route. That spends money and signs a payment, so it is not done here. |
-| 2 | 30-day availability at least 99% (99.5% for priority) | **Not measured** | [`scripts/singit-uptime.py`](../scripts/singit-uptime.py) records unpaid probes and reports 24h/7d/30d availability, `null` when a window has no data. Install is **Owner** (see below); the 30-day window only counts as covered after 30 days of recorded history. |
-| 3 | Health probe: the endpoint keeps returning 402 | **Done in code, offline** | `GET`, `HEAD` and an empty `POST` on all 8 listed routes answer 402 with the same challenge. [`scripts/bazaar-lint.mjs`](../scripts/bazaar-lint.mjs) asserts this in CI. The uptime probe also treats a 402 without a valid `accepts` list as down. |
-| 4 | Complete input schema | **Done** | Every listed route declares a Bazaar input schema with a type and a description per field; the lint fails on a missing or undescribed field and on examples that use fields the schema lacks. Gaps the lint found were fixed in `formats.mjs` and `search.mjs`. |
-| 5 | Description says when to use it, at most 500 characters | **Done** | The lint fails over 500. The wording was written for agents choosing a service; whether it says "when to use" well enough is a judgement for the owner to re-read. |
-| 6 | Per-call pricing and supported networks | **Done** | Each challenge lists Base and Solana offers with `scheme`, `asset`, `payTo` and an integer-string `amount`; the lint checks them, including `payTo` against the configured address. |
-| 7 | Documented error responses | **Done** | `openapi.json` documents 402 (with the `PAYMENT-REQUIRED` header), 400, 413 and 503 (with `Retry-After`; never 502, which Cloudflare replaces with its own HTML page) on every paid path, 422 on `/v1/chat/completions` and `/v1/chat/{model}` (a reasoning model spent `max_tokens` thinking), 429 on `/v1/chat/completions`, 404 where a model can be unknown (messages, responses, images, speech, video) and 409 where a payment can be replayed (images, speech, video, Exa), only where the handlers send them. [`singit-ask/test/openapi-errors.test.mjs`](../singit-ask/test/openapi-errors.test.mjs) checks each code against the real response. |
-| 8 | No instruction-like text in metadata | **Done, heuristic** | The lint screens every published string (description, tags, schema text) against 15 patterns such as "ignore previous", "you must", "always call", "system prompt". It caught one real hit (the Messages `system` field) which was reworded. CDP's own screening is not public, so passing here is not a guarantee. |
-| 9 | Validation passes: `valid: true`, `simulation.outcome: "accepted"` | **Not run** | [`scripts/cdp-validate.mjs`](../scripts/cdp-validate.mjs) calls CDP's free validator for the 8 resources in [`scripts/bazaar-resources.json`](../scripts/bazaar-resources.json) and exits 1 on `valid: false`, a non-accepted simulation or a required preflight failure. It runs only from the manual/weekly workflow `bazaar-validate.yml`. The deployed service must carry the metadata changes in this PR first (**Owner**: deploy). |
-| 10 | `iconUrl` is PNG, JPG, WebP or GIF, never SVG | **Gap** | No route sets an `iconUrl`; the lint reports one warning per route. It fails on `.svg` or plain `http`. Needs an owner-supplied raster icon at an https URL. |
+| 1 | Live paid payments / indexing | **Done** | CDP's catalog lists all 22 ask.singitai.app routes, each with Base and Solana offers: 5 generic, 14 per-model and 3 Exa routes (observed 1 November). |
+| 2 | 30-day availability at least 99% (99.5% for priority) | **Not measured** | Install the uptime timer; a 30-day window needs 30 days of recorded history. No uptime figure is claimed. |
+| 3 | Health probe: endpoint returns 402 | **Done in code, offline** | The lint probes GET, HEAD and empty POST on all 22 listed routes and requires matching 402 challenges. |
+| 4 | Complete input schema | **Done in code** | The lint checks field types, descriptions and examples. Pinned model schemas exclude fallback_models and min_tier; generic chat retains its applicable fields. Catalog schemas can lag the live challenge. |
+| 5 | Description says when to use it, at most 500 characters | **Done in code** | The lint enforces the limit; other routes stay at 300 or less. Generic chat keeps its "call it when" sentence and also describes singit/auto tiers and the free/ daily allowance. |
+| 6 | Per-call pricing and supported networks | **Done in code** | The lint checks offers and configured recipients for Base and Solana. Catalog prices can lag live quotes. |
+| 7 | Documented error responses | **Done in code** | singit-ask/test/openapi-errors.test.mjs checks documented errors against handlers. |
+| 8 | No instruction-like metadata | **Done, heuristic** | The lint screens descriptions, tags and schema text. CDP's own screening is not public. |
+| 9 | Validation passes | **Done** | CDP's free validator returned valid:true and simulation outcome "accepted" for all 22 routes on 1 November 2026. Re-run bazaar-validate.yml after each metadata deploy. |
+| 10 | Raster iconUrl | **Done** | ICON_URL is set on every route; CDP's catalog shows an icon for all 22 (1 November observation). |
 
 ## What CI checks
 
-- `security-gate.yml`, job `bazaar-lint`, on every push and PR: installs
-  `singit-ask` with `npm ci --ignore-scripts`, boots the app in-process with a
-  fake facilitator and fake catalogue, probes each listed route, then runs
-  `node --test scripts/tests/*.test.mjs`. No network, no payment, no secrets.
-  Run it locally with `node scripts/bazaar-lint.mjs` (`--strict` makes warnings
-  fail, `--json` for a machine report).
-- `bazaar-validate.yml`: manual dispatch and a weekly schedule only. It never
-  runs on `pull_request` or `push`, so forks and PRs do not reach Coinbase. It
-  sends only `{resource, method}` to the free endpoint: no API key, no payment
-  header, `permissions: contents: read`, a 5 minute timeout.
+- security-gate.yml runs the offline Bazaar lint with a fake facilitator and
+  catalogue, probing all 22 listed routes, and scripts/tests. No payments or
+  external requests are needed. Run node scripts/bazaar-lint.mjs locally;
+  --strict makes warnings fail and --json emits a machine report.
+- bazaar-resources.json lists the same 22 routes; tests compare the URL sets
+  and require every MODEL_ROUTES entry.
+- bazaar-validate.yml runs manually and weekly, never on push or pull_request.
+  It sends resource and method to CDP's free validator without payment or
+  credentials. Re-run after each metadata deploy.
 
-## Current lint result
+## Catalog freshness and deliberate omissions
 
-Against the code in this branch: 8 routes, 0 failures, 8 warnings. Every warning
-is the missing `iconUrl`.
+CDP shows its own probe of our 402 at the last settle it indexed per route.
+Schemas and prices can therefore lag the live challenge. On 1 November, the
+14 model routes were last refreshed on 27 October and /v1/chat/completions on
+31 October; 12 of the 22 catalog prices differed from the live challenge as
+upstream prices moved.
 
-Known, deliberate differences:
+Refreshing requires another successful settle through CDP's facilitator
+carrying paymentPayload.resource and paymentPayload.extensions.bazaar.
+CDP's maintainers say a testnet payment is enough. This is a paid call and
+remains an owner action. CDP keeps only resources active in the last 30 days;
+the model routes' last indexed call was 27 October.
 
-- `/v1/audio/speech` defaults to mp3 (`audio/mpeg`); other `response_format` values return their own Content-Type. Its challenge describes the default and carries no JSON output
-  example; the lint allows that when `mimeType` is not JSON.
-- `/v1/chat/completions/metered` and `/v1/credit` are paid but not listed.
-- `/v1/video/generations` is sold but listed only with `SINGIT_ASK_VIDEO_DISCOVERABLE=1`.
-  It is off: Surplus's video sellers come and go (a clip went through on 25 October
-  2026, then three paid attempts met `no_healthy_sellers`). To list it, set the flag,
-  add it to `scripts/bazaar-lint.mjs` and `bazaar-resources.json`, and make one paid call.
-- Per-model `/v1/chat/{model}` routes (PR #66) are not covered; add them to the
-  lint and to `bazaar-resources.json` when that PR lands.
+The five generic routes are /v1/chat/completions, /v1/messages, /v1/responses,
+/v1/images/generations and /v1/audio/speech. Exa lists /v1/exa/search,
+/v1/exa/contents and /v1/exa/answer; the 14 pinned routes come from MODEL_ROUTES.
+Per-model routes are covered by the lint and bazaar-resources.json.
+/v1/chat/completions/metered and /v1/credit stay unlisted by design.
+Video stays unlisted with SINGIT_ASK_VIDEO_DISCOVERABLE off.
+
+## Other directories
+
+Observations as of 1 November 2026:
+
+- x402scan: origin registered once on 13 October, one route with an old schema.
+  Re-registration is a free wallet-signed step in the owner's x402scan UI.
+- nohumans.directory: auto-indexed 6 of 22 routes.
+- agentic.market: shows 20 endpoints, reading CDP's catalog.
+- MCP Registry: latest version 0.1.4, published 31 October from
+  SingItAi/singit-mcp. See [manifest ownership](mcp-page-sources.md#mcp-registry-manifest).
 
 ## What needs the owner
 
-1. **One live paid call** for indexing (row 1): a real, funded x402 payment to a
-   listed route. This change never sends a payment header or signs anything.
-2. **Deploy** the metadata changes (rows 4, 5, 8, 10) to the VPS and tunnel.
-   Until then the live service still serves the old metadata and the validator
-   would be judging that.
-3. **Install the uptime timer** (row 2). `deploy/systemd/singit-uptime.service`
-   and `.timer` are templates, not installed or enabled. The timer needs to run
-   for 30 days before a 30-day figure is real.
-4. **Publish a status page**, if wanted. `--status-json` and `--html` write
-   public-safe files (no IPs, no error bodies); where and whether to serve them
-   is the owner's call.
-5. **Choose an alert channel.** None is enabled. Operator health alerts are a
-   separate script (PR #61) and are not duplicated here.
-6. **Provide a PNG/JPG/WebP/GIF icon** and decide its URL (row 10).
-7. **Trigger `bazaar-validate.yml`** once after deploy and read the report; the
-   validator's reading of CDP's `preflight` field names is untested against the
-   real reply, so check that the output looks sensible on the first run.
+1. Paid settles to refresh the 14 stale model routes with resource and Bazaar metadata.
+2. Free wallet-signed x402scan re-registration.
+3. Deploy this PR's singit-ask changes and re-run bazaar-validate.yml.
+4. Install deploy/systemd/singit-uptime.service and .timer; collect history.
+5. Keep the canonical singit-mcp manifest and this repository's server.json
+   byte-identical, changing both and bumping both versions together.
+6. Run mcp-publisher after merge. Restart the gateway to serve serverInfo 0.1.4.

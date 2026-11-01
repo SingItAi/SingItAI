@@ -23,7 +23,7 @@ from sign402_gateway.agent_allowance import AllowanceStore
 from sign402_gateway.server import PAID_TOOLS
 from sign402_gateway.web_accounts import WebAccountStore, WebAuth, account_id_for
 from sign402_gateway.web_mcp import (
-    ASK_URL, DEFAULT_ALLOWED_ORIGINS, FREE_TOOL_NAMES, OWN_TOOLS, allowed_origins_from_env, glama_json, server_card,
+    ASK_URL, SERVER_INFO, DEFAULT_ALLOWED_ORIGINS, FREE_TOOL_NAMES, OWN_TOOLS, allowed_origins_from_env, glama_json, server_card,
 )
 from tests.test_gateway_server import DummyServer
 from tests.test_web_shop import ACCOUNT, OWNER, PAID, REQUIREMENTS, TOKEN, raw_request
@@ -1050,6 +1050,10 @@ class HttpTests(Fixture):
         self.assertEqual(card["authentication"]["schemes"], ["bearer"])
         self.assertEqual(len(card["tools"]), 16)
         self.assertLessEqual(len(card["description"]), 200)
+        self.assertEqual(card["serverInfo"]["version"], SERVER_INFO["version"])
+        self.assertEqual(SERVER_INFO["version"], "0.1.4")
+        self.assertTrue(card["documentationUrl"].startswith("https://github.com/SingItAi/"))
+        self.assertNotIn("bubon-ik", card["documentationUrl"])
         self.assertEqual(card, server_card(URI))
 
     def test_glama_json(self):

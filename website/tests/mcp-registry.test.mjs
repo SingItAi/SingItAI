@@ -24,6 +24,13 @@ test("mcp-registry-auth is served as text", async () => {
 
 test("server.json names the app.singitai namespace and the live MCP endpoint", async () => {
   const server = JSON.parse(await readFile(path.join(root, "server.json"), "utf8"));
+  assert.equal(server.version, "0.1.4");
+  assert.equal(server.repository.url, "https://github.com/SingItAi/singit-mcp");
+  assert.ok(!Object.hasOwn(server.repository, "subfolder"));
+  const gateway = await readFile(path.join(root, "sign402-gateway/sign402_gateway/web_mcp.py"), "utf8");
+  const version = gateway.match(/SERVER_INFO\s*=\s*\{[^}]*"version":\s*"([^"]+)"/);
+  assert.ok(version, "web_mcp.py must declare SERVER_INFO with a version");
+  assert.equal(server.version, version[1], "Registry mirror and gateway SERVER_INFO versions must agree");
   assert.match(server.name, /^app\.singitai\/[a-z0-9-]+$/);
   assert.ok(server.description.length <= 100, "the Registry rejects descriptions over 100 characters");
   assert.deepEqual(server.remotes.map((remote) => [remote.type, remote.url]),

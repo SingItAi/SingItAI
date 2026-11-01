@@ -2,7 +2,7 @@
 // The unit cases build challenges by hand; the last test runs the real app in-process, so it needs
 // singit-ask's node_modules (CI installs them; locally symlink or `npm ci` first).
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -157,7 +157,12 @@ test("summarize counts findings and only --strict makes warnings fail", () => {
 test("the app as built today passes the lint", { skip: !existsSync(ASK_MODULES) && "singit-ask/node_modules is not installed" }, async () => {
   const result = await lintApp();
   assert.deepEqual(result.global, []);
-  assert.equal(result.routes.length, 8);  // chat, messages, responses, images, speech, Exa's three (video unlisted)
+  assert.equal(result.routes.length, 22);
+  const config = JSON.parse(readFileSync(path.join(HERE, "..", "bazaar-resources.json"), "utf8"));
+  assert.deepEqual(new Set(config.resources.map(r => r.url)),
+    new Set(result.routes.map(r => `https://ask.singitai.app${r.route}`)));
+  const { MODEL_ROUTES, routePath } = await import("../../singit-ask/src/model-routes.mjs");
+  for (const model of MODEL_ROUTES) assert.ok(result.routes.some(r => r.route === routePath(model.id)));  // five generic, fourteen model and three Exa routes (video unlisted)
   for (const { route, probes, findings } of result.routes) {
     assert.deepEqual(probes, { GET: 402, HEAD: 402, POST: 402 }, route);
     assert.deepEqual(findings.filter((f) => f.level === "FAIL"), [], route);
