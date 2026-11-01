@@ -7,6 +7,11 @@ const MARKET_TTL_MS = 10 * 60 * 1000;
 const VIDEO_HEALTH_TTL_MS = 60 * 1000;
 
 export class UnknownModel extends Error {}
+export class UnpricedModel extends UnknownModel {
+  constructor() {
+    super("That model has no usable list price right now and is not sold. You were not charged. See GET /v1/models.");
+  }
+}
 
 // What a model can do, in the picker's own category keys (the ones Venice's list uses). Surplus says it through the
 // inputs a model accepts and its features; coding models are mostly marked only by name.
@@ -40,6 +45,7 @@ function parseModels(data) {
     if (!entry.supported_parameters?.includes("max_tokens")) continue;
     models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""),
       contextLength: Number(entry.context_length) || 0, promptUsdPerToken: prompt, completionUsdPerToken: completion,
+      ...(prompt <= 0 || completion <= 0 ? { unpriced: true } : {}),
       tags: capabilities(entry, inputs), params: entry.supported_parameters.map(String) });
   }
   return models;
@@ -422,14 +428,16 @@ export class ModelCatalogue {
     this.timer.unref?.();
   }
 
-  async resolve(id) {
+  async resolve(id, { allowUnpriced = false } = {}) {
     const model = (await this.all()).get(String(id ?? "").trim());
     if (!model) throw new UnknownModel("That model is not available.");
+    if (model.unpriced === true && !allowUnpriced) throw new UnpricedModel();
     return model;
   }
 
   async list() {
-    return [...(await this.all()).values()].sort((a, b) => a.completionUsdPerToken - b.completionUsdPerToken);
+    // Observed prices are shares of list price and cannot supply a missing list price.
+    return [...(await this.all()).values()].filter(m => m.unpriced !== true).sort((a, b) => a.completionUsdPerToken - b.completionUsdPerToken);
   }
 
   async imageModels() {

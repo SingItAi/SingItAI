@@ -992,7 +992,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       throw error;
     }
     try { app.locals.healthStats.recordModel(model, { ok: true }); } catch {}
-    catalogue?.resolve(model).then((list) => observed.record(model, answer.usage, list)).catch(() => {});
+    catalogue?.resolve(model, { allowUnpriced: true }).then((list) => observed.record(model, answer.usage, list)).catch(() => {});
     return answer;
   };
   const route = { facilitatorClient, catalogue, config, readRequest, choose, upstream: learning, fetchImpl, log };

@@ -204,7 +204,10 @@ export function worstModelCostMicro(model, { chars, maxTokens, messageCount, cha
   return Math.ceil((inputTokens * model.promptUsdPerToken + outputTokens * model.completionUsdPerToken) * share * 1e6);
 }
 
+export class UnpricedError extends Error {}
+
 export function ceilingAtomic(model, size, terms, share = 1) {
+  if (model.unpriced === true) throw new UnpricedError("Cannot quote a model without a usable list price.");
   const worst = worstModelCostMicro(model, size, share);
   const total = BigInt(worst) + (BigInt(worst) * BigInt(terms.markupBps) + 9999n) / 10000n + BigInt(terms.settlementFeeAtomic);
   const floor = BigInt(MIN_CEILING_ATOMIC);

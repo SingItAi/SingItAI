@@ -657,7 +657,9 @@ test("ModelCatalogue reads text models with prices, caches them, and survives a 
       { ...entry("draws"), architecture: { modality: "text->image", input_modalities: ["text"], output_modalities: ["image"] } },
       { ...entry("listens"), architecture: { modality: "audio->text", input_modalities: ["audio"], output_modalities: ["text"] } }] })); };
   const catalogue = new ModelCatalogue({ url: "https://x", fetchImpl, now: () => clock });
-  assert.deepEqual((await catalogue.list()).map((m) => m.id).sort(), ["a", "free", "sees"], "multimodal in, text out, is offered; image or audio-only is not");
+  assert.deepEqual((await catalogue.list()).map((m) => m.id).sort(), ["a", "sees"], "multimodal in, text out, is offered; image or audio-only is not; a list price of 0 is not sold");
+  assert.equal((await catalogue.resolve("free", { allowUnpriced: true })).unpriced, true);
+  await assert.rejects(catalogue.resolve("free"), UnknownModel);
   assert.equal((await catalogue.resolve("a")).completionUsdPerToken, 0.000002);
   await assert.rejects(catalogue.resolve("img"), UnknownModel);
   assert.equal(calls, 1);
