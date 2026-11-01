@@ -55,7 +55,7 @@ for (const model of MODEL_ROUTES) {
 }
 
 export const routePath = (id) => `/v1/chat/${id}`;
-export const modelRoutePaths = () => MODEL_ROUTES.map((m) => routePath(m.id));
+export const modelRoutePaths = (catalogue) => MODEL_ROUTES.filter(m => !catalogue?.isSuspended?.(m.id)).map((m) => routePath(m.id));
 
 export class ModelRouteError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -157,7 +157,7 @@ export function addModelRoutes(app, config, { facilitatorClient, catalogue, read
 // Every model route's openapi.json path entry, priced at that model's own range when the catalogue can resolve it
 // right now, else the generic `fallbackPrice` (the same one /v1/chat/completions shows).
 export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, exampleOutput, fallbackPrice }) {
-  const entries = await Promise.all(MODEL_ROUTES.map(async (model) => {
+  const entries = await Promise.all(MODEL_ROUTES.filter(m => !catalogue?.isSuspended?.(m.id)).map(async (model) => {
     const own = await modelPriceRange(catalogue, model);
     return [routePath(model.id), { post: {
       operationId: operationId(model), summary: `Generate a ${model.name} chat completion`, description: discoveryDescription(model),

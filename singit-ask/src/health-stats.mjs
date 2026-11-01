@@ -185,9 +185,10 @@ export class HealthStats {
     return Object.entries(this.state.buckets).filter(([k]) => Date.parse(k) >= cutoff
       && Date.parse(k) <= this.now()).map(([, b]) => b);
   }
-  models(hours = 24, unservable = new Map()) {
+  models(hours = 24, unservable = new Map(), suspended = new Map()) {
     const counts = Object.create(null), now = this.now();
     const active = new Map([...unservable].filter(([, expiry]) => expiry > now));
+    for (const id of suspended.keys()) active.set(id, active.get(id) ?? 0);
     for (const b of this.window(hours)) for (const [id, c] of Object.entries(b.models ?? {})) {
       const t = counts[id] ??= { ok: 0, fail: 0, reasons: {} }; t.ok += c.ok; t.fail += c.fail;
       // Old buckets have no reasons; their failures still count as other.
@@ -203,8 +204,9 @@ export class HealthStats {
       .map(([id, c]) => {
         const attempts = c.ok + c.fail, rate = attempts ? c.fail / attempts : 0;
         const last = this.state.models[id], expiry = active.get(id);
-        return [id, { status: expiry ? "unavailable" : attempts < 5 ? "insufficient_data"
+        return [id, { status: active.has(id) ? "unavailable" : attempts < 5 ? "insufficient_data"
           : rate > 0.5 ? "down" : rate > 0.2 ? "degraded" : "up",
+          ...(suspended.has(id) ? { suspended: true, consecutiveRejections: suspended.get(id).count } : {}),
           windowHours: hours, attempts, successes: c.ok, failures: c.fail,
           errorRatePct: Math.round(rate * 1000) / 10,
           // As before, last* are the latest ever seen (not limited to the window); lastOutcome is the newest of the two.
@@ -272,8 +274,8 @@ export class FacilitatorCheck {
   }
 }
 
-export function healthBody(stats, check, model, unservable = new Map()) {
-  const models = stats.models(24, unservable);
+export function healthBody(stats, check, model, unservable = new Map(), suspended = new Map()) {
+  const models = stats.models(24, unservable, suspended);
   const models_summary = { up: 0, degraded: 0, down: 0, insufficient_data: 0, unavailable: 0 };
   for (const entry of Object.values(models)) models_summary[entry.status]++;
   const networks = Object.fromEntries(Object.entries(stats.rails()).map(([n, rail]) => {

@@ -158,6 +158,8 @@ export function visibleSnapshot(s, hold = { hidden: [] }, warn = console.warn) {
       throw new Error("Invalid hidden model entry");
     }
     ids.add(entry.id);
+    if (s.models.some(m => m.id === entry.id) && Date.parse(s.fetchedAt) > Date.parse(entry.since))
+      warn(`Hidden model is listed live again: ${entry.id}; remove it from scripts/hidden-models.json`);
     if (!s.models.some((m) => m.id === entry.id)) warn(`Hidden model absent from snapshot: ${entry.id}`);
   }
   return { ...s, models: s.models.filter((m) => !ids.has(m.id)) };

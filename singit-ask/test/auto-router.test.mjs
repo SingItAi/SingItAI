@@ -187,3 +187,11 @@ test('models expose the chosen-model header names without payment', async t => {
  assert.equal(missing.status, 404);
  assertExposed(missing);
 });
+
+test('automatic routing skips suspended candidates even during an explicit trial window', async () => {
+  const suspended = AUTO_CONFIG.tiers.eco[0];
+  const chosen = await chooseAuto({}, { ...catalogue, isSuspended: id => id === suspended,
+    canAnswer: async () => true }, input('hi'), RequestError);
+  assert.notEqual(chosen.model, suspended);
+  assert.ok(!chosen.autoAlternates.some(candidate => candidate.model === suspended));
+});

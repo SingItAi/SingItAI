@@ -359,3 +359,9 @@ node scripts/ask-counters.mjs --text   # short summary
 The CLI applies exclusions in memory without writing or scheduling a flush. It
 prints no payer hashes or addresses. Missing/invalid stats files follow HealthStats'
 empty-counter fallback; check the report's `since` before interpreting it as history.
+
+### Model suspensions
+
+A seller rejection with `no_healthy_sellers` blocks requests before payment for 15 minutes. A second consecutive rejection hides the model from listings; explicit requests can retry after backoffs of 30, 60, then at most 120 minutes. An answered request resets the count, and one rejection older than 24 hours does not start a streak. An accepted book refresh also resets it when a new qualifying seller appears, or the model returns after having no qualifying offers. Other errors do not count.
+
+The default model, all configured automatic tiers, the free-list models, and deepseek-v4.1-flash, claude-haiku-4.5, glm-5.3-flash and gpt-6-luna retain the original 15 minute behavior and never suspend. `SINGIT_ASK_SUSPENSIONS_FILE` selects the private persistent state file (default `~/.config/singit-ask/model-suspensions.json`). Health entries retain suspended models even between trials.

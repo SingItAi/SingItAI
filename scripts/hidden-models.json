@@ -1,1 +1,19 @@
-{"hidden":[]}
+{
+  "hidden": [
+    {
+      "id": "e2ee-gemma-3-27b",
+      "since": "2026-11-01",
+      "reason": "Surplus cannot route this model (seller-side), hidden until a seller can serve it"
+    },
+    {
+      "id": "e2ee-gemma-4-31b",
+      "since": "2026-11-01",
+      "reason": "Surplus cannot route this model (seller-side), hidden until a seller can serve it"
+    },
+    {
+      "id": "gemini-3.1-pro",
+      "since": "2026-11-01",
+      "reason": "Surplus cannot route this model (seller-side), hidden until a seller can serve it"
+    }
+  ]
+}

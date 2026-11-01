@@ -43,7 +43,7 @@ export async function chooseAuto(config, catalogue, input, ErrorClass, log = () 
     for (const id of AUTO_CONFIG.tiers[tier]) {
       const info = await catalogue?.resolve(id).catch(() => null);
       const skip = reason => log(`singit-ask: auto skip model=${id} reason=${reason}`);
-      if (!info || catalogue.isUnservable?.(info.id) || (catalogue.canAnswer && !await catalogue.canAnswer(info.id))) { skip("unhealthy"); continue; }
+      if (!info || catalogue.isSuspended?.(info.id) || catalogue.isUnservable?.(info.id) || (catalogue.canAnswer && !await catalogue.canAnswer(info.id))) { skip("unhealthy"); continue; }
       const candidate = { ...input, model: info.id, info, ...priceGuard(catalogue, info.id, config.priceBufferPp ?? 1),
         autoTier: tier, autoReason: classified.reason };
       // Same rule as the paid call: a quote whose ceiling already covers the list-price worst case sends no floor,
@@ -88,6 +88,7 @@ export async function choosePinnedFallback(config, catalogue, input, choosePinne
     || model.promptUsdPerToken < 0 || model.completionUsdPerToken < 0
     || !(model.promptUsdPerToken > 0 || model.completionUsdPerToken > 0) || model.unpriced === true;
   const signalFor = async candidate => catalogue.isUnservable?.(candidate.model) ? "unhealthy"
+    : catalogue.isSuspended?.(candidate.model) ? "unhealthy"
     : catalogue.canAnswer && !await catalogue.canAnswer(candidate.model) ? "unhealthy"
     : unpriced(candidate.info) ? "unpriced" : await priceProtectionSignal(catalogue, candidate);
   const signal = await signalFor(pinned);

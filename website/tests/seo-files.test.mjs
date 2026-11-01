@@ -72,12 +72,15 @@ test("the pages output contains robots.txt and the landing sitemap", async () =>
     assert.equal(headerTypes(headers).get("/robots.txt"), "text/plain; charset=utf-8");
     assert.equal(headerTypes(headers).get("/sitemap.xml"), "application/xml; charset=utf-8");
     const rules = redirects.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+    const hold = JSON.parse(await readFile(path.join(website, "../scripts/hidden-models.json"), "utf8"));
+    const held = hold.hidden.flatMap(({ id }) => [`/models/${id} /models/all/ 302`, `/models/${id}/ /models/all/ 302`]);
     assert.deepEqual(rules, [
       "/app https://app.singitai.app/app/ 302",
       "/app/* https://app.singitai.app/app/:splat 302",
       "/numbers.json https://ask.singitai.app/numbers.json 302",
       "/ai-agent-spending-limit /agent-spending-limits/ 301",
       "/ai-agent-spending-limit/ /agent-spending-limits/ 301",
+      ...held,
       "/.well-known/x402 https://ask.singitai.app/.well-known/x402 302",
       "/openapi.json https://ask.singitai.app/openapi.json 302",
     ]);

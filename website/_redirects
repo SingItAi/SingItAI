@@ -17,6 +17,12 @@
 # A splat rule here would hide them again.
 # generated:hidden-models:start
 # Temporarily hidden, see scripts/hidden-models.json
+/models/e2ee-gemma-3-27b /models/all/ 302
+/models/e2ee-gemma-3-27b/ /models/all/ 302
+/models/e2ee-gemma-4-31b /models/all/ 302
+/models/e2ee-gemma-4-31b/ /models/all/ 302
+/models/gemini-3.1-pro /models/all/ 302
+/models/gemini-3.1-pro/ /models/all/ 302
 # generated:hidden-models:end
 
 # The live resource list is served by ask; a static copy would go stale (as with /numbers.json).

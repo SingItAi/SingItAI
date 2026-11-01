@@ -262,3 +262,14 @@ test("old persisted reasons load and invalid reasons reject the whole file", t =
     assert.deepEqual(new HealthStats({ file }).models(), {});
   }
 });
+
+test('suspended health entries persist between trials without recent attempts', () => {
+  const stats = new HealthStats({ file: null, now: () => 1000 });
+  const suspended = new Map([['model', { count: 3 }]]);
+  const entry = stats.models(24, new Map(), suspended).model;
+  assert.equal(entry.status, 'unavailable');
+  assert.equal(entry.suspended, true);
+  assert.equal(entry.consecutiveRejections, 3);
+  assert.equal(entry.attempts, 0);
+  assert.equal(entry.unavailableUntil, undefined);
+});

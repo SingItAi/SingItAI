@@ -1119,3 +1119,54 @@ test("marked default hides the alias and refuses discovery until expiry", async 
   assert.equal((await (await fetch(`${url}/v1/models`)).json()).data.some((m) => m.id === "singit-ask"), true);
   assert.equal((await fetch(`${url}${ROUTE}`)).status, 402);
 });
+
+for (const id of ['e2ee-gemma-3-27b', 'e2ee-gemma-4-31b', 'gemini-3.1-pro']) {
+  test(`${id}: suspension hides listings, blocks payment and recovers on a trial answer`, async t => {
+    let clock = 1000, reject = true;
+    const catalogue = new ModelCatalogue({ url: CONFIG.surplusUrl, now: () => clock, suspensionsFile: null });
+    const model = { ...CHEAP, id };
+    catalogue.models = new Map([[id, model]]);
+    catalogue.rawModels = catalogue.models;
+    catalogue.loadedAt = clock;
+    catalogue.prices = new Map(); catalogue.pricesAt = clock;
+    const provider = id.startsWith('e2ee-') ? 'mordiem' : 'bankr';
+    catalogue.fetchImpl = async () => Response.json({ offers: [
+      { provider_id: provider, trusted: true, healthy: true, available: true },
+      { provider_id: 'unhealthy-seller', trusted: true, healthy: false, available: true },
+    ] });
+    await catalogue.loadServed(0);
+    const { url, facilitator } = await serve(t, { catalogue, fetchImpl: async () => reject
+      ? Response.json({ error: { code: 'no_healthy_sellers' } }, { status: 503 })
+      : Response.json({ choices: [{ message: { content: 'Answer' }, finish_reason: 'stop' }],
+        usage: { total_tokens: 42, buyer_cost_micro: 100 } }), upstream: askSurplus });
+    const body = { ...QUESTION, model: id };
+    const attempt = async () => {
+      const offer = decode((await post(url, body)).headers.get('payment-required'));
+      return post(url, body, { 'PAYMENT-SIGNATURE': baseSignature(offer) });
+    };
+    assert.equal((await attempt()).status, 503);
+    clock += 15 * 60000;
+    assert.equal((await attempt()).status, 503);
+    assert.equal(catalogue.isSuspended(id), true);
+    const listed = async () => (await (await fetch(`${url}/v1/models`)).json()).data.some(m => m.id === id);
+    assert.equal(await listed(), false);
+    const pricing = await (await fetch(`${url}/pricing.json`)).json();
+    assert.ok(!pricing.models.some(m => m.id === id));
+    const verifies = facilitator.calls.verify;
+    const refused = await post(url, body);
+    assert.equal(refused.status, 503);
+    assert.equal((await refused.json()).error.code, 'no_healthy_sellers');
+    assert.ok(Number(refused.headers.get('retry-after')) <= 3600);
+    assert.equal(facilitator.calls.verify, verifies);
+    assert.equal(facilitator.calls.settle.length, 0);
+    let health = await (await fetch(`${url}/health`)).json();
+    assert.equal(health.models[id].suspended, true);
+    assert.equal(health.models[id].consecutiveRejections, 2);
+    clock += 30 * 60000;
+    assert.equal(await listed(), false);
+    reject = false;
+    assert.equal((await attempt()).status, 200);
+    assert.equal(catalogue.isSuspended(id), false);
+    assert.equal(await listed(), true);
+  });
+}

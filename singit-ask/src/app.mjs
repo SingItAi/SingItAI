@@ -11,7 +11,7 @@
 
 import { parseBestDiscount } from "./reject-log.mjs";
 import express from "express";
-import { AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback } from "./auto-router.mjs";
+import { AUTO_CONFIG, AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback } from "./auto-router.mjs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } from "./errors.mjs";
 import { HealthStats, FacilitatorCheck, healthBody, numbersBody, privateStatsBody } from "./health-stats.mjs";
@@ -421,11 +421,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                                     exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({
                                       url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
-                                      unservableTtlMs: config.unservableTtlMs }) : null,
+                                      suspensionsFile: config.suspensionsFile, neverHide: [config.model, ...Object.values(AUTO_CONFIG.tiers).flat()], unservableTtlMs: config.unservableTtlMs }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }),
                                     spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
   fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log });
+  for (const id of [config.model, ...Object.values(AUTO_CONFIG.tiers).flat()]) catalogue?.neverHide?.add(id);
   const app = express();
   app.locals.paidRoutes = new Set([CREDIT_ROUTE]);
   app.locals.healthStats = new HealthStats({ file: config.statsFile ?? null,
@@ -507,6 +508,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
 
   const pricing = { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS };
   const free = freeTerms(config);
+  // Free models are advertised in several places and keep the plain 15 minute rule, never a suspension.
+  for (const m of free.models) catalogue?.neverHide?.add(m);
   const freeOffer = free.models.length ? { models: free.models.map((m) => FREE_PREFIX + m), endpoint: ROUTE,
     perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars, budgetUsdPerDay: free.budgetUsdPerDay } : null;
   const freeLimits = { perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars };
@@ -536,7 +539,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     + "LLM answer, a second opinion, or a model it has no key for. SingIt Ask; models at GET /v1/models.";
   app.get("/health", open, (_req, res) => {
     res.set("Cache-Control", "no-store");
-    res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model, catalogue?.unservableSnapshot?.()),
+    res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model, catalogue?.unservableSnapshot?.(), catalogue?.suspensionSnapshot?.()),
                ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
                metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
   });
@@ -547,7 +550,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.get("/v1/models", open, async (_req, res) => {
     // Only models that can be answered now, including the default after a routing rejection.
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
-    const answerable = await Promise.all(listed.map((m) => (catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
+    const answerable = await Promise.all(listed.map((m) => (catalogue.listable ? catalogue.listable(m.id) : catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
     const models = listed.filter((m, i) => answerable[i] || (m.id === config.model && !catalogue.isUnservable?.(m.id)));
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
@@ -593,7 +596,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         type: "upstream_error", code: "upstream_unavailable" } });
     }
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
-    const answerable = await Promise.all(listed.map((m) => (catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
+    const answerable = await Promise.all(listed.map((m) => (catalogue.listable ? catalogue.listable(m.id) : catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
     const models = listed.filter((m, i) => answerable[i] || (m.id === config.model && !catalogue.isUnservable?.(m.id)));
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     const priced = [];
@@ -935,7 +938,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
                          `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`,
                          ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
-                         ...modelRoutePaths().map((route) => `${origin(req)}${route}`)] : []),
+                         ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models.`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
@@ -945,7 +948,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // list below and llms.txt can never list a route this instance did not add.
   const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE,
     ...(config.videoSold && config.videoDiscoverable ? [VIDEO_ROUTE] : []),
-    ...modelRoutePaths()] : []),
+    ...modelRoutePaths(catalogue)] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
   // Free: a human or agent landing on the bare origin gets a small service index instead of Express's 404.
   // Express answers HEAD the same way automatically. Open CORS, like the other public documents.
@@ -1016,6 +1019,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       try { app.locals.healthStats.recordModel(model, { ok: false, code: error.code, status: error.status }); } catch {}
       throw error;
     }
+    catalogue?.noteAnswered?.(model);
     try { app.locals.healthStats.recordModel(model, { ok: true }); } catch {}
     catalogue?.resolve(model, { allowUnpriced: true }).then((list) => {
       if (list.priceBasis === "reference") {
