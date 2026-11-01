@@ -438,7 +438,7 @@ test("health and the model list are free, and the old test page is gone", async 
 
 test("readRequest keeps the question within what one answer pays for", () => {
   assert.deepEqual(readRequest({ messages: [{ role: "user", content: "hi", name: "x" }] }),
-                   { messages: [{ role: "user", content: "hi" }], maxTokens: LIMITS.defaultTokens, chars: 2, model: undefined, messageCount: 1 });
+                   { messages: [{ role: "user", content: "hi" }], maxTokens: LIMITS.defaultTokens, chars: 2, modelOmitted: true, model: undefined, messageCount: 1 });
   assert.equal(readRequest({ ...QUESTION, max_tokens: 100_000 }).maxTokens, LIMITS.maxTokens);
   assert.equal(readRequest({ ...QUESTION, max_tokens: -5 }).maxTokens, LIMITS.defaultTokens);
   assert.throws(() => readRequest(null), RequestError);

@@ -1,3 +1,4 @@
+import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
 // what Claude Code and the Anthropic SDK speak) and OpenAI's Responses (POST /v1/responses). Sold over x402 like the
 // chat route: the payer authorizes a ceiling with `upto`, worked out from the model's list price and the size of the
@@ -59,11 +60,11 @@ export function withHeadroom(request) {
 // max_tokens with no text block and no tool_use block, Responses ends incomplete on max_output_tokens with no
 // output_text, no function_call, and no other non-reasoning item carrying content. A completed tool call with
 // no text is still a real answer, not a reasoning-exhaustion refusal.
-export function spentOnReasoning(route, data) {
+function hasAnswer(route, data) {
   if (route === "/v1/messages") {
     const answered = (Array.isArray(data.content) ? data.content : []).some((b) =>
       b?.type === "tool_use" || (b?.type === "text" && String(b.text ?? "").trim()));
-    return data.stop_reason === "max_tokens" && !answered;
+    return answered;
   }
   const answered = (Array.isArray(data.output) ? data.output : []).some((item) => {
     if (!item || item.type === "reasoning") return false;
@@ -71,11 +72,14 @@ export function spentOnReasoning(route, data) {
     return (Array.isArray(item.content) ? item.content : []).some((c) =>
       c?.type === "refusal" || (c?.type !== "reasoning_text" && String(c?.text ?? "").trim()));
   });
-  return data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" && !answered;
+  return answered;
 }
 
-const MAX_TOKENS_TOO_SMALL = "This model spent the whole token budget reasoning and wrote no answer. Raise max_tokens "
-  + "(max_output_tokens on /v1/responses). You were not charged.";
+export function spentOnReasoning(route, data) {
+  return !hasAnswer(route, data) && (route === "/v1/messages"
+    ? data.stop_reason === "max_tokens"
+    : data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens");
+}
 
 export const surplusModel = (name) => {
   const m = ANTHROPIC_ID.exec(name);
@@ -86,6 +90,7 @@ export const surplusModel = (name) => {
 export function readFormatRequest(route, body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new FormatError(400, "Send a JSON body.");
   if (body.stream) throw new FormatError(400, "Streaming is not offered over x402: an answer is paid for whole. Send stream: false.");
+  const modelOmitted = body.model === undefined || body.model === null;
   if (typeof body.model !== "string" || !body.model.trim() || body.model.length > 120) {
     throw new FormatError(400, "Name a model from GET /v1/models.");
   }
@@ -117,7 +122,8 @@ export function readFormatRequest(route, body) {
   }
   const chars = sized.reduce((n, part) => n + (typeof part === "string" ? part.length : JSON.stringify(part).length), 0);
   if (chars > FORMAT_LIMITS.chars) throw new FormatError(400, `Keep the request under ${FORMAT_LIMITS.chars} characters.`);
-  return { request, model: request.model, chars, maxTokens, messageCount };
+  return { request, model: request.model, chars, maxTokens, messageCount,
+    ...(route === "/v1/responses" ? { modelOmitted } : {}) };
 }
 
 // An answer as the format has it, without Surplus's own fields.
@@ -286,6 +292,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
           throw new NoAnswer(response.status, code);
         }
         if (spentOnReasoning(route, data)) throw new NoAnswer(response.status, "max_tokens_spent_reasoning");
+        if (!hasAnswer(route, data)) throw new NoAnswer(response.status, "no_text");
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
         const usage = billWithDiagnostics({ ...data.usage, buyer_cost_micro: reported },
           terms, exact, route, req.format.model, log);
@@ -293,11 +300,11 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
         const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
         if (exact && usage.overrunAtomic) log(`singit-ask: ${route} exact overrun ${usage.overrunAtomic} micro-USDC`);
-        recordWhenSettled(res, answerLog, { route, model: req.format.model, ...acceptedOf(req), usage: data.usage, billing,
+        recordWhenSettled(res, answerLog, { route, model: req.format.model, modelOmitted: req.format.modelOmitted, ...acceptedOf(req), usage: data.usage, billing,
           maxTokens: req.format.maxTokens });  // the normalised limit the ceiling was priced from
         if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
-        log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms,`
-          + ` settling ${billing.totalAtomic} micro-USDC`);
+        log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms`
+          + `${route === "/v1/responses" ? `, isDefault=${req.format.modelOmitted === true}` : ","} settling ${billing.totalAtomic} micro-USDC`);
         res.json({ ...scrub(data), billing });
       } catch (error) {
         markUnservable(catalogue, req.format?.model, error, log);

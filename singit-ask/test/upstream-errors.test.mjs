@@ -126,7 +126,9 @@ test("a reasoning model that spent max_tokens thinking is a 422 asking for more 
   const s = await serve(t, () => [200, { choices: [{ message: { content: "" }, finish_reason: "length" }], usage: { buyer_cost_micro: 0 } }]);
   const paid = await payExact(s.url, "deepseek-v4-pro");
   assert.equal(paid.status, 422);
-  assert.equal((await paid.json()).error.code, "max_tokens_too_small");
+  const error = (await paid.json()).error;
+  assert.equal(error.code, "max_tokens_too_small");
+  assert.match(error.message, /reasoning.*Raise max_tokens.*1000.*not charged/);
   assert.deepEqual(s.settled, []);
 });
 
@@ -154,4 +156,12 @@ test("ModelCatalogue keeps each model's supported_parameters as params", async (
     supported_parameters: ["max_tokens", "reasoning_effort"] };
   const c = new ModelCatalogue({ url: "https://surplus.test", fetchImpl: async () => new Response(JSON.stringify({ data: [row] })) });
   assert.deepEqual((await c.resolve("kimi-k3")).params, ["max_tokens", "reasoning_effort"]);
+});
+
+test("a normally stopped empty chat answer remains 503 and is not settled", async (t) => {
+  const s = await serve(t, () => [200, { choices: [{ message: { content: "" }, finish_reason: "stop" }], usage: { buyer_cost_micro: 1 } }]);
+  const paid = await payExact(s.url, "deepseek-v4-pro");
+  assert.equal(paid.status, 503);
+  assert.equal((await paid.json()).error.code, "no_billable_answer");
+  assert.deepEqual(s.settled, []);
 });

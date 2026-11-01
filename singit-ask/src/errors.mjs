@@ -1,3 +1,5 @@
+export const MAX_TOKENS_TOO_SMALL = "This model spent the whole max_tokens budget reasoning and wrote no answer. Raise max_tokens (for reasoning models try 1000 or more; on /v1/responses use max_output_tokens). You were not charged.";
+
 // Additive error metadata shared by all Ask routes. Never replace a supplied code.
 export const ERROR_CODES = Object.freeze([
   "invalid_json", "invalid_request", "payload_too_large", "model_not_found", "not_found",
