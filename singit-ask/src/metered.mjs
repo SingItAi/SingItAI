@@ -287,8 +287,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     }
     try {
       req.askInput = await choose(readRequest(req.body));
+      if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
+      if (req.askInput.fallbackFrom) res.set("X-SingIt-Fallback-From", req.askInput.fallbackFrom);
       if (req.askInput.autoTier) {
-        res.set("X-SingIt-Model", req.askInput.model);
         res.set("X-SingIt-Tier", req.askInput.autoTier);
         log(`singit-ask: auto tier=${req.askInput.autoTier} reason=${req.askInput.autoReason}`);
       }
@@ -330,8 +331,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         retried = true;
         answer = await attempt(alternate);
       }
+      if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
+      if (req.askInput.fallbackFrom) res.set("X-SingIt-Fallback-From", req.askInput.fallbackFrom);
       if (req.askInput.autoTier) {
-        res.set("X-SingIt-Model", req.askInput.model);
         res.set("X-SingIt-Tier", req.askInput.autoTier);
       }
       // Auto must retain its margin against actual provider cost, even on a flat exact offer.
