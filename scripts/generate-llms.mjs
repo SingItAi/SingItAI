@@ -79,7 +79,7 @@ Call without payment: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Versi
 
 \`upto\` is listed first: pay the actual cost up to the signed ceiling. \`exact\` is a flat price for a typical-length answer (about 30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Do not sign above your budget.
 
-LLM, image and speech charges are model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup or settlement fee by default. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
+LLM, image and speech charges are model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup, plus a flat settlement fee of $0.001 on both Base and Solana. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
 
 Paid chat requests may opt in with fallback_models (1–3 unique model ids): an unavailable pinned model can switch before the 402 to the first healthy priced model with no higher Base upto ceiling and the same auto tier where defined; X-SingIt-Model and X-SingIt-Fallback-From identify the choice.
 

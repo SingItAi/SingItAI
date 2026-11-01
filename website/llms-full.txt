@@ -21,9 +21,9 @@ Discovery card (MCP, not an A2A task endpoint): https://ask.singitai.app/.well-k
 | Per-model chat routes | POST https://ask.singitai.app/v1/chat/{model} | 0.001..0.20584 USDC per call |
 | Image generation | POST https://ask.singitai.app/v1/images/generations | 0.014..2.602 USDC per call |
 | Speech | POST https://ask.singitai.app/v1/audio/speech | 0.001..0.336 USDC per call |
-| Exa web search | POST https://ask.singitai.app/v1/exa/search | 0.001..0.05 USDC per call |
-| Exa page contents | POST https://ask.singitai.app/v1/exa/contents | 0.001..0.05 USDC per call |
-| Exa cited answer | POST https://ask.singitai.app/v1/exa/answer | 0.001..0.05 USDC per call |
+| Exa web search | POST https://ask.singitai.app/v1/exa/search | 0.002..0.051 USDC per call |
+| Exa page contents | POST https://ask.singitai.app/v1/exa/contents | 0.002..0.051 USDC per call |
+| Exa cited answer | POST https://ask.singitai.app/v1/exa/answer | 0.002..0.051 USDC per call |
 | Free models (free/ prefix) | POST https://ask.singitai.app/v1/chat/completions | Free (limited daily allowance) |
 | Crypto / metal / FX prices (free) | GET https://ask.singitai.app/v1/prices; GET https://ask.singitai.app/v1/prices/crypto/{symbol}; GET https://ask.singitai.app/v1/prices/metal/{symbol}; GET https://ask.singitai.app/v1/prices/fx/{base}/{quote} | Free |
 | Models / pricing lookups (free) | GET https://ask.singitai.app/v1/models; GET https://ask.singitai.app/pricing.json | Free |
@@ -35,7 +35,7 @@ Call without payment: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Versi
 
 `upto` is listed first: pay the actual cost up to the signed ceiling. `exact` is a flat price for a typical-length answer (about 30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Do not sign above your budget.
 
-LLM, image and speech charges are model cost plus 30% markup, plus a settlement fee of $0.001 on Base or $0.002 on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup or settlement fee by default. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
+LLM, image and speech charges are model cost plus 30% markup, plus a settlement fee of $0.001 on Base or $0.002 on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup, plus a flat settlement fee of $0.001 on both Base and Solana. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
 
 Paid chat requests may opt in with fallback_models (1–3 unique model ids): an unavailable pinned model can switch before the 402 to the first healthy priced model with no higher Base upto ceiling and the same auto tier where defined; X-SingIt-Model and X-SingIt-Fallback-From identify the choice.
 

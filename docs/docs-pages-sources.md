@@ -24,7 +24,7 @@ Line numbers refer to this checkout. These pages document existing API behavior,
 | Payments/errors: no settlement on upstream failures; 422 reasoning without answer | [singit-ask/test/upstream-errors.test.mjs:79](../singit-ask/test/upstream-errors.test.mjs#L79) |
 | Errors: stale permit nonce returns 409, wait for prior settlement then sign again | [singit-ask/src/permit-guard.mjs:49](../singit-ask/src/permit-guard.mjs#L49) |
 | Payments/errors: 503/422 handling after upstream answer and before settlement | [singit-ask/src/metered.mjs:329](../singit-ask/src/metered.mjs#L329) |
-| Payments: Exa request pricing, default zero markup/fee, verify then answer then settle | [singit-ask/src/search.mjs:1](../singit-ask/src/search.mjs#L1) |
+| Payments: Exa request pricing, default zero markup plus a flat 0.001 USDC settlement fee on both networks, verify then answer then settle | [singit-ask/src/search.mjs:1](../singit-ask/src/search.mjs#L1) |
 | Payments/FAQ: receipt header, settlement-only receipt and atomic amount vs ceiling | [singit-ask/src/spend-limit.mjs:177](../singit-ask/src/spend-limit.mjs#L177) |
 | Payments: receipt header written alongside facilitator PAYMENT-RESPONSE | [singit-ask/src/spend-limit.mjs:18](../singit-ask/src/spend-limit.mjs#L18) |
 | Security/limits: network/asset/payTo selection and budget checks | [sdk/typescript/src/guards.js:24](../sdk/typescript/src/guards.js#L24) |

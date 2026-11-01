@@ -24,14 +24,14 @@
 //                              (defaults in src/free.mjs); visitors are counted by network (IPv4 /24, IPv6 /64)
 //   SINGIT_ASK_FREE_BUDGET_USD_PER_DAY  daily dollar budget for free answers; default 0.25; 0 disables
 //   SINGIT_ASK_EXA_API_KEY     SingIt's Exa API key: turns on /v1/exa/search, /contents and /answer, resold over x402
-//                              at Exa's list price with no markup (src/search.mjs)
+//                              at Exa's list price plus a flat $0.001 settlement fee on both networks (src/search.mjs)
 //   SINGIT_ASK_BASE_RPC        the Base RPC free prices read Chainlink from (https://mainnet.base.org)
 //   SINGIT_ASK_PRICE_BUFFER_PP percentage points added to a model's cheapest known Surplus share before it is
 //                              turned into the X-Min-Discount header (src/catalogue.mjs's priceGuard), default 1
 //   SINGIT_ASK_REASONING_EFFORT   measurement only, default unset: "model=effort,..." (none|minimal|low|medium|high)
 //                              asks that model for this reasoning effort instead of "none" (e.g. claude-opus-5.5=low)
 //   SINGIT_ASK_EXA_MARKUP_BPS default 0: integer 0..10000; invalid values use 0.
-//   SINGIT_ASK_EXA_FEE_ATOMIC default "0,0": non-negative integer N for both networks or "base,solana"; invalid uses 0,0.
+//   SINGIT_ASK_EXA_FEE_ATOMIC default "1000,1000": non-negative integer N for both networks or "base,solana"; invalid uses the default; 0 disables.
 //   SINGIT_ASK_EXACT_RESERVE   default "0.25,32,256": the thinking tokens `exact` prices for Claude Opus, as
 //                              clamp(round(factor*max_tokens), min, max); "full" restores pricing the whole headroom.
 //                              Only the price: the upstream max_tokens and `upto` are unchanged (pricing.mjs EXACT_RESERVE)
