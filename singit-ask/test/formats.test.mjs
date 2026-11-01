@@ -224,3 +224,25 @@ for (const [route, body, model] of [["/v1/messages", MESSAGE, SONNET], ["/v1/res
     });
   }
 }
+
+test("empty format answers never settle: exhausted budgets are 422, other stops are 503", async (t) => {
+  for (const [route, request] of [["/v1/messages", MESSAGE], ["/v1/responses", RESPONSE]]) {
+    for (const exhausted of [true, false]) for (const scheme of ["exact", "upto"]) {
+      const data = route === "/v1/messages"
+        ? { content: [], stop_reason: exhausted ? "max_tokens" : "end_turn" }
+        : { output: [{ type: "reasoning" }], status: exhausted ? "incomplete" : "completed",
+            incomplete_details: exhausted ? { reason: "max_output_tokens" } : null };
+      data.usage = { buyer_cost_micro: 10 };
+      const { url, facilitator } = await serve(t, { surplus: {
+        fetchImpl: async () => Response.json(data),
+      } });
+      const required = decode((await post(`${url}${route}`, request)).headers.get("payment-required"));
+      const response = await post(`${url}${route}`, request, pay(required, BASE, scheme));
+      assert.equal(response.status, exhausted ? 422 : 503);
+      const body = await response.json();
+      assert.equal(body.error.code, exhausted ? "max_tokens_too_small" : "no_billable_answer");
+      if (exhausted) assert.match(body.error.message, /reasoning.*Raise max_tokens.*1000.*not charged/);
+      assert.deepEqual(facilitator.calls.settle, []);
+    }
+  }
+});

@@ -274,3 +274,25 @@ test("the OpenAPI document and the discovery listing say the free/ prefix is acc
   assert.equal(off.paths[ROUTE].post["x-free-models"], undefined);
   assert.doesNotMatch(off.paths[ROUTE].post.requestBody.content["application/json"].schema.properties.model.description, /Free/);
 });
+
+for (const code of ["max_tokens_spent_reasoning", "no_text"]) {
+  test(`free empty answer ${code} returns allowance`, async (t) => {
+    let fail = true;
+    const { url, fac } = await serve(t, { upstream: async () => {
+      if (fail) throw Object.assign(new Error("empty"), { code });
+      return { content: "Hello", finishReason: "stop", usage: { buyer_cost_micro: 1 } };
+    } });
+    for (let i = 0; i < 3; i++) {
+      const response = await ask(url, FREE_Q);
+      assert.equal(response.status, code === "no_text" ? 503 : 422);
+      const error = (await response.json()).error;
+      assert.equal(error.code, code === "no_text" ? "no_billable_answer" : "max_tokens_too_small");
+      if (response.status === 422) assert.match(error.message, /reasoning.*Raise max_tokens.*1000.*not charged/);
+    }
+    fail = false;
+    assert.equal((await ask(url, FREE_Q)).status, 200);
+    assert.equal((await ask(url, FREE_Q)).status, 200);
+    assert.equal((await ask(url, FREE_Q)).status, 429);
+    assert.equal(fac.calls.settle, 0);
+  });
+}

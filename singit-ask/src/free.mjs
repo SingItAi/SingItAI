@@ -1,9 +1,11 @@
+import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // Free answers, to try SingIt Ask before paying: a model asked for as "free/<id>" answers with no payment, within
 // small limits per visitor and per day. Anything else on the route is paid as before, so an unpaid question without
 // the prefix still gets the 402 offer that directories and paying agents expect.
 //
 // Shared daily spend and answer counts persist; visitor networks remain in memory only.
 
+import { safeDiagnostic } from "./safe-diagnostic.mjs";
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -158,13 +160,24 @@ export class FreeAllowance {
 export const visitorOf = (req) => networkOf(req.get("cf-connecting-ip") || req.ip);
 
 // What a free answer cost the service, in USDC micro-units, with no markup and no fee: the cost Surplus reports
-// for it, validated as the paid path validates it (billUsage). Without a usable report, the most this question
+// for it, validated as the paid path validates it (billUsage). Zero reports with tokens use their list cost
+// times the observed share (or list price without observations), rounded up to at least one micro.
+// Without a usable report, the most this question
 // could have cost at the model's list price (worstModelCostMicro, input at one token per character: the loosest bound, so dense text such as CJK
 // can never be under-counted against the budget; Codex review). Null when even that is unknown.
 const AT_COST = Object.freeze({ ...TERMS, markupBps: 0, settlementFeeAtomic: "0", maxChargeAtomic: String(Number.MAX_SAFE_INTEGER) });
-export function freeAnswerCost(usage, info, input, maxTokens) {
+export function freeAnswerCost(usage, info, input, maxTokens, observedShare = null) {
   try {
-    return Number(billUsage(usage, AT_COST).providerCostAtomic);
+    const reported = Number(billUsage(usage, AT_COST).providerCostAtomic);
+    const prompt = Number(usage?.prompt_tokens ?? 0);
+    const completion = Number(usage?.completion_tokens ?? 0);
+    if (reported !== 0 || !Number.isSafeInteger(prompt) || prompt < 0
+        || !Number.isSafeInteger(completion) || completion < 0 || prompt + completion === 0) return reported;
+    // Whole-micro reports can round a real cost to zero. Unknown/zero list prices still cost at least one micro.
+    const share = Number.isFinite(observedShare) && observedShare > 0 ? observedShare : 1;
+    const listMicro = (prompt * (info?.promptUsdPerToken ?? 0)
+      + completion * (info?.completionUsdPerToken ?? 0)) * 1e6;
+    return Math.max(1, Math.ceil(listMicro * share));
   } catch { /* no usable report: price the worst case */ }
   if (!info) return null;
   return worstModelCostMicro(info, { chars: input.chars, maxTokens, messageCount: input.messages.length, charsPerToken: 1 });
@@ -182,8 +195,9 @@ const REFUSALS = {
 
 // The free route goes in front of the paid one: it answers "free/" questions and passes everything else on.
 export function addFreeRoute(app, route, { config, terms, allowance, readRequest,
-                                            RequestError, upstream, catalogue = null, fetchImpl, log }) {
+                                            RequestError, upstream, catalogue = null, fetchImpl, log, observedShare = () => null }) {
   allowance ??= new FreeAllowance(terms, Date.now, log);
+  let estimateLogDay = null;
   app.post(route, async (req, res, next) => {
     const asked = req.body?.model;
     if (typeof asked !== "string" || !asked.startsWith(FREE_PREFIX)) return next();
@@ -224,7 +238,17 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
     const started = Date.now();
     try {
       const answer = await upstream(config, input.messages, maxTokens, fetchImpl, model);
-      if (terms.budgetUsdPerDay > 0) allowance.spend(freeAnswerCost(answer.usage, info, input, maxTokens), turn);
+      if (terms.budgetUsdPerDay > 0) {
+        const cost = freeAnswerCost(answer.usage, info, input, maxTokens, observedShare(model));
+        allowance.spend(cost, turn);
+        const reported = answer.usage?.buyer_cost_micro;
+        const day = dayOf(allowance.now());
+        if ((reported === 0 || reported === "0") && cost > 0 && estimateLogDay !== day) {
+          estimateLogDay = day;
+          log(`singit-ask: free cost estimate ${JSON.stringify({ model, reported, estimated: cost,
+            prompt_tokens: answer.usage.prompt_tokens, completion_tokens: answer.usage.completion_tokens })}`);
+        }
+      }
       log(`singit-ask: free answer in ${Date.now() - started} ms`);
       res.set({ "X-SingIt-Free": "true", "X-SingIt-Free-Remaining": String(turn.left) });
       res.json({ id: `singit-ask-free-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
@@ -232,7 +256,10 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
           finish_reason: answer.finishReason }], usage: answer.usage, billing: { free: true } });
     } catch (error) {
       allowance.giveBack(visitor, turn);
-      log(`singit-ask: no free answer after ${Date.now() - started} ms (${error.name})`);
+      log(`singit-ask: no free answer after ${Date.now() - started} ms (${safeDiagnostic(error.name)}${error.name === "UpstreamError" ? ` code=${safeDiagnostic(error.code)} status=${safeDiagnostic(error.status)}` : ""})`);
+      if (error.code === "max_tokens_spent_reasoning") {
+        return res.status(422).json({ error: { type: "invalid_request_error", code: "max_tokens_too_small", message: MAX_TOKENS_TOO_SMALL } });
+      }
       res.set("Retry-After", "30").status(503).json({ error: { message: "No answer came back. Try again.", type: "upstream_error", code: "no_billable_answer" } });
     } finally {
       allowance.done();

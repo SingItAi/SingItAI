@@ -1032,7 +1032,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
   if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
-  addFreeRoute(app, ROUTE, { config, terms: free, readRequest: readOtherRequest, RequestError, upstream: learning, catalogue, fetchImpl, log });
+  addFreeRoute(app, ROUTE, { config, terms: free, readRequest: readOtherRequest, RequestError, upstream: learning, catalogue, fetchImpl, log,
+    observedShare: model => observed.share(model) });
   // Public: any x402 agent pays on Solana or Base for actual usage with `upto`, or the same ceiling flat with
   // `exact` for buyers that sign only that scheme. Listed for discovery. `upto` leads `accepts` (Base, then Solana;
   // SI-102): it is the honest price, metered to the answer's actual cost, and a buyer that only inspects the first

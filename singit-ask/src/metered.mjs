@@ -1,3 +1,4 @@
+import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // Pay for actual usage: the payer authorizes a ceiling with x402 `upto`, and CDP settles only what the
 // answer cost, after it came back. A request that ends in 400 or above is never charged.
 //
@@ -6,6 +7,7 @@
 // and a facilitator cannot settle an exact payment for less than what was signed), so it is priced at the full
 // ceiling and that is disclosed in the offer's own `extra.billing.mode`. `upto` is unaffected and keeps paying
 // only the answer's actual cost.
+import { paymentFailureLine, paymentExtractor } from "./payment-diagnostics.mjs";
 import { markUnservable } from "./catalogue.mjs";
 import { ExpressAdapter, paymentMiddlewareFromHTTPServer, x402HTTPResourceServer, x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { SETTLEMENT_OVERRIDES_HEADER } from "@x402/core/http";
@@ -193,20 +195,17 @@ export function addPaymentRoute(app, routes, server,
     server.onAfterSettle(record(true)); server.onSettleFailure(record(false));
   }
   server.onAfterSettle(ctx => { permitGuard.record(ctx.paymentPayload, ctx.requirements, ctx.result); });
-  // Only diagnostic fields are logged: facilitator errors can embed payer addresses or signatures, so redact
-  // long encoded values even in the reason string rather than serializing any part of the payment payload.
   const failure = phase => ctx => {
-    const { network, scheme, amount } = ctx.requirements ?? {};
-    const reason = String(ctx.error?.errorReason ?? ctx.error?.message ?? "unknown")
-      .replace(/0x[a-fA-F0-9]+|[A-Za-z0-9+/=_-]{32,}/g, "[redacted]").replace(/[\r\n]/g, " ");
-    log(`singit-ask: ${Object.keys(routes).join(",")} ${phase}`
-      + ` network=${network} scheme=${scheme} amount=${amount} reason=${reason}`);
+    try { log(paymentFailureLine(Object.keys(routes).join(","), phase, ctx)); } catch {}
   };
   server.onSettleFailure(failure("settle failed"));
   server.onVerifyFailure(failure("verify failed"));
+  // A negative verify response runs afterVerify, not onVerifyFailure, in core 2.28.
+  server.onAfterVerify(ctx => { if (ctx.result?.isValid === false) failure("verify failed")(ctx); });
   if (!server.hasExtension("bazaar")) server.registerExtension(bazaarResourceServerExtension);
   routes = withBuilderCode(routes, server);
   const httpServer = new x402HTTPResourceServer(server, routes);
+  httpServer.extractPayment = paymentExtractor(log);
   for (const pattern of Object.keys(routes)) {
     const [verb, route] = pattern.split(" ");
     if (verb === "POST") app.post(route, permitGuard.middleware);
@@ -308,7 +307,6 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     { discoverable: offerEmptyProbe, log });
   app.post(route, async (req, res) => {
     const started = Date.now();
-    let retried = false;
     try {
       const paid = paidTerms(req);
       if (!paid) throw new Error("payment on an unknown network");
@@ -328,7 +326,6 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         markUnservable(catalogue, req.askInput.model, error, log);
         log(`singit-ask: auto fallback from=${req.askInput.model} to=${alternate.model} code=${error.code} status=${error.status}`);
         req.askInput = alternate;
-        retried = true;
         answer = await attempt(alternate);
       }
       if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
@@ -356,9 +353,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       // Not settled (status >= 400): on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
       // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
       log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
-      if (!retried && error.code === "max_tokens_spent_reasoning") {
+      if (error.code === "max_tokens_spent_reasoning") {
         return res.status(422).json({ error: { type: "invalid_request_error", code: "max_tokens_too_small",
-          message: "This model spent the whole max_tokens budget reasoning and wrote no answer. Raise max_tokens. You were not charged." } });
+          message: MAX_TOKENS_TOO_SMALL } });
       }
       res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer",
         message: "No billable answer was produced. You were not charged; try again." } });
