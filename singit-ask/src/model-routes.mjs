@@ -81,11 +81,10 @@ export async function chooseModelRoute(catalogue, id, bufferPp, input) {
   return { ...input, model: id, info, isDefault: false, ...priceGuard(catalogue, info.id, bufferPp) };
 }
 
-// <=300 characters, opening with the model and the category words and naming the brand once, later (see app.mjs's
-// DISCOVERY_DESCRIPTION for why): what the model does and when to call it, not what it costs.
+// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
 export function discoveryDescription(model) {
-  return `${model.name} (${model.provider}) LLM chat completions, OpenAI-compatible, with no API key or account. `
-    + `${model.blurb}. Call it when an agent needs ${model.name} specifically. Served by SingIt.`;
+  return `Chat completions API for ${model.name} (${model.provider}), OpenAI-compatible. `
+    + "Pay per call in USDC on Base or Solana, no key; you sign a price cap.";
 }
 
 const providerTag = (provider) => provider.toLowerCase().replace(/\s+/g, "");

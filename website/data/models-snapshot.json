@@ -1993,7 +1993,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -2036,7 +2035,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -2235,7 +2233,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -2278,7 +2275,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -2321,7 +2317,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -2681,8 +2676,7 @@
       "contextLength": 262144,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.6,
@@ -3159,8 +3153,7 @@
       "contextLength": 1048576,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.15,
@@ -3201,8 +3194,7 @@
       "contextLength": 1048576,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.37,
@@ -5115,8 +5107,7 @@
       "contextLength": 1048576,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 2,
@@ -5514,7 +5505,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -5557,7 +5547,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -5600,7 +5589,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -5869,8 +5857,7 @@
       "contextLength": 524288,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.3,
@@ -6355,7 +6342,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -6398,7 +6384,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -6441,7 +6426,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -6484,7 +6468,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -6527,7 +6510,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -6570,7 +6552,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -6613,7 +6594,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -6655,8 +6635,7 @@
       "contextLength": 262144,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.15,
@@ -7242,8 +7221,7 @@
       "contextLength": 262144,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.15,
@@ -8057,8 +8035,7 @@
       "contextLength": 1000000,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.03,
@@ -8139,8 +8116,7 @@
       "contextLength": 1000000,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.15,
@@ -8181,8 +8157,7 @@
       "contextLength": 1000000,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 2,
@@ -8223,8 +8198,7 @@
       "contextLength": 1000000,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 4,
@@ -8266,7 +8240,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {
@@ -8308,8 +8281,7 @@
       "contextLength": 256000,
       "tags": [
         "vision",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.5,
@@ -8351,8 +8323,7 @@
       "tags": [
         "vision",
         "code",
-        "reasoning",
-        "video"
+        "reasoning"
       ],
       "usdPerMillionTokens": {
         "input": 0.5,
@@ -8474,7 +8445,6 @@
       "tags": [
         "vision",
         "reasoning",
-        "video",
         "audio"
       ],
       "usdPerMillionTokens": {

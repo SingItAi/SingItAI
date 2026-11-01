@@ -82,7 +82,7 @@ export function sortModels(models, key = "saving", dir = "descending") {
 export function tagsOf(models) {
   const seen = new Set();
   for (const m of models) for (const t of m.tags ?? []) seen.add(t);
-  return ["vision", "code", "reasoning", "private", "audio", "video"].filter((t) => seen.has(t));
+  return ["vision", "code", "reasoning", "private", "audio"].filter((t) => seen.has(t));
 }
 
 const escape = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -182,7 +182,7 @@ function initPriceCard(card, list) {
     const listPrice = m.usdPerMillionTokens.output, ours = m.singitUsdPerMillionTokens.output;
     card.querySelector("[data-price-model]").textContent =
       `${m.name || m.id} · output, per 1M tokens${isEstimate(m) ? " · estimate from sellers' quotes" : ""}`;
-    card.querySelector("[data-price-saving]").textContent = `−${shownSaving(m.savingsVsListPct) ?? 0}%`;
+    card.querySelector("[data-price-saving]").textContent = shownSaving(m.savingsVsListPct) === null ? "" : `−${shownSaving(m.savingsVsListPct)}%`;
     card.querySelector("[data-price-list]").textContent = formatUsd(listPrice);
     card.querySelector("[data-price-ours]").textContent = formatUsd(ours);
     card.querySelector("[data-price-ours-bar]").style.width = `${Math.max(2, Math.min(100, (ours / listPrice) * 100))}%`;
@@ -296,7 +296,6 @@ export function init(doc = document) {
   const page = doc.querySelector("[data-models-page]");
   if (!card && !popular && !page) return;
   loadModels().then((list) => {
-    doc.querySelectorAll("[data-model-count]").forEach((el) => { el.textContent = String(choosable(list).length); });
     if (card) initPriceCard(card, list);
     if (popular) initPopularTable(popular, list);
     if (page) initModelsPage(page, list);
