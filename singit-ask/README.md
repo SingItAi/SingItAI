@@ -219,6 +219,7 @@ node --env-file=.env src/server.mjs
 | `SINGIT_ASK_VIDEO_DISCOVERABLE` | Only with `SINGIT_ASK_VIDEO_SOLD=1`: set `1` to list `/v1/video/generations` for x402 discovery (402 on GET/HEAD and the empty probe, `/.well-known/x402`, `llms.txt`). Unset (default): sold (if on), but not listed. |
 | `SINGIT_ASK_QUOTE_TOKEN` | Dedicated server-only authentication secret, shared by merchant and gateway (at least 32 characters). |
 | `SINGIT_ASK_QUOTE_DB` | Private writable SQLite path for prepared answers and settlement claims. |
+| `SINGIT_ASK_DEFAULT_FALLBACKS` | `off` disables reviewed pinned defaults; any other value enables them. |
 | `SINGIT_ASK_MODEL` | Upstream model. Default: `deepseek-v4.1-flash`. |
 | `SINGIT_ASK_PORT` | Loopback port. Default: `8140`. |
 | `SINGIT_ASK_REASONING_EFFORT` | Measurement only; unset (default) changes nothing. `model=effort,...` (`none`, `minimal`, `low`, `medium`, `high`) asks that model for that reasoning effort instead of `none`, e.g. `claude-opus-5.5=low`. A value that cannot be read stops the process at start. |
@@ -365,3 +366,19 @@ empty-counter fallback; check the report's `since` before interpreting it as his
 A seller rejection with `no_healthy_sellers` blocks requests before payment for 15 minutes. A second consecutive rejection hides the model from listings; explicit requests can retry after backoffs of 30, 60, then at most 120 minutes. An answered request resets the count, and one rejection older than 24 hours does not start a streak. An accepted book refresh also resets it when a new qualifying seller appears, or the model returns after having no qualifying offers. Other errors do not count.
 
 The default model, all configured automatic tiers, the free-list models, and deepseek-v4.1-flash, claude-haiku-4.5, glm-5.3-flash and gpt-6-luna retain the original 15 minute behavior and never suspend. `SINGIT_ASK_SUSPENSIONS_FILE` selects the private persistent state file (default `~/.config/singit-ask/model-suspensions.json`). Health entries retain suspended models even between trials. A pinned model with `fallback_models` is replaced by its fallback while suspended; plain requests make the recovery trial.
+
+### Reviewed pinned defaults
+
+On `POST /v1/chat/completions`, an explicitly pinned `gpt-6-luna` can use
+`gpt-6-luna-pro` before payment if the pin cannot be served or priced safely.
+This reviewed pair shares the underlying model; pro reasoning uses independent
+sellers. No other default substitutions are configured. Omitted/default models
+and other API routes stay pinned. There is no substitution after payment.
+
+An explicit `fallback_models` list takes precedence. The substitute uses its own
+quote, and none of its amounts (upto or exact, on Base or Solana) may exceed the pinned model's for the same request, otherwise the request is refused as before. The 402 and 200 disclose
+`X-SingIt-Model`, `X-SingIt-Fallback-From`, and
+`X-SingIt-Fallback-Policy: default` (or `request` for an explicit list).
+The answer's `model` and `singit_fallback_from` also identify the substitution.
+Send `X-SingIt-Fallback: off` to disable defaults for one request; explicit lists
+still work. Operators can disable defaults globally with `SINGIT_ASK_DEFAULT_FALLBACKS=off`.

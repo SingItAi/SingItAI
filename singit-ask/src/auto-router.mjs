@@ -5,12 +5,21 @@
 import { readFileSync } from "node:fs";
 import { UnknownModel, priceGuard, unservableError } from "./catalogue.mjs";
 import { ceilings } from "./metered.mjs";
-import { BASE, TERMS, minDiscountFor } from "./pricing.mjs";
+import { BASE, TERMS, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 export const AUTO_ID = "singit/auto";
 export const AUTO_DESCRIPTION = "Picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets the minimum tier. X-SingIt-Model and X-SingIt-Tier report the choice. Only POST /v1/chat/completions. If the chosen model's seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered.";
 export const AUTO_CONFIG = JSON.parse(readFileSync(new URL("./auto-router.config.json", import.meta.url), "utf8"));
 export const TIERS = ["eco", "standard", "premium"];
 export function validateAutoConfig(config) {
+  const validId = id => typeof id === "string" && /^[a-z0-9][a-z0-9.-]*$/.test(id) && !/image|video|free\//i.test(id);
+  const defaults = config.pinnedDefaultFallbacks === undefined ? {} : config.pinnedDefaultFallbacks;
+  if (!defaults || typeof defaults !== "object" || Array.isArray(defaults)) throw new Error("Invalid pinned default fallbacks");
+  for (const [id, ids] of Object.entries(defaults)) {
+    if (!validId(id) || !Array.isArray(ids) || ids.length < 1 || ids.length > 3
+      || ids.some(next => !validId(next) || next === id) || new Set(ids).size !== ids.length)
+      throw new Error("Invalid pinned default fallbacks");
+  }
+
   for (const tier of TIERS) {
     if (!config.tiers[tier]?.length) throw new Error(`Empty auto tier: ${tier}`);
     for (const id of config.tiers[tier]) {
@@ -19,6 +28,7 @@ export function validateAutoConfig(config) {
   }
 }
 validateAutoConfig(AUTO_CONFIG);
+AUTO_CONFIG.pinnedDefaultFallbacks ??= {};
 const reasoningPattern = new RegExp(`\\b(?:${AUTO_CONFIG.reasoningWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i");
 export function classifyAuto(input) {
   const text = input.messages.map(m => m.content).join("\n");
@@ -74,6 +84,12 @@ export async function priceProtectionSignal(catalogue, candidate) {
   return live != null && 100 - live * 100 + 1e-9 < floor ? "price_below_floor" : null;
 }
 
+// Whether any amount the substitute would ask (upto and exact, on every network) is above what the pinned model would
+// have asked for this request. The payer signs on one network and scheme, so "never costlier than the pinned quote" has
+// to hold for each of them, not only for upto on Base.
+const dearer = (candidate, pinned) => Object.entries(pinned).some(([scheme, byNetwork]) =>
+  Object.entries(byNetwork).some(([network, amount]) => BigInt(candidate[scheme][network]) > BigInt(amount)));
+
 // Caller order is stable; pinned fallbacks never become post-payment alternates.
 export async function choosePinnedFallback(config, catalogue, input, choosePinned, ErrorClass, log = () => {}) {
   // Resolve outside availability handling: unknown ids and catalogue errors never trigger substitution.
@@ -96,7 +112,9 @@ export async function choosePinnedFallback(config, catalogue, input, choosePinne
   // Without numeric list prices there is no safe ceiling to compare against.
   if (!Number.isFinite(info.promptUsdPerToken) || !Number.isFinite(info.completionUsdPerToken)
     || info.promptUsdPerToken < 0 || info.completionUsdPerToken < 0) throw unservableError(catalogue, input.model, ErrorClass);
-  const ceiling = BigInt(ceilings(info, pinned).upto[BASE]);
+  // The same exact fraction the 402 will be built with, or the comparison would be made on other amounts than offered.
+  const fraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
+  const pinnedCeilings = ceilings(info, pinned, fraction);
   const tiers = TIERS.filter(tier => AUTO_CONFIG.tiers[tier].includes(input.model));
   for (const id of input.fallbackModels) {
     const next = await catalogue.resolve(id).catch(error => {
@@ -106,8 +124,8 @@ export async function choosePinnedFallback(config, catalogue, input, choosePinne
     if (!next || tiers.some(tier => !AUTO_CONFIG.tiers[tier].includes(next.id))) continue;
     const candidate = { ...input, model: next.id, info: next, isDefault: next.id === config.model,
       ...priceGuard(catalogue, next.id, config.priceBufferPp ?? 1) };
-    if (await signalFor(candidate) || BigInt(ceilings(next, candidate).upto[BASE]) > ceiling) continue;
-    log(`singit-ask: pinned fallback from=${input.model} to=${next.id} signal=${signal}`);
+    if (await signalFor(candidate) || dearer(ceilings(next, candidate, fraction), pinnedCeilings)) continue;
+    log(`singit-ask: pinned fallback from=${input.model} to=${next.id} signal=${signal} policy=${input.fallbackPolicy ?? "request"}`);
     return { ...candidate, fallbackFrom: input.model };
   }
   throw unservableError(catalogue, input.model, ErrorClass);

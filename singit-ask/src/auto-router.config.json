@@ -8,5 +8,8 @@
   "eco": { "maxInputTokens": 400, "maxOutputTokens": 512, "maxMessages": 3 },
   "premium": { "minInputTokens": 6000, "reasoningOutputTokens": 1000, "reasoningInputTokens": 1500 },
   "reasoningWords": ["prove", "step by step", "analyze", "debug", "refactor"],
-  "policy": "Eco requires all short plain conditions. Premium matches any premium condition. Otherwise standard. Escalate only upward; ties follow tier order."
+  "policy": "Eco requires all short plain conditions. Premium matches any premium condition. Otherwise standard. Escalate only upward; ties follow tier order.",
+  "pinnedDefaultFallbacks": {
+    "gpt-6-luna": ["gpt-6-luna-pro"]
+  }
 }

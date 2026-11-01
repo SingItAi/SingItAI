@@ -145,8 +145,8 @@ test('exposed headers merge only at writeHead without patching setters', () => {
   const args = form === 'none' ? [200] : form === 'status-message' ? [200, 'OK', explicit] : [200, explicit];
   assert.equal(res.writeHead(...args), res);
   assert.equal(res.getHeader('Access-Control-Expose-Headers'), form === 'none'
-   ? 'X-Test, x-singit-model, X-SingIt-Tier, X-SingIt-Fallback-From'
-   : 'X-Test, x-singit-model, X-Other, x-singit-tier, X-SingIt-Fallback-From');
+   ? 'X-Test, x-singit-model, X-SingIt-Tier, X-SingIt-Fallback-From, X-SingIt-Fallback-Policy'
+   : 'X-Test, x-singit-model, X-Other, x-singit-tier, X-SingIt-Fallback-From, X-SingIt-Fallback-Policy');
   assert.deepEqual(written, form === 'none' ? [200] : form === 'array'
    ? [200, ['X-Keep', 'yes']] : form === 'status-message'
    ? [200, 'OK', { 'X-Keep': 'yes' }] : [200, { 'X-Keep': 'yes' }]);
@@ -174,7 +174,7 @@ test('exposed headers on models merge current entries and explicit writeHead hea
   assert.equal(response.status, 200);
   assertExposed(response, '*');
   assert.deepEqual(exposed(response), ['payment-response', 'x-singit-model', 'x-singit-receipt',
-   'x-singit-tier', 'payment-required', 'x-test', 'x-singit-fallback-from']);
+   'x-singit-tier', 'payment-required', 'x-test', 'x-singit-fallback-from', 'x-singit-fallback-policy']);
  }
 });
 
