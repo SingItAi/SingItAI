@@ -43,6 +43,7 @@ import { readFileSync } from "node:fs";
 import { parseOwnPayers } from "./own-payers.mjs";
 import { createRequire } from "node:module";
 import { HTTPFacilitatorClient } from "@x402/core/server";
+import { withFacilitatorHints } from './facilitator-hints.mjs';
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 import { createApp, parseReasoningEffort } from "./app.mjs";
@@ -123,7 +124,7 @@ const port = Number(process.env.SINGIT_ASK_PORT || 8140);
 required("CDP_API_KEY_ID"); required("CDP_API_KEY_SECRET");
 // The CDP component's installed, authenticated SDK signs each facilitator call.
 const requireCdp = createRequire(new URL("../../cdp-x402-service/package.json", import.meta.url));
-const facilitatorClient = new HTTPFacilitatorClient(requireCdp("@coinbase/x402").facilitator);
+const facilitatorClient = withFacilitatorHints(new HTTPFacilitatorClient(requireCdp("@coinbase/x402").facilitator));
 
 config.exaKey = String(process.env.SINGIT_ASK_EXA_API_KEY || "").trim() || null;
 if (config.exaKey) console.error("singit-ask: search on (Exa)");
