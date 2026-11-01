@@ -86,6 +86,7 @@ export const surplusModel = (name) => {
 export function readFormatRequest(route, body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new FormatError(400, "Send a JSON body.");
   if (body.stream) throw new FormatError(400, "Streaming is not offered over x402: an answer is paid for whole. Send stream: false.");
+  const modelOmitted = body.model === undefined || body.model === null;
   if (typeof body.model !== "string" || !body.model.trim() || body.model.length > 120) {
     throw new FormatError(400, "Name a model from GET /v1/models.");
   }
@@ -117,7 +118,8 @@ export function readFormatRequest(route, body) {
   }
   const chars = sized.reduce((n, part) => n + (typeof part === "string" ? part.length : JSON.stringify(part).length), 0);
   if (chars > FORMAT_LIMITS.chars) throw new FormatError(400, `Keep the request under ${FORMAT_LIMITS.chars} characters.`);
-  return { request, model: request.model, chars, maxTokens, messageCount };
+  return { request, model: request.model, chars, maxTokens, messageCount,
+    ...(route === "/v1/responses" ? { modelOmitted } : {}) };
 }
 
 // An answer as the format has it, without Surplus's own fields.
@@ -293,11 +295,11 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
         const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
         if (exact && usage.overrunAtomic) log(`singit-ask: ${route} exact overrun ${usage.overrunAtomic} micro-USDC`);
-        recordWhenSettled(res, answerLog, { route, model: req.format.model, ...acceptedOf(req), usage: data.usage, billing,
+        recordWhenSettled(res, answerLog, { route, model: req.format.model, modelOmitted: req.format.modelOmitted, ...acceptedOf(req), usage: data.usage, billing,
           maxTokens: req.format.maxTokens });  // the normalised limit the ceiling was priced from
         if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
-        log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms,`
-          + ` settling ${billing.totalAtomic} micro-USDC`);
+        log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms`
+          + `${route === "/v1/responses" ? `, isDefault=${req.format.modelOmitted === true}` : ","} settling ${billing.totalAtomic} micro-USDC`);
         res.json({ ...scrub(data), billing });
       } catch (error) {
         markUnservable(catalogue, req.format?.model, error, log);

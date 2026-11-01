@@ -27,7 +27,7 @@ import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { CREDIT_ROUTE, addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody, exaPriceRange } from "./search.mjs";
 import { IMAGE_ROUTE, IMAGE_REQUEST_BODY, addImageRoutes } from "./images.mjs";
-import { SPEECH_ROUTE, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
+import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
@@ -71,7 +71,8 @@ export function readRequest(body, { allowFallback = true } = {}) {
   if (chars > LIMITS.chars) throw new RequestError(400, `Keep the messages under ${LIMITS.chars} characters in all.`);
   const asked = Number(body.max_tokens ?? LIMITS.defaultTokens);
   const maxTokens = Number.isInteger(asked) && asked > 0 ? Math.min(asked, LIMITS.maxTokens) : LIMITS.defaultTokens;
-  const model = body.model === undefined || body.model === "singit-ask" ? undefined : body.model;
+  const modelOmitted = body.model === undefined || body.model === null;
+  const model = modelOmitted || body.model === "singit-ask" ? undefined : body.model;
   if (model !== undefined && (typeof model !== "string" || !model.trim() || model.length > 120)) {
     throw new RequestError(400, "model must be the id of a model listed at GET /v1/models.");
   }
@@ -89,7 +90,7 @@ export function readRequest(body, { allowFallback = true } = {}) {
     }
     fallbackModels = values.map(id => id.trim());
   }
-  return { ...(fallbackModels ? { fallbackModels } : {}), ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, model: model?.trim(), messageCount: clean.length };
+  return { ...(fallbackModels ? { fallbackModels } : {}), ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, modelOmitted, model: model?.trim(), messageCount: clean.length };
 }
 
 // The model an answer is bought from and what it may cost. No model, or the default one, is still looked up on
@@ -724,7 +725,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               + "GET /v1/audio/models. Nothing is charged without audio.",
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
             requestBody: SPEECH_REQUEST_BODY(),
-            responses: { 200: { description: "The audio", content: { "audio/mpeg": {} } },
+            responses: { 200: { description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type.", content: Object.fromEntries([...Object.values(SPEECH_CONTENT_TYPES), "audio/mp4"].map((type) => [type, {}])) },
                          ...paidErrors({ exactTimeout: 120, exampleMessage: "No audio was made. You were not charged.", exampleCode: "no_billable_answer", notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },

@@ -45,7 +45,7 @@ is the missing `iconUrl`.
 
 Known, deliberate differences:
 
-- `/v1/audio/speech` returns audio, so its challenge carries no JSON output
+- `/v1/audio/speech` defaults to mp3 (`audio/mpeg`); other `response_format` values return their own Content-Type. Its challenge describes the default and carries no JSON output
   example; the lint allows that when `mimeType` is not JSON.
 - `/v1/chat/completions/metered` and `/v1/credit` are paid but not listed.
 - `/v1/video/generations` is sold but listed only with `SINGIT_ASK_VIDEO_DISCOVERABLE=1`.
