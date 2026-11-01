@@ -1,3 +1,4 @@
+import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
 // what Claude Code and the Anthropic SDK speak) and OpenAI's Responses (POST /v1/responses). Sold over x402 like the
 // chat route: the payer authorizes a ceiling with `upto`, worked out from the model's list price and the size of the
@@ -59,11 +60,11 @@ export function withHeadroom(request) {
 // max_tokens with no text block and no tool_use block, Responses ends incomplete on max_output_tokens with no
 // output_text, no function_call, and no other non-reasoning item carrying content. A completed tool call with
 // no text is still a real answer, not a reasoning-exhaustion refusal.
-export function spentOnReasoning(route, data) {
+function hasAnswer(route, data) {
   if (route === "/v1/messages") {
     const answered = (Array.isArray(data.content) ? data.content : []).some((b) =>
       b?.type === "tool_use" || (b?.type === "text" && String(b.text ?? "").trim()));
-    return data.stop_reason === "max_tokens" && !answered;
+    return answered;
   }
   const answered = (Array.isArray(data.output) ? data.output : []).some((item) => {
     if (!item || item.type === "reasoning") return false;
@@ -71,11 +72,14 @@ export function spentOnReasoning(route, data) {
     return (Array.isArray(item.content) ? item.content : []).some((c) =>
       c?.type === "refusal" || (c?.type !== "reasoning_text" && String(c?.text ?? "").trim()));
   });
-  return data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" && !answered;
+  return answered;
 }
 
-const MAX_TOKENS_TOO_SMALL = "This model spent the whole token budget reasoning and wrote no answer. Raise max_tokens "
-  + "(max_output_tokens on /v1/responses). You were not charged.";
+export function spentOnReasoning(route, data) {
+  return !hasAnswer(route, data) && (route === "/v1/messages"
+    ? data.stop_reason === "max_tokens"
+    : data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens");
+}
 
 export const surplusModel = (name) => {
   const m = ANTHROPIC_ID.exec(name);
@@ -286,6 +290,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
           throw new NoAnswer(response.status, code);
         }
         if (spentOnReasoning(route, data)) throw new NoAnswer(response.status, "max_tokens_spent_reasoning");
+        if (!hasAnswer(route, data)) throw new NoAnswer(response.status, "no_text");
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
         const usage = billWithDiagnostics({ ...data.usage, buyer_cost_micro: reported },
           terms, exact, route, req.format.model, log);
