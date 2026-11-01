@@ -12,6 +12,38 @@ const encode = value => Buffer.from(JSON.stringify(value)).toString('base64');
 const requirements = { network: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', scheme: 'exact', amount: '1234' };
 const payload = { payer, sourceTokenAccount: ata };
 
+test('failure diagnostics preserve facilitator codes in reason fields and thrown messages', () => {
+  const code = 'invalid_exact_svm_payload_transaction_simulation_failed';
+  const message = 'simulation failed: transaction would fail on-chain: map[InstructionError:[2 InvalidAccountData]]';
+  for (const error of [
+    { errorReason: code, message },
+    { invalidReason: code, invalidMessage: message },
+    Object.assign(new Error(`${code}: ${message}`), { name: 'VerifyError' }),
+  ]) {
+    const line = paymentFailureLine('/ask', 'verify failed', { requirements, error });
+    assert.equal(line.split(' reason=')[1], `${code}: ${message}`);
+  }
+});
+
+test('failure diagnostics still redact secrets in codes, messages and embedded-code remainders', () => {
+  // Synthetic fixtures only.
+  for (const secret of ['Ab9+/='.repeat(6) + 'Ab9+', 'Bearer xyz', 'Authorization: private-fixture', '0x1234abcdef']) {
+    for (const error of [
+      { errorReason: secret, message: 'simulation failed' },
+      { invalidReason: secret, invalidMessage: 'simulation failed' },
+      { errorReason: 'simulation_failed', message: secret },
+      new Error(secret),
+      new Error(`invalid_exact_svm_payload_transaction_simulation_failed: ${secret}`),
+    ]) {
+      const reason = paymentFailureLine('/ask', 'verify failed', { requirements, error }).split(' reason=')[1];
+      assert.ok(reason.includes('[redacted]'));
+      assert.ok(!reason.includes(secret));
+      assert.ok(!reason.includes('xyz'));
+      assert.ok(!reason.includes('private-fixture'));
+    }
+  }
+});
+
 test('Solana failure diagnostics truncate accounts and redact/cap untrusted reason', () => {
   const header = encode({ payload });
   for (const error of [{ errorReason: 'invalid_account_data', message: `InvalidAccountData\n${payer} ${ata} ${header} Authorization: Bearer secret` },

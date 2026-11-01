@@ -1,5 +1,6 @@
 // Diagnostics only: never serialize a payment, transaction, signature, or exception.
 import { decodePaymentSignatureHeader } from '@x402/core/http';
+import { originalVerificationFailure } from './facilitator-hints.mjs';
 
 export { safeDiagnostic };
 import { safeDiagnostic } from './safe-diagnostic.mjs';
@@ -65,9 +66,16 @@ export function transactionAccounts(encoded) {
 
 export function paymentFailureLine(route, phase, ctx) {
   const { network, scheme, amount } = ctx.requirements ?? {};
-  const error = ctx.error ?? ctx.result ?? {};
-  const reason = [error.errorReason ?? error.invalidReason, error.message ?? error.errorMessage ?? error.invalidMessage]
-    .filter(Boolean).join(': ') || 'unknown';
+  const failure = ctx.error ?? ctx.result ?? {};
+  const error = failure[originalVerificationFailure] ?? failure;
+  const reasonCode = error.errorReason ?? error.invalidReason;
+  const message = error.message ?? error.errorMessage ?? error.invalidMessage;
+  const formatCode = value => typeof value === 'string' && /^[a-z][a-z0-9_]{2,99}$/.test(value)
+    ? value : safeDiagnostic(value);
+  const embeddedCode = typeof message === 'string' && /^([a-z][a-z0-9_]{2,99}):(.*)$/s.exec(message);
+  const reason = [reasonCode && formatCode(reasonCode), message && (embeddedCode
+    ? `${embeddedCode[1]}:${safeDiagnostic(embeddedCode[2])}` : safeDiagnostic(message))]
+    .filter(Boolean).join(': ').slice(0, 200) || 'unknown';
   let accounts = '';
   if (typeof network === 'string' && network.startsWith('solana:')) {
     let payment = ctx.paymentPayload;
@@ -84,5 +92,5 @@ export function paymentFailureLine(route, phase, ctx) {
   // Requirements are server-selected; retain the complete CAIP network identifier.
   const networkLabel = typeof network === 'string'
     && /^(?:solana:[1-9A-HJ-NP-Za-km-z]{1,44}|eip155:[0-9]{1,20})$/.test(network) ? network : safeDiagnostic(network);
-  return `singit-ask: ${safeDiagnostic(route)} ${phase} network=${networkLabel} scheme=${safeDiagnostic(scheme)} amount=${safeDiagnostic(amount)}${accounts} reason=${safeDiagnostic(reason)}`;
+  return `singit-ask: ${safeDiagnostic(route)} ${phase} network=${networkLabel} scheme=${safeDiagnostic(scheme)} amount=${safeDiagnostic(amount)}${accounts} reason=${reason}`;
 }
