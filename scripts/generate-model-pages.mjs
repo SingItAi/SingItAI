@@ -5,6 +5,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderLlms } from "./generate-llms.mjs";
 import { limits } from "./templates/spending-limits.mjs";
 
+const hasTokenPrice = (m) => ["input", "output"].every((key) => {
+  const v = m.singitUsdPerMillionTokens?.[key];
+  return Number.isFinite(v) && v >= 0 && (v > 0 || m.usdPerMillionTokens?.[key] === 0);
+}) && ["input", "output"].some((key) => m.singitUsdPerMillionTokens?.[key] > 0);
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const origin = "https://singitai.app";
 export const escapeHtml = (v) => String(v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -45,7 +50,7 @@ export function modelTitle(name) {
   return truncateWords(name, 60 - suffix.length) + suffix;
 }
 export function modelDescription(m) {
-  const suffix = m.singitUsdPerMillionTokens ? ` Price: $${price(m.singitUsdPerMillionTokens.input)}/1M input, $${price(m.singitUsdPerMillionTokens.output)}/1M output tokens.` : "";
+  const suffix = hasTokenPrice(m) ? ` Price: $${price(m.singitUsdPerMillionTokens.input)}/1M input, $${price(m.singitUsdPerMillionTokens.output)}/1M output tokens.` : "";
   const ending = " with no account or API key. Pay per request in USDC on Base via x402.";
   const full = `Call ${m.name ?? m.id}${ending}${suffix}`;
   if (full.length <= 155) return full;
@@ -110,7 +115,7 @@ function table(headers, rows) {
 }
 function modelPage(shell, s, m) {
   const name = m.name ?? m.id;
-  const p = m.singitUsdPerMillionTokens;
+  const p = hasTokenPrice(m) ? m.singitUsdPerMillionTokens : null;
   const priceTable = m.priceBasis === "reference" ? table(["Conservative reference estimate per 1M tokens", "Input", "Output"], [
     ["Surplus lists this model at 0; no list-price savings claimed", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
   ]) : p ? table(["USD per 1M tokens", "Input", "Output"], [

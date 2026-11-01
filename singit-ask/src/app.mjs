@@ -312,15 +312,32 @@ async function pricingFor(config, catalogue, modelId) {
   };
 }
 
+// Floor savings; never show 100% unless the price is truly zero.
+export function savingsFor(ours) {
+  const saving = Math.floor((1 - ours) * 100 + 1e-9);
+  return ours > 0 ? Math.min(99, saving) : saving;
+}
+
+// Both discovery endpoints use positive display observations; free-tier accounting uses share().
+export function displayPrice(m, observed, market) {
+  if (m.priceBasis === "reference") return null;
+  const seen = observed.displayShare(m.id), trusted = market.get(m.id)?.trustedShare;
+  const share = seen > 0 ? seen : trusted > 0 ? trusted : null;
+  if (share === null) return null;
+  const ours = share * (1 + TERMS.markupBps / 10_000);
+  const rates = [m.promptUsdPerToken, m.completionUsdPerToken];
+  // A positive list price must have a finite, positive displayed price, including before markup.
+  if (!rates.some((rate) => rate > 0) || rates.some((rate) =>
+    !Number.isFinite(rate * 1e6 * ours) || !Number.isFinite(rate * 1e6 * share)
+    || (rate > 0 && (!(rate * 1e6 * ours > 0) || !(rate * 1e6 * share > 0))))) return null;
+  return { share, basis: seen > 0 ? "observed" : "trusted", ours };
+}
+
 // The same expected-price-per-million-tokens shown at GET /v1/models (observed cost if this service has answered
 // that model before, else the trusted market's cheapest qualifying share), null when neither is known.
 function perMillionFor(m, observed, market) {
-  if (m.priceBasis === "reference") return null;
-  const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
-  const share = seen ?? trusted ?? null;
-  const listed = m.promptUsdPerToken > 0 || m.completionUsdPerToken > 0;
-  const ours = share === null || !listed ? null : share * (1 + TERMS.markupBps / 10_000);
-  return ours === null ? null : { input: m.promptUsdPerToken * 1e6 * ours, output: m.completionUsdPerToken * 1e6 * ours };
+  const price = displayPrice(m, observed, market);
+  return price === null ? null : { input: m.promptUsdPerToken * 1e6 * price.ours, output: m.completionUsdPerToken * 1e6 * price.ours };
 }
 
 // The least and the most one answer can be charged, for discovery. The least is Base's settlement fee; the most is
@@ -573,17 +590,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION },
         ...freeListed,
         ...models.map(m => {
-          // The price an answer is expected to cost: what this service's own answers from the model cost, or,
-          // before the first, the share of list price Surplus's trusted sellers ask. Never the best offer.
-          const seen = observed.share(m.id), trusted = market.get(m.id)?.trustedShare;
-          // A reference-priced model has no list price to take a share of: its price moves with the order books, so a
-          // share recorded earlier would not describe today's price. The audit line below watches it instead.
-          const share = m.priceBasis === "reference" ? null : seen ?? trusted ?? null;
-          // What a payer is expected to pay per million tokens: that cost plus the markup (the per-answer fee is in
-          // `fees`), and how much below the model's list price that is.
-          // A model Surplus lists at no price has no saving to show.
-          const listed = m.priceBasis !== "reference" && (m.promptUsdPerToken > 0 || m.completionUsdPerToken > 0);
-          const ours = share === null || !listed ? null : share * (1 + TERMS.markupBps / 10_000);
+          const price = displayPrice(m, observed, market);
+          const { share = null, basis, ours = null } = price ?? {};
           return { id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name, contextLength: m.contextLength,
             tags: m.tags ?? [],
             ...(config.defaultFallbacks !== false && Object.hasOwn(AUTO_CONFIG.pinnedDefaultFallbacks, m.id) ? { defaultFallback: AUTO_CONFIG.pinnedDefaultFallbacks[m.id] } : {}),
@@ -591,10 +599,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             ...schemeAdvice(m.id),
             usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
             ...(share === null ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
-              output: m.completionUsdPerToken * 1e6 * share, basis: seen === null ? "trusted" : "observed" } }),
+              output: m.completionUsdPerToken * 1e6 * share, basis } }),
             ...(ours === null ? {} : {
               singitUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * ours, output: m.completionUsdPerToken * 1e6 * ours },
-              savingsVsListPct: Math.round((1 - ours) * 100) }) };
+              savingsVsListPct: savingsFor(ours) }) };
         })] });
   });
 

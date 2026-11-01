@@ -91,3 +91,22 @@ test('renderer is offline and responds to changed snapshot data', async () => {
   assert.deepEqual(renderLlms(result.get('llms.txt'), s, { routes }, price), result);
   assert.throws(() => renderLlms(text, s, { routes: routes.filter(r => r.path !== '/v1/messages') }, price), /Missing priced route/);
 });
+
+test('zero token prices read Not listed', async () => {
+  const { renderModelList } = await import('../../scripts/generate-llms.mjs');
+  const model = { id: 'zero', singitUsdPerMillionTokens: { input: 0, output: 0 },
+    upto: { base: { usd: 1 }, solana: { usd: 1 } }, exact: { base: { usd: 1 }, solana: { usd: 1 } } };
+  const text = renderModelList({ models: [model] }, price);
+  assert.match(text, /Not listed \| Not listed/);
+  assert.doesNotMatch(text, /\$0|100%/);
+});
+
+test('free list input keeps a positive SingIt output listed', async () => {
+  const { renderModelList } = await import('../../scripts/generate-llms.mjs');
+  const model = { id: 'free-input', usdPerMillionTokens: { input: 0, output: 2 },
+    singitUsdPerMillionTokens: { input: 0, output: 0.2 },
+    upto: { base: { usd: 1 }, solana: { usd: 1 } }, exact: { base: { usd: 1 }, solana: { usd: 1 } } };
+  const text = renderModelList({ models: [model] }, price);
+  assert.match(text, /\$0 \| \$0\.2 \|/);
+  assert.doesNotMatch(text, /Not listed/);
+});

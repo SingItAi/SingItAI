@@ -39,7 +39,11 @@ export function snapshot(models, pricing, fetchedAt) {
       result[key] = m[key];
     }
     result.usdPerMillionTokens = pair(m.usdPerMillionTokens);
-    if (Object.hasOwn(m, "singitUsdPerMillionTokens")) result.singitUsdPerMillionTokens = pair(m.singitUsdPerMillionTokens);
+    if (Object.hasOwn(m, "singitUsdPerMillionTokens")) {
+      const price = pair(m.singitUsdPerMillionTokens);
+      if (!["input", "output"].some((key) => price[key] === 0 && result.usdPerMillionTokens[key] > 0))
+        result.singitUsdPerMillionTokens = price;
+    }
     if (Object.hasOwn(m.expectedUsdPerMillionTokens ?? {}, "basis")) {
       requireShape(["observed", "trusted"].includes(m.expectedUsdPerMillionTokens.basis), "expected price basis");
       result.expectedUsdPerMillionTokens = { basis: m.expectedUsdPerMillionTokens.basis };

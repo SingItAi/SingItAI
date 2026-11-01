@@ -37,6 +37,14 @@ export class ObservedPrices {
     return list.length % 2 ? list[middle] : (list[middle - 1] + list[middle]) / 2;
   }
 
+  // Display hints ignore rounded zeros; share() retains them for free-tier budget accounting.
+  displayShare(model) {
+    const list = [...(this.shares.get(model) ?? [])].filter((x) => x > 0).sort((a, b) => a - b);
+    if (!list.length) return null;
+    const middle = list.length >> 1;
+    return list.length % 2 ? list[middle] : (list[middle - 1] + list[middle]) / 2;
+  }
+
   save() {
     if (!this.file) return;
     try {

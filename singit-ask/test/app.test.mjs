@@ -1170,3 +1170,73 @@ for (const id of ['e2ee-gemma-3-27b', 'e2ee-gemma-4-31b', 'gemini-3.1-pro']) {
     assert.equal(await listed(), true);
   });
 }
+
+test("display prices ignore rounded zeros and never promise free tokens", async () => {
+  const { ObservedPrices } = await import("../src/observed.mjs");
+  const { displayPrice, savingsFor } = await import("../src/app.mjs");
+  const observed = new ObservedPrices();
+  observed.shares.set("legacy", [0.0114, 0.0114, 0, 0, 0, 0.0044]);
+  assert.equal(observed.displayShare("legacy"), 0.0114);
+  observed.shares.set("empty", [0, 0, 0]);
+  assert.equal(observed.displayShare("empty"), null);
+  const trusted = new Map([[CHEAP.id, { trustedShare: 0.0006 }]]);
+  const price = displayPrice(CHEAP, { displayShare: () => 0 }, trusted);
+  assert.equal(price.basis, "trusted");
+  assert.equal(savingsFor(price.ours), 99);
+  assert.equal(displayPrice(CHEAP, { displayShare: () => 0 }, new Map()), null);
+  assert.equal(displayPrice(CHEAP, { displayShare: () => Infinity }, trusted), null);
+  assert.equal(savingsFor(0), 100);
+  assert.equal(savingsFor(1.3), -30);
+  assert.equal(savingsFor(0.39), 61);
+  assert.equal(displayPrice({ ...CHEAP, promptUsdPerToken: Number.MIN_VALUE }, { displayShare: () => Number.MIN_VALUE }, new Map()), null);
+});
+
+test("discovery endpoints agree on positive prices and omit unknown prices", async (t) => {
+  const fs = await import("node:fs"), os = await import("node:os"), path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "display-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, "observed.json");
+  const models = ["deepseek-v4.1-flash", "unknown", "openai-gpt-oss-20b", "uncensored"].map(id => ({ ...CHEAP, id }));
+  fs.writeFileSync(file, JSON.stringify(Object.fromEntries(models.map(m => [m.id, [0, 0, 0]]))));
+  const catalogue = { ...fakeCatalogue, list: async () => models, resolve: async (id) => {
+    const m = models.find(m => m.id === id);
+    if (!m) throw new UnknownModel("That model is not available.");
+    return m;
+  }, market: async () => new Map([
+    [models[0].id, { trustedShare: 0.0114 }], [models[2].id, { trustedShare: 0.0006 }], [models[3].id, { trustedShare: 1 }],
+  ]) };
+  const { url } = await serve(t, { catalogue, config: { ...CONFIG, observedFile: file } });
+  const listed = (await (await fetch(`${url}/v1/models`)).json()).data.filter(m => models.some(x => x.id === m.id));
+  const pricing = (await (await fetch(`${url}/pricing.json`)).json()).models;
+  for (const m of listed) {
+    const p = pricing.find(x => x.id === m.id);
+    if (m.id === "unknown") {
+      for (const key of ["singitUsdPerMillionTokens", "expectedUsdPerMillionTokens", "savingsVsListPct"]) assert.equal(m[key], undefined);
+      assert.ok(!p.perMillion);
+    } else {
+      assert.equal(m.expectedUsdPerMillionTokens.basis, "trusted");
+      assert.ok(m.singitUsdPerMillionTokens.input > 0 && m.singitUsdPerMillionTokens.output > 0);
+      assert.ok(m.savingsVsListPct <= 99);
+      assert.deepEqual(p.perMillion, m.singitUsdPerMillionTokens);
+    }
+  }
+  assert.equal(listed.find(m => m.id === "openai-gpt-oss-20b").savingsVsListPct, 99);
+  assert.equal(listed.find(m => m.id === "uncensored").savingsVsListPct, -30);
+});
+
+
+test("zero observations retain main's free-answer list-price budget debit", async () => {
+  const { ObservedPrices } = await import("../src/observed.mjs");
+  const { freeAnswerCost } = await import("../src/free.mjs");
+  const observed = new ObservedPrices();
+  const model = { promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 };
+  const usage = { buyer_cost_micro: 0, prompt_tokens: 500, completion_tokens: 0 };
+  for (let i = 0; i < 3; i++) observed.record("m", usage, model);
+  assert.deepEqual(observed.shares.get("m"), [0, 0, 0]);
+  assert.equal(observed.share("m"), 0);
+  assert.equal(observed.displayShare("m"), null);
+  const input = { chars: 500, messages: [{ role: "user", content: "hello" }] };
+  assert.equal(freeAnswerCost(usage, model, input, 400, observed.share("m")), 500);
+  assert.equal(freeAnswerCost(usage, model, input, 400, observed.share("m")),
+    freeAnswerCost(usage, model, input, 400));
+});
