@@ -293,6 +293,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         }
         if (spentOnReasoning(route, data)) throw new NoAnswer(response.status, "max_tokens_spent_reasoning");
         if (!hasAnswer(route, data)) throw new NoAnswer(response.status, "no_text");
+        catalogue?.noteAnswered?.(req.format.model);
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
         const usage = billWithDiagnostics({ ...data.usage, buyer_cost_micro: reported },
           terms, exact, route, req.format.model, log);

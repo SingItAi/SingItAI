@@ -67,9 +67,7 @@
   <url><loc>https://singitai.app/models/deepseek-v4.1-flash-uncensored/</loc></url>
   <url><loc>https://singitai.app/models/devstral-2-123b/</loc></url>
   <url><loc>https://singitai.app/models/e2ee-deepseek-v4-flash/</loc></url>
-  <url><loc>https://singitai.app/models/e2ee-gemma-3-27b/</loc></url>
   <url><loc>https://singitai.app/models/e2ee-gemma-4-26b-a4b-uncensored-p/</loc></url>
-  <url><loc>https://singitai.app/models/e2ee-gemma-4-31b/</loc></url>
   <url><loc>https://singitai.app/models/e2ee-glm-5-2-p/</loc></url>
   <url><loc>https://singitai.app/models/e2ee-glm-5.1/</loc></url>
   <url><loc>https://singitai.app/models/e2ee-gpt-oss-120b-p/</loc></url>
@@ -85,7 +83,6 @@
   <url><loc>https://singitai.app/models/gemini-3-6-flash/</loc></url>
   <url><loc>https://singitai.app/models/gemini-3-flash-preview/</loc></url>
   <url><loc>https://singitai.app/models/gemini-3.1-flash-lite/</loc></url>
-  <url><loc>https://singitai.app/models/gemini-3.1-pro/</loc></url>
   <url><loc>https://singitai.app/models/gemini-3.1-pro-preview/</loc></url>
   <url><loc>https://singitai.app/models/gemini-3.7-flash/</loc></url>
   <url><loc>https://singitai.app/models/gemini-3.8-flash/</loc></url>

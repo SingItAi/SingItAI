@@ -169,9 +169,7 @@ singit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rule
 | [DeepSeek V4.1 Flash Uncensored](https://singitai.app/models/deepseek-v4.1-flash-uncensored/) | $0.0585 | $0.65 | 0.001523 | 0.0015 | 0.002523 | 0.002158 |
 | [Devstral 2 123B](https://singitai.app/models/devstral-2-123b/) | $0.010088 | $0.05044 | 0.0015 | 0.0015 | 0.002064 | 0.00202 |
 | [DeepSeek V4 Flash E2EE](https://singitai.app/models/e2ee-deepseek-v4-flash/) | $0.15379 | $0.315185 | 0.0015 | 0.0015 | 0.002283 | 0.002086 |
-| [Gemma 3 27B E2EE](https://singitai.app/models/e2ee-gemma-3-27b/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
 | [Gemma 4 26B A4B Uncensored (E2EE)](https://singitai.app/models/e2ee-gemma-4-26b-a4b-uncensored-p/) | $0.21242 | $0.98384 | 0.001805 | 0.0015 | 0.002805 | 0.002242 |
-| [Gemma 4 31B (E2EE)](https://singitai.app/models/e2ee-gemma-4-31b/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
 | [GLM 5.2 E2EE](https://singitai.app/models/e2ee-glm-5-2-p/) | $1.47875 | $4.85875 | 0.005302 | 0.002294 | 0.006302 | 0.003294 |
 | [GLM 5.1 E2EE](https://singitai.app/models/e2ee-glm-5.1/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
 | [GPT OSS 120B](https://singitai.app/models/e2ee-gpt-oss-120b-p/) | $0.1453231 | $0.7266155 | 0.001595 | 0.0015 | 0.002595 | 0.00218 |
@@ -187,7 +185,6 @@ singit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rule
 | [Gemini 3.6 Flash](https://singitai.app/models/gemini-3-6-flash/) | $0.2925 | $1.4625 | 0.00222 | 0.0015 | 0.00322 | 0.002367 |
 | [Gemini 3 Flash Preview](https://singitai.app/models/gemini-3-flash-preview/) | $0.0065 | $0.039 | 0.0015 | 0.0015 | 0.002064 | 0.00202 |
 | [Gemini 3.1 Flash Lite](https://singitai.app/models/gemini-3.1-flash-lite/) | $0.00325 | $0.0195 | 0.0015 | 0.0015 | 0.002033 | 0.002011 |
-| [Gemini 3.1 Pro](https://singitai.app/models/gemini-3.1-pro/) | Not listed | Not listed | 0.0015 | 0.0015 | 0.002 | 0.002 |
 | [Gemini 3.1 Pro Preview](https://singitai.app/models/gemini-3.1-pro-preview/) | $0.47281 | $2.83686 | 0.003285 | 0.002581 | 0.004285 | 0.003581 |
 | [Gemini 3.7 Flash](https://singitai.app/models/gemini-3.7-flash/) | $0.00975 | $0.04875 | 0.0015 | 0.0015 | 0.00208 | 0.002025 |
 | [Gemini 3.8 Flash](https://singitai.app/models/gemini-3.8-flash/) | $0.01576575 | $0.07882875 | 0.0015 | 0.0015 | 0.002088 | 0.002026 |

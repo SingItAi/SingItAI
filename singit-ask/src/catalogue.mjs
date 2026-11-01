@@ -1,3 +1,5 @@
+import { NEVER_HIDE, MAX_PROVIDERS, validId, readSuspensions, writeSuspensions } from "./suspensions.mjs";
+export { NEVER_HIDE } from "./suspensions.mjs";
 import { bookPrices, derivedPrice, matchesBook } from "./reference-prices.mjs";
 // Every text model Surplus sells, read from Surplus itself: a hand-kept list of 400+ models would be stale
 // the day a seller adds one. The list is public; the prices are per token in USD.
@@ -6,6 +8,8 @@ const TTL_MS = 6 * 60 * 60 * 1000;
 // The marketplace's cheapest offers move; the page showing them is public and large (about 1.7 MB), so ten minutes.
 const MARKET_TTL_MS = 10 * 60 * 1000;
 const VIDEO_HEALTH_TTL_MS = 60 * 1000;
+// A single rejection older than this does not make the next one a second consecutive rejection.
+const STREAK_MS = 24 * 60 * 60 * 1000;
 
 export class UnknownModel extends Error {}
 export class UnpricedModel extends UnknownModel {
@@ -172,9 +176,20 @@ export function priceGuard(catalogue, id, bufferPp) {
 // cached is served at once even when it is old, and one refresh at a time runs in the background. Only the very
 // first read, with nothing cached yet, waits.
 export class ModelCatalogue {
-  constructor({ url, fetchImpl = fetch, now = Date.now, blocked = [], unservableTtlMs = 15 * 60 * 1000, priceRejectedTtlMs = 120_000, liveDiscountTtlMs = 30_000 }) {
+  constructor({ url, fetchImpl = fetch, now = Date.now, blocked = [], unservableTtlMs = 15 * 60 * 1000, priceRejectedTtlMs = 120_000, liveDiscountTtlMs = 30_000, neverHide = [], suspensionsFile = null }) {
     Object.assign(this, { url, fetchImpl, now, unservableTtlMs });
     this.unservable = new Map();
+    this.sellers = new Map();
+    this.neverHide = new Set([...NEVER_HIDE, ...neverHide]);
+    this.suspensionsFile = suspensionsFile;
+    this.rejections = new Map();
+    this.rejectionSeq = 0;
+    if (unservableTtlMs > 0) for (const [id, r] of readSuspensions(suspensionsFile)) {
+      if (this.neverHide.has(id)) continue;
+      const { until, ...record } = r;
+      this.rejections.set(id, record);
+      if (until > this.now()) this.unservable.set(id, until);
+    }
     Object.assign(this, { priceRejectedTtlMs, liveDiscountTtlMs });
     this.priceRejected = new Map();
     this.liveBooks = new Map();
@@ -257,10 +272,13 @@ export class ModelCatalogue {
         const ids = [...((this.models ?? (await this.loadModels(), this.models)) ?? new Map()).keys()];
         const served = new Set();
         const guards = new Map();
+        const sellers = new Map();
+        const readable = new Map();
         let next = 0;
         const worker = async () => {
           while (next < ids.length) {
             const id = ids[next++];
+            const seenSeq = this.rejectionSeq;
             try {
               const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`,
                                                     { signal: AbortSignal.timeout(10_000) });
@@ -270,11 +288,19 @@ export class ModelCatalogue {
                 if (price) this.bookPrices.set(id, price);
               }
               if (book ? canServe(book, this.blocked, id) : (this.served?.has(id) ?? true)) served.add(id);
+              const offers = book?.data?.offers ?? book?.offers;
+              if (book && Array.isArray(offers) && matchesBook(book, id)) {
+                readable.set(id, seenSeq);
+                sellers.set(id, new Set((book?.data?.offers ?? book?.offers ?? [])
+                  .filter(o => matchesBook(book, id) && qualifies(o, this.blocked, id))
+                  .map(o => String(o.provider_id ?? "")).filter(validId)));
+              } else if (this.sellers.has(id)) sellers.set(id, this.sellers.get(id));
               const share = book ? cheapestShare(book, this.blocked, id) : null;
               if (share !== null) guards.set(id, share);
               else if (!book && this.guardShares.has(id)) guards.set(id, this.guardShares.get(id));
             } catch {
               if (this.served?.has(id) ?? true) served.add(id);
+              if (this.sellers.has(id)) sellers.set(id, this.sellers.get(id));
               if (this.guardShares.has(id)) guards.set(id, this.guardShares.get(id));
             }
             if (pauseMs) await new Promise((resolve) => setTimeout(resolve, pauseMs));
@@ -283,7 +309,23 @@ export class ModelCatalogue {
         await Promise.all(Array.from({ length: 2 }, worker));
         this.decorate();
         const floor = this.served ? this.served.size / 2 : ids.length / 4;
-        if (ids.length && served.size >= floor) { this.served = served; this.guardShares = guards; this.servedAt = this.now(); }
+        if (ids.length && served.size >= floor) { this.served = served; this.guardShares = guards; this.sellers = sellers; this.servedAt = this.now();
+          for (const [id, r] of this.rejections) {
+            // Only a book requested after the latest rejection says anything about that rejection.
+            if (!(readable.get(id) >= (r.seq ?? 0))) continue;
+            if (!served.has(id)) { r.gone = true; continue; }
+            // Rejected before any book was read: this pass only sets the seller baseline, it proves no recovery.
+            if (r.unknown) {
+              const all = [...(sellers.get(id) ?? [])];
+              Object.assign(r, { providers: all.slice(0, MAX_PROVIDERS), truncated: all.length > MAX_PROVIDERS, unknown: false });
+              if (r.gone) this.noteAnswered(id);
+              continue;
+            }
+            // A truncated provider list cannot tell which sellers are new, so it only releases through gone/answers.
+            const fresh = !r.truncated && [...(sellers.get(id) ?? [])].some(p => !r.providers.includes(p));
+            if (r.gone || fresh) this.noteAnswered(id);
+          }
+          this.saveSuspensions(); }
         else if (ids.length) this.servedAt = this.now();  // keep what was offered; try again next time
       } finally { this.loadingServed = null; }
     })();
@@ -348,6 +390,45 @@ export class ModelCatalogue {
   // Routing can reject a model whose public book still looks healthy. Keep that paid failure briefly so
   // subsequent buyers are not asked to sign a payment that cannot produce an answer. Unknown ids are bounded
   // too: neither a failing seller nor arbitrary callers should make this process retain ids without limit.
+  saveSuspensions() {
+    if (!this.suspensionsFile) return;
+    clearTimeout(this.suspensionsTimer);
+    this.suspensionsTimer = setTimeout(() => {
+      const data = Object.fromEntries([...this.rejections].map(([id, r]) => [id, { count: r.count, lastAt: r.lastAt, providers: r.providers, truncated: r.truncated === true || r.unknown === true, gone: r.gone, until: this.unservable.get(id) ?? 0 }]));
+      this.suspensionsWrite = (this.suspensionsWrite ?? Promise.resolve()).then(() => writeSuspensions(this.suspensionsFile, data));
+    }, 20);
+    this.suspensionsTimer.unref?.();
+  }
+
+  noteRejected(id) {
+    if (!(this.unservableTtlMs > 0) || !validId(id) || this.neverHide.has(id)) {
+      this.markUnservable(id); return;
+    }
+    // One old rejection is not a streak: it only counts toward suspension while it is recent.
+    const before = this.rejections.get(id);
+    const stale = before && before.count < 2 && this.now() - before.lastAt > STREAK_MS;
+    const count = Math.min(1000000, (stale ? 0 : before?.count ?? 0) + 1);
+    this.rejections.delete(id);
+    while (this.rejections.size >= 300) {
+      const oldest = this.rejections.keys().next().value;
+      this.rejections.delete(oldest); this.unservable.delete(oldest);
+    }
+    this.rejections.set(id, { count, seq: ++this.rejectionSeq, lastAt: this.now(), providers: [...(this.sellers.get(id) ?? [])].slice(0, MAX_PROVIDERS),
+      truncated: (this.sellers.get(id)?.size ?? 0) > MAX_PROVIDERS, unknown: !this.sellers.has(id), gone: false });
+    this.markUnservable(id, Math.min(7200000, this.unservableTtlMs * 2 ** Math.min(count - 1, 30)));
+    this.saveSuspensions();
+  }
+
+  noteAnswered(id) {
+    const changed = this.rejections.delete(id);
+    const marked = this.unservable.delete(id);
+    if (changed || marked) this.saveSuspensions();
+  }
+
+  isSuspended(id) { return !this.neverHide.has(id) && (this.rejections.get(id)?.count ?? 0) >= 2; }
+  suspensionSnapshot() { return new Map([...this.rejections].filter(([id]) => this.isSuspended(id))); }
+  async listable(id) { return !this.isSuspended(id) && !(this.unservable.get(id) > this.now()) && (!this.served || this.served.has(id)); }
+
   markUnservable(id, ttlMs = this.unservableTtlMs) {
     if (!(this.unservableTtlMs > 0) || !(ttlMs > 0)) return;
     for (const [key, expiry] of this.unservable) if (expiry <= this.now()) this.unservable.delete(key);
@@ -401,7 +482,7 @@ export class ModelCatalogue {
   }
 
   unservableRetryAfter(id) {
-    return this.isUnservable(id) ? Math.max(30, Math.ceil((this.unservable.get(id) - this.now()) / 1000)) : 30;
+    return this.isUnservable(id) ? Math.min(3600, Math.max(30, Math.ceil((this.unservable.get(id) - this.now()) / 1000))) : 30;
   }
 
   // Whether a model can be answered now: true until the order books have been read once.
@@ -457,7 +538,7 @@ export class ModelCatalogue {
 
   async list() {
     // Observed prices are shares of list price and cannot supply a missing list price.
-    return [...(await this.all()).values()].filter(m => m.unpriced !== true).sort((a, b) => a.completionUsdPerToken - b.completionUsdPerToken);
+    return [...(await this.all()).values()].filter(m => m.unpriced !== true && !this.isSuspended(m.id)).sort((a, b) => a.completionUsdPerToken - b.completionUsdPerToken);
   }
 
   async imageModels() {
@@ -501,11 +582,13 @@ export class ModelCatalogue {
 export function markUnservable(catalogue, model, error, log) {
   if (error.code === "minimum_discount_not_met") catalogue?.markPriceRejected?.(model, { bestDiscountPct: error.bestDiscountPct });
   if (error.code !== "no_healthy_sellers") return;
-  catalogue?.markUnservable?.(model);
+  if (catalogue?.noteRejected) catalogue.noteRejected(model);
+  else catalogue?.markUnservable?.(model);
   if (catalogue?.isUnservable?.(model)) {
     const minutes = catalogue.unservableTtlMs / 60_000;
     log(`singit-ask: model ${model} marked unservable for ${minutes} min (no_healthy_sellers)`);
   }
+  if (catalogue?.isSuspended?.(model)) log(`singit-ask: model ${model} suspended after ${catalogue.rejections.get(model).count} consecutive no_healthy_sellers, retry in ${Math.ceil((catalogue.unservable.get(model) - catalogue.now()) / 60000)} min`);
 }
 
 export function unservableError(catalogue, id, ErrorClass) {

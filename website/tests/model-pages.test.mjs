@@ -340,7 +340,7 @@ test("held model has no page or discovery links and both temporary redirects exi
 test("returned DeepSeek model has a page and discovery links without temporary redirects", async () => {
   const id = "deepseek-v4.1-flash-uncensored";
   const hold = JSON.parse(await readFile(path.join(root, "scripts/hidden-models.json"), "utf8"));
-  assert.deepEqual(hold, { hidden: [] });
+  assert.ok(!hold.hidden.some(entry => entry.id === id));
   assert.ok((await read(`models/${id}/index.html`)).includes(`/models/${id}/`));
   for (const file of ["sitemap.xml", "llms-models.txt", "models/all/index.html"]) {
     assert.ok((await read(file)).includes(`/models/${id}/`), file);
@@ -353,4 +353,15 @@ test('published free model snapshot matches Ask defaults and the shared cap', as
   const s = JSON.parse(await readFile(path.join(website, 'data/models-snapshot.json'), 'utf8'));
   assert.deepEqual(s.free.models, DEFAULT_FREE_MODELS.map(id => `free/${id}`));
   assert.equal(s.free.budgetUsdPerDay, FREE_DEFAULTS.budgetUsdPerDay);
+});
+
+test('a newer live snapshot warns to release a held model', () => {
+  const hold = { hidden: [{ id: 'fixture', since: '2026-11-01', reason: 'Seller unavailable' }] };
+  const warnings = [];
+  const s = { fetchedAt: '2026-11-02T00:00:00Z', models: [{ id: 'fixture' }] };
+  assert.deepEqual(visibleSnapshot(s, hold, line => warnings.push(line)).models, []);
+  assert.deepEqual(warnings, ['Hidden model is listed live again: fixture; remove it from scripts/hidden-models.json']);
+  warnings.length = 0;
+  visibleSnapshot({ ...s, fetchedAt: '2026-10-31T00:00:00Z' }, hold, line => warnings.push(line));
+  assert.deepEqual(warnings, []);
 });

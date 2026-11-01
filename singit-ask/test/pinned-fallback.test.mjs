@@ -98,3 +98,8 @@ for (const mode of ['no-opt-in', 'healthy', 'exhausted', 'invalid']) test(`pinne
   assert.equal(facilitator.calls.verify, 0);
   assert.equal(facilitator.calls.settle.length, 0);
 });
+
+test('a suspended fallback is skipped even when its backoff has expired', async () => {
+  await assert.rejects(choose({ ...unhealthy, isSuspended: id => id === fallback,
+    canAnswer: async () => true }), error => error.status === 503);
+});
