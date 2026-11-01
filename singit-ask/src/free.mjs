@@ -4,7 +4,7 @@
 //
 // Shared daily spend and answer counts persist; visitor networks remain in memory only.
 
-import { safeDiagnostic } from "./payment-diagnostics.mjs";
+import { safeDiagnostic } from "./safe-diagnostic.mjs";
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";

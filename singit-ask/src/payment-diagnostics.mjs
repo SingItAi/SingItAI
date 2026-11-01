@@ -1,11 +1,8 @@
 // Diagnostics only: never serialize a payment, transaction, signature, or exception.
 import { decodePaymentSignatureHeader } from '@x402/core/http';
 
-export const safeDiagnostic = value => String(value ?? 'unknown')
-  .replace(/\b(?:authorization|token|key|payment-signature|x-payment)\s*[:=][^\r\n]*/gi, '[redacted]')
-  .replace(/\bbearer\s+\S+/gi, '[redacted]')
-  .replace(/0x[a-fA-F0-9]+|[A-Za-z0-9+/=_-]{32,}/g, '[redacted]')
-  .replace(/[^\x20-\x7e]/g, ' ').slice(0, 200);
+export { safeDiagnostic };
+import { safeDiagnostic } from './safe-diagnostic.mjs';
 const short = value => typeof value === 'string' && /^[A-Za-z0-9]{9,}$/.test(value)
   ? `${value.slice(0, 4)}...${value.slice(-4)}` : 'unknown';
 
