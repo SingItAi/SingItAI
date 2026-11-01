@@ -414,6 +414,8 @@ test("GET /llms.txt describes only what is live: Exa, free tier, prices, no vide
   assert.match(on.text, /`exact` \(a flat price for a typical-length answer, about 30% of max_tokens\)/);
   assert.ok(on.text.includes("https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md"));
   assert.ok(on.text.includes("MCP server (API key, not x402): https://app.singitai.app/mcp"));
+  assert.ok(!on.text.includes("singitai.app/llms.txt"));
+  assert.ok(on.text.includes("https://app.singitai.app/app/"));
 
   const off = await llms({ exaKey: null }, { ...CONFIG, freeModels: [] });
   assert.ok(!off.text.includes("when enabled"));

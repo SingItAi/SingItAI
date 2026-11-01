@@ -2,6 +2,8 @@
 
 > Your agent spends. Your wallet keeps the money: set a daily and a per-purchase limit once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits.
 
+Agents and scripts: fetch machine-readable files from https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402); this host serves the human site.
+
 Agents with no wallet of their own: use an MCP key with limits your owner sets: https://singitai.app/docs/mcp-key/
 Caps apply only to calls made with the key to SingIt's MCP and /v1 endpoint; they do not limit spending elsewhere or protect an agent's own wallet.
 Free first call: POST https://ask.singitai.app/v1/chat/completions with model free/deepseek-v4.1-flash; no key or wallet, subject to the free allowance below.
