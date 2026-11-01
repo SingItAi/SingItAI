@@ -421,7 +421,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                                     exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({
                                       url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
-                                      suspensionsFile: config.suspensionsFile, neverHide: [config.model, ...Object.values(AUTO_CONFIG.tiers).flat()], unservableTtlMs: config.unservableTtlMs }) : null,
+                                      suspensionsFile: config.suspensionsFile, neverHide: [config.model, ...Object.values(AUTO_CONFIG.tiers).flat(), ...freeTerms(config).models], unservableTtlMs: config.unservableTtlMs }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }),
                                     spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.

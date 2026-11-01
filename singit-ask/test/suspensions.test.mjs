@@ -244,3 +244,13 @@ test('a rejection recorded before any book was read is not released by the first
   await c.loadServed(0);
   assert.equal(c.isSuspended('m'), false);
 });
+test('free-list models restored from the file lose their escalated backoff', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'susp-'));
+  try {
+    const file = join(dir, 'state.json');
+    await writeFile(file, JSON.stringify({ 'free-model': { count: 3, lastAt: 1, providers: [], truncated: false, gone: false, until: 9e12 } }));
+    const c = new ModelCatalogue({ url: 'unused', suspensionsFile: file, neverHide: ['free-model'], now: () => 1000 });
+    assert.equal(c.isSuspended('free-model'), false);
+    assert.equal(c.isUnservable('free-model'), false);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
