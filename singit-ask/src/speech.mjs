@@ -18,8 +18,11 @@ export const AUDIO_MODELS_ROUTE = "/v1/audio/models";
 export const SPEECH_TERMS = Object.freeze({ markupBps: 3000, maxChars: 4096 });
 const FORMATS = new Set(["mp3", "opus", "aac", "flac", "wav", "pcm"]);
 export const SPEECH_CONTENT_TYPES = Object.freeze({
-  mp3: "audio/mpeg", wav: "audio/wav", flac: "audio/flac", opus: "audio/ogg", aac: "audio/aac", pcm: "audio/L16",
+  mp3: "audio/mpeg", wav: "audio/wav", flac: "audio/flac", opus: "audio/ogg", aac: "audio/aac", pcm: "audio/pcm",
 });
+// aac packaged in an MP4/M4A box is audio/mp4, not an elementary AAC stream; everything else keeps the requested format's type.
+export const speechContentType = (format, audio) =>
+  format === "aac" && audio.length >= 8 && audio.subarray(4, 8).toString("latin1") === "ftyp" ? "audio/mp4" : SPEECH_CONTENT_TYPES[format];
 
 // Container signatures only: this is a pre-settlement sanity check, not a decoder.
 export function matchesSpeechFormat(audio, format = "mp3") {
@@ -193,7 +196,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);
     const billing = speechPrice(listAtomic, network);
     log(`singit-ask: ${request.input.length} characters read by ${request.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC (format ${format}, upstream content-type ${JSON.stringify(type)}, ${audio.length} bytes)`);
-    res.set({ "Content-Type": SPEECH_CONTENT_TYPES[format], "X-SingIt-Charged-Atomic": billing.totalAtomic, "X-SingIt-List-Atomic": billing.listAtomic,
+    res.set({ "Content-Type": speechContentType(format, audio), "X-SingIt-Charged-Atomic": billing.totalAtomic, "X-SingIt-List-Atomic": billing.listAtomic,
               "Cache-Control": "no-store" });
     res.send(audio);
   });

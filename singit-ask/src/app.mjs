@@ -711,7 +711,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               + "GET /v1/audio/models. Nothing is charged without audio.",
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
             requestBody: SPEECH_REQUEST_BODY(),
-            responses: { 200: { description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type.", content: Object.fromEntries(Object.values(SPEECH_CONTENT_TYPES).map((type) => [type, {}])) },
+            responses: { 200: { description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type.", content: Object.fromEntries([...Object.values(SPEECH_CONTENT_TYPES), "audio/mp4"].map((type) => [type, {}])) },
                          ...paidErrors({ exactTimeout: 120, exampleMessage: "No audio was made. You were not charged.", exampleCode: "no_billable_answer", notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },

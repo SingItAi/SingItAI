@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { UnknownModel, parseVoiceModels } from "../src/catalogue.mjs";
-import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, matchesSpeechFormat, readSpeechRequest, speechListAtomic, speechPrice } from "../src/speech.mjs";
+import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, speechContentType, matchesSpeechFormat, readSpeechRequest, speechListAtomic, speechPrice } from "../src/speech.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -167,6 +167,13 @@ for (const [format, body] of Object.entries(FORMAT_BODIES)) {
   });
 }
 
+test("pcm is labelled audio/pcm and MP4-packaged aac audio/mp4", () => {
+  assert.equal(SPEECH_CONTENT_TYPES.pcm, "audio/pcm");
+  assert.equal(speechContentType("aac", Buffer.from("0000ftypM4A ")), "audio/mp4");
+  assert.equal(speechContentType("aac", Buffer.from([0xff, 0xf1, 0, 0, 0, 0, 0, 0])), "audio/aac");
+  assert.equal(speechContentType("wav", Buffer.from("0000ftypM4A ")), "audio/wav");
+});
+
 test("speech signature alternatives and reserved sync bits", () => {
   assert.equal(matchesSpeechFormat(Buffer.from("ID")), false);
   assert.equal(matchesSpeechFormat(Buffer.from("RIFF0000NOPE"), "wav"), false);
@@ -223,3 +230,14 @@ for (const [format, type, audio] of [
       && line.includes(`first4 ${audio.subarray(0, 4).toString("hex")}`)));
   });
 }
+
+test("an MP4-packaged aac answer is served as audio/mp4 and settled once", async (t) => {
+  const audio = Buffer.from("0000ftypM4A 0000");
+  const { url, facilitator } = await serve(t, { surplus: fakeSurplus({ type: "audio/aac", body: audio }) });
+  const body = { ...SPEECH, response_format: "aac" };
+  const required = decode((await post(`${url}${SPEECH_ROUTE}`, body)).headers.get("payment-required"));
+  const paid = await post(`${url}${SPEECH_ROUTE}`, body, pay(required, BASE));
+  assert.equal(paid.status, 200);
+  assert.equal(paid.headers.get("content-type"), "audio/mp4");
+  assert.equal(facilitator.calls.settle.length, 1);
+});
