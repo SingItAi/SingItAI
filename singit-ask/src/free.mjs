@@ -4,6 +4,7 @@
 //
 // Shared daily spend and answer counts persist; visitor networks remain in memory only.
 
+import { safeDiagnostic } from "./payment-diagnostics.mjs";
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -232,7 +233,7 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
           finish_reason: answer.finishReason }], usage: answer.usage, billing: { free: true } });
     } catch (error) {
       allowance.giveBack(visitor, turn);
-      log(`singit-ask: no free answer after ${Date.now() - started} ms (${error.name})`);
+      log(`singit-ask: no free answer after ${Date.now() - started} ms (${safeDiagnostic(error.name)}${error.name === "UpstreamError" ? ` code=${safeDiagnostic(error.code)} status=${safeDiagnostic(error.status)}` : ""})`);
       res.set("Retry-After", "30").status(503).json({ error: { message: "No answer came back. Try again.", type: "upstream_error", code: "no_billable_answer" } });
     } finally {
       allowance.done();
