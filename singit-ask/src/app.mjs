@@ -71,14 +71,15 @@ export function readRequest(body) {
   if (chars > LIMITS.chars) throw new RequestError(400, `Keep the messages under ${LIMITS.chars} characters in all.`);
   const asked = Number(body.max_tokens ?? LIMITS.defaultTokens);
   const maxTokens = Number.isInteger(asked) && asked > 0 ? Math.min(asked, LIMITS.maxTokens) : LIMITS.defaultTokens;
-  const model = body.model === undefined || body.model === "singit-ask" ? undefined : body.model;
+  const modelOmitted = body.model === undefined || body.model === null;
+  const model = modelOmitted || body.model === "singit-ask" ? undefined : body.model;
   if (model !== undefined && (typeof model !== "string" || !model.trim() || model.length > 120)) {
     throw new RequestError(400, "model must be the id of a model listed at GET /v1/models.");
   }
   if (Object.hasOwn(body, "min_tier") && (model?.trim() !== AUTO_ID || !TIERS.includes(body.min_tier))) {
     throw new RequestError(400, "min_tier must be eco, standard or premium and requires model singit/auto.");
   }
-  return { ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, model: model?.trim(), messageCount: clean.length };
+  return { ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, modelOmitted, model: model?.trim(), messageCount: clean.length };
 }
 
 // The model an answer is bought from and what it may cost. No model, or the default one, is still looked up on
