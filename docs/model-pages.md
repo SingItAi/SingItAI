@@ -73,7 +73,7 @@ that stale entry when the generator warns that it is absent from the snapshot.
 
 ## Agent text files
 
-Fetch machine-readable files (llms.txt, pricing.json, openapi.json, .well-known/x402) from https://ask.singitai.app because singitai.app is behind a browser check that blocks some default HTTP-library user agents; model pages link to the x402 seller's llms.txt there.
+Fetch machine-readable files (llms.txt, pricing.json, openapi.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt) from https://ask.singitai.app because singitai.app is behind a browser check that blocks some default HTTP-library user agents; model pages link to the x402 seller's llms.txt there.
 
 `node scripts/ask-routes-snapshot.mjs` refreshes `website/data/ask-routes.json` from the free public OpenAPI endpoint. It retains sorted path/method summaries and payment price ranges, excludes unsupported media routes, and records public operations without payment metadata as zero-priced. Private operations without payment metadata have no price. For offline input use `--input openapi.json --fetched-at <UTC ISO timestamp>`; `--out` selects an output file. No model call or payment is made.
 

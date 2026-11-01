@@ -2,14 +2,14 @@
 
 > Your agent spends. Your wallet keeps the money: set a daily and a per-purchase limit once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits.
 
-Agents and scripts: fetch machine-readable files from https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402); this host serves the human site.
+Agents and scripts: fetch machine-readable files from https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt); this host serves the human site.
 
 Agents with no wallet of their own: use an MCP key with limits your owner sets: https://singitai.app/docs/mcp-key/
 Caps apply only to calls made with the key to SingIt's MCP and /v1 endpoint; they do not limit spending elsewhere or protect an agent's own wallet.
 Free first call: POST https://ask.singitai.app/v1/chat/completions with model free/deepseek-v4.1-flash; no key or wallet, subject to the free allowance below.
 
-Agent instructions: https://singitai.app/SKILL.md
-Discovery card (MCP, not an A2A task endpoint): https://singitai.app/.well-known/agent-card.json
+Agent instructions: https://ask.singitai.app/SKILL.md
+Discovery card (MCP, not an A2A task endpoint): https://ask.singitai.app/.well-known/agent-card.json
 
 ## I need to... -> Call -> Price
 
@@ -120,7 +120,7 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 
 - [Privacy policy](https://singitai.app/privacy/)
 - [Data deletion](https://singitai.app/data-deletion/)
-- [Model pages with prices](https://singitai.app/llms-models.txt)
+- [Model pages with prices](https://ask.singitai.app/llms-models.txt)
 - [All model pages](https://singitai.app/models/all/)
 - [Live models](https://ask.singitai.app/v1/models)
 - [Live reference prices](https://ask.singitai.app/pricing.json)
