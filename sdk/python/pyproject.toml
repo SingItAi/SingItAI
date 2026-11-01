@@ -35,6 +35,8 @@ svm = [
 ]
 test = [
   "pytest>=8",
+  "segno>=1.6,<2",
+  "x402[svm]>=2.25.0,<3",
   "tomli>=2; python_version < '3.11'",
 ]
 
