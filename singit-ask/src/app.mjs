@@ -255,7 +255,7 @@ const INPUT_SCHEMA = {
       } } },
     max_tokens: { type: "integer", minimum: 1, maximum: LIMITS.maxTokens, default: LIMITS.defaultTokens,
       description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
-    model: { type: "string", examples: ["deepseek-v4.1-flash", "claude-opus-5.5", "gpt-5.5", "gemini-3.1-pro"],
+    model: { type: "string", examples: ["deepseek-v4.1-flash", "claude-opus-5.5", "gpt-5.5", "gemini-3.8-flash"],
       description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
     fallback_models: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string" },
       description: "Optional on paid /v1/chat/completions only: 1–3 trimmed unique model ids, excluding the pinned model and singit/auto. Before payment, an unavailable pinned model may use the first healthy priced candidate whose Base upto ceiling is no higher than the pinned ceiling, and in the same auto tier if the pinned model has one. The chosen model determines the quote and usage charge." },
@@ -565,13 +565,16 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
     + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
     + "price; nothing is charged without an answer. Exact payers instead pay a flat price for a typical-length answer.";
-  // <=300 characters: Coinbase's Bazaar ranks listings by metadata completeness, and a description that is half
-  // about billing reads as incomplete on what the endpoint does. Billing stays in DESCRIPTION above (openapi.json,
-  // /.well-known/x402) for the humans/agents that read terms there. It opens with the category words a buyer
-  // searches for and names the brand once, later, not as a prefix (SI-90: Bazaar's search is semantic).
+  // <=500 characters (CDP rejects longer; the other routes stay <=300): Coinbase's Bazaar ranks listings by metadata
+  // completeness, and a description that is half about billing reads as incomplete on what the endpoint does. Billing
+  // stays in DESCRIPTION above (openapi.json, /.well-known/x402) for the humans/agents that read terms there. It opens
+  // with the category words a buyer searches for and names the brand once, later, not as a prefix (SI-90: Bazaar's
+  // search is semantic). It also says what the model field accepts beyond a model id: singit/auto and free/ models.
   const DISCOVERY_DESCRIPTION = "LLM chat completions API, OpenAI-compatible: one endpoint for 100+ models (Claude, "
     + "GPT, Gemini, Grok, DeepSeek, Qwen), no API key or account, pay per call in USDC. Call it when an agent needs an "
-    + "LLM answer, a second opinion, or a model it has no key for. SingIt Ask; models at GET /v1/models.";
+    + "LLM answer, a second opinion, or a model it has no key for. The model singit/auto picks one by tier (eco, "
+    + `standard, premium)${freeOffer ? `; models with the ${FREE_PREFIX} prefix answer with no payment, within a daily limit` : ""}. `
+    + "SingIt Ask; models at GET /v1/models.";
   app.get("/health", open, (_req, res) => {
     res.set("Cache-Control", "no-store");
     res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model, catalogue?.unservableSnapshot?.(), catalogue?.suspensionSnapshot?.()),

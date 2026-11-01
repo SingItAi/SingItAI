@@ -72,7 +72,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 OUR_VERSION = SUPPORTED_VERSIONS[0]
-SERVER_INFO = {"name": "singit", "title": "SingIt x402", "version": "0.1.3"}
+SERVER_INFO = {"name": "singit", "title": "SingIt x402", "version": "0.1.4"}
 INSTRUCTIONS = (
     "Look up prices, models, web pages and market data. get_price, list_price_symbols and list_models are "
     "free and work without a key. Paid tools need a SingIt API key and are charged per call to that key's "

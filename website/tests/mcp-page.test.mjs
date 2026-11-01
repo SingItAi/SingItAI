@@ -91,3 +91,8 @@ test('Every snippet has verification status and required client configuration', 
   assert.ok(decoded.includes(generic));
   for (const method of ['initialize', 'tools/list']) assert.ok(decoded.includes(`"method":"${method}"`));
 });
+
+test('MCP initialize expectation is independent of the deployed version', () => {
+  assert.ok(html.includes('Expected: initialize returns serverInfo name singit and title SingIt x402; tools/list returns 16 tools.'));
+  assert.doesNotMatch(html, /Expected: initialize returns serverInfo\.version/);
+});

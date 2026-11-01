@@ -7,9 +7,9 @@ The hand-written page is `website/docs/mcp/index.html`. Run `node scripts/genera
 | Claim | Source |
 | --- | --- |
 | Remote Streamable HTTP; JSON only, no SSE or sessions; no local server installation | `llms-install.md:3–6`; `sign402-gateway/sign402_gateway/web_mcp.py:1–5` |
-| Endpoint, Registry name, title and version | `server.json:3–6`, remote URL in `server.json:15–17`; `sign402-gateway/sign402_gateway/web_mcp.py:73–80` |
+| Endpoint, Registry name, title and version | `server.json:3–6`, remote URL in `server.json:14–16`; `sign402-gateway/sign402_gateway/web_mcp.py:73–80` |
 | 16 tools, descriptions, schemas, annotations | Keyless `tools/list` of https://app.singitai.app/mcp, fetched 31 October 2026 at 09:27:44 UTC (see the verification record); fields copied to `website/data/mcp-tools.json` under `result.tools`. |
-| Initialize version 0.1.3, protocol 2025-06-18 | Live initialize observation (31 October 2026); corroborated by `sign402-gateway/sign402_gateway/web_mcp.py:73–80`, initialize response at `:557` |
+| Current serverInfo version 0.1.4, protocol 2025-06-18 | Repository declaration in `sign402-gateway/sign402_gateway/web_mcp.py:73–80`, initialize response at `:557` |
 | Three free keyless tools; three free account-read tools requiring a key | `sign402-gateway/sign402_gateway/web_mcp.py:7–9`, `:110–112`, `:617–621`; `sign402-gateway/tests/test_web_mcp.py:170–215` |
 | search scope for web_search/read_page; tools scope for the remaining paid tools | Server initialize instructions in `sign402-gateway/sign402_gateway/web_mcp.py:76–80`, module rules `:10–13`; enforcement in `sign402-gateway/sign402_gateway/web_api_keys.py:313–355` |
 | Account-read tools do not need the paid tools scope | `sign402-gateway/sign402_gateway/web_mcp.py:617–638`; account reads are dispatched before paid-tool enforcement. `llms-install.md:35–36` says “the rest need tools” too broadly; the page follows the implementation for the free account reads. |
@@ -52,3 +52,13 @@ tool table is unchanged and was regenerated offline with
 `docs/docs-pages-sources.md` under “MCP key offer and agent onboarding”. No new
 live verification was performed. Client snippets reuse this page's existing
 repository-verified configurations and environment-variable credentials.
+
+## MCP Registry manifest
+
+The Registry latest version is 0.1.4, published 31 October 2026 from
+`SingItAi/singit-mcp`, the canonical home of `server.json`. The monorepo copy
+is a byte-identical mirror that mcp-publisher can submit. Change both copies
+together and bump the version in both. The latest Registry version already
+points at singit-mcp: claiming a different repository for the same name and
+version would make the Registry history contradictory. The dated live
+initialize observation of 0.1.3 above remains unchanged.

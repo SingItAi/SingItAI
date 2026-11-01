@@ -168,6 +168,8 @@ test("a browser opening a discoverable route with GET gets the same paywall page
 // Coinbase's Bazaar ranks listings by metadata completeness; a description that spends half its budget on billing
 // reads as incomplete on what the endpoint does. Every discoverable route's resource description must stay short
 // and billing-free (billing lives in openapi.json and /.well-known/x402 instead).
+// CDP rejects over 500; only /v1/chat/completions spends past 300, on singit/auto and the free/ models.
+const limit = (route) => (route === ROUTE ? 500 : 300);
 const BILLING_WORDS = /\b(fee|markup|ceiling|settlement)\b|%/i;
 
 test("every discoverable route's 402 resource description is short and billing-free", async (t) => {
@@ -175,7 +177,7 @@ test("every discoverable route's 402 resource description is short and billing-f
   for (const route of DISCOVERABLE) {
     const required = decode((await fetch(`${url}${route}`, { method: "GET" })).headers.get("payment-required"));
     const description = required.resource.description;
-    assert.ok(description.length <= 300, `${route}: description is ${description.length} chars, over 300`);
+    assert.ok(description.length <= limit(route), `${route}: description is ${description.length} chars, over ${limit(route)}`);
     assert.doesNotMatch(description, BILLING_WORDS, `${route}: description mentions billing (${description})`);
   }
 });
@@ -217,7 +219,7 @@ test("every discoverable route is named and described by what it is, with its ca
     const expected = EXPECTED[route];
     assert.equal(serviceName, expected.serviceName, route);
     assert.ok(serviceName.length <= 60, `${route}: serviceName is ${serviceName.length} chars`);
-    assert.ok(description.length <= 300, `${route}: description is ${description.length} chars, over 300`);
+    assert.ok(description.length <= limit(route), `${route}: description is ${description.length} chars, over ${limit(route)}`);
     assert.ok(!description.startsWith("SingIt "), `${route}: description opens with the brand (${description})`);
     assert.match(description, expected.opens, route);
     assert.match(description, /SingIt/, `${route}: the brand is named once, later`);

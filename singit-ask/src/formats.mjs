@@ -152,7 +152,7 @@ const EXAMPLES = {
   "/v1/responses": { model: "gpt-5.5", input: "What is x402?", max_output_tokens: 300 },
 };
 // What each field is, for the Bazaar listing: the fields readFormatRequest() checks, nothing it would refuse.
-const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "gpt-5.5", "gemini-3.1-pro"],
+const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "gpt-5.5", "gemini-3.8-flash"],
   description: "Any model id from GET /v1/models; Anthropic's dashed names (claude-sonnet-5-5) work too." };
 const STREAM_FIELD = { type: "boolean", enum: [false], description: "Streaming is not offered: an answer is paid for whole." };
 const INPUT_SCHEMAS = {
