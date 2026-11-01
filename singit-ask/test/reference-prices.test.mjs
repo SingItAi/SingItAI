@@ -46,3 +46,17 @@ test('catalogue refresh replaces reference objects, preserves positive sides and
   book = { offers: [offer(1, 1)] }; await c.loadServed(0);
   assert.equal((await c.resolve(id)).promptUsdPerToken, 2.5e-6);
 });
+
+test('a discount_pct on a reference model book never lowers its quote or asks for a discount floor', async () => {
+  const id = 'gemini-3.1-pro';
+  const discounted = { model: id, offers: [offer(3000000, 20000000, { healthy: true, available: true, discount_pct: 100 })] };
+  const c = new ModelCatalogue({ url: 'https://fixture', fetchImpl: async url => url.endsWith('/v1/models')
+    ? Response.json({ data: [{ id, pricing: { prompt: 0, completion: 0 }, architecture: { modality: 'text->text' }, supported_parameters: ['max_tokens'] },
+      { id: 'priced', pricing: { prompt: 1e-6, completion: 1e-6 }, architecture: { modality: 'text->text' }, supported_parameters: ['max_tokens'] }] })
+    : Response.json(url.endsWith(id) ? discounted : { model: 'priced', offers: [{ trusted: true, healthy: true, available: true, discount_pct: 50 }] }) });
+  await c.loadServed(0);
+  assert.equal(c.guardShare(id), null);
+  assert.deepEqual(priceGuard(c, id, 1), { share: 1, minDiscount: null });
+  assert.equal(c.guardShare('priced'), 0.5);
+  assert.equal((await c.resolve(id)).promptUsdPerToken, 3e-6 * 1.1);
+});

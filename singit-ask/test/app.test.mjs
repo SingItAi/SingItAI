@@ -726,7 +726,7 @@ test("ModelCatalogue.guardShare: the cheapest qualifying offer's share of list, 
   const fetchImpl = async (url) => {
     url = String(url);
     if (url.endsWith("/v1/models")) return new Response(JSON.stringify({ data: Object.keys(books).map((id) => ({
-      id, name: id, architecture: { modality: "text->text" }, supported_parameters: ["max_tokens"], pricing: { prompt: "0", completion: "0" } })) }));
+      id, name: id, architecture: { modality: "text->text" }, supported_parameters: ["max_tokens"], pricing: { prompt: "0.000001", completion: "0.000001" } })) }));
     const id = decodeURIComponent(url.split("/api/markets/")[1]);
     return new Response(JSON.stringify({ data: { offers: books[id] } }));
   };

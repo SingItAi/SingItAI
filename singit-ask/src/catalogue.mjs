@@ -415,6 +415,9 @@ export class ModelCatalogue {
   // (same pass as `served`): null until read, or when none qualified. Used to price a ceiling's worst case closer
   // to what Surplus would really charge (pricing.mjs's `priceGuard`), never to lower it unguarded.
   guardShare(id) {
+    // A reference-priced model is bought at an absolute price, never against a discount: its list price is 0, so a
+    // discount_pct on its book (Surplus has none today) must not lower the ceiling or send X-Min-Discount.
+    if (this.rawModels?.get(id)?.listZero) return null;
     return this.guardShares.has(id) ? this.guardShares.get(id) : null;
   }
 
