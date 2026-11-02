@@ -18,17 +18,21 @@ export class QuoteStore {
     if(file!==':memory:') {fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o700});}
     this.db=new DatabaseSync(file);
     if(file!==':memory:')fs.chmodSync(file,0o600);
-    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=10000;
+    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA secure_delete=ON; PRAGMA busy_timeout=10000;
       CREATE TABLE IF NOT EXISTS quotes (id TEXT PRIMARY KEY, owner TEXT NOT NULL, agent TEXT NOT NULL,
       hash TEXT NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL,
       offer TEXT, answer TEXT, receipt TEXT, signature TEXT UNIQUE);
       CREATE INDEX IF NOT EXISTS quote_account ON quotes(owner,agent,status);`);
+    this.db.prepare("UPDATE quotes SET answer=NULL WHERE answer IS NOT NULL AND (status NOT IN ('preparing','quoted') OR (status='quoted' AND expires<?))").run(Math.floor(Date.now()/1000));
   }
+  // Delivery is once only: retries keep their 409 responses and reconcile on chain.
+  // Claim drops the durable answer before verification; settling never returns to quoted.
+  purgeExpired(now){this.db.prepare("UPDATE quotes SET status='expired',answer=NULL WHERE status='quoted' AND expires<?").run(now);}
   get(id){return this.db.prepare('SELECT * FROM quotes WHERE id=?').get(id);}
   create(id,owner,agent,hash,now){
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      this.db.prepare("UPDATE quotes SET status='expired',answer=NULL WHERE status IN ('preparing','quoted') AND expires<?").run(now);
+      this.purgeExpired(now);
       // The gateway sends one request per account at a time, so an older unpaid quote is abandoned.
       // Unresolved settlements stay as records; the gateway proves them on chain before asking again.
       if(this.db.prepare("SELECT 1 FROM quotes WHERE owner=? AND agent=? AND status='settling' AND expires>=?").get(owner,agent,now))throw new Error('pending');
@@ -41,9 +45,18 @@ export class QuoteStore {
     const result=this.db.prepare("UPDATE quotes SET status='quoted',offer=?,answer=?,expires=? WHERE id=? AND status='preparing'").run(JSON.stringify(offer),JSON.stringify(answer),now+300,id);
     if(result.changes!==1)throw new Error("Quote expired during preparation");
   }
-  claim(id,now){return this.db.prepare("UPDATE quotes SET status='settling' WHERE id=? AND status='quoted' AND expires>=?").run(id,now).changes===1;}
-  fail(id,status='failed'){this.db.prepare('UPDATE quotes SET status=? WHERE id=?').run(status,id);}
-  paid(id,receipt){this.db.prepare("UPDATE quotes SET status='paid',receipt=?,signature=? WHERE id=? AND status='settling'").run(JSON.stringify(receipt),receipt.transaction,id);}
+  claim(id,now){
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const row=this.db.prepare("SELECT answer FROM quotes WHERE id=? AND status='quoted' AND expires>=?").get(id,now);
+      if(!row){this.db.exec('COMMIT');return null;}
+      const result=this.db.prepare("UPDATE quotes SET status='settling',answer=NULL WHERE id=? AND status='quoted' AND expires>=?").run(id,now);
+      this.db.exec('COMMIT');
+      return result.changes===1?row.answer:null;
+    }catch(e){this.db.exec('ROLLBACK');throw e;}
+  }
+  fail(id,status='failed'){this.db.prepare('UPDATE quotes SET status=?,answer=NULL WHERE id=?').run(status,id);}
+  paid(id,receipt){this.db.prepare("UPDATE quotes SET status='paid',answer=NULL,receipt=?,signature=? WHERE id=? AND status='settling'").run(JSON.stringify(receipt),receipt.transaction,id);}
   close(){this.db.close();}
 }
 export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,readRequest,
@@ -51,6 +64,8 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
   now=()=>Math.floor(Date.now()/1000),log=()=>{}}) {
   if(typeof config.quoteToken!=='string'||config.quoteToken.length<32)throw new Error('Private quote token required');
   store??=new QuoteStore(config.quoteDb);
+  const sweep=setInterval(()=>{try{store.purgeExpired(now());}catch{}},60000);
+  sweep.unref();
   const authorized=req=>{
     const a=Buffer.from(req.get('x-singit-ask-token')??''),b=Buffer.from(config.quoteToken);
     return a.length===b.length&&timingSafeEqual(a,b);
@@ -71,6 +86,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
     if(input.model==='singit/auto')return res.status(400).json({error:'invalid_request',code:'invalid_request',
       message:'singit/auto is only offered on /v1/chat/completions'});
     const hash=digest({owner,agent,input});
+    store.purgeExpired(now());
     let old=store.get(requestId);
     if(old){
       if(old.hash!==hash)return res.status(409).json({error:'request_changed',code:'request_changed'});
@@ -121,6 +137,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
     }
   });
   app.post(`${QUOTED_ROUTE}/:id`,async(req,res)=>{
+    store.purgeExpired(now());
     const row=store.get(req.params.id);
     if(!row)return res.status(404).json({error:'not_found',code:'not_found'});
     if(row.status==='paid')return res.status(409).json({error:'already_paid',code:'already_paid'});
@@ -134,7 +151,8 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
     if(payload.x402Version!==2||digest(payload.accepted)!==digest(required)||payload.resource?.url!==quote.resource.url)
       return res.status(400).json({error:'terms_changed',code:'terms_changed'});
     // Claim durably before any facilitator call; restart/concurrent requests never resettle.
-    if(!store.claim(row.id,now()))return res.status(409).json({error:'already_submitted',code:'already_submitted'});
+    const answer=store.claim(row.id,now());
+    if(answer===null)return res.status(409).json({error:'already_submitted',code:'already_submitted'});
     // Verification never submits anything: whatever it answers, this quote was not settled.
     let verified;
     try{verified=await facilitatorClient.verify(payload,required);}
@@ -146,7 +164,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
       log(`singit-ask Solana: settled in ${Date.now()-settling} ms`);
       if(receipt.success!==true||receipt.network!==SOLANA||receipt.payer!==row.agent||!/^([1-9A-HJ-NP-Za-km-z]){80,90}$/.test(receipt.transaction??''))throw new Error('unresolved');
       store.paid(row.id,{...receipt,amount:required.amount});
-      return res.set('PAYMENT-RESPONSE',encode({...receipt,amount:required.amount})).json(JSON.parse(row.answer));
+      return res.set('PAYMENT-RESPONSE',encode({...receipt,amount:required.amount})).json(JSON.parse(answer));
     }catch{store.fail(row.id,'unresolved');return res.status(503).json({error:'payment_unresolved',code:'payment_unresolved'});}
   });
   return store;

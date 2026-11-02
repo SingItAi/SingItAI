@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import express from 'express';
+import {DatabaseSync} from 'node:sqlite';
 import {createKeyPairSignerFromPrivateKeyBytes} from '@solana/kit';
 import {TOKEN_PROGRAM_ADDRESS} from '@solana-program/token';
 import {addSolanaQuotedRoute,QuoteStore} from '../src/solana-quoted.mjs';
@@ -22,12 +23,12 @@ const decode=x=>JSON.parse(Buffer.from(x,'base64').toString());
 async function serve(t,opts={}) {
   const counts={model:0,verify:0,settle:0};
   const facilitator={getSupported:async()=>({kinds:[{x402Version:2,scheme:'exact',network:SOLANA,extra:{feePayer}}]}),
-    verify:async()=>{counts.verify++;if(opts.failVerify)throw new Error('facilitator offline');return {isValid:true,payer:agent};},
+    verify:async()=>{counts.verify++;if(opts.failVerify)throw new Error('facilitator offline');return {isValid:!opts.invalidVerify,payer:agent};},
     settle:async()=>{counts.settle++;if(opts.failSettlement)throw new Error('lost receipt');return {success:true,network:SOLANA,payer:agent,transaction:signature};}};
   const app=express();app.use(express.json());
   const store=new QuoteStore(opts.db??':memory:');t.after(()=>store.close());
   addSolanaQuotedRoute(app,{quoteToken:token},{store,facilitatorClient:facilitator,readRequest,
-    upstream:async()=>{counts.model++;if(opts.failModel)throw new Error('model offline');return {content:'Hello',usage:{buyer_cost_micro:opts.cost??100,total_tokens:42}};}});
+    now:opts.now,upstream:async()=>{counts.model++;if(opts.failModel)throw new Error('model offline');return {content:'Hello',usage:{buyer_cost_micro:opts.cost??100,total_tokens:42}};}});
   const listener=await new Promise((resolve,reject)=>{const l=app.listen(0,'127.0.0.1',()=>resolve(l));l.on('error',reject);});
   t.after(()=>listener.close());
   const url=`http://127.0.0.1:${listener.address().port}`;
@@ -50,6 +51,7 @@ test('private preparation needs authentication and withholds answer until paymen
  assert.equal((await s.send('/prepare',question,{'X-Singit-Ask-Token':''})).status,401);assert.equal(s.counts.model,0);
  const q=await prepare(s);assert.equal(q.accepts[0].amount,'1130');assert.equal(q.accepts[0].scheme,'exact');assert.equal(q.choices,undefined);
  const unpaid=await s.send('/'+requestId);assert.equal(unpaid.status,402);assert.equal(decode(unpaid.headers.get('payment-required')).accepts[0].amount,'1130');
+ assert.ok(s.store.get(requestId).answer);
  assert.equal(s.counts.settle,0);assert.equal((await s.send('/prepare',question)).status,200);assert.equal(s.counts.model,1);
  assert.equal((await s.send('/prepare',{...question,messages:[{role:'user',content:'Changed'}]})).status,409);
 });
@@ -62,13 +64,17 @@ test('single durable claim prevents concurrent settlement and response replay',a
  const responses=await Promise.all([s.send('/'+requestId,{},payment(q)),s.send('/'+requestId,{},payment(q))]);
  assert.deepEqual(responses.map(r=>r.status).sort(),[200,409]);assert.equal(s.counts.settle,1);
  const good=responses.find(r=>r.status===200);assert.equal((await good.json()).choices[0].message.content,'Hello');
- assert.equal(s.store.get(requestId).status,'paid');assert.equal((await s.send('/'+requestId,{},payment(q))).status,409);
+ const row=s.store.get(requestId);assert.equal(row.status,'paid');assert.equal(row.answer,null);
+ for(const key of ['receipt','signature','offer','created','expires'])assert.ok(row[key]);
+ const retry=await s.send('/'+requestId,{},payment(q));assert.equal(retry.status,409);
+ assert.deepEqual(await retry.json(),{error:'already_paid',code:'already_paid'});
 });
 test('settlement uncertainty survives a reopened DB and is never settled again',async t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ask-quotes-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const db=path.join(dir,'quotes.db'),s=await serve(t,{db,failSettlement:true}),q=await prepare(s);
- assert.equal((await s.send('/'+requestId,{},payment(q))).status,503);
- const reopen=new QuoteStore(db);assert.equal(reopen.get(requestId).status,'unresolved');reopen.close();
+ const failed=await s.send('/'+requestId,{},payment(q));assert.equal(failed.status,503);
+ assert.equal((await failed.json()).code,'payment_unresolved');assert.equal(s.store.get(requestId).answer,null);
+ const reopen=new QuoteStore(db);assert.equal(reopen.get(requestId).status,'unresolved');assert.equal(reopen.get(requestId).answer,null);reopen.close();
  assert.equal((await s.send('/'+requestId,{},payment(q))).status,409);assert.equal(s.counts.settle,1);
  // The gateway proves the outcome on chain before it asks again; the record stays for review.
  assert.equal((await s.send('/prepare',{...question,requestId:'2'.repeat(32)})).status,200);
@@ -78,7 +84,7 @@ test('a facilitator that cannot verify leaves the quote unpaid and the account f
  const s=await serve(t,{failVerify:true}),q=await prepare(s);
  const r=await s.send('/'+requestId,{},payment(q));
  assert.equal(r.status,503);assert.equal((await r.json()).error,'verification_unavailable');
- assert.equal(s.counts.settle,0);assert.equal(s.store.get(requestId).status,'failed');
+ assert.equal(s.counts.settle,0);assert.equal(s.store.get(requestId).status,'failed');assert.equal(s.store.get(requestId).answer,null);
  assert.equal((await s.send('/prepare',{...question,requestId:'2'.repeat(32)})).status,200);
 });
 test('a new request replaces an abandoned unpaid quote, which can no longer be paid',async t=>{
@@ -131,9 +137,11 @@ test('expired unpaid quotes cannot be claimed; a settlement in flight holds the 
  const store=new QuoteStore(':memory:');
  try {
   store.create(requestId,owner,agent,'hash',1000);store.ready(requestId,{}, {},1000);
-  assert.equal(store.claim(requestId,1301),false);
+  assert.equal(store.claim(requestId,1301),null);
   store.create('2'.repeat(32),owner,agent,'hash2',1301);store.ready('2'.repeat(32),{}, {},1301);
-  assert.equal(store.claim('2'.repeat(32),1302),true);
+  assert.equal(store.claim('2'.repeat(32),1302),'{}');
+  assert.equal(store.claim('2'.repeat(32),1302),null);
+  assert.equal(store.get('2'.repeat(32)).answer,null);
   assert.throws(()=>store.create('3'.repeat(32),owner,agent,'hash3',1400));
   store.create('3'.repeat(32),owner,agent,'hash3',99999);
   assert.equal(store.get('2'.repeat(32)).status,'settling');
@@ -180,4 +188,72 @@ test('auto is refused before preparing an answer or requesting payment',async t=
  assert.equal(r.headers.get('payment-required'),null);
  assert.deepEqual(s.counts,{model:0,verify:0,settle:0});
  assert.equal(s.store.get(requestId),undefined);
+});
+
+test('invalid verification drops the answer and never settles',async t=>{
+ const s=await serve(t,{invalidVerify:true}),q=await prepare(s);
+ const r=await s.send('/'+requestId,{},payment(q));
+ assert.equal(r.status,402);assert.deepEqual(await r.json(),{error:'verification_refused',code:'verification_refused'});
+ assert.equal(s.store.get(requestId).status,'failed');assert.equal(s.store.get(requestId).answer,null);assert.equal(s.counts.settle,0);
+});
+test('expiry scrubs on first touch and preserves valid quotes and slow preparations',async t=>{
+ let clock=1000;const s=await serve(t,{now:()=>clock});await prepare(s);
+ clock=1301;
+ const r=await s.send('/'+requestId);assert.equal(r.status,409);assert.equal((await r.json()).code,'quote_unavailable');
+ assert.equal(s.store.get(requestId).status,'expired');assert.equal(s.store.get(requestId).answer,null);
+ const again=await s.send('/prepare',question);assert.equal(again.status,409);assert.equal((await again.json()).code,'already_prepared');
+ const id='2'.repeat(32);await s.send('/prepare',{...question,requestId:id});
+ s.store.purgeExpired(clock);assert.ok(s.store.get(id).answer);
+ clock=1602;
+ const expired=await s.send('/prepare',{...question,requestId:id});assert.equal(expired.status,409);
+ assert.equal((await expired.json()).code,'already_prepared');assert.equal(s.store.get(id).answer,null);
+ s.store.create('slow',owner,agent,'hash',clock);
+ s.store.purgeExpired(clock+301);assert.equal(s.store.get('slow').status,'preparing');
+ s.store.ready('slow',{}, {content:'Hello'},clock+301);assert.ok(s.store.get('slow').answer);
+});
+test('periodic sweep uses the injected clock without keeping the process alive',t=>{
+ t.mock.timers.enable({apis:['setInterval']});
+ let clock=1000;
+ const store=new QuoteStore(':memory:');t.after(()=>store.close());
+ addSolanaQuotedRoute(express(),{quoteToken:token},{store,now:()=>clock});
+ store.create(requestId,owner,agent,'hash',clock);store.ready(requestId,{}, {content:'Hello'},clock);
+ clock=1301;t.mock.timers.tick(60000);
+ assert.equal(store.get(requestId).status,'expired');assert.equal(store.get(requestId).answer,null);
+ store.close();store.close=()=>{};t.mock.timers.tick(60000);
+});
+test('legacy rows are scrubbed on open without changing metadata or statuses',t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ask-legacy-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'quotes.db'),db=new DatabaseSync(file),now=Math.floor(Date.now()/1000);
+ db.exec('CREATE TABLE quotes (id TEXT PRIMARY KEY, owner TEXT NOT NULL, agent TEXT NOT NULL, hash TEXT NOT NULL, status TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL, offer TEXT, answer TEXT, receipt TEXT, signature TEXT UNIQUE)');
+ const rows=[['preparing',now+300],['quoted',now+300],['quoted',now-1],['preparing',now-1],...['settling','paid','failed','unresolved','expired'].map(x=>[x,now+300])];
+ rows.forEach(([status,expires],i)=>db.prepare('INSERT INTO quotes VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(String(i),owner,agent,'hash',status,now,expires,'{}','legacy answer','{}','signature'+i));
+ db.close();
+ const store=new QuoteStore(file);t.after(()=>store.close());
+ rows.forEach(([status,expires],i)=>{
+  const row=store.get(String(i));assert.equal(row.status,status);assert.equal(row.expires,expires);assert.equal(row.receipt,'{}');
+  assert.equal(row.answer,status==='preparing'||(status==='quoted'&&expires>=now)?'legacy answer':null);
+ });
+});
+test('claim returns text once and a restart preserves already_submitted without an answer',async t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ask-claim-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'quotes.db'),s=await serve(t,{db:file}),q=await prepare(s);
+ const text=s.store.get(requestId).answer;
+ assert.equal(s.store.claim(requestId,Math.floor(Date.now()/1000)),text);
+ assert.equal(s.store.claim(requestId,Math.floor(Date.now()/1000)),null);
+ s.store.close();s.store.close=()=>{};
+ const reopened=new QuoteStore(file);t.after(()=>reopened.close());
+ assert.equal(reopened.get(requestId).status,'settling');assert.equal(reopened.get(requestId).answer,null);
+ const fresh=await serve(t,{db:file});
+ const retry=await fresh.send('/'+requestId,{},payment(q));assert.equal(retry.status,409);
+ assert.deepEqual(await retry.json(),{error:'already_submitted',code:'already_submitted'});assert.equal(fresh.counts.settle,0);
+});
+test('secure deletion removes paid answer bytes after checkpoint and close',t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ask-delete-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const file=path.join(dir,'quotes.db'),store=new QuoteStore(file),now=Math.floor(Date.now()/1000);
+ const sentinel='unique-answer-retention-sentinel-5ea961f1';
+ store.create(requestId,owner,agent,'hash',now);store.ready(requestId,{kept:true},{content:sentinel},now);
+ assert.equal(store.claim(requestId,now),JSON.stringify({content:sentinel}));
+ store.paid(requestId,{transaction:signature});assert.equal(store.get(requestId).answer,null);
+ store.db.exec('PRAGMA wal_checkpoint(TRUNCATE)');store.close();
+ assert.equal(fs.readFileSync(file).includes(Buffer.from(sentinel)),false);
 });
