@@ -75,7 +75,7 @@ test('privacy page describes the current product, not the July messaging-bot pol
   assert.doesNotMatch(text, /messaging-based wallet, payment, purchase/);
   assert.match(text, /Effective November 2, 2026/);
   for (const phrase of [/wallet address/, /singit_session/, /12 hours/, /only as hashes/, /Umami/, /without cookies/, /ask\.singitai\.app/,
-    /app\.singitai\.app\/mcp/, /Telegram bot/, /not written to our database or logs|does not store your prompt/, /Surplus Intelligence/, /OpenRouter/, /TypeSafe/,
+    /app\.singitai\.app\/mcp/, /not written to our database or logs|does not store your prompt/, /Surplus Intelligence/, /OpenRouter/, /TypeSafe/,
     /Exa/, /Bitrefill/, /Coinbase Developer Platform/, /Cloudflare/, /Reown/, /Base and Solana/, /public to anyone and permanent/,
     /30 days/, /We do not sell personal data/]) assert.match(text, phrase);
 });
@@ -99,5 +99,12 @@ test('privacy page publishes no wallet, pay-to or limiter address', () => {
     const src = strip(read(file));
     assert.doesNotMatch(src, /0x[0-9a-fA-F]{40}/, `${file} has an EVM address`);
     assert.doesNotMatch(src, /\b[1-9A-HJ-NP-Za-km-z]{43,44}\b/, `${file} has a Solana address`);
+  }
+});
+
+test('privacy and data-deletion pages do not describe a Telegram bot or messaging approval channels', () => {
+  for (const file of ['privacy/index.html', 'data-deletion/index.html']) {
+    const src = strip(read(file));
+    assert.doesNotMatch(src, /telegram|whatsapp|imessage|managed wallet|pairing code|approval channel|Photon/i, `${file} mentions the retired bot`);
   }
 });

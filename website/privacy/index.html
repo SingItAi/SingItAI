@@ -76,12 +76,12 @@
 
 <main id="top">
 <section class="hero dev-hero"><div class="shell"><p class="eyebrow">Legal</p><h1>Privacy Policy</h1><p class="hero-sub">
-            What SingIt collects, why, who else sees it, how long we keep it and what you can ask us to do. It covers the website, the web app, the API, the MCP server and the Telegram bot.
+            What SingIt collects, why, who else sees it, how long we keep it and what you can ask us to do. It covers the website, the web app, the API and the MCP server.
           </p><p>Effective November 2, 2026</p></div></section>
             <section class="lp-section" id="who"><div class="shell legal-copy">
               <h2 class="section-title">Who we are</h2>
               <p>SingIt (&ldquo;SingIt&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;) operates this service from Prague, Czech Republic, and is the controller of the personal data described here. SingIt is not operated by a registered company. Contact for anything about your data: <a href="mailto:contact@singitai.app">contact@singitai.app</a>.</p>
-              <p>This policy covers the website singitai.app, the web app and its API at app.singitai.app, the pay-per-request API at ask.singitai.app, the MCP server at app.singitai.app/mcp and the SingIt Telegram bot. It goes with our <a href="/terms/">Terms of Service</a>, which are written under Czech law; SingIt is for people aged 18 and over.</p>
+              <p>This policy covers the website singitai.app, the web app and its API at app.singitai.app, the pay-per-request API at ask.singitai.app, and the MCP server at app.singitai.app/mcp. It goes with our <a href="/terms/">Terms of Service</a>, which are written under Czech law; SingIt is for people aged 18 and over.</p>
             </div></section>
 
             <section class="lp-section" id="short"><div class="shell legal-copy">
@@ -130,12 +130,6 @@
                 <li>On the Solana lane used by the web app, an answer is prepared first and handed over once payment is verified. The answer text is therefore held briefly in a private database on our server alongside a hash of the request, the owner and agent addresses, and the payment receipt.</li>
                 <li>Free answers (the <code>free/</code> models) are limited per visitor network per day. The limit counts your network (the IPv4 /24 or IPv6 /64 of your address) in memory only; the address is not stored.</li>
               </ul>
-              <h3>Telegram bot and approval channels</h3>
-              <ul>
-                <li>If you use the SingIt Telegram bot: your Telegram user id and user name, the managed wallet we create for you (address, with the private key encrypted at rest), spending limits and their usage, purchase history, an email address if you give one for Bitrefill, and the messages and commands you send. For gift cards and eSIMs bought this way, we keep an encrypted access token for the order until you reveal the code, which is shown once and not stored by us.</li>
-                <li>If you link a WhatsApp or iMessage approval channel: your phone number or contact identifier, the pairing code and your approve or reject decisions.</li>
-                <li>Free-form messages to the bot (not the fixed commands) can be sent to an AI model provider to produce a reply. The bot&rsquo;s own history and logs on our server may contain messages you sent to it.</li>
-              </ul>
               <h3>Technical data</h3>
               <ul>
                 <li>Our servers see your IP address and browser details while handling a request. We use the IP address for rate limits and abuse prevention, in memory. We do not write it to our databases. Cloudflare, which sits in front of our servers, processes it as well (see below).</li>
@@ -149,7 +143,7 @@
                 <li><strong>To provide what you asked for</strong> (GDPR Art. 6(1)(b), contract): signing you in, running your limits and agent, answering questions, searching, buying, keeping your chats and purchase history, and sending notifications you switched on.</li>
                 <li><strong>To keep the service safe and working</strong> (Art. 6(1)(f), legitimate interests): rate limits, abuse and fraud prevention, security, fixing errors, checking that payments settled, and measuring how the product is used with cookieless analytics. We have weighed these against your rights and keep what we collect to what is needed for them.</li>
                 <li><strong>To meet legal duties</strong> (Art. 6(1)(c)): accounting records, and responding to lawful requests from authorities.</li>
-                <li><strong>With your consent</strong> (Art. 6(1)(a)): browser notifications and linking an optional channel such as GitHub, WhatsApp or iMessage. You can withdraw it at any time, for example by turning notifications off or unlinking the channel, without affecting what was done before.</li>
+                <li><strong>With your consent</strong> (Art. 6(1)(a)): browser notifications and linking your GitHub account for the optional starter credit. You can withdraw it at any time, for example by turning notifications off or unlinking GitHub, without affecting what was done before.</li>
               </ul>
               <p>We do not sell personal data and do not use it for third-party advertising. We do not make decisions about you that have legal or similarly significant effects on automated grounds. The agent buys only inside the limits you set and approve from your wallet.</p>
             </div></section>
@@ -158,12 +152,11 @@
               <h2 class="section-title">Who else receives data</h2>
               <p>We pass on only what a request needs. These are the providers our code and configuration use today.</p>
               <ul>
-                <li><strong>Model and data providers.</strong> Your prompt goes to the model that answers it. For the API, the app chat and the MCP server, models are mostly reached through Surplus Intelligence (api.surplusintelligence.ai), a marketplace that routes the request to a seller, and private chat can go through Venice AI. In the web app, your message is first read by TypeSafe (api.typesafe.ai) to pick the intent, and OpenRouter (openrouter.ai) writes conversational replies and extracts search details. The Telegram bot uses OpenRouter. Each provider handles the content under its own policy.</li>
+                <li><strong>Model and data providers.</strong> Your prompt goes to the model that answers it. For the API, the app chat and the MCP server, models are mostly reached through Surplus Intelligence (api.surplusintelligence.ai), a marketplace that routes the request to a seller, and private chat can go through Venice AI. In the web app, your message is first read by TypeSafe (api.typesafe.ai) to pick the intent, and OpenRouter (openrouter.ai) writes conversational replies and extracts search details. Each provider handles the content under its own policy.</li>
                 <li><strong>Search and data sellers.</strong> Web search and page reading go to Exa (api.exa.ai). Some lookups in the app buy data from x402 sellers such as Otto AI (weather, rates, markets, news), StableTravel (flight status and prices), StableEmail (emails you ask the assistant to send to yourself) and StablePhone with Bland AI (calls). Your query, a place, a flight number or the text to send goes to them, and the payment shows your agent&rsquo;s address.</li>
                 <li><strong>Merchants.</strong> Gift cards, eSIMs and top-ups are bought from Bitrefill (api.bitrefill.com), which receives the order and the email address you gave for delivery.</li>
                 <li><strong>Payment and blockchain infrastructure.</strong> The Coinbase Developer Platform x402 facilitator verifies and settles payments and sees the signed payment, the paying address and the amount. Base and Solana RPC nodes, Chainlink price feeds on Base and block explorers are read to check balances, limits and transactions. Reown / WalletConnect runs the wallet connection and the email and social wallets in the app, and a card on-ramp offered through it is run by the on-ramp provider, not by us.</li>
                 <li><strong>GitHub</strong>, only if you use the starter credit link.</li>
-                <li><strong>Messaging platforms.</strong> Telegram carries the bot&rsquo;s messages. Meta (WhatsApp Cloud API) and the iMessage provider carry approval messages if you link those.</li>
                 <li><strong>Hosting and delivery.</strong> Cloudflare serves the website, and our API and service endpoints are published through a Cloudflare tunnel, so Cloudflare handles the traffic and your IP address. Our services run on a single virtual server (VPS) where the databases live. Pages in the app load some libraries and fonts from jsDelivr and Google Fonts, which see your IP address when they do. Browser push messages travel through the push service of your browser (Apple, Google, Mozilla or Microsoft), end-to-end encrypted.</li>
                 <li><strong>Email.</strong> Messages you send to contact@singitai.app pass through our email provider and any forwarding service we use for that address.</li>
                 <li><strong>Authorities and advisers</strong>, when the law requires, to protect users or the service, or in a reorganisation, with suitable safeguards.</li>
@@ -181,13 +174,12 @@
               <h2 class="section-title">How long we keep it</h2>
               <p>We have no automatic deletion for most account and payment records. We keep each kind as long as it is needed for the purpose above, and then delete or anonymise it. What the code does today:</p>
               <ul>
-                <li>Sessions end after 12 hours. Sign-in challenges and link codes are cleaned up after they expire.</li>
+                <li>Sessions end after 12 hours. Sign-in challenges are cleaned up after they expire.</li>
                 <li>Chats stay until you delete them. Hashed API keys stay until you revoke them, and their records, with the usage and payment records, are kept for accounting, security and dispute handling.</li>
                 <li>Wallet addresses, limits, agent keys and payment records stay while your account exists and as long afterwards as we need them for accounting and legal reasons.</li>
                 <li>Pay-per-request counters: hourly figures for 30 days, running totals without addresses, and anonymous lines for pricing research with no fixed expiry.</li>
                 <li>Product analytics events and Umami data have no automatic expiry at present.</li>
                 <li>Service logs rotate with the server&rsquo;s own limits, with no fixed period.</li>
-                <li>Telegram lane: daily spend records are cut after 30 days; wallets, purchase history, pairings and the bot&rsquo;s history stay until deleted at your request.</li>
               </ul>
               <p>When you ask us to delete data, we delete what we do not need to keep (see Your rights).</p>
             </div></section>
@@ -204,7 +196,7 @@
 
             <section class="lp-section" id="security"><div class="shell legal-copy">
               <h2 class="section-title">Security</h2>
-              <p>Session tokens and API keys are stored only as hashes. Agent keys, managed wallet keys and saved email addresses are encrypted at rest, and database files are private to the service account. Traffic is encrypted in transit, and our services are published through a Cloudflare tunnel rather than on open ports. The limits you approve are enforced on chain on Base, and by our server on Solana. No system is perfectly secure. Report a security problem privately to <a href="mailto:contact@singitai.app">contact@singitai.app</a>.</p>
+              <p>Session tokens and API keys are stored only as hashes. Agent keys and saved email addresses are encrypted at rest, and database files are private to the service account. Traffic is encrypted in transit, and our services are published through a Cloudflare tunnel rather than on open ports. The limits you approve are enforced on chain on Base, and by our server on Solana. No system is perfectly secure. Report a security problem privately to <a href="mailto:contact@singitai.app">contact@singitai.app</a>.</p>
             </div></section>
 
             <section class="lp-section" id="transfers"><div class="shell legal-copy">
@@ -217,7 +209,7 @@
               <p>Under the GDPR you can ask us for access to your data and a copy, correction, deletion, restriction of processing and portability, and you can object to processing based on our legitimate interests. Where processing rests on your consent, you can withdraw it at any time.</p>
               <ul>
                 <li><strong>In the app:</strong> delete chats, revoke API keys and allowances, turn notifications off and unlink channels. You can also revoke a token approval on chain without us, for example on revoke.cash.</li>
-                <li><strong>By email:</strong> write to <a href="mailto:contact@singitai.app">contact@singitai.app</a> from the address you want us to act on, with the wallet address of your account (or your Telegram user name). To protect you, we may ask you to sign a message with that wallet. See also <a href="/data-deletion/">data deletion instructions</a>.</li>
+                <li><strong>By email:</strong> write to <a href="mailto:contact@singitai.app">contact@singitai.app</a> from the address you want us to act on, with the wallet address of your account. To protect you, we may ask you to sign a message with that wallet. See also <a href="/data-deletion/">data deletion instructions</a>.</li>
                 <li>We answer within one month. We can keep what the law or fraud prevention requires, and we cannot delete what is on a public blockchain.</li>
                 <li><strong>Complaints:</strong> you have the right to complain to the Czech data protection authority, the Úřad pro ochranu osobních údajů (ÚOOU), Pplk. Sochora 27, 170 00 Praha 7, <a href="https://uoou.gov.cz/en" target="_blank" rel="noopener">uoou.gov.cz</a>, or to the authority in the EU country where you live or work. We would appreciate the chance to put it right first.</li>
               </ul>
