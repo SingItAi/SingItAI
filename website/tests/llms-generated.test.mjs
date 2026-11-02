@@ -46,6 +46,8 @@ test('llms files derive route prices, fees, reference prices and all visible mod
     assert.ok(text.indexOf(sections[i - 1]) < text.indexOf(sections[i]), `${sections[i - 1]} precedes ${sections[i]}`);
   }
   assert.ok(text.includes('settled at that flat price whatever length the answer turns out to be'));
+  for (const content of [text, full, await read('SKILL.md')])
+    assert.ok(content.includes('Each free answer reports `billing.remainingToday`; when used up, drop the `free/` prefix to pay.'));
   assert.doesNotMatch(text, /with no refund/);
   assert.ok(text.indexOf('`upto`') < text.indexOf('`exact`'));
   assert.match(text, /402.*PAYMENT-REQUIRED/);

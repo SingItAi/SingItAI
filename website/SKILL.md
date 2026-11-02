@@ -21,6 +21,7 @@ POST https://ask.singitai.app/v1/chat/completions without a key or wallet:
 
 Six free models share up to 20 answers a day per visitor network and a $0.25
 shared daily cost cap. The shared allowance may run out; it resets at midnight UTC.
+Each free answer reports `billing.remainingToday`; when used up, drop the `free/` prefix to pay.
 
 ## With an owner's key
 

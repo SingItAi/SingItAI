@@ -236,6 +236,8 @@ node --env-file=.env src/server.mjs
 
 6 free models, up to 20 answers a day per network, with a shared daily cost cap of $0.25. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC.
 
+Each free answer reports `billing.remainingToday`; when used up, drop the `free/` prefix to pay. The response also includes `billing.resetsAt` (next UTC midnight), `billing.hint` (`drop the free/ prefix to pay`), and `X-SingIt-Free-Remaining` (the same count of answers left today for this network). The count is the lower of the network and whole-day answer allowances; the shared cost budget may end free answers sooner.
+
 Free answers have no wallet, so there is no per-wallet limit here: the network above is the only identity they carry. Free models are listed in `GET /v1/models` as `free/<id>` entries (`free: true`, with their `limits`) next to the paid ones, and in `/openapi.json` under the chat route's `x-free-models`. Wallet-based limits belong to the gateway's free models (`sign402-gateway/README.md`).
 
 The service listens on 127.0.0.1 only. Configure a Cloudflare tunnel hostname to publish it. Only loopback proxies are trusted for the forwarded HTTPS scheme.

@@ -83,7 +83,7 @@ LLM, image and speech charges are model cost plus ${format(s.fees.markupPct)}% m
 
 Charged only when a billable answer came back: an upstream 503 never charges. Do not retry a 400/413/422 on another model; fix the request. A 409 means this payment signature was already used. For 503, wait for Retry-After where supplied. A 429 on the free tier means wait for Retry-After.
 
-Free tier: ${DEFAULT_FREE_MODELS.length} free models, up to ${FREE_DEFAULTS.perVisitorPerDay} answers a day per network, with a shared daily cost cap of $${FREE_DEFAULTS.budgetUsdPerDay}. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required.
+Free tier: ${DEFAULT_FREE_MODELS.length} free models, up to ${FREE_DEFAULTS.perVisitorPerDay} answers a day per network, with a shared daily cost cap of $${FREE_DEFAULTS.budgetUsdPerDay}. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
 
 Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Per-model reference prices are in the full models list, with upto before exact.`;
 }
