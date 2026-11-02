@@ -218,9 +218,8 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
     if (input.chars > terms.chars) return refuse(400, `Keep a free question under ${terms.chars} characters.`);
     // With a budget, the model's price must be known before anything is spent: it prices an answer whose cost
     // is not reported. Unknown, nothing is spent.
-    let info = null;
+    const info = catalogue ? await catalogue.resolve(model, { allowUnpriced: true }).catch(() => null) : null;
     if (terms.budgetUsdPerDay > 0) {
-      info = catalogue ? await catalogue.resolve(model, { allowUnpriced: true }).catch(() => null) : null;
       if (!info) return refuse(503, "Free answers are paused: this model's price is not known right now. Try again later, or pay per answer.");
     }
     const visitor = visitorOf(req);
@@ -238,7 +237,7 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
     }
     const started = Date.now();
     try {
-      const answer = await upstream(config, input.messages, maxTokens, fetchImpl, model);
+      const answer = await upstream(config, input.messages, maxTokens, fetchImpl, model, { info, retryOnReasoning: false });
       if (terms.budgetUsdPerDay > 0) {
         const cost = freeAnswerCost(answer.usage, info, input, maxTokens, observedShare(model));
         allowance.spend(cost, turn);

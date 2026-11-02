@@ -74,6 +74,10 @@ test("app read endpoints preserve legacy fields, CORS and private public-only me
   const schema = spec.paths["/health"].get.responses[200].content["application/json"].schema;
   assert.ok(schema.properties.models_summary);
   assert.ok(schema.properties.models.additionalProperties.properties.lastOutcome);
+  for (const field of ["reasoning422", "reasoningRetries"]) {
+    assert.equal(schema.properties.models.additionalProperties.properties[field].type, "integer");
+    assert.equal(spec.paths["/health"].get.responses[200].content["application/json"].example.models["claude-opus-5.5"][field], 0);
+  }
   for (const key of ["ok", "service", "model", "facilitator", "pricing", "free", "metered"])
     assert.ok(Object.hasOwn(h.body, key));
   assert.deepEqual(h.body.models_summary, { up: 0, degraded: 0, down: 0, insufficient_data: 1, unavailable: 0 });
@@ -89,3 +93,19 @@ test("app read endpoints preserve legacy fields, CORS and private public-only me
   assert.equal(n.headers["cache-control"], "public, max-age=60");
   assert.ok(!JSON.stringify([h.body, n.body]).includes(payer));
 });
+
+import { fixture, invoke, exhaustedFormat, answeredFormat } from './helpers/reasoning-routes.mjs';
+for (const route of ['/v1/messages', '/v1/responses']) {
+  test(`${route} records one request outcome, including retry success and 422`, async () => {
+    let calls = 0;
+    const { app, info } = fixture(async () => new Response(JSON.stringify(++calls === 1 ? exhaustedFormat(route) : answeredFormat(route))));
+    assert.equal((await invoke(app, info, route)).statusCode, 200);
+    let stats = app.locals.healthStats.models().tagged;
+    assert.equal(stats.attempts, 1); assert.equal(stats.successes, 1); assert.equal(stats.reasoningRetries, 1);
+    assert.equal(stats.reasoning422, 0);
+    const bad = fixture(async () => new Response(JSON.stringify(exhaustedFormat(route))));
+    assert.equal((await invoke(bad.app, bad.info, route)).statusCode, 422);
+    stats = bad.app.locals.healthStats.models().tagged;
+    assert.equal(stats.attempts, 0); assert.equal(stats.reasoning422, 1); assert.equal(stats.failures, 0);
+  });
+}
