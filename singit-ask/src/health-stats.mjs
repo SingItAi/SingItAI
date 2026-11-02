@@ -40,7 +40,7 @@ function validState(s) {
   const counts = o => object(o) && count(o.ok) && count(o.fail);
   const reasons = o => object(o) && Object.entries(o).every(([key, n]) => REASONS.includes(key) && count(n));
   const modelLast = o => last(o) && (o.lastReason === undefined || REASONS.includes(o.lastReason));
-  const modelCounts = o => counts(o) && (o.reasons === undefined || reasons(o.reasons));
+  const modelCounts = o => counts(o) && [o.r422, o.rt].every(n => n === undefined || count(n)) && (o.reasons === undefined || reasons(o.reasons));
   const totals = o => object(o) && Object.entries(o).every(([n, t]) =>
     ["base", "solana", "other"].includes(n) && object(t)
     && [t.calls, t.noAmount, t.own, t.fail].every(count) && /^\d+$/.test(t.atomic));
@@ -129,14 +129,18 @@ export class HealthStats {
       this.changed();
     } catch {}
   }
-  recordModel(model, { ok, code, status } = {}) {
+  recordModel(model, { ok, code, status, retried } = {}) {
     try {
-      if (typeof model !== "string" || !/^[A-Za-z0-9._:/-]{1,80}$/.test(model) || code === "max_tokens_spent_reasoning"
-        || (!ok && [400, 413, 422].includes(status))) return;
+      if (typeof model !== "string" || !/^[A-Za-z0-9._:/-]{1,80}$/.test(model)
+        || (code !== "max_tokens_spent_reasoning" && !ok && [400, 413, 422].includes(status))) return;
       if (!Object.hasOwn(this.state.models, model) && Object.keys(this.state.models).length >= MODEL_CAP) return;
-      const last = this.state.models[model] ??= {};
-      last[ok ? "ok" : "fail"] = this.now(); last.failed = !ok;
+      const last = this.state.models[model] ??= { failed: false };
       const counts = this.bucket().models[model] ??= { ok: 0, fail: 0 };
+      if (code === "max_tokens_spent_reasoning") {
+        counts.r422 = (counts.r422 || 0) + 1; this.changed(); return;
+      }
+      if (ok && retried) counts.rt = (counts.rt || 0) + 1;
+      last[ok ? "ok" : "fail"] = this.now(); last.failed = !ok;
       counts[ok ? "ok" : "fail"]++;
       if (!ok) {
         last.lastReason = failureReason(code);
@@ -187,10 +191,11 @@ export class HealthStats {
   }
   models(hours = 24, unservable = new Map(), suspended = new Map()) {
     const counts = Object.create(null), now = this.now();
-    const active = new Map([...unservable].filter(([, expiry]) => expiry > now));
+    const active = new Map([...unservable].filter(([, value]) => (value?.until ?? value) > now));
     for (const id of suspended.keys()) active.set(id, active.get(id) ?? 0);
     for (const b of this.window(hours)) for (const [id, c] of Object.entries(b.models ?? {})) {
       const t = counts[id] ??= { ok: 0, fail: 0, reasons: {} }; t.ok += c.ok; t.fail += c.fail;
+      t.r422 = (t.r422 || 0) + (c.r422 || 0); t.rt = (t.rt || 0) + (c.rt || 0);
       // Old buckets have no reasons; their failures still count as other.
       for (const reason of REASONS) t.reasons[reason] = (t.reasons[reason] || 0) + (c.reasons?.[reason] || 0);
       t.reasons.other += c.fail - Object.values(c.reasons ?? {}).reduce((sum, n) => sum + n, 0);
@@ -203,18 +208,19 @@ export class HealthStats {
       .filter(([id], i) => active.has(id) || i < 50)
       .map(([id, c]) => {
         const attempts = c.ok + c.fail, rate = attempts ? c.fail / attempts : 0;
-        const last = this.state.models[id], expiry = active.get(id);
-        return [id, { status: active.has(id) ? "unavailable" : attempts < 5 ? "insufficient_data"
-          : rate > 0.5 ? "down" : rate > 0.2 ? "degraded" : "up",
+        const last = this.state.models[id], gate = active.get(id), expiry = gate?.until ?? gate;
+        return [id, { status: active.has(id) ? "unavailable" : attempts >= 5 && rate > 0.5 ? "down"
+          : (c.r422 >= 3 && c.r422 / (attempts + c.r422) > 0.2) ? "degraded"
+          : attempts < 5 ? "insufficient_data" : rate > 0.2 ? "degraded" : "up",
           ...(suspended.has(id) ? { suspended: true, consecutiveRejections: suspended.get(id).count } : {}),
-          windowHours: hours, attempts, successes: c.ok, failures: c.fail,
+          windowHours: hours, reasoning422: c.r422 || 0, reasoningRetries: c.rt || 0, attempts, successes: c.ok, failures: c.fail,
           errorRatePct: Math.round(rate * 1000) / 10,
           // As before, last* are the latest ever seen (not limited to the window); lastOutcome is the newest of the two.
           lastSuccessAt: minute(last?.ok), lastFailureAt: minute(last?.fail),
           lastOutcome: last && (Number.isFinite(last.ok) || Number.isFinite(last.fail)) ? (last.failed ? "failure" : "success") : null,
           sellerFailures: (c.reasons.no_healthy_sellers || 0) + (c.reasons.minimum_discount_not_met || 0),
           failureReasons: Object.fromEntries(Object.entries(c.reasons).filter(([, n]) => n > 0)),
-          reason: Number.isFinite(last?.fail) ? last.lastReason ?? "other" : null,
+          reason: gate?.reason ?? (Number.isFinite(last?.fail) ? last.lastReason ?? "other" : null),
           ...(expiry ? { unavailableUntil: new Date(expiry).toISOString(),
             retryAfterSeconds: Math.max(30, Math.ceil((expiry - now) / 1000)) } : {}) }];
       }));
@@ -307,25 +313,32 @@ export function numbersBody(stats) {
   const byNetwork = key => Object.fromEntries(["base", "solana"].map(n =>
     [n, key === "atomic" ? volume(total.byNetwork[n]?.atomic) : total.byNetwork[n]?.calls || 0]));
   return { schema: 1, generated_at: new Date(stats.now()).toISOString(), since,
-    scope: "Settled payments on publicly listed x402 routes",
+    scope: "Settled payments on publicly listed x402 routes; own payers are excluded only once an own-payer list is configured (see counts_basis).",
     paid_calls: { ...fields("calls"), by_network: byNetwork("calls") },
     usdc_volume: { unit: "USDC", total: volume(total.atomic), last_24h: volume(day.atomic),
       last_7d: volume(week.atomic), by_network: byNetwork("atomic"), calls_without_amount: total.noAmount },
-    unique_payers: fields("unique"), own_payers_configured: stats.own.size > 0, own_payments_excluded: total.own,
+    unique_payers: fields("unique"), own_payers_configured: stats.own.size > 0,
+    counts_basis: stats.own.size === 0 ? "including_own_payments" : "excluding_configured_own_payers",
+    counts_label: stats.own.size === 0
+      ? "Includes our own payments: no own-payer list is configured yet, so these counts are not external-only."
+      : "Excludes configured own payers from now on; calls and volume recorded before the list was configured still include our own payments.",
+    own_payments_excluded: total.own,
     settlement_failures: { last_24h: day.fail, last_7d: week.fail },
     definitions: {
       schema: "Version of this response format.", generated_at: "Time this response was generated.",
-      scope: "Only settled payments on publicly listed x402 routes count; internal web-app routes are excluded.",
+      scope: "Only settled payments on publicly listed x402 routes count; internal web-app routes are excluded; own payers are excluded only once an own-payer list is configured (see counts_basis).",
       since: "Measured only since the counters started; history before the counters existed is not included.",
-      paid_calls: "Successful public settlements, excluding configured own payers, counted once per settlement.",
+      paid_calls: "Successful public settlements, counted once per settlement; own payers are excluded only once an own-payer list is configured (see counts_basis).",
       total: "Lifetime observations since the counters started, not historical service totals.",
       last_24h: "Observations in the current UTC hour and the preceding 23 UTC hourly buckets.",
       last_7d: "Observations in the current UTC hour and the preceding 167 UTC hourly buckets.",
       by_network: "Lifetime public observations split by Base and Solana; other networks remain in the total.",
-      usdc_volume: "Known settled atomic USDC amounts divided by one million, excluding own payers.",
+      usdc_volume: "Known settled atomic USDC amounts divided by one million; own payers are excluded only once an own-payer list is configured (see counts_basis).",
       calls_without_amount: "Settlements with unavailable actual amounts count without estimated volume.",
       unique_payers: "Distinct payer wallets counted by salted hash without exposing them; "
-        + "null means a cap prevents measurement.",
+        + "null means a cap prevents measurement; own payers are excluded only once an own-payer list is configured (see counts_basis).",
+      counts_basis: "Whether counts include our own payments or exclude configured own payers from configuration onward.",
+      counts_label: "Human-readable coverage, including the limits of historical own-payment exclusion.",
       own_payers_configured: "True when the own-payer list is non-empty. Adding it removes historical own unique hashes; earlier calls and volume cannot be corrected because payer-level payment history is not stored.",
       own_payments_excluded: "Configured own-payer settlements excluded from calls, volume and unique payers.",
       settlement_failures: "Failed facilitator settlements across all routes during each window.",
@@ -348,7 +361,7 @@ export function privateStatsBody(stats) {
   const fields = o => Object.fromEntries(["total", "last_24h", "last_7d"].map(k => [k, o[k]]));
   return { schema: 1, generated_at: n.generated_at, since: n.since,
     external_payers: { unique: n.unique_payers, paid_calls: fields(n.paid_calls), usdc: fields(n.usdc_volume) },
-    own_payments_excluded: n.own_payments_excluded, own_payers_configured: n.own_payers_configured,
+    own_payments_excluded: n.own_payments_excluded, own_payers_configured: n.own_payers_configured, counts_basis: n.counts_basis,
     issued_402: { total: total.result, last_24h: day.result, last_7d: week.result,
       by_route: { total: total.routes, last_24h: day.routes, last_7d: week.routes } },
     note: "402s count responses, not unique clients. post = POST challenge; probe = GET/HEAD discovery; refused = 402 without PAYMENT-REQUIRED. Windows use UTC hourly buckets. Own unique hashes are removed retroactively; calls and volume before configuration still include own payments." };

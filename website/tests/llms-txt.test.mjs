@@ -51,11 +51,18 @@ test("website/llms.txt explains the first paid x402 call, upto before exact, wit
   assert.ok(!text.includes("when enabled"));
 });
 
- test('MCP free and paid lists and Claude Code guide are explicit in both agent references', async () => {
+test('MCP free and paid lists and Claude Code guide are explicit in both agent references', async () => {
   for (const file of ['llms.txt', 'llms-full.txt']) {
     const doc = await readFile(path.join(repo, 'website', file), 'utf8');
     assert.ok(doc.includes('Free, no key: get_price, list_price_symbols, list_models, chat_free.'));
     assert.ok(doc.includes("Paid per call from the key's limits (USDC on Base or Solana): chat, web_search, read_page."));
     assert.ok(doc.includes('https://singitai.app/docs/claude-code/'));
+  }
+});
+
+test("measured-number discovery discloses own-payment coverage", async () => {
+  for (const file of ["llms.txt", "llms-full.txt"]) {
+    const content = await readFile(path.join(website, file), "utf8");
+    assert.ok(content.includes("https://ask.singitai.app/numbers.json (measured numbers; counts include our own payments until an own-payer list is configured)"));
   }
 });

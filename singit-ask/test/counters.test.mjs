@@ -81,6 +81,11 @@ test('private endpoint auth, public shape and finish middleware challenges', asy
   assert.equal(numbersBody(app.locals.healthStats).own_payers_configured, false);
   const doc = await (await fetch(`${url}/openapi.json`)).json(); assert.equal(doc.paths['/internal/stats'], undefined);
   assert.equal(doc.paths['/numbers.json'].get.responses[200].content['application/json'].schema.properties.own_payers_configured.type, 'boolean');
+  const schema = doc.paths['/numbers.json'].get.responses[200].content['application/json'].schema;
+  assert.deepEqual(schema.required, ['own_payers_configured']);
+  assert.deepEqual(schema.properties.counts_basis.enum, ['including_own_payments', 'excluding_configured_own_payers']);
+  assert.equal(schema.properties.counts_label.type, 'string');
+  assert.equal(Object.hasOwn(schema.properties, 'external_payers'), false);
 });
 test('private route absent without valid token', async t => {
   for (const token of [undefined, 'short']) { const { url } = await serve(t, token); assert.equal((await fetch(`${url}/internal/stats`)).status, 404); }
@@ -120,6 +125,11 @@ test('private auth, observer and public schemas offline without sockets', async 
   }
   const doc = await generateOpenapi(); assert.equal(doc.paths['/internal/stats'], undefined);
   assert.equal(doc.paths['/numbers.json'].get.responses[200].content['application/json'].schema.properties.own_payers_configured.type, 'boolean');
+  const schema = doc.paths['/numbers.json'].get.responses[200].content['application/json'].schema;
+  assert.deepEqual(schema.required, ['own_payers_configured']);
+  assert.deepEqual(schema.properties.counts_basis.enum, ['including_own_payments', 'excluding_configured_own_payers']);
+  assert.equal(schema.properties.counts_label.type, 'string');
+  assert.equal(Object.hasOwn(schema.properties, 'external_payers'), false);
 });
 
 test('issued challenges survive persistence and retain only 720 hourly buckets', t => {
@@ -137,4 +147,20 @@ test('issued challenges survive persistence and retain only 720 hourly buckets',
   const readOnly = new HealthStats({ file, readOnly: true, now: () => now });
   const before = readFileSync(file, 'utf8'); readOnly.recordChallenge({ method: 'GET', challenge: true }); readOnly.flush();
   assert.equal(readOnly.timer, null); assert.equal(readFileSync(file, 'utf8'), before);
+});
+
+test("public counts disclose the own-payment basis and historical limits", () => {
+  for (const configured of [false, true]) {
+    const stats = new HealthStats({ ownPayers: configured ? [own] : [] });
+    const n = numbersBody(stats);
+    assert.equal(n.counts_basis, configured ? "excluding_configured_own_payers" : "including_own_payments");
+    assert.equal(n.counts_label, configured
+      ? "Excludes configured own payers from now on; calls and volume recorded before the list was configured still include our own payments."
+      : "Includes our own payments: no own-payer list is configured yet, so these counts are not external-only.");
+    assert.equal(n.own_payers_configured, configured);
+    assert.equal(Object.hasOwn(n, "external_payers"), false);
+    assert.equal(typeof n.definitions.counts_basis, "string");
+    assert.equal(typeof n.definitions.counts_label, "string");
+    assert.equal(privateStatsBody(stats).counts_basis, n.counts_basis);
+  }
 });
