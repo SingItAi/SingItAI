@@ -116,7 +116,7 @@ def count_value(value):
 
 
 def exceeds(actual, listed):
-    return any(k in listed and int(v) > int(listed[k]) for k, v in actual.items() if k.startswith('base:'))
+    return any(k in listed and int(v) > int(listed[k]) for k, v in actual.items())
 
 
 def audit(*, fetch=fetch, ask_url=DEFAULTS[0], bazaar_url=DEFAULTS[1], surplus_url=DEFAULTS[2],
@@ -340,12 +340,19 @@ def main(argv=None, *, env=None, fetch=fetch, sleep=time.sleep, now=time.time, d
         message = health.format_message(alerts, recovered)
         if not args.dry_run:
             note = None
-            if message:
+            channels = (env.get(health.TELEGRAM_TOKEN_ENV) and env.get(health.TELEGRAM_CHAT_ENV)) or env.get(health.NTFY_URL_ENV) \
+                or env.get(health.WEBHOOK_URL_ENV)
+            if message and not channels and deliver is None:
+                # Nowhere to send it: keep stdout a single JSON report, put the alert in the journal (stderr), and keep
+                # the transition pending so configuring a channel later still announces what is broken.
+                print(message, file=sys.stderr)
+                note = 'no alert channel configured'
+            elif message:
                 # deliver's no-channel fallback prints text; keep stdout a single JSON report.
                 with contextlib.redirect_stdout(io.StringIO()):
                     note = (deliver or health.deliver)(message, env=env, timeout=15)
             if note:
-                report['delivery'] = 'failed; previous state retained'
+                report['delivery'] = (note if isinstance(note, str) else 'failed') + '; previous state retained'
             else:
                 health.save_state(path, state)
             if args.append:

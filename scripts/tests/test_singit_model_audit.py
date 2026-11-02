@@ -147,6 +147,26 @@ class AuditTests(unittest.TestCase):
         self.assertNotIn('book:venice-image', [r['name'] for r in report['results']])
         self.assertNotIn('health:venice-image', [r['name'] for r in report['results']])
 
+    def test_solana_quote_above_probe_is_a_price_mismatch(self):
+        def both(base, solana):
+            accepts = [{'network': 'eip155:8453', 'scheme': 'upto', 'amount': base},
+                       {'network': 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp', 'scheme': 'upto', 'amount': solana}]
+            return {'payment-required': base64.b64encode(json.dumps({'accepts': accepts}).encode()).decode()}
+        self.fake.probe = (402, both('1000', '2000'), {})
+        self.fake.quote = (402, both('1000', '2500'), {})
+        self.assertIn('price_mismatch', self.row()['issues'])
+
+    def test_no_alert_channel_keeps_the_transition_pending(self):
+        self.fake.quote = (503, {}, {'error': {'code': 'no_healthy_sellers'}})
+        output, errors = io.StringIO(), io.StringIO()
+        with redirect_stdout(output), redirect_stderr(errors):
+            code = audit.main(['--state', str(self.state), '--append', str(self.history)], env={},
+                              fetch=self.fake, sleep=lambda _: None, now=lambda: 100)
+        self.assertEqual(code, 2)
+        json.loads(output.getvalue())  # stdout stays one JSON report
+        self.assertIn('seller down', errors.getvalue())
+        self.assertFalse(self.state.exists())
+
     def test_bazaar_unreadable_is_skipped(self):
         self.fake.bazaar = (503, {}, None)
         self.assertTrue(self.row('bazaar')['skipped'])
