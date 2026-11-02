@@ -23,7 +23,7 @@ day per network (IPv4 /24, IPv6 /64), up to 400 tokens each, resetting at midnig
 ## What you need
 
 - **Variant A (x402 fetch, Node):** Node 20+ and a wallet private key holding a little USDC on Base (0.01 to 1 USDC is
-  plenty). No ETH: the `upto` offer uses Permit2 with EIP-2612 gas sponsoring, so the facilitator pays the gas.
+  plenty). You can withdraw USDC from Coinbase on Base. No ETH: the `upto` offer uses Permit2 with EIP-2612 gas sponsoring, so the facilitator pays the gas.
 - **Variant B (Bazaar MCP):** a Coinbase Developer Platform account (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`,
   `CDP_WALLET_SECRET`) and USDC on Base in the CDP-managed wallet.
 - **Variant C (agentic wallet CLI):** Node 24+ and a Coinbase agentic wallet (`awal`) signed in by email and funded with

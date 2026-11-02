@@ -7,7 +7,7 @@ description: Use when an agent needs an LLM answer, web search or price lookup i
 
 Use SingIt when an agent needs a model answer, web search or a price lookup, and its owner wants a spending limit. Three ways in: a free answer (no key or wallet), an owner-set MCP key with daily and per-request caps, or pay per call with your own wallet over x402 (USDC on Base or Solana).
 
-Limits: they protect only SingIt's own agent. On Base the owner's allowance limiter is an on-chain contract that enforces them, and the owner can pause it. On a SingIt API key the server checks the daily and per-request caps; on Solana the owner's control is revoking the delegation, and there is no on-chain emergency stop. A key's caps apply only to calls made with that key to SingIt's MCP and /v1 endpoint. They do not limit spending elsewhere, protect an agent's own wallet, or cap an x402 call paid from your own wallet: there you limit it by what you sign.
+Limits: they protect only SingIt's own agent. On Base the owner's allowance limiter is an on-chain contract that enforces them, and the owner can pause it. On a SingIt API key the server checks the daily and per-request caps. On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated. A key's caps apply only to calls made with that key to SingIt's MCP and /v1 endpoint. They do not limit spending elsewhere, protect an agent's own wallet, or cap an x402 call paid from your own wallet: there you limit it by what you sign.
 
 Models: 200+, listed at https://ask.singitai.app/v1/models.
 
@@ -119,6 +119,8 @@ limit spending elsewhere. SingIt's contracts do not protect other people's
 agents' own wallets. A key cannot move funds or change limits.
 
 On Base the owner's allowance limiter is an on-chain contract the owner can
-pause. On Solana key caps are checked by SingIt's server; the owner can revoke
-the delegation. There is no on-chain emergency stop. A paused Solana account
-is unpaused only by a new grant signed after the pause.
+pause. On Solana, SingIt's server checks key caps and its own agent's daily and
+per-purchase limits. The Solana stop pauses new purchases in SingIt's gateway
+without removing the on-chain delegate approval; only Revoke removes it. There
+is no on-chain emergency stop. A paused Solana account is unpaused only by a
+new grant signed after the pause.
