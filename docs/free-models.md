@@ -13,6 +13,8 @@ Use `free/deepseek-v4.1-flash` for a single working example. Requests without `f
 
 The shared free tier allows up to 20 answers a day per network (IPv4 /24 or IPv6 /64), 1000 answers a day overall, four concurrent answers, 400 output tokens and 4000 question characters. A shared upstream cost cap of **$0.25/day** is enabled by default. This bounds the configured daily spend at $0.25, approximately **$7.50 per 30-day month**. The free tier may run out before a visitor uses their allowance.
 
+Each free answer reports `billing.remainingToday`; when used up, drop the `free/` prefix to pay. The response also includes `billing.resetsAt` (next UTC midnight), `billing.hint` (`drop the free/ prefix to pay`), and `X-SingIt-Free-Remaining` (the same count of answers left today for this network). The count is the lower of the network and whole-day answer allowances; the shared cost budget may end free answers sooner.
+
 Before calling upstream, the service reserves the answer's worst-case cost at the model's list price, with one input token per character, message framing, and all reasoning headroom sent upstream. Reservations count against the cap concurrently. A completed answer replaces its reservation with the validated reported upstream cost; missing or invalid usage uses the worst-case fallback. A failed upstream call releases the reservation and returns the answer count. Unknown model prices pause free answers with 503 while the budget is enabled.
 
 A budget refusal returns 429, `free_budget_exhausted`, and `Retry-After` in seconds until midnight UTC, without per-visitor X-RateLimit headers. Visitor and shared answer-count exhaustion retain `free_tier_exhausted` and their existing headers; concurrency retains `free_tier_busy`.

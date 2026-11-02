@@ -112,7 +112,7 @@ export class FreeAllowance {
     this.running += 1;
     this.reservedMicro += worstCost;
     this.save();
-    return { ok: true, day: this.day, reserved: worstCost, left: this.terms.perVisitorPerDay - used - 1 };
+    return { ok: true, day: this.day, reserved: worstCost, left: Math.max(0, Math.min(this.terms.perVisitorPerDay - used - 1, this.terms.perDay - this.total)) };
   }
 
   save() {
@@ -233,6 +233,7 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
       if (["visitor", "day"].includes(turn.reason)) res.set({ "X-RateLimit-Limit": String(terms.perVisitorPerDay),
         "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(Math.floor(allowance.now() / 1000) + allowance.secondsToReset()) });
       return res.status(429).json({ error: { message: REFUSALS[turn.reason], type: "rate_limit_error",
+        ...(turn.reason === "busy" ? {} : { remainingToday: 0 }),
         code: turn.reason === "budget" ? "free_budget_exhausted" : turn.reason === "busy" ? "free_tier_busy" : "free_tier_exhausted" } });
     }
     const started = Date.now();
@@ -253,7 +254,8 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
       res.set({ "X-SingIt-Free": "true", "X-SingIt-Free-Remaining": String(turn.left) });
       res.json({ id: `singit-ask-free-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: asked, choices: [{ index: 0, message: { role: "assistant", content: answer.content },
-          finish_reason: answer.finishReason }], usage: answer.usage, billing: { free: true } });
+          finish_reason: answer.finishReason }], usage: answer.usage, billing: { free: true, remainingToday: turn.left,
+            resetsAt: new Date((turn.day + 1) * 86_400_000).toISOString(), hint: "drop the free/ prefix to pay" } });
     } catch (error) {
       allowance.giveBack(visitor, turn);
       log(`singit-ask: no free answer after ${Date.now() - started} ms (${safeDiagnostic(error.name)}${error.name === "UpstreamError" ? ` code=${safeDiagnostic(error.code)} status=${safeDiagnostic(error.status)}` : ""})`);

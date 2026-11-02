@@ -277,7 +277,11 @@ const OUTPUT_SCHEMA = {
       finish_reason: { type: "string", description: "stop, or length when max_tokens ended the answer" },
     } } },
     usage: { type: "object", description: "Token counts and the model's own cost in micro-USD (buyer_cost_micro)" },
-    billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
+    billing: { type: "object", description: "What was charged, in USDC micro-units, or the free answer allowance", properties: {
+      free: { type: "boolean", const: true, description: "Present for free answers" },
+      remainingToday: { type: "integer", minimum: 0, description: "Free answers left today for this network, limited by the network and whole-day answer counts; the shared cost budget may end free answers sooner" },
+      resetsAt: { type: "string", description: "Next UTC midnight (ISO 8601) for the free answer allowance" },
+      hint: { type: "string", const: "drop the free/ prefix to pay", description: "How to request a paid answer" },
       providerCostAtomic: { type: "string" }, markupAtomic: { type: "string" },
       totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" },
     } },
@@ -708,7 +712,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               min_tier: { type: "string", enum: TIERS, description: "Minimum tier; only valid with model singit/auto." },
               model: { ...inputSchema.properties.model, description: inputSchema.properties.model.description + " " + AUTO_DESCRIPTION + defaultFallbackNote(config) } } }, example: EXAMPLE.input } } },
           responses: {
-            200: { description: "The answer, with what it was charged", headers: autoHeaders,
+            200: { description: "The answer, with what it was charged", headers: { ...autoHeaders, "X-SingIt-Free-Remaining": { description: "Free answers left today for this network; the shared cost budget may end free answers sooner", schema: { type: "integer", minimum: 0 } } },
                    content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
             ...Object.fromEntries(Object.entries(paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }))
               .map(([status, response]) => [status, { ...response, headers: { ...response.headers, ...autoHeaders } }])),
@@ -1034,8 +1038,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           + `${freeOffer.perVisitorPerDay} answers a day per network (IPv4 /24, IPv6 /64), up to ${freeOffer.maxTokens} `
           + `tokens and ${freeOffer.maxChars} characters each, resetting at midnight UTC. `
           + (freeOffer.budgetUsdPerDay > 0 ? `Shared daily cost cap: $${freeOffer.budgetUsdPerDay}; free answers may run out for the day (free_budget_exhausted). ` : "")
-          + `When they are used up, drop `
-          + `the ${FREE_PREFIX} prefix to pay per answer, or come back tomorrow.`, ""] : []),
+          + "Each free answer reports billing.remainingToday; when used up, drop the free/ prefix to pay, or come back tomorrow.", ""] : []),
       "## Paid routes", "", ...discoverableRoutes().map((route) => `- POST ${base}${route}`), "",
       "## Free", "",
       `- GET ${base}/v1/models — models and their prices`,

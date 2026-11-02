@@ -5,7 +5,7 @@ import { ServerResponse } from "node:http";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, ROUTE, createApp } from "../src/app.mjs";
-import { FreeAllowance, freeAnswerCost, freeTerms, networkOf } from "../src/free.mjs";
+import { FREE_DEFAULTS, FreeAllowance, addFreeRoute, freeAnswerCost, freeTerms, networkOf } from "../src/free.mjs";
 import { UnknownModel } from "../src/catalogue.mjs";
 
 function request(app, path, { method = 'GET', body, headers = {} } = {}) {
@@ -91,7 +91,12 @@ test("a free/ question is answered with no payment, short, from the free model",
   const body = await response.json();
   assert.equal(body.choices[0].message.content, "Hi!");
   assert.equal(body.model, "free/deepseek-v4.1-flash");
-  assert.deepEqual(body.billing, { free: true });
+  assert.deepEqual(body.billing, { free: true, remainingToday: 1,
+    resetsAt: new Date((Math.floor(body.created * 1000 / 86_400_000) + 1) * 86_400_000).toISOString(),
+    hint: "drop the free/ prefix to pay" });
+  const second = await ask(url, FREE_Q);
+  assert.equal(second.headers.get("x-singit-free-remaining"), "0");
+  assert.equal((await second.json()).billing.remainingToday, 0);
   assert.equal(asked[0].model, "deepseek-v4.1-flash");
   assert.equal(asked[0].maxTokens, 400, "free answers are kept short");
   assert.equal(fac.calls.verify, 0);
@@ -111,12 +116,15 @@ test("each visitor gets a few free answers a day, and everyone together a ceilin
   assert.equal((await ask(url, FREE_Q, "198.51.100.1")).status, 200);
   const third = await ask(url, FREE_Q, "198.51.100.1");
   assert.equal(third.status, 429);
-  assert.match((await third.json()).error.message, /drop the free\/ prefix/);
+  const error = (await third.json()).error;
+  assert.equal(error.code, "free_tier_exhausted");
+  assert.equal(error.remainingToday, 0);
+  assert.match(error.message, /drop the free\/ prefix/);
   assert.ok(Number(third.headers.get("retry-after")) > 0);
   assert.equal((await ask(url, FREE_Q, "198.51.101.2")).status, 200, "another network still has answers");
   const fourth = await ask(url, FREE_Q, "198.51.102.3");
   assert.equal(fourth.status, 429, "today's ceiling for everyone is reached");
-  assert.match((await fourth.json()).error.message, /used up/);
+  assert.match((await fourth.json()).error.message, /drop the free\/ prefix/);
 });
 
 test("a free answer that does not come back is not counted", async (t) => {
@@ -129,6 +137,7 @@ test("a free answer that does not come back is not counted", async (t) => {
   const next = await ask(url, FREE_Q);
   assert.equal(next.status, 200);
   assert.equal(next.headers.get("x-singit-free-remaining"), "1");
+  assert.equal((await next.json()).billing.remainingToday, 1);
 });
 
 test("free answers refuse other models, long questions, and are off when no model is free", async (t) => {
@@ -268,6 +277,14 @@ test("the OpenAPI document and the discovery listing say the free/ prefix is acc
   const doc = await (await fetch(`${url}/openapi.json`)).json();
   const post = doc.paths[ROUTE].post;
   assert.match(post.description, /free\/deepseek-v4\.1-flash/);
+  const success = post.responses[200];
+  assert.match(success.headers["X-SingIt-Free-Remaining"].description, /answers left today for this network/);
+  const billing = success.content["application/json"].schema.properties.billing.properties;
+  assert.equal(billing.remainingToday.type, "integer");
+  assert.equal(billing.remainingToday.minimum, 0);
+  assert.equal(billing.resetsAt.type, "string");
+  assert.match(billing.resetsAt.description, /ISO 8601/);
+  assert.equal(billing.hint.const, "drop the free/ prefix to pay");
   assert.deepEqual(post["x-free-models"], [{ id: "free/deepseek-v4.1-flash", object: "model", owned_by: "singit", free: true,
     limits: { perVisitorPerDay: 2, maxTokens: 400, maxChars: 4000 } }]);
   assert.match(post.requestBody.content["application/json"].schema.properties.model.description, /free\/deepseek-v4\.1-flash/);
@@ -340,6 +357,7 @@ test("agent intro and model selection guidance follow the free offer configurati
     for (const [count] of text.matchAll(/\b\d+\+? models\b/g)) assert.equal(count, '200+ models');
     assert.match(text, /Start here: POST http:\/\/ask.test\/v1\/chat\/completions/);
     assert.equal(text.includes("Free first call, no wallet: model free/deepseek-v4.1-flash."), freeModels.length > 0);
+    assert.equal(text.includes("Each free answer reports billing.remainingToday; when used up, drop the free/ prefix to pay, or come back tomorrow."), freeModels.length > 0);
     const manifest = (await request(app, "/.well-known/x402")).body;
     assert.doesNotMatch(manifest.instructions, new RegExp('cheap' + 'er', 'i'));
     for (const term of ["singit/auto", "min_tier", "fallback_models"])
@@ -349,3 +367,69 @@ test("agent intro and model selection guidance follow the free offer configurati
     assert.equal(discovery.resource.description.includes("free/ models need no payment"), freeModels.length > 0);
   }
 });
+
+
+test("free defaults retain the shared budget and answer limits", () => {
+  assert.equal(FREE_DEFAULTS.budgetUsdPerDay, 0.25);
+  assert.equal(FREE_DEFAULTS.perVisitorPerDay, 20);
+  assert.equal(FREE_DEFAULTS.perDay, 1000);
+});
+
+test("free remaining count follows the lower of network and shared daily allowances", async (t) => {
+  const { url } = await serve(t, { config: { ...CONFIG, freeLimits: { perVisitorPerDay: 20, perDay: 2 } } });
+  for (const [ip, left] of [["198.51.100.1", 1], ["198.51.101.1", 0]]) {
+    const response = await ask(url, FREE_Q, ip);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("x-singit-free-remaining"), String(left));
+    assert.equal((await response.json()).billing.remainingToday, left);
+  }
+  const refused = await ask(url, FREE_Q, "198.51.102.1");
+  assert.equal(refused.status, 429);
+  const error = (await refused.json()).error;
+  assert.equal(error.code, "free_tier_exhausted");
+  assert.equal(error.remainingToday, 0);
+  assert.match(error.message, /drop the free\/ prefix/);
+});
+
+test("free billing resetsAt uses the allowance clock's next UTC midnight", async () => {
+  const now = Date.parse("2026-11-02T23:59:59.999Z");
+  const terms = freeTerms({ freeModels: ["m"], freeBudgetUsdPerDay: 0 });
+  const allowance = new FreeAllowance(terms, () => now);
+  let handler, body;
+  const headers = {};
+  addFreeRoute({ post(_route, fn) { handler = fn; } }, ROUTE, {
+    config: {}, terms, allowance, readRequest: () => ({ chars: 5, maxTokens: 10, messages: [] }),
+    upstream: async () => ({ content: "ok", usage: {}, finishReason: "stop" }), log() {},
+  });
+  await handler({ body: { model: "free/m" }, get: () => "198.51.100.1" }, {
+    set(values) { Object.assign(headers, values); }, json(value) { body = value; },
+  });
+  assert.deepEqual(body.billing, { free: true, remainingToday: 19,
+    resetsAt: "2026-11-03T00:00:00.000Z", hint: "drop the free/ prefix to pay" });
+  assert.equal(headers["X-SingIt-Free-Remaining"], "19");
+});
+
+
+for (const [reason, code] of [["visitor", "free_tier_exhausted"], ["day", "free_tier_exhausted"],
+  ["budget", "free_budget_exhausted"], ["busy", "free_tier_busy"]]) {
+  test(`free ${reason} refusals retain their code, headers and pay hint`, async () => {
+    let handler, body, status;
+    const headers = {};
+    addFreeRoute({ post(_route, fn) { handler = fn; } }, ROUTE, {
+      config: {}, terms: freeTerms({ freeModels: ["m"], freeBudgetUsdPerDay: 0 }),
+      allowance: { take: () => ({ ok: false, reason }), secondsToReset: () => 60, now: () => 0 },
+      readRequest: () => ({ chars: 5, maxTokens: 10, messages: [] }),
+    });
+    await handler({ body: { model: "free/m" }, get: () => "198.51.100.1" }, {
+      set(key, value) { if (typeof key === "string") headers[key] = value; else Object.assign(headers, key); },
+      status(value) { status = value; return this; }, json(value) { body = value; },
+    });
+    assert.equal(status, 429);
+    assert.equal(body.error.code, code);
+    assert.equal(body.error.type, "rate_limit_error");
+    assert.equal(body.error.remainingToday, reason === "busy" ? undefined : 0, "a busy refusal is not an exhausted allowance");
+    assert.match(body.error.message, /drop the free\/ prefix/);
+    assert.equal(headers["Retry-After"], reason === "busy" ? "5" : "60");
+    assert.equal(headers["X-RateLimit-Remaining"], ["visitor", "day"].includes(reason) ? "0" : undefined);
+  });
+}
