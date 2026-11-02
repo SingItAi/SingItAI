@@ -17,14 +17,13 @@ const modalEl = $("#modal");
 
 const state = {
   wallet: null,        // the connected wallet (needed to sign)
-  session: null,       // {account, address, telegramLinked}
+  session: null,       // {account, address, chain}
   allowance: null,     // GET /allowance
   spend30: null,       // GET /web/v1/wallet/report (the signed-in wallet's own report), its `spent`
   tab: "allowance",
   modal: null,         // {type: "busy" | "wallets" | "quote" | "pause" | "delete-chat" | "models", …}
   preset: 0,           // index into PRESETS
   method: null,        // "approve" | "permit"; null = pick from the wallet's ETH
-  linkCode: null,
   tools: null,
   quote: null,
   result: null,
@@ -32,7 +31,7 @@ const state = {
   search: null,
   purchases: null,
   revealed: {},
-  view: "chat",        // signed in: "chat" | "allowance" | "purchases" | "telegram" | "usage" | "settings"
+  view: "chat",        // signed in: "chat" | "allowance" | "purchases" | "usage" | "settings" | "keys"
   chats: [],           // the sidebar's history
   chatId: null,
   messages: [],
@@ -229,7 +228,7 @@ async function signOut() {
 
 // What belongs to one signed-in account: cleared when it signs out or another wallet takes over.
 const accountState = () => ({
-  allowance: null, spend30: null, quote: null, result: null, purchases: null, linkCode: null, revealed: {}, tab: "allowance",
+  allowance: null, spend30: null, quote: null, result: null, purchases: null, revealed: {}, tab: "allowance",
   modal: null, view: "chat", chats: [], chatId: null, messages: [], done: {}, chatMenu: null, renaming: null,
   showArchived: false, models: null, accountMenu: null, usage: null, push: null, menuOpen: false, switching: false,
   modelFilter: { query: "", category: "" }, keys: null, newKey: null,
@@ -844,18 +843,6 @@ function renderStale(a) {
   </div></div>`;
 }
 
-function renderTelegram() {
-  const linked = state.session?.telegramLinked;
-  const body = linked
-    ? `<p>Your SingIt bot uses this allowance and sends the watcher's notices.</p>
-       <button class="btn btn-ghost" data-action="unlink">Unlink Telegram</button>`
-    : state.linkCode
-      ? `<p class="note">Send <span class="mono">/link ${esc(state.linkCode.code)}</span> to the SingIt bot within 10 minutes, then reload.</p>`
-      : `<p>Shop from the SingIt bot with the same allowance, and get a message whenever money moves.</p>
-         <button class="btn btn-ghost" data-action="link">Link Telegram</button>`;
-  return `<div class="bezel"><div class="core stack"><div><h2>Telegram</h2></div>${body}</div></div>`;
-}
-
 function renderActivity(a) {
   const alerts = a.alerts || [];
   const ops = a.operations || [];
@@ -1217,7 +1204,7 @@ function renderSidebar() {
   $("#app").classList.toggle("menu-open", state.menuOpen);
   $("#top-title").textContent = state.view === "chat"
     ? (state.chats.find((c) => c.id === state.chatId)?.title || "New chat")
-    : { allowance: "Allowance", purchases: "Purchases", telegram: "Telegram", usage: "Usage", settings: "Settings",
+    : { allowance: "Allowance", purchases: "Purchases", usage: "Usage", settings: "Settings",
         keys: "API keys" }[state.view];
 }
 
@@ -1225,8 +1212,7 @@ function renderMain() {
   const host = $("#main");
   if (state.view !== "chat") {
     const page = { allowance: renderAllowance, purchases: renderPurchases, usage: renderUsage, settings: renderSettings,
-                   keys: renderKeys,
-                   telegram: () => `<div class="page-head"><span class="eyebrow">Telegram</span><h1>Your agent in <em>Telegram</em>.</h1></div>${renderTelegram()}` }[state.view];
+                   keys: renderKeys }[state.view];
     host.innerHTML = `<div class="pane"><div class="pane-inner">${page()}</div></div>`;
     return;
   }
@@ -1534,11 +1520,6 @@ function renderCard(card, key) {
       <p class="faint">${esc([p.denomination, p.paid, p.status].filter(Boolean).join(" · "))}</p></div></div>`).join("")}
       <div class="row"><button class="btn btn-ghost btn-sm" data-action="go" data-view="purchases">All purchases</button></div></div>`;
   }
-  if (card.type === "link_telegram") {
-    return `<div class="card">${state.linkCode
-      ? `<p>Send <span class="mono">/link ${esc(state.linkCode.code)}</span> to the SingIt bot within 10 minutes.</p>`
-      : `<button class="btn btn-ghost btn-sm" data-action="link">Get a code</button>`}</div>`;
-  }
   // A card from a newer release than this page: never a silent gap where a button should be.
   return card.type ? `<div class="card"><p class="faint">This page is out of date and can't show this.</p>
     <div class="row"><button class="btn btn-ghost btn-sm" data-action="reload">Refresh the page</button></div></div>` : "";
@@ -1552,7 +1533,6 @@ const ICONS = {
   purchases: '<path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   language: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
-  telegram: '<path d="M21 4 3 11l7 2 2 7 3-5 5 4z"/><path d="m10 13 5-4"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6"/><path d="M12 17h.01"/>',
   signout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
   back: '<path d="m15 18-6-6 6-6"/>',
@@ -2298,12 +2278,6 @@ const actions = {
   "revoke-old": (el) => walletOperation("revoke", { method: method(), limiter: el.dataset.limiter }),
   "ask-pause": () => { state.modal = { type: "pause" }; render(); },
   pause,
-  link: () => busy("Getting a code…", async () => { state.linkCode = await api.linkTelegram(); }),
-  unlink: () => busy("Unlinking…", async () => {
-    await api.unlinkTelegram();
-    state.session = { ...state.session, telegramLinked: false };
-    state.linkCode = null;
-  }),
   "quote-tool": (el) => quoteTool(el.dataset.id),
   "search-bitrefill": searchBitrefill,
   "quote-bitrefill": (el) => quoteBitrefill(el.dataset.slug),
