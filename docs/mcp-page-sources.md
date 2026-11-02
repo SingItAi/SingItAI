@@ -62,3 +62,24 @@ together and bump the version in both. The latest Registry version already
 points at singit-mcp: claiming a different repository for the same name and
 version would make the Registry history contradictory. The dated live
 initialize observation of 0.1.3 above remains unchanged.
+
+## Tools reference page
+
+`website/docs/mcp-tools/index.html` uses the same `website/data/mcp-tools.json`
+snapshot for full descriptions, input parameters, bounds, enums and annotations.
+The task-supplied live re-check on 2 November 2026 used a keyless `tools/list`:
+16 tools, with unchanged descriptions, input schemas and annotations. The only
+difference from the snapshot is a top-level `title` per tool, matching
+`annotations.title`. The live server reports 0.1.3; the repository's
+`web_mcp.py` 0.1.4 has the same 16-tool set and only changes the version string
+and the server card's `DOCS_URL`. No network verification was repeated while
+building this page. Access, scope and network claims use the sources above and
+the shared classification from `scripts/generate-mcp-page.mjs`.
+
+Run `node scripts/generate-mcp-tools-page.mjs` to regenerate the overview and
+reference blocks; append `--check` to detect drift. The HTML shell is hand-written
+and Cloudflare serves the checked-in page. Run
+`node --test website/tests/mcp-tools-page.test.mjs` for page checks. The existing
+MCP snapshot and its pinned tests remain unchanged.
+
+The Registry description (`server.json`, both copies) now says "inside owner-set daily limits (USDC)", 98 characters; the schema's limit is 100. The version stays 0.1.4: publishing the new description needs a new manifest version (0.1.5) and the same bump of `SERVER_INFO` in `web_mcp.py` (a test requires them to match), which redeploys the gateway. Nothing was published to the Registry.

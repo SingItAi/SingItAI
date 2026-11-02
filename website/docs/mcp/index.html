@@ -164,7 +164,7 @@ bearer_token_env_var = "SINGIT_API_KEY"</code></pre></div>
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'</code></pre></div>
 <p class="lp-text">Expected: initialize returns serverInfo name singit and title SingIt x402; tools/list returns 16 tools. Both requests are free and need no key. A missing, empty or unexpanded-variable header behaves like no key. A wrong or revoked key gets HTTP 401 (verified 31 October 2026 with an invalid key).</p></div></section>
-<section class="lp-section" id="tools"><div class="shell"><h2 class="section-title">Tools</h2><p class="lp-text">Snapshot fetched 31 October 2026. Read-only and idempotent values below are server annotation hints. Read-only paid calls still charge; repeating a non-idempotent call charges again. Account-read tools require a key but no paid-tool scope.</p>
+<section class="lp-section" id="tools"><div class="shell"><h2 class="section-title">Tools</h2><p class="lp-text">Snapshot fetched 31 October 2026. Read-only and idempotent values below are server annotation hints. Read-only paid calls still charge; repeating a non-idempotent call charges again. Account-read tools require a key but no paid-tool scope. See the <a href="/docs/mcp-tools/">full parameters and allowed values</a> for every tool.</p>
 <!-- generated:mcp-tools:start -->
 <div class="table-wrap"><table class="mtable">
 <caption>16 tools from the keyless tools/list snapshot. Paid tools are paid per call within the key's caps; get_limits shows spent and remaining today.</caption>
