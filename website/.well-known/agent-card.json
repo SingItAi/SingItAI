@@ -31,7 +31,7 @@
     {
       "id": "key-spending-limits",
       "name": "Key spending limits",
-      "description": "get_limits and get_receipts read key limits and spend. Caps apply only to calls with that key to SingIt MCP and its /v1 endpoint; they do not limit spending elsewhere or protect an agent\u2019s own wallet.",
+      "description": "get_limits and get_receipts read key limits and spend. On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated. Caps apply only to calls with that key to SingIt MCP and its /v1 endpoint; they do not limit spending elsewhere or protect an agent\u2019s own wallet.",
       "tags": [
         "limits",
         "receipts"

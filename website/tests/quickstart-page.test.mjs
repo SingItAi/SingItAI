@@ -56,3 +56,11 @@ test('the page has no double-escaped HTML entities', () => {
   const html = readFileSync(new URL('../docs/quickstart/index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /&amp;(#\d+|#x[0-9a-f]+|quot|lt|gt|apos);/i);
 });
+
+
+test('Base funding example is present once and sourced', () => {
+  const sentence = 'You can withdraw USDC from Coinbase on Base.';
+  assert.equal(page.split(sentence).length - 1, 1);
+  assert.ok(guide.includes(sentence));
+  assert.ok(sources.includes('https://docs.base.org/get-started/get-funds'));
+});

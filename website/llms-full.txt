@@ -1,6 +1,6 @@
 # SingIt
 
-> SingIt: pay for AI with USDC and keep spending limits. Your agent spends, your wallet keeps the money: set a daily and a per-purchase limit once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits. Limits protect only SingIt's own agent: on Base they are enforced by an on-chain contract, on a SingIt API key the server checks them.
+> SingIt: pay for AI with USDC and keep spending limits. Your agent spends, your wallet keeps the money: set a daily and a per-purchase limit once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits. Limits protect only SingIt's own agent: on Base they are enforced by an on-chain contract, on a SingIt API key the server checks them. On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated.
 
 Agents and scripts: fetch machine-readable files from https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt); this host serves the human site.
 

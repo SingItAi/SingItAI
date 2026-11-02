@@ -138,3 +138,13 @@ test('agent card supplies discovery, security, examples and safe HTTPS links', a
   const urls = JSON.stringify(card).match(/https:[^"\s]+/g);
   for (const url of urls) assert.doesNotMatch(url, /0x[a-fA-F0-9]{40}/);
 });
+
+
+test('public agent guides explain Solana enforcement and use a consistent model count', async () => {
+  for (const file of ['SKILL.md', 'llms.txt', 'llms-full.txt', '.well-known/agent-card.json']) {
+    const text = await read(file);
+    assert.ok(text.includes("On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated."), file);
+    assert.doesNotMatch(text, new RegExp('cheap' + 'er', 'i'), file);
+    for (const [count] of text.matchAll(/\b\d+\+? models\b/g)) assert.equal(count, '200+ models', file);
+  }
+});

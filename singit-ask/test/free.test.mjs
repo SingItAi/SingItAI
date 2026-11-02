@@ -334,9 +334,14 @@ test("agent intro and model selection guidance follow the free offer configurati
     const text = (await request(app, "/llms.txt")).body;
     assert.match(text, /^# SingIt Ask\n\n> OpenAI-compatible chat API: 200\+ models/);
     assert.match(text, /Spending limits: SingIt's limits protect only SingIt's own agent/);
+    const limitsLine = text.split("\n").find(line => line.startsWith("Spending limits:"));
+    assert.ok(limitsLine.includes("On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated."));
+    assert.doesNotMatch(limitsLine, new RegExp('cheap' + '(er|est)', 'i'));
+    for (const [count] of text.matchAll(/\b\d+\+? models\b/g)) assert.equal(count, '200+ models');
     assert.match(text, /Start here: POST http:\/\/ask.test\/v1\/chat\/completions/);
     assert.equal(text.includes("Free first call, no wallet: model free/deepseek-v4.1-flash."), freeModels.length > 0);
     const manifest = (await request(app, "/.well-known/x402")).body;
+    assert.doesNotMatch(manifest.instructions, new RegExp('cheap' + 'er', 'i'));
     for (const term of ["singit/auto", "min_tier", "fallback_models"])
       for (const guide of [text, manifest.instructions]) assert.ok(guide.includes(term), term);
     const response = await request(app, ROUTE);

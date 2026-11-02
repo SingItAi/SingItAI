@@ -1015,7 +1015,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     const exactShare = Math.round((config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION) * 100);
     const lines = [
       "# SingIt Ask", "", `> ${LLMS_INTRO}`, "",
-      "Spending limits: SingIt's limits protect only SingIt's own agent. On Base the owner's allowance limiter enforces them in an on-chain contract. On a SingIt API key (MCP at https://app.singitai.app/mcp, /v1 at https://app.singitai.app/v1) SingIt's server checks the owner's daily and per-request caps. A call you pay for here with your own wallet is not covered: you sign each payment yourself. Details: https://singitai.app/docs/mcp-key/", "",
+      "Spending limits: SingIt's limits protect only SingIt's own agent. On Base the owner's allowance limiter enforces them in an on-chain contract. On a SingIt API key (MCP at https://app.singitai.app/mcp, /v1 at https://app.singitai.app/v1) SingIt's server checks the owner's daily and per-request caps. On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated. A call you pay for here with your own wallet is not covered: you sign each payment yourself. Details: https://singitai.app/docs/mcp-key/", "",
       `Start here: POST ${base}/v1/chat/completions with "model":"singit/auto" (optional "min_tier") or a named model; the unpaid call returns 402 with the offers.`, "",
       "## What it is", "",
       `An x402 seller: ${sold.length > 1 ? `${sold.slice(0, -1).join(", ")} and ${sold.at(-1)}` : sold[0]}, `
