@@ -15,6 +15,7 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { markUnservable, unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { acceptedOf, answerLogFor, recordWhenSettled } from "./answer-log.mjs";
+import { probeInput, probeNote } from "./metered.mjs";
 import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, retryBudget, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
@@ -86,6 +87,10 @@ export const surplusModel = (name) => {
   return m ? `${m[1]}-${m[2]}.${m[3]}` : name;
 };
 
+// Both formats use priceGuard, just like chat. The audit's Messages quotes (18270/8106/8811)
+// reproduce exactly at share=1 and max_tokens=400, not at the guarded shares in its books.
+// That snapshot had no effective guard; this tree already guards real format POSTs. Messages
+// additionally counts serialized envelopes/tools, and formats allow 32000 tokens, versus chat's 1200.
 // The request sent on, its model, its size in characters and the longest answer it can get.
 export function readFormatRequest(route, body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new FormatError(400, "Send a JSON body.");
@@ -154,7 +159,7 @@ const INPUT_SCHEMAS = {
   "/v1/messages": { properties: {
     model: MODEL_FIELD,
     max_tokens: { type: "integer", minimum: 1, maximum: FORMAT_LIMITS.maxTokens,
-      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+      description: "The longest answer, in tokens. The payment ceiling grows with it up to 32000; the charge follows what was used." },
     messages: { type: "array", minItems: 1, maxItems: 200, description: "The conversation, oldest first (Anthropic format).",
       items: { type: "object", required: ["role", "content"], properties: {
         role: { type: "string", enum: ["user", "assistant"] },
@@ -168,7 +173,7 @@ const INPUT_SCHEMAS = {
     input: { description: "The question: text, or a non-empty list of input items (OpenAI Responses format).",
       oneOf: [{ type: "string", minLength: 1 }, { type: "array", minItems: 1 }] },
     max_output_tokens: { type: "integer", minimum: 1, maximum: FORMAT_LIMITS.maxTokens, default: FORMAT_LIMITS.defaultTokens,
-      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+      description: "The longest answer, in tokens. The payment ceiling grows with it up to 32000; the charge follows what was used." },
     instructions: { type: "string", description: "Optional system instructions." },
     tools: { type: "array", description: "Optional tool definitions." },
     stream: STREAM_FIELD,
@@ -211,15 +216,13 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       .register(BASE, new ExactEvmScheme())
       .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
       .register(SOLANA, new ExactSvmScheme());
-    // The discovery probes (GET/HEAD and the empty, unpaid POST) are offered what this route's own Bazaar example
-    // body is offered right now, through the same parsing and pricing as a real question: that is the price CDP's
-    // Bazaar records for the route, and what vet402 compares its empty POST against (price_mismatch otherwise).
-    // The standing ceiling is kept only when the example cannot be quoted right now. A probe never pays.
+    // Discovery prices the example at list share by default; real POSTs below retain priceGuard.
+    // The same probeInput policy drives chat and formats, including optional discovery output budgets.
     const probeCeilings = perRequest(async () => {
       try {
         const input = readFormatRequest(route, EXAMPLES[route]);
         const info = await catalogue.resolve(input.model);
-        return ceilings(info, { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) }, exactOutputFraction);
+        return ceilings(info, probeInput({ ...input, info, ...priceGuard(catalogue, info.id, bufferPp) }, config), exactOutputFraction);
       } catch {
         return ceilings(null, {}, exactOutputFraction);
       }
@@ -260,7 +263,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       mimeType: "application/json",
       description: DESCRIPTIONS[route], serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
       extensions: { ...declareEip2612GasSponsoringExtension(),
-        ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
+        ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: { ...INPUT_SCHEMAS[route], description: probeNote(300, config, true) },
           output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }) },
     } }, server, { log });
     app.post(route, async (req, res) => {

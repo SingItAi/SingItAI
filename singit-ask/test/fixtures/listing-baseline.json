@@ -1,0 +1,104 @@
+{
+  "/v1/chat/completions": {
+    "upto:eip155:8453": 1500,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2007,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2003
+  },
+  "/v1/chat/claude-opus-5.5": {
+    "upto:eip155:8453": 5557,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 6557,
+    "exact:eip155:8453": 2524,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 3524
+  },
+  "/v1/chat/claude-sonnet-5.5": {
+    "upto:eip155:8453": 3231,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 4231,
+    "exact:eip155:8453": 1669,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2669
+  },
+  "/v1/chat/claude-haiku-5.5": {
+    "upto:eip155:8453": 1500,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2080,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2025
+  },
+  "/v1/chat/gpt-5.6-sol": {
+    "upto:eip155:8453": 4581,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 5581,
+    "exact:eip155:8453": 2074,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 3074
+  },
+  "/v1/chat/gpt-5.6-terra": {
+    "upto:eip155:8453": 3136,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 4136,
+    "exact:eip155:8453": 1640,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2640
+  },
+  "/v1/chat/gpt-5.5": {
+    "upto:eip155:8453": 5196,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 6196,
+    "exact:eip155:8453": 2259,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 3259
+  },
+  "/v1/chat/gemini-3.1-pro-preview": {
+    "upto:eip155:8453": 10204,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 11204,
+    "exact:eip155:8453": 8345,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 9345
+  },
+  "/v1/chat/gemini-3.8-flash": {
+    "upto:eip155:8453": 2144,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 3144,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2344
+  },
+  "/v1/chat/grok-4.7": {
+    "upto:eip155:8453": 1795,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2795,
+    "exact:eip155:8453": 1537,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2537
+  },
+  "/v1/chat/kimi-k3": {
+    "upto:eip155:8453": 2252,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 3252,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2376
+  },
+  "/v1/chat/deepseek-v4-pro": {
+    "upto:eip155:8453": 1500,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2038,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2012
+  },
+  "/v1/chat/deepseek-v4.1-flash": {
+    "upto:eip155:8453": 1500,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2007,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2003
+  },
+  "/v1/chat/qwen3.8-max-0902": {
+    "upto:eip155:8453": 1500,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2202,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2062
+  },
+  "/v1/chat/glm-5.3": {
+    "upto:eip155:8453": 1500,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2038,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2012
+  },
+  "/v1/messages": {
+    "upto:eip155:8453": 2650,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 3650,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2497
+  },
+  "/v1/responses": {
+    "upto:eip155:8453": 4072,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 5072,
+    "exact:eip155:8453": 1927,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2927
+  }
+}

@@ -220,18 +220,28 @@ export function addPaymentRoute(app, routes, server,
   return httpServer;
 }
 
-// What the discovery probes (GET/HEAD and the empty, unpaid POST) are quoted, per scheme and network: the ceilings a
-// real POST of `probeBody` would be offered right now, through the very same `readRequest`, `choose` and
-// `ceilings` a paid question goes through. `probeBody` is the example body the route declares in its Bazaar
-// discovery extension, which is the body CDP's Bazaar sends to record the route's price; vet402 then compares that
-// recorded price with what its own empty, unpaid POST is offered (price_mismatch when no accept carries it). The
-// standing ceiling (the old probe price) is kept only when the example cannot be quoted right now. Probes never pay:
-// a payment on an empty body is refused before settlement (see `isDiscoveryProbe` and the handlers below).
-export function exampleProbe({ probeBody, readRequest, choose, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION }) {
+// Discovery quotes the declared example at list price, an upper bound across seller changes.
+// Live mode restores snapshot pricing. Missing catalogue data retains the standing fallback.
+// Only discovery drops the live seller guard. Real POSTs retain their quote-time guard.
+export function probeInput(input, config = {}) {
+  const maxTokens = Number.isInteger(config.probeMaxTokens) && config.probeMaxTokens > 0
+    ? Math.min(config.probeMaxTokens, 1200) : input.maxTokens;
+  return { ...input, maxTokens, ...(config.probeShare === "live" ? {} : { share: 1, minDiscount: null }) };
+}
+
+export function probeNote(tokens, config = {}, format = false) {
+  const n = probeInput({ maxTokens: tokens }, config).maxTokens;
+  return `Listed price = ceiling for the example (max_tokens ${n}, ${config.probeShare === "live" ? "live seller" : "list"} price); `
+    + (format ? "a larger max_tokens or longer prompt is quoted higher (max_tokens up to 32000; Responses defaults to 4096); "
+      : "a larger max_tokens or longer prompt is quoted higher (max_tokens above 1200 counts as 1200); ")
+    + "upto settles actual usage.";
+}
+
+export function exampleProbe({ probeBody, readRequest, choose, config = {}, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION }) {
   const probe = perRequest(async () => {
     try {
       const input = await choose(readRequest(probeBody));
-      return ceilings(input.info, input, exactOutputFraction);
+      return ceilings(input.info, probeInput(input, config), exactOutputFraction);
     } catch {
       return ceilings(null, {}, exactOutputFraction);
     }
@@ -258,7 +268,7 @@ export function perRequest(quote) {
 export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, catalogue, config, readRequest,
   choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log,
   offerEmptyProbe = false, probeBody }) {
-  const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose,
+  const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose, config,
     exactOutputFraction: config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION });
   const offers = makeOffers(quotes, probeFallback);
   const server = new x402ResourceServer(facilitatorClient)

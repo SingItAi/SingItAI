@@ -414,3 +414,9 @@ The free GET/HEAD routes `/SKILL.md`, `/.well-known/agent-card.json`,
 through a fixed, case-sensitive allowlist. Agents can fetch them on Ask without
 the browser check on singitai.app. Files are read on every request, with open
 CORS, a five-minute public cache and strong ETags for conditional requests.
+
+Discovery probes (GET, HEAD, and empty unpaid POST) for chat, Messages and Responses quote the example at list price by default. This bounds a later quote for the same example across seller discounts. Real POSTs keep their tight seller guard; `upto` settles actual usage. The default model still has its standing 0.003 USDC cap and all quotes retain the minimum ceiling.
+
+`SINGIT_ASK_PROBE_SHARE=list` is the default; `live` restores the previous seller snapshot for discovery only, which can become stale. `SINGIT_ASK_PROBE_MAX_TOKENS` is an optional positive integer: unset uses the example's own output budget; set quotes discovery as if it requested `min(value, 1200)` tokens. It changes neither the published example body nor real requests. Invalid values leave the example budget unchanged.
+
+A larger output budget or longer prompt can exceed the listed example price. Chat counts `max_tokens` above 1200 as 1200. Set the probe budget to 1200 when listing the chat clamp for verifiers. Messages and Responses allow up to 32000 output tokens; Responses defaults to 4096 when `max_output_tokens` is omitted.

@@ -18,7 +18,7 @@ import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } fro
 import { HealthStats, FacilitatorCheck, healthBody, numbersBody, privateStatsBody } from "./health-stats.mjs";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
+import { probeNote, addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue, priceGuard, unservableError } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
@@ -276,7 +276,7 @@ const INPUT_SCHEMA = {
         content: { type: "string", description: `Plain text; all messages together under ${LIMITS.chars} characters.` },
       } } },
     max_tokens: { type: "integer", minimum: 1, maximum: LIMITS.maxTokens, default: LIMITS.defaultTokens,
-      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+      description: "The longest answer, in tokens; above 1200 counts as 1200. The payment ceiling grows with it; the charge follows what was used." },
     model: { type: "string", examples: ["deepseek-v4.1-flash", "claude-opus-5.5", "gpt-5.5", "gemini-3.8-flash"],
       description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
     fallback_models: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string" },
@@ -577,9 +577,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const freeListed = free.models.map((m) => ({ id: FREE_PREFIX + m, object: "model", owned_by: "singit", free: true,
     limits: freeLimits }));
   // The question's shape; where free answers are on, the model field says so (Bazaar and OpenAPI read it).
-  const inputSchema = freeOffer ? { ...INPUT_SCHEMA, properties: { ...INPUT_SCHEMA.properties,
+  const baseInputSchema = { ...INPUT_SCHEMA, description: probeNote(EXAMPLE.input.max_tokens, config) };
+  const inputSchema = freeOffer ? { ...baseInputSchema, properties: { ...INPUT_SCHEMA.properties,
     model: { ...INPUT_SCHEMA.properties.model, description: `${INPUT_SCHEMA.properties.model.description} `
-      + `Free to try, no payment: ${freeOffer.models.join(", ")}.` } } } : INPUT_SCHEMA;
+      + `Free to try, no payment: ${freeOffer.models.join(", ")}.` } } } : baseInputSchema;
   // What a payer pays on top of the model's own cost: the markup, and one settlement fee per answer.
   const fees = { markupPct: TERMS.markupBps / 100,
     perAnswerUsd: { [BASE]: Number(usd(TERMS.settlementFeeAtomic)), [SOLANA]: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) } };
@@ -728,7 +729,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             + `with no payment, within ${freeOffer.perVisitorPerDay} answers a day per network, ${freeOffer.maxTokens} tokens `
             + `and ${freeOffer.maxChars} characters each.` : ""),
           ...(freeOffer ? { "x-free-models": freeListed } : {}),
-          "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
+          "x-payment-info": { notes: probeNote(EXAMPLE.input.max_tokens, config), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": {
             schema: { type: "object", ...inputSchema, properties: { ...inputSchema.properties,
               min_tier: { type: "string", enum: TIERS, description: "Minimum tier; only valid with model singit/auto." },
@@ -773,7 +774,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         // Per-model routes (#66) answer the same errors as /v1/chat/completions minus the free tier's 429, plus 404
         // for a model the catalogue does not list; documented with the shared JSON error shapes (SI-63).
         ...(catalogue ? Object.fromEntries(Object.entries(await modelOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA,
-          outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price })).map(([route, item]) => [route,
+          outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config })).map(([route, item]) => [route,
           { post: { ...item.post, responses: { 200: item.post.responses[200],
             ...paidErrors({ notFound: "This model is not available; nothing was charged",
                             noAnswer: "No billable answer came back; nothing was charged", reasoning: true }) } } }])) : {}),
@@ -783,7 +784,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           description: "The request in that API's own format, without streaming. Pays actual token cost + 30% + a settlement "
             + "fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's price and the request's "
             + "size; nothing is charged without an answer. Models: GET /v1/models.",
-          "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
+          "x-payment-info": { notes: probeNote(300, config, true), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: formatRequestBody(route),
           responses: { 200: { description: "The answer in that API's format, with billing" },
                        ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged", reasoning: true,
