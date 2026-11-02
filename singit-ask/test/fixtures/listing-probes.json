@@ -81,8 +81,8 @@
   },
   {
     "route": "/v1/responses",
-    "before": 4072,
-    "after": 12812
+    "before": 1500,
+    "after": 1500
   },
   {
     "route": "/v1/exa/search",

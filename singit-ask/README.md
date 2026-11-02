@@ -387,18 +387,43 @@ The CLI applies exclusions in memory without writing or scheduling a flush. It
 prints no payer hashes or addresses. Missing/invalid stats files follow HealthStats'
 empty-counter fallback; check the report's `since` before interpreting it as history.
 
-### Model suspensions
+### Seller down: gate, learned price, hide
 
-A seller rejection with `no_healthy_sellers` blocks requests before payment for 15 minutes. A second consecutive rejection hides the model from listings; explicit requests can retry after backoffs of 30, 60, then at most 120 minutes. An answered request resets the count, and one rejection older than 24 hours does not start a streak. An accepted book refresh also resets it when a new qualifying seller appears, or the model returns after having no qualifying offers. Other errors do not count.
+Models are made to work first. A `minimum_discount_not_met` reply with a valid
+`bestDiscountPct` raises the next quote to at least the seller's deliverable share,
+plus the usual rounding and price buffer. This learned guard lasts ten minutes;
+a successful answer clears it, and expiry returns pricing to the order book.
+The payer signs the new quote as their ceiling; billing never raises that ceiling.
+A stale cheap book alone is no reason to hide a model.
 
-The default model, all configured automatic tiers, the free-list models, and deepseek-v4.1-flash, claude-haiku-4.5, glm-5.3-flash and gpt-6-luna retain the original 15 minute behavior and never suspend. `SINGIT_ASK_SUSPENSIONS_FILE` selects the private persistent state file (default `~/.config/singit-ask/model-suspensions.json`). Health entries retain suspended models even between trials. A pinned model with `fallback_models` is replaced by its fallback while suspended; plain requests make the recovery trial.
+Real seller failures close a gate before payment: `no_healthy_sellers` immediately;
+`minimum_discount_not_met`, `unreachable`, and upstream HTTP 5xx after three
+consecutive seller failures within 24 hours without an answer. Input errors,
+reasoning exhaustion, empty answers and ceiling refusals do not count. A closed
+gate returns 503 `no_healthy_sellers`, Retry-After, and no payment challenge on
+chat, pinned, Messages, Responses and discovery probes. Health publishes only
+the gate reason (`recent_failures` or `no_healthy_sellers`) and retry time.
+
+The initial gate lasts 15 minutes. Failed recovery trials double the wait to at
+most two hours. A successful answer clears the failure streak, learned guard and
+suspension. A fresh qualifying seller in an accepted book refresh also reopens
+all kinds of gate without traffic. Identical healthy-looking offers do not prove
+recovery. After the gate expires an explicit request can make a half-open trial.
+
+Only the configured default, automatic-tier and free-list models never suspend:
+they remain listed as router backbone models, but still return 503 when gated.
+Other models hide after repeated gate-closing rejections and return after a
+successful trial or fresh seller. `NEVER_HIDE` remains exported as an empty list.
+`SINGIT_ASK_SUSPENSIONS_FILE` selects the private persistence file (default
+`~/.config/singit-ask/model-suspensions.json`). Health retains suspended models
+between trials; explicit requests can still make recovery trials.
 
 ### Reviewed pinned defaults
 
 On `POST /v1/chat/completions`, an explicitly pinned `gpt-6-luna` can use
 `gpt-6-luna-pro` before payment if the pin cannot be served or priced safely.
 This reviewed pair shares the underlying model; pro reasoning uses independent
-sellers. No other default substitutions are configured. Omitted/default models
+sellers. `claude-haiku-4.5` also has the reviewed `claude-haiku-5.5` fallback. Omitted/default models
 and other API routes stay pinned. There is no substitution after payment.
 
 An explicit `fallback_models` list takes precedence. The substitute uses its own
@@ -420,3 +445,22 @@ Discovery probes (GET, HEAD, and empty unpaid POST) for chat, Messages and Respo
 `SINGIT_ASK_PROBE_SHARE=list` is the default; `live` restores the previous seller snapshot for discovery only, which can become stale. `SINGIT_ASK_PROBE_MAX_TOKENS` is an optional positive integer: unset uses the example's own output budget; set quotes discovery as if it requested `min(value, 1200)` tokens. It changes neither the published example body nor real requests. Invalid values leave the example budget unchanged.
 
 A larger output budget or longer prompt can exceed the listed example price. Chat counts `max_tokens` above 1200 as 1200. Set the probe budget to 1200 when listing the chat clamp for verifiers. Messages and Responses allow up to 32000 output tokens; Responses defaults to 4096 when `max_output_tokens` is omitted.
+
+Reviewed against the local 2026-11-02 audit, q400/q2000 quotes (micro-USDC):
+Haiku 4.5 → 5.5 has Solana upto 2236/2704 → 2077/2228 and exact
+2072/2212 → 2024/2069; Base upto 1500/1704 → 1500/1500, exact 1500
+throughout. List input/output per million falls from $1/$5 to $0.10/$0.50.
+No GLM default is configured: Flashx Solana upto 2336/2999 and GLM 5.3
+2038/2114 exceed Flash 2003/2008. No DeepSeek default is configured:
+V4 Flash Solana upto 2078/2232 exceeds V4.1 Flash 2007/2017 (and the
+latter is an eco-tier model, while V4 Flash is not). The existing Luna → Pro
+entry is retained, but the audit's Pro quotes are dearer; the runtime comparison
+will refuse that substitution at those prices. Every fallback is checked again
+on every scheme/network for the actual request, including tier membership.
+
+`GET /v1/audio/models` lists speech and transcription models with their prices.
+Speech entries carry `x402: true` and `route: "/v1/audio/speech"`.
+Transcription entries carry `x402: false`, `route: null` and `access: "api-key"`:
+they are priced here for API-key use, not payable on `/v1/audio/speech` over x402.
+The top-level note explains this distinction; existing model IDs, kinds and price
+fields remain available to the key gateway and MCP consumers.

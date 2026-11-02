@@ -34,14 +34,14 @@ test('consecutive rejection backoff, explicit trials and successful recovery', a
   c.noteRejected('model');
   assert.equal(c.isSuspended('model'), false);
 });
-test('other errors do not count and never-hide models retain the base TTL', () => {
+test('isolated seller errors do not close the gate and never-hide models retain listings', () => {
   const { c } = fixture({ neverHide: ['default', 'tier'] });
   for (const code of ['minimum_discount_not_met', '429', 'timeout']) markUnservable(c, 'model', { code }, () => {});
   assert.equal(c.rejections.size, 0);
   for (const id of [...NEVER_HIDE, 'default', 'tier']) {
     for (let n = 0; n < 5; n++) c.noteRejected(id);
     assert.equal(c.isSuspended(id), false);
-    assert.equal(c.unservable.get(id) - c.now(), 15 * minute);
+    assert.equal(c.unservable.get(id) - c.now(), 120 * minute);
   }
 });
 test('persistence restores suspension and ignores expired marks and invalid files', async () => {
@@ -244,13 +244,35 @@ test('a rejection recorded before any book was read is not released by the first
   await c.loadServed(0);
   assert.equal(c.isSuspended('m'), false);
 });
-test('free-list models restored from the file lose their escalated backoff', async () => {
+test('backbone models restored from the file keep their gate but remain listed', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'susp-'));
   try {
     const file = join(dir, 'state.json');
     await writeFile(file, JSON.stringify({ 'free-model': { count: 3, lastAt: 1, providers: [], truncated: false, gone: false, until: 9e12 } }));
     const c = new ModelCatalogue({ url: 'unused', suspensionsFile: file, neverHide: ['free-model'], now: () => 1000 });
     assert.equal(c.isSuspended('free-model'), false);
-    assert.equal(c.isUnservable('free-model'), false);
+    assert.equal(c.isUnservable('free-model'), true);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('recent failure gates persist their reason and fresh sellers recover every failure kind', async () => {
+  for (const code of ['minimum_discount_not_met', 'unreachable', 'no_healthy_sellers']) {
+    const dir = await mkdtemp(join(tmpdir(), 'seller-gate-'));
+    try {
+      const file = join(dir, 'state.json');
+      const { c } = fixture({ suspensionsFile: file, neverHide: ['model'] });
+      c.sellers.set('model', new Set(['original']));
+      for (let n = 0; n < 3; n++) markUnservable(c, 'model', { code }, () => {});
+      await new Promise(resolve => setTimeout(resolve, 60)); await c.suspensionsWrite;
+      const restored = fixture({ suspensionsFile: file, neverHide: ['model'] }).c;
+      assert.equal(restored.isUnservable('model'), true);
+      assert.equal(restored.isSuspended('model'), false);
+      assert.equal(restored.unservableSnapshot().get('model').reason, code === 'no_healthy_sellers' ? code : 'recent_failures');
+      restored.models = new Map([['model', { id: 'model' }]]); restored.rawModels = restored.models;
+      restored.fetchImpl = async () => Response.json({ offers: [{ provider_id: 'fresh', trusted: true, healthy: true, available: true }] });
+      await restored.loadServed(0);
+      assert.equal(restored.isUnservable('model'), false);
+      clearTimeout(restored.suspensionsTimer);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  }
 });
