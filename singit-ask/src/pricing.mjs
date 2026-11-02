@@ -119,16 +119,23 @@ export const MODEL_COST_OVERHEAD = Object.freeze({
 // The headroom is priced as output (costOverhead's reasoningTokens), so the ceiling covers it; `upto` still settles
 // actual usage, `exact` gets dearer by it. The payer's max_tokens may then bound the answer only loosely.
 //
-// claude-opus-5.5 (SI-113): it lists reasoning_effort and is sent "none", yet a three-word answer came back with 26
+// claude-opus-5.5 (SI-113): it lists reasoning_effort and was sent "none", yet a three-word answer came back with 26
 // completion tokens (about 20 of them thinking, 27 October, twice) and once spent all of max_tokens 64 thinking (422,
 // paid test 17:49 CET); at 256 it answered. 256 more tokens upstream cover that; the payer is billed what was used.
+//
+// openai-gpt-oss-20b (2 November, PayAPI follow-up): Surplus lists no reasoning control for it at all (supported_parameters
+// is max_tokens and the usual sampling knobs), and it thinks every time: free/openai-gpt-oss-20b with max_tokens 100 came
+// back 422 max_tokens_too_small, while at 400 "Say hi in three words" took 220 completion tokens and a one-sentence
+// coffee question 196. 256 more tokens upstream put the first free call on this model within reach of any max_tokens; the
+// free budget and a paid ceiling both price them (costOverhead), and the answer is billed what it used.
 export const REASONING_HEADROOM = Object.freeze({
   "gemini-3.1-pro-preview": 1024,
   "claude-opus-5.5": 256,
+  "openai-gpt-oss-20b": 256,
 });
 // A measurement knob (28 October), not a price change: SINGIT_ASK_REASONING_HEADROOM="claude-opus-5.5=128" (server.mjs)
-// replaces a model's headroom above for this process, so a paid test can see whether `reasoning_effort: low` lets Opus
-// get by with less. It moves the ceiling the 402 offers and the max_tokens sent upstream together. Unset, nothing differs.
+// replaces a model's headroom above for this process, so a paid test can see whether Opus's default `reasoning_effort:
+// low` (app.mjs's REASONING_DEFAULT_EFFORT) lets it get by with less. It moves the ceiling the 402 offers and the max_tokens sent upstream together. Unset, nothing differs.
 let headroomOverrides = Object.freeze({});
 export function setReasoningHeadroomOverrides(map) { headroomOverrides = Object.freeze({ ...map }); }
 export function parseReasoningHeadroom(text) {

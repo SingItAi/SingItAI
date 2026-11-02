@@ -13,7 +13,9 @@ what it actually cost; nothing is charged without an answer.
   **0.00113 USDC** on Base.
 - **Public API:** `POST /v1/chat/completions`. Any x402 agent pays with `upto`: on Base
   a bounded, gas-sponsored Permit2 signature; on Solana a 0.003 USDC escrow from which
-  CDP settles the actual amount and refunds the rest. Listed for discovery (Bazaar).
+  CDP settles the actual amount and refunds the rest. Listed for discovery (Bazaar) and on
+  [PayAPI Market](https://payapi.market/provider/llm-chat-completions-api-openai-compatible-one-endpoint-for-100-models)
+  (e.g. the [Claude Haiku 5.5 listing](https://payapi.market/api/claude-haiku-5)).
 - **Discovery probes:** `GET` and `HEAD` on every route listed for discovery
   (`/v1/chat/completions`, `/v1/messages`, `/v1/responses`, `/v1/images/generations`,
   `/v1/audio/speech`, `/v1/exa/search`, `/v1/exa/contents`, `/v1/exa/answer`) answer
@@ -48,7 +50,8 @@ what it actually cost; nothing is charged without an answer.
   model fixed by the path: a body `model` that differs is refused 400 before payment, an
   absent one uses the path model, and a model the catalogue cannot answer right now is
   refused 404/503 before payment. `free/` models are not available there. The 402 probe
-  is priced at that model's own ceiling.
+  is priced at that model's own ceiling. The price cap follows `max_tokens` (clamped at
+  1200); the 402 carries the exact amount.
 - **`GET /` and `GET /llms.txt`:** a small JSON service index and an
   [llms.txt](https://llmstxt.org) document, generated from the same enabled-route list as
   discovery so neither can drift from it.
@@ -222,8 +225,8 @@ node --env-file=.env src/server.mjs
 | `SINGIT_ASK_DEFAULT_FALLBACKS` | `off` disables reviewed pinned defaults; any other value enables them. |
 | `SINGIT_ASK_MODEL` | Upstream model. Default: `deepseek-v4.1-flash`. |
 | `SINGIT_ASK_PORT` | Loopback port. Default: `8140`. |
-| `SINGIT_ASK_REASONING_EFFORT` | Measurement only; unset (default) changes nothing. `model=effort,...` (`none`, `minimal`, `low`, `medium`, `high`) asks that model for that reasoning effort instead of `none`, e.g. `claude-opus-5.5=low`. A value that cannot be read stops the process at start. |
-| `SINGIT_ASK_REASONING_HEADROOM` | Measurement only; unset (default) changes nothing. `model=tokens,...` replaces the model's thinking headroom (`REASONING_HEADROOM` in `src/pricing.mjs`: 256 for Opus) in both the ceiling the 402 offers and the `max_tokens` sent upstream, e.g. `claude-opus-5.5=128`. Use only on a temporary loopback process for a paid test; it does not change the price formula. |
+| `SINGIT_ASK_REASONING_EFFORT` | `model=effort,...` (`none`, `minimal`, `low`, `medium`, `high`) overrides the model default: `claude-opus-5.5` defaults to `low`, other models to `none`. Set `claude-opus-5.5=none` to restore the old behaviour. A value that cannot be read stops the process at start. |
+| `SINGIT_ASK_REASONING_HEADROOM` | Measurement only; unset (default) changes nothing. `model=tokens,...` replaces the model's thinking headroom (`REASONING_HEADROOM` in `src/pricing.mjs`: 256 for Opus and for `openai-gpt-oss-20b`, 1024 for Gemini 3.1 Pro) in both the ceiling the 402 offers and the `max_tokens` sent upstream, e.g. `claude-opus-5.5=128`. Use only on a temporary loopback process for a paid test; it does not change the price formula. |
 | `SINGIT_ASK_EXA_MARKUP_BPS` | Exa markup in basis points: integer 0..10000, default `0`. Invalid values use the default. |
 | `SINGIT_ASK_EXA_FEE_ATOMIC` | Exa settlement fee in atomic USDC: `N` for both networks or `base,solana`, default `1000,1000` (a flat $0.001 on both networks). Non-negative integers; invalid values use the default. Set markup to `3000` and fee to `1000,2000` to restore the former pricing; fee `0` with the default zero markup gives no-fee pass-through pricing. |
 | `SINGIT_ASK_EXACT_RESERVE` | Default `0.25,32,256`. How many thinking tokens an `exact` offer for Claude Opus prices: `clamp(round(factor × max_tokens), min, max)` (125 at `max_tokens` 500), never more than the model's headroom. The whole headroom (256) is still added to `max_tokens` sent upstream, and `upto` still authorizes it. `full` restores pricing all 256 tokens (the behaviour before 29.10.2026). A value that cannot be read stops the process at start. |

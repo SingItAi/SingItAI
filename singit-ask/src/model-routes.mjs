@@ -99,7 +99,7 @@ export function modelTags(model) {
 // route's own pinned model (sending it is allowed as long as it agrees with the path).
 export function modelExample(model) {
   return { model: model.id, max_tokens: 400,
-    messages: [{ role: "user", content: `Where is good coffee near the Colosseum? (via ${model.name})` }] };
+    messages: [{ role: "user", content: `Where is good coffee near the Colosseum? Answer in one sentence. (via ${model.name})` }] };
 }
 
 // A short, valid OpenAPI operationId from the model's display name: "Claude Opus 5.5" -> "chatClaudeOpus55".
@@ -123,8 +123,13 @@ export async function modelPriceRange(catalogue, model) {
 // settlement work: this only supplies the pinned `choose` and each route's own discovery metadata and probe price.
 // Registered only when there is a catalogue to resolve models against, same gate as addFormatRoutes/addImageRoutes.
 // Pinned routes ignore fallback_models and cannot select singit/auto for min_tier.
+// max_tokens says what it does to the price: the cap a payer signs follows it (so the example's 400 quotes less than a
+// larger value), and anything above LIMITS.maxTokens counts as LIMITS.maxTokens. No dollar figures: they follow the seller market.
 const modelInputSchema = (schema) => ({ ...schema,
-  properties: Object.fromEntries(Object.entries(schema.properties).filter(([name]) => !["fallback_models", "min_tier"].includes(name))),
+  properties: Object.fromEntries(Object.entries(schema.properties).filter(([name]) => !["fallback_models", "min_tier"].includes(name))
+    .map(([name, property]) => [name, name !== "max_tokens" ? property : { ...property,
+      description: `The longest answer, in tokens; ${LIMITS.maxTokens} is the most, and a larger value counts as ${LIMITS.maxTokens}. `
+        + "The price cap you sign grows with it (the 402 states the exact amount for your request); the charge follows what was used." }])),
 });
 
 export function addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest, upstream, fetchImpl, log,

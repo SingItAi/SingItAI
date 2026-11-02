@@ -136,12 +136,12 @@ export class UpstreamError extends Error {
 
 // One completion from Surplus Intelligence. Any failure is an UpstreamError: the payer is not charged.
 //
-// Thinking is switched off and the cheapest seller is asked first. Measured on 12 October over four models: the
-// cheapest seller answered as fast as the fastest one within twice its price (1.8-8 s against 2-14 s) and cost the
-// same or less; the 21-24 s seen on 4 October did not recur. Some sellers refuse to switch thinking off ("Reasoning
-// is mandatory for this endpoint"), and Surplus gives up after two of them; such a refusal costs nothing, so the
-// question is asked once more with as little thinking as the seller allows. Surplus documents all three:
-// docs/reference/reasoning, docs/marketplace/routing-controls.
+// Thinking is switched off (Claude Opus is asked for "low": see REASONING_DEFAULT_EFFORT) and the cheapest seller is
+// asked first. Measured on 12 October over four models: the cheapest seller answered as fast as the fastest one within
+// twice its price (1.8-8 s against 2-14 s) and cost the same or less; the 21-24 s seen on 4 October did not recur. Some
+// sellers refuse to switch thinking off ("Reasoning is mandatory for this endpoint"), and Surplus gives up after two of
+// them; such a refusal costs nothing, so when "none" was wanted the question is asked once more with as little thinking
+// as the seller allows. Surplus documents all three: docs/reference/reasoning, docs/marketplace/routing-controls.
 //
 // `params` is the model's supported_parameters from Surplus's list: Surplus forwards what it does not strip, so a
 // parameter the model does not list (temperature on kimi-k3 and others) reaches the provider and is refused, and
@@ -167,8 +167,16 @@ export const REASONING_OFF = Object.freeze({
 
 // REASONING_HEADROOM (pricing.mjs, SI-112): a model that thinks inside max_tokens and will not stop gets that much
 // more room upstream; its ceiling already prices it.
-// REASONING_EFFORTS: what SINGIT_ASK_REASONING_EFFORT="claude-opus-5.5=low" (server.mjs, config.reasoningEffort) may
-// ask a model for instead of the default "none" (a measurement knob: see pricing.mjs's setReasoningHeadroomOverrides).
+// REASONING_DEFAULT_EFFORT (2 November): the effort a model is asked for when the process was not told otherwise ("none"
+// for every model not listed). Claude Opus 5.5's thinking is adaptive and cannot be switched off: the seller ignored
+// "none", and PayAPI's test with our own example (max_tokens 400, so 656 upstream) spent all 656 tokens thinking and
+// got a 422. The effort level is the documented control for how much it thinks, so Opus is asked for "low". Only the
+// effort changes: the price formulas and REASONING_HEADROOM do not. Not yet measured on real Opus answers (the
+// thinking is in each answer's reasoning_tokens, see answer-log.mjs); SINGIT_ASK_REASONING_EFFORT="claude-opus-5.5=none"
+// restores the old request.
+export const REASONING_DEFAULT_EFFORT = Object.freeze({ "claude-opus-5.5": "low" });
+// REASONING_EFFORTS: what SINGIT_ASK_REASONING_EFFORT="claude-opus-5.5=medium" (server.mjs, config.reasoningEffort) may
+// ask a model for instead of its default above.
 export const REASONING_EFFORTS = Object.freeze(["none", "minimal", "low", "medium", "high"]);
 export function parseReasoningEffort(text) {
   const out = {};
@@ -198,8 +206,9 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
   const sends = (name) => !params || params.includes(name);
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
   const off = Object.hasOwn(REASONING_OFF, model) ? REASONING_OFF[model] : null;
-  // "none" unless this process was told to measure another effort for the model (config.reasoningEffort).
-  const wanted = config.reasoningEffort && Object.hasOwn(config.reasoningEffort, model) ? config.reasoningEffort[model] : "none";
+  // The process override (config.reasoningEffort, even "none") wins over the model's default.
+  const wanted = config.reasoningEffort && Object.hasOwn(config.reasoningEffort, model) ? config.reasoningEffort[model]
+    : Object.hasOwn(REASONING_DEFAULT_EFFORT, model) ? REASONING_DEFAULT_EFFORT[model] : "none";
   const ask = (reasoning, extra = {}) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
