@@ -120,11 +120,11 @@ class AuditTests(unittest.TestCase):
         self.assertIn('seller down', self.row()['issues'])
 
     def test_price_mismatch_probe_and_bazaar_and_maximum(self):
-        self.fake.probe = (402, challenge('999'), {})
+        self.fake.probe = (402, challenge('500'), {})
         self.assertIn('price_mismatch', self.row()['issues'])
         self.fake.probe = (402, challenge('2000'), {})
         self.fake.bazaar = (200, {}, {'resources': [{'resource': audit.DEFAULTS[0] + '/v1/chat/sample',
-                            'accepts': [{'network': 'base', 'scheme': 'upto', 'amount': '999'}]}]})
+                            'accepts': [{'network': 'base', 'scheme': 'upto', 'amount': '500'}]}]})
         self.assertIn('price_mismatch', self.row()['issues'])
         self.fake.paths['/v1/chat/sample'] = operation(maximum='0.0009')
         self.assertIn('above_openapi_max', self.row()['issues'])

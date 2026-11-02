@@ -116,7 +116,8 @@ def count_value(value):
 
 
 def exceeds(actual, listed):
-    return any(k in listed and int(v) > int(listed[k]) for k, v in actual.items())
+    # A listing is a snapshot: ignore drift of a hundredth or a few micro-USDC, flag a real gap.
+    return any(k in listed and int(v) > int(listed[k]) * 1.01 + 5 for k, v in actual.items())
 
 
 def audit(*, fetch=fetch, ask_url=DEFAULTS[0], bazaar_url=DEFAULTS[1], surplus_url=DEFAULTS[2],
