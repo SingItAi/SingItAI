@@ -889,8 +889,11 @@ class ChatTests(Fixture):
         url, body, headers = self.post.call_args.args
         self.assertEqual(body, {"model": "free/deepseek-v4.1-flash", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 400})
         self.assertEqual(headers, {})
-        with patch.dict(os.environ, {"SINGIT_MCP_FREE_ASK_URL": "http://127.0.0.1:8140"}):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SINGIT_MCP_FREE_ASK_URL", None)
             self.api.mcp = wm.McpServer(self.api.keys, post_json=self.post)
+        self.assertEqual(self.api.mcp.free_ask_url, "http://127.0.0.1:8140")  # default: loopback Ask, never the public URL
+        self.assertNotEqual(self.api.mcp.free_ask_url, ASK_URL)
         for ip, expected in (("192.0.2.1", {"Cf-Connecting-Ip": "192.0.2.1"}), ("bad", {}), (None, {})):
             self.result(client_ip=ip)
             self.assertEqual(self.post.call_args.args[2], expected)

@@ -45,9 +45,10 @@ DEFAULT_ALLOWED_ORIGINS / SINGIT_MCP_ALLOWED_ORIGINS below — known MCP inspect
 read tools/list without a key before a human adds one. A trusted origin still needs a valid key for
 account lookups and paid calls; an untrusted one is refused before authentication is even checked.
 
-chat_free uses the public Ask route, never key limits or the /v1 bucket. SINGIT_MCP_FREE_ASK_URL
-overrides its base URL (read once at construction). Only a loopback base receives Cf-Connecting-Ip,
-and only when the caller address is a valid IP, so Ask counts the caller network.
+chat_free uses the free route of the Ask service on this host (FREE_ASK_URL, loopback), never key limits
+or the /v1 bucket. SINGIT_MCP_FREE_ASK_URL overrides its base URL (read once at construction). Only a loopback
+base receives Cf-Connecting-Ip, and only when the caller address is a valid IP, so Ask counts the caller's
+network and not this gateway: through the public URL every caller would share one free allowance.
 
 Catalog metadata that other files or endpoints read from here: server_card() for
 GET /.well-known/mcp/server-card.json (SEP-1649) and glama_json() for GET /.well-known/glama.json
@@ -97,6 +98,7 @@ MODEL_KINDS = ("chat", "images", "audio")
 SEARCH_TYPES = ("auto", "fast", "neural", "keyword")
 MCP_REQUESTS_PER_MINUTE_ENV = "SINGIT_MCP_REQUESTS_PER_MINUTE"
 DEFAULT_MCP_REQUESTS_PER_MINUTE = 60
+FREE_ASK_URL = "http://127.0.0.1:8140"  # Ask on this host: the caller's network is forwarded to it, never to the public URL
 AUTH_FAILURES_PER_WINDOW = 30       # per client address, to blunt key guessing against this endpoint
 AUTH_FAILURE_WINDOW_SECONDS = 600
 AUTH_FAILURE_TABLE_MAX = 10_000     # addresses kept before stale ones are pruned
@@ -498,7 +500,7 @@ class McpServer:
         self.keys = keys
         self.fetch_json = fetch_json or _default_fetch_json
         self.post_json = post_json or _default_post_json
-        self.free_ask_url = os.environ.get("SINGIT_MCP_FREE_ASK_URL", ASK_URL).rstrip("/")
+        self.free_ask_url = os.environ.get("SINGIT_MCP_FREE_ASK_URL", FREE_ASK_URL).rstrip("/")
         self.requests_per_minute = requests_per_minute if requests_per_minute is not None else _env_requests_per_minute()
         self._lock = threading.Lock()
         self._calls: dict[str, list[float]] = defaultdict(list)
