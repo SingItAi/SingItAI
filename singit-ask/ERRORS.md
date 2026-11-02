@@ -16,7 +16,7 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 | `free_tier_exhausted` | Visitor allowance or shared daily answer allowance exhausted. |
 | `free_budget_exhausted` | Shared daily free budget spent; returns at midnight UTC. |
 | `free_tier_busy` | Free answer concurrency is full. |
-| `max_tokens_too_small` | Reasoning consumed the output allowance without an answer. |
+| `max_tokens_too_small` | Paid requests retry once with a larger budget when more than eight seconds remain; free requests never retry. Reasoning consumed the output allowance without an answer. |
 | `no_billable_answer` | Nothing billable was returned. |
 | `no_healthy_sellers` | Model has no available healthy seller. |
 | `upstream_unavailable` | Catalogue, facilitator or provider is unavailable. |
@@ -45,3 +45,11 @@ The 402 challenge body contains `x402Version`, `accepts`, `error: "payment_requi
 429 responses retain `Retry-After` in seconds. Exhausted free daily allowances add `X-RateLimit-Limit` (configured per-visitor daily allowance), `X-RateLimit-Remaining: 0` (no free requests currently available), and `X-RateLimit-Reset` (Unix seconds at the next UTC midnight). `free_budget_exhausted` includes only `Retry-After` until midnight UTC, without per-visitor X-RateLimit headers. Busy responses include only `Retry-After: 5`; a daily allowance cannot describe the concurrency limit.
 
 Prices use fixed minute windows. Their 429 headers describe the blocking allowance (60 per visitor, or 3,000 overall), zero remaining requests, and the actual next minute boundary. The existing `Retry-After: 60` remains a conservative wait and can extend past that boundary. Successful responses do not gain rate-limit headers.
+
+
+`/health` model entries include 24-hour `reasoning422` (empty reasoning exhaustion) and
+`reasoningRetries` (successful answers after an automatic retry). Exhaustion does not increase
+attempts, successes or failures, and leaves the last outcome unchanged. Successful retries count once
+as success and once as retry. Three or more reasoning 422s with
+`reasoning422 / (attempts + reasoning422) > 0.2` make a model at least degraded; down and unavailable
+statuses are preserved. Persisted files without the new counters remain readable.

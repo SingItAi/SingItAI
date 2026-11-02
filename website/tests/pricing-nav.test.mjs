@@ -1,4 +1,4 @@
-// Every page with the primary nav links the SingIt vs BlockRun pricing page (/pricing/) exactly once;
+// Every page with the primary nav links the SingIt reference pricing page (/pricing/) exactly once;
 // on /pricing/ itself that link is the current page.
 import assert from "node:assert/strict";
 import { readdir, readFile, stat } from "node:fs/promises";

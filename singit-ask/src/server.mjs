@@ -10,6 +10,8 @@
 //   SINGIT_ASK_DEFAULT_FALLBACKS off disables reviewed pinned defaults; otherwise on
 //   SINGIT_ASK_MODEL           upstream model, default deepseek-v4.1-flash
 //   SINGIT_ASK_UNSERVABLE_TTL_MINUTES  seller rejection cache, default 15 minutes; 0 disables
+//   SINGIT_ASK_PROBE_SHARE     list (default) or live: discovery only, list-price upper bound or seller snapshot
+//   SINGIT_ASK_PROBE_MAX_TOKENS optional positive integer: discovery output budget, capped at 1200; unset uses example
 //   SINGIT_ASK_PORT            default 8140
 //   SINGIT_ASK_BLOCKED_PROVIDERS  provider ids the Surplus key blocks (comma-separated), so models only they sell
 //                              are not offered
@@ -28,8 +30,9 @@
 //   SINGIT_ASK_BASE_RPC        the Base RPC free prices read Chainlink from (https://mainnet.base.org)
 //   SINGIT_ASK_PRICE_BUFFER_PP percentage points added to a model's cheapest known Surplus share before it is
 //                              turned into the X-Min-Discount header (src/catalogue.mjs's priceGuard), default 1
-//   SINGIT_ASK_REASONING_EFFORT   measurement only, default unset: "model=effort,..." (none|minimal|low|medium|high)
-//                              asks that model for this reasoning effort instead of "none" (e.g. claude-opus-5.5=low)
+//   SINGIT_ASK_REASONING_EFFORT   default unset: "model=effort,..." (none|minimal|low|medium|high) asks that model
+//                              for this reasoning effort instead of its default (app.mjs's REASONING_DEFAULT_EFFORT:
+//                              claude-opus-5.5 low, every other model none), e.g. claude-opus-5.5=none
 //   SINGIT_ASK_EXA_MARKUP_BPS default 0: integer 0..10000; invalid values use 0.
 //   SINGIT_ASK_EXA_FEE_ATOMIC default "1000,1000": non-negative integer N for both networks or "base,solana"; invalid uses the default; 0 disables.
 //   SINGIT_ASK_EXACT_RESERVE   default "0.25,32,256": the thinking tokens `exact` prices for Claude Opus, as
@@ -62,7 +65,10 @@ function required(name) {
   return value;
 }
 
+const probeTokens = Number(process.env.SINGIT_ASK_PROBE_MAX_TOKENS);
 const config = {
+  probeShare: process.env.SINGIT_ASK_PROBE_SHARE === "live" ? "live" : "list",
+  probeMaxTokens: Number.isInteger(probeTokens) && probeTokens > 0 ? probeTokens : undefined,
   defaultFallbacks: String(process.env.SINGIT_ASK_DEFAULT_FALLBACKS ?? "").trim().toLowerCase() !== "off",
   directSolana: process.env.SINGIT_ASK_DIRECT_SOLANA === "1",
   // Video is off unless SINGIT_ASK_VIDEO_SOLD=1 (a paid job can fail after settlement; see video.mjs). When sold,

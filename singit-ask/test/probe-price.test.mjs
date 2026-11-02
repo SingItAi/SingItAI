@@ -1,3 +1,4 @@
+// Explicit live policy: these tests assert the legacy snapshot equals a real example quote.
 // vet402 (and any directory that checks a listing against the live route) compares the price CDP's Bazaar recorded
 // for a route with what its own empty, unpaid POST is offered, and fails it as price_mismatch when no accept
 // carries the recorded amount. Bazaar records the 402 offered for the example body the route declares in its
@@ -17,7 +18,7 @@ import { TERMS, SOLANA_TERMS } from "../src/pricing.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
-  model: "deepseek-v4.1-flash" };
+  model: "deepseek-v4.1-flash", probeShare: "live" };
 const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("utf8"));
 const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64");
 

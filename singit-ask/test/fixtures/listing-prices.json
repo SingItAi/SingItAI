@@ -1,0 +1,72 @@
+{
+  "deepseek-v4.1-flash": {
+    "input": 0.045,
+    "output": 0.5,
+    "guardShare": 0.0037999999999999545
+  },
+  "claude-haiku-5.5": {
+    "input": 0.09999999999999999,
+    "output": 0.5,
+    "guardShare": 0.27620000000000006
+  },
+  "deepseek-v4-pro": {
+    "input": 1.5999999999999999,
+    "output": 3.1999999999999997,
+    "guardShare": 0.0043000000000000685
+  },
+  "glm-5.3": {
+    "input": 0.08,
+    "output": 3.5999999999999996,
+    "guardShare": 0.006500000000000057
+  },
+  "gemini-3.8-flash": {
+    "input": 0.8250000000000001,
+    "output": 4.125,
+    "guardShare": 0.5
+  },
+  "qwen3.8-max-0902": {
+    "input": 2,
+    "output": 6,
+    "guardShare": 0.0475
+  },
+  "grok-4.7": {
+    "input": 2,
+    "output": 6,
+    "guardShare": 0.1
+  },
+  "claude-sonnet-5.5": {
+    "input": 2,
+    "output": 10,
+    "guardShare": 0.39899999999999997
+  },
+  "gemini-3.1-pro-preview": {
+    "input": 2,
+    "output": 12,
+    "guardShare": 0.4
+  },
+  "gpt-5.6-terra": {
+    "input": 2,
+    "output": 12,
+    "guardShare": 0.31200000000000006
+  },
+  "kimi-k3": {
+    "input": 0.192,
+    "output": 15,
+    "guardShare": 0.15
+  },
+  "gpt-5.6-sol": {
+    "input": 4,
+    "output": 20,
+    "guardShare": 0.3164
+  },
+  "claude-opus-5.5": {
+    "input": 4,
+    "output": 20,
+    "guardShare": 0.24900000000000005
+  },
+  "gpt-5.5": {
+    "input": 5,
+    "output": 30,
+    "guardShare": 0.24950000000000003
+  }
+}

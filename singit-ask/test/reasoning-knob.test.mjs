@@ -1,5 +1,6 @@
 // A measurement knob (28 October): SINGIT_ASK_REASONING_EFFORT and SINGIT_ASK_REASONING_HEADROOM let one process ask
-// Opus for reasoning_effort "low" with a smaller thinking reserve, for a single paid test. Unset, nothing changes.
+// Opus for reasoning_effort "low" with a smaller thinking reserve, for a single paid test.
+// Opus now defaults to low; the headroom remains unchanged.
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -53,14 +54,14 @@ test("headroom override replaces the model's table value in the ceiling and upst
   assert.equal(body.max_tokens, 150 + 256, "unset, nothing differs");
 });
 
-test("config.reasoningEffort asks that model for the effort; every other model and the default stay at none", async () => {
+test("config.reasoningEffort overrides model defaults; Opus defaults to low and Sonnet to none", async () => {
   const config = { ...CONFIG, reasoningEffort: { "claude-opus-5.5": "low" } };
   const efforts = {};
   const spy = (model) => async (_u, init) => { efforts[model] = JSON.parse(init.body).reasoning_effort; return reply(); };
   await askSurplus(config, MESSAGES, 150, spy("claude-opus-5.5"), "claude-opus-5.5");
   await askSurplus(config, MESSAGES, 150, spy("claude-sonnet-5.5"), "claude-sonnet-5.5");
   await askSurplus(CONFIG, MESSAGES, 150, spy("opus-unset"), "claude-opus-5.5");
-  assert.deepEqual(efforts, { "claude-opus-5.5": "low", "claude-sonnet-5.5": "none", "opus-unset": "none" });
+  assert.deepEqual(efforts, { "claude-opus-5.5": "low", "claude-sonnet-5.5": "none", "opus-unset": "low" });
 });
 
 test("the usage with reasoning_tokens reaches the caller, so a test can measure the thinking", async () => {
@@ -76,7 +77,7 @@ test("a refusal of the asked effort is an error, not a retry; a refusal of none 
     return refusal(); }, "claude-opus-5.5"), UpstreamError);
   assert.deepEqual(seen, ["medium"]);
   const fallback = [];
-  await askSurplus(CONFIG, MESSAGES, 150, async (_u, init) => { fallback.push(JSON.parse(init.body).reasoning_effort);
+  await askSurplus({ ...CONFIG, reasoningEffort: { "claude-opus-5.5": "none" } }, MESSAGES, 150, async (_u, init) => { fallback.push(JSON.parse(init.body).reasoning_effort);
     return fallback.length === 1 ? refusal() : reply(); }, "claude-opus-5.5");
   assert.deepEqual(fallback, ["none", "low"]);
 });

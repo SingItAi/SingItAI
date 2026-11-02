@@ -9,7 +9,7 @@ import { errorRef } from "./errors.mjs";
 // never reachable here, since there is no addFreeRoute call for these routes).
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { addUsageRoute, baseOffer, exactBaseOffer, exactSolanaOffer, solanaOffer } from "./metered.mjs";
+import { addUsageRoute, probeNote, baseOffer, exactBaseOffer, exactSolanaOffer, solanaOffer } from "./metered.mjs";
 import { unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, ICON_URL, ceilingAtomic, discoveryTags, modelServiceName, usd } from "./pricing.mjs";
@@ -99,7 +99,7 @@ export function modelTags(model) {
 // route's own pinned model (sending it is allowed as long as it agrees with the path).
 export function modelExample(model) {
   return { model: model.id, max_tokens: 400,
-    messages: [{ role: "user", content: `Where is good coffee near the Colosseum? (via ${model.name})` }] };
+    messages: [{ role: "user", content: `Where is good coffee near the Colosseum? Answer in one sentence. (via ${model.name})` }] };
 }
 
 // A short, valid OpenAPI operationId from the model's display name: "Claude Opus 5.5" -> "chatClaudeOpus55".
@@ -123,14 +123,19 @@ export async function modelPriceRange(catalogue, model) {
 // settlement work: this only supplies the pinned `choose` and each route's own discovery metadata and probe price.
 // Registered only when there is a catalogue to resolve models against, same gate as addFormatRoutes/addImageRoutes.
 // Pinned routes ignore fallback_models and cannot select singit/auto for min_tier.
-const modelInputSchema = (schema) => ({ ...schema,
-  properties: Object.fromEntries(Object.entries(schema.properties).filter(([name]) => !["fallback_models", "min_tier"].includes(name))),
+// max_tokens says what it does to the price: the cap a payer signs follows it (so the example's 400 quotes less than a
+// larger value), and anything above LIMITS.maxTokens counts as LIMITS.maxTokens. No dollar figures: they follow the seller market.
+const modelInputSchema = (schema, config = {}) => ({ ...schema, description: probeNote(400, config),
+  properties: Object.fromEntries(Object.entries(schema.properties).filter(([name]) => !["fallback_models", "min_tier"].includes(name))
+    .map(([name, property]) => [name, name !== "max_tokens" ? property : { ...property,
+      description: `The longest answer, in tokens; ${LIMITS.maxTokens} is the most, and a larger value counts as ${LIMITS.maxTokens}. `
+        + "The price cap you sign grows with it (the 402 states the exact amount for your request); the charge follows what was used." }])),
 });
 
 export function addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest, upstream, fetchImpl, log,
                                               inputSchema, outputSchema, exampleOutput }) {
   const bufferPp = config.priceBufferPp ?? 1;
-  inputSchema = modelInputSchema(inputSchema);
+  inputSchema = modelInputSchema(inputSchema, config);
   for (const model of MODEL_ROUTES) {
     // The discovery probes are quoted for this route's own Bazaar example body (metered.mjs's `exampleProbe`).
     addUsageRoute(app, routePath(model.id), (quotes, fallback) => [
@@ -161,13 +166,13 @@ export function addModelRoutes(app, config, { facilitatorClient, catalogue, read
 
 // Every model route's openapi.json path entry, priced at that model's own range when the catalogue can resolve it
 // right now, else the generic `fallbackPrice` (the same one /v1/chat/completions shows).
-export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, exampleOutput, fallbackPrice }) {
-  inputSchema = modelInputSchema(inputSchema);
+export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, exampleOutput, fallbackPrice, config = {} }) {
+  inputSchema = modelInputSchema(inputSchema, config);
   const entries = await Promise.all(MODEL_ROUTES.filter(m => !catalogue?.isSuspended?.(m.id)).map(async (model) => {
     const own = await modelPriceRange(catalogue, model);
     return [routePath(model.id), { post: {
       operationId: operationId(model), summary: `Generate a ${model.name} chat completion`, description: discoveryDescription(model),
-      "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...(own ?? fallbackPrice) }, protocols: [{ x402: {} }] },
+      "x-payment-info": { notes: probeNote(400, config), price: { mode: "dynamic", currency: "USD", ...(own ?? fallbackPrice) }, protocols: [{ x402: {} }] },
       requestBody: { required: true, content: { "application/json": {
         schema: { type: "object", ...inputSchema }, example: modelExample(model) } } },
       responses: {
@@ -176,7 +181,7 @@ export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, 
         400: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "model does not match this route's model, or the question cannot be answered; nothing was charged" },
         402: { content: { "application/json": { schema: errorRef("PaymentRequired402") } }, description: "Payment Required: x402 challenge in the PAYMENT-REQUIRED header" },
         404: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "This model is not available; nothing was charged" },
-        422: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "max_tokens too small: this reasoning model spent it all thinking and wrote no answer; raise max_tokens. Nothing was charged" },
+        422: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "After one automatic retry with a larger budget, max_tokens too small: this reasoning model spent it all thinking and wrote no answer; raise max_tokens. Nothing was charged" },
         503: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "No seller or no billable answer right now; nothing was charged. Retry after Retry-After",
                headers: { "Retry-After": { description: "Seconds to wait before trying again", schema: { type: "integer" } } } },
       },

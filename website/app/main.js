@@ -586,7 +586,7 @@ function renderHero() {
   return `
     <section class="hero">
       <span class="eyebrow">Agent allowance · Base</span>
-      <h1>Your agent spends.<br><em>Your wallet</em> keeps the money.</h1>
+      <h1>Your agent pays per call,<br><em>only within the limits you sign.</em></h1>
       <p class="sub">Set a daily limit and a per-purchase limit once. Your agent buys inside them without asking again,
         and one signature takes it all back.</p>
       <div class="row" style="justify-content:center">${cta}</div>

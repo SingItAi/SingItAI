@@ -117,24 +117,6 @@ a change to the template, copy it again to `~/.config/systemd/user/`, run `syste
 the old failed mark once with `systemctl --user reset-failed singit-compare-402.service`.
 Tests: `node --test scripts/tests/compare-402-blockrun.test.mjs`.
 
-## BlockRun Prices Snapshot
-
-The website's `/pricing/` page (SingIt vs BlockRun) compares SingIt's live `GET
-https://ask.singitai.app/pricing.json` against BlockRun's prices in the browser. BlockRun has no
-CORS promise for the page to call it directly, so its side is a committed, static snapshot that
-this script refreshes:
-
-```bash
-node scripts/blockrun-prices-snapshot.mjs
-```
-
-Fetches `https://blockrun.ai/api/v1/models`, keeps only paid chat models (`id`, `name`, input/output
-USD per million tokens), adds BlockRun's published flat per-request fee for chat ($0.001, pinned in
-the script since no endpoint in `/api/v1/models` exposes it), and writes
-`website/data/blockrun-prices.json`. Re-run it and commit the result whenever BlockRun's prices
-move; `--out`, `--models-url`, `--fetched-at` and `--input <file>` (read a previously fetched
-response instead of the network) override the defaults.
-
 ## Free model cost
 
 `scripts/free-model-cost.py` reads a saved `/v1/models` JSON file and prints, per model, the worst-case cost
@@ -308,3 +290,64 @@ timeout). It calls an external API, so it is not part of the offline gate: only
 node scripts/cdp-validate.mjs           # needs network access to api.cdp.coinbase.com
 node scripts/cdp-validate.mjs --json
 ```
+
+## Daily model audit
+
+`singit-model-audit.py` (Python 3.12, standard library only) discovers paid
+operations and examples from `/openapi.json`, and listed/free models from
+`/v1/models`. It checks each paid example without a payment header, plus
+400 and 2000 token variants for chat, Messages and Responses. Fixed-price
+operations get one POST. Prices are atomic strings for Base/Solana and
+upto/exact; reports contain no request content, answers or addresses.
+
+```bash
+python3 scripts/singit-model-audit.py --dry-run --report
+python3 scripts/singit-model-audit.py --append ~/.local/state/singit/model-audit.jsonl
+python3 -m unittest scripts/tests/test_singit_model_audit.py -v
+```
+
+Default stdout is JSON; `--report` renders a Markdown table. `--append FILE`
+adds one JSON line per run. `--dry-run` still probes, but sends no alerts and
+writes no state or history. Each discovered free model gets at most one real
+free call with 400 tokens; `--no-free-canary` skips those calls. Recognized
+free budget/busy 429s are skipped without clearing existing failure state.
+
+Audit row mapping:
+
+| Check | Issues | Evidence |
+|---|---|---|
+| Paid operation (audit section 2) | `error`, `seller down` | Non-402, invalid/missing challenge, missing Base offer; seller-specific 503 |
+| Listing price (section 2) | `price_mismatch` | Example exceeds Bazaar, or any quote exceeds the route's GET discovery probe |
+| OpenAPI ceiling (section 2) | `above_openapi_max` | 2000-token quote exceeds advertised maximum |
+| Listed/pinned model (section 3) | `seller down`, `reasoning422` | Primary signal: `/health` outcome window, including zero successes with at least two failures; retry delay surfaced |
+| Pinned model book (section 3) | `no_sellers`, `error` | No trusted, healthy, available, unblocked offer, or unreadable book |
+| Free model | `free_canary_failed` | Response must be 200, nonempty text, billing.free true and remainingToday present |
+
+An unreadable Bazaar is skipped. Missing model outcome windows are unverified,
+not proof of recovery. Older servers may omit reasoning422; this audit cannot
+infer reasoning failures that the server does not publish. A quote or an order
+book cannot prove a paid answer works. The audio/STT catalogue sweep and paid
+smokes from the original audit are outside this daily check.
+
+Alerting imports the existing health-alert `triage`, state and delivery helpers:
+one combined message on broken/recovered transitions, never repeated while a
+check stays broken. Failed delivery retains previous state for retry. State is
+`$SINGIT_AUDIT_STATE` / `--state`, default
+`~/.local/state/singit/model-audit-state.json`. Delivery uses the existing
+`SINGIT_ALERT_NTFY_URL` / optional `SINGIT_ALERT_NTFY_TOKEN` settings (and the
+health-alert channel precedence). Systemd reads the existing
+`~/.config/singit/health-alert.env`; the script does not parse shell env files.
+URLs/tokens are never included in reports or state.
+
+Probes use only the configured ask, Bazaar and Surplus origins, reject redirects,
+have a 15-second request timeout and a hard 150-request cap, and pause 0.2 seconds
+between POSTs. `--ask-url`, `--bazaar-url`, `--surplus-url` replace those bases
+for testing. An inventory larger than the request budget produces errors for
+unchecked work. Exit codes: 0 clear, 2 broken, 3 unreadable inventory with
+`--strict`, 1 crash/usage. Strict inventory failure takes precedence over 2.
+
+The [service](../deploy/systemd/singit-model-audit.service) and
+[timer](../deploy/systemd/singit-model-audit.timer) are **templates only**;
+installation needs the owner's OK. They schedule 07:30 local with a one-minute
+random delay, persistent catch-up, a 300-second timeout and SuccessExitStatus=2.
+Replace the checkout placeholder before installation. Nothing installs them.

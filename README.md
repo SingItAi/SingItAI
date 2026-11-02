@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="website/assets/singit-social-preview-v3.png" alt="SingIt: your agent spends, your wallet keeps the money" width="720">
+  <img src="website/assets/singit-social-preview-v3.png" alt="SingIt: your agent pays per call, only within the limits you sign" width="720">
 </p>
 <!-- A wider 1280x320 banner (assets/banner.png) can replace the image above when one is made. -->
 
@@ -14,15 +14,18 @@
   <a href="https://x.com/SingItAgent"><img alt="X: @SingItAgent" src="https://img.shields.io/badge/X-%40SingItAgent-black"></a>
 </p>
 
-**Your agent spends. Your wallet keeps the money.**
+**Your agent pays per call, only within the daily and per-purchase limits you sign.**
 
 SingIt is an AI agent that buys things for you — gift cards, eSIMs, mobile
 top-ups, live data, paid AI answers — and pays for them in USDC over
 [x402](https://www.x402.org/). You give it a budget instead of your wallet: two
 limits and one approval. Your USDC stays in your own wallet on Base or Solana,
 and the agent takes only what each purchase needs, inside those limits.
+On Base the limits are enforced onchain; on Solana the SingIt server checks them.
 
 [Website](https://singitai.app) · [Open the app](https://app.singitai.app/app/) · [Documentation](docs/README.md)
+
+Also listed on [PayAPI Market](https://payapi.market/provider/llm-chat-completions-api-openai-compatible-one-endpoint-for-100-models) (verified x402 listings, e.g. [Claude Haiku 5.5](https://payapi.market/api/claude-haiku-5)).
 
 ## Quick start
 
