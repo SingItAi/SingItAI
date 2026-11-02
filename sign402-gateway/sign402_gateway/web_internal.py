@@ -81,7 +81,7 @@ SOLANA_READ_ONLY = {"tools", "catalog-search", "purchases", "purchase-reveal", "
                     # these pay, and only through the account's own Solana allowance:
                     "venice-chat", "venice-solana-topup", "bitrefill-solana-buy", "data-buy",
                     "email-address", "email-address-set", "email-send", "call-start", "call-status",
-                    "api-chat", "api-models", "credit-topup", "api-search"}
+                    "api-chat", "api-models", "credit-topup", "api-search", "spend-check"}
 
 
 def _account(server: Any, payload: dict[str, Any], action: str = "") -> str:
@@ -204,6 +204,15 @@ def _handle(server: Any, action: str, payload: dict[str, Any]) -> tuple[int, dic
         if not account.startswith(SOLANA_PREFIX):
             _limits_from_limiter(server, gw, account)
         return 200, web_data.buy(server, gw, account, payload.get("tool"), payload.get("params"))
+
+    if action == "spend-check":  # a read, not a purchase: refuses while this account's emergency stop is on
+        if account.startswith(SOLANA_PREFIX):
+            lane = getattr(server, "solana_allowance", None)
+            if lane is not None:
+                lane.ensure_not_paused(account)
+        else:
+            service.ensure_not_paused(account)
+        return 200, {"ok": True}
 
     if action == "api-models":  # what an API key can name in "model": the default and every model Ask can answer
         from . import ask_catalogue, web_ask  # noqa: PLC0415

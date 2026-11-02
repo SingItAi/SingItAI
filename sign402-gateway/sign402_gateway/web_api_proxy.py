@@ -346,6 +346,29 @@ class Proxy:
                             type_="insufficient_quota", code="balance_low")
             logger.info("web api: balance of %s topped up by %s", account, reply.get("creditedAtomic"))
 
+    def check_stop(self, account: str, error: Callable[..., Exception]) -> None:
+        """The owner's emergency stop blocks every paid request, also one the prepaid balance already covers. The
+        balance stays as it is and works again once the owner has resumed. Nothing is held or charged."""
+        try:
+            status, reply = self.keys._shop("spend-check", account, {})
+        except Exception as exc:  # noqa: BLE001 - a check that cannot run must not let the spend through
+            if hasattr(exc, "status") and hasattr(exc, "code"):  # the gateway's own refusal (ApiError): as it is
+                raise
+            logger.warning("web api: the emergency-stop check of %s failed (%s)", account, type(exc).__name__)
+            status, reply = 502, {}
+        if status == 200:
+            return
+        text = str(reply.get("text") or "")[:500]
+        if status == 400 and text:
+            raise error(403, text, type_="insufficient_quota", code="agent_paused")
+        if status == 503:
+            raise error(503, text or "Payments are paused. Nothing was paid.", type_="api_error", code="payments_paused")
+        if status == 403:
+            raise error(403, text or "Your account's limits are not ready. Nothing was paid.",
+                        type_="insufficient_quota", code="payment_not_ready")
+        raise error(503, "The emergency-stop check could not be completed, so nothing was bought. Try again shortly.",
+                    type_="api_error", code="stop_check_failed")
+
     def refill_later(self, account: str, balance_after: int) -> None:
         """Tops up in the background once the balance runs under its threshold, so the next request need not wait."""
         state = self.balances.state(account)
@@ -424,6 +447,7 @@ class Proxy:
                         code="over_request_limit")
         hold = likely if likely is not None else per
         ceiling = min(per, most) if most is not None else per  # the most this request is ever charged
+        self.check_stop(account, error)  # before anything is reserved, held or topped up
         done = reserve(ceiling)  # the key's own daily cap, counting requests in flight
         hold_id = "hold_" + secrets.token_hex(10)
         # Who pays: a small request from the account's starter credit when it has some, else the balance. Both

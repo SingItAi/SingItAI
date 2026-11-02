@@ -260,8 +260,15 @@ class ProxyFixture(Fixture):
         self.api.keys.proxy = Proxy(self.api.keys, self.surplus, self.balances)
         self.topups = []
         real_shop = self.shop
+        self.stop_text = None   # set to what the gateway says while the owner's emergency stop is on
+        self.stop_checks = []
 
         def shop(action, account, body=None):
+            if action == "spend-check":
+                self.stop_checks.append(account)
+                if self.stop_text:
+                    return 400, {"ok": False, "error": "refused", "text": self.stop_text}
+                return 200, {"ok": True}
             if action != "credit-topup":
                 return real_shop(action, account, body)
             self.topups.append(dict(body))
@@ -517,6 +524,82 @@ class ProxyTests(ProxyFixture):
         self.assertEqual((state["balanceAtomic"], state["heldAtomic"]), (5_000_000, 0))
         _, keys, _ = self.call("GET", "/api-keys")
         self.assertEqual(keys["keys"][0]["spentTodayUsd"], 0)
+
+    PAUSED = ("Your agent is paused (emergency stop), so it cannot spend. Nothing was paid. "
+              "To spend again, approve a new allowance from your wallet.")
+
+    def test_an_emergency_stop_refuses_a_call_the_funded_balance_would_cover_and_charges_nothing(self):
+        self.send("/chat/completions", {"messages": [{"role": "user", "content": "first"}]})
+        before = self.balances.state(self.account)
+        ledger, sent, topups = len(self.balances.ledger(self.account)), len(self.surplus.sent), len(self.topups)
+        self.assertGreater(before["balanceAtomic"], 1_000_000, "the balance covers the next call: no top-up needed")
+        _, keys, _ = self.call("GET", "/api-keys")
+        spent = keys["keys"][0]["spentTodayUsd"]
+        self.stop_text = self.PAUSED
+        for path, body in (("/chat/completions", {"messages": [{"role": "user", "content": "x"}]}),
+                           ("/responses", {"model": "gpt-5.5", "input": "x"}),
+                           ("/chat/completions", {"stream": True, "messages": [{"role": "user", "content": "x"}]})):
+            with self.subTest(path=path, stream=bool(body.get("stream"))), self.assertRaises(ApiError) as caught:
+                self.send(path, body)
+            self.assertEqual((caught.exception.status, caught.exception.code, caught.exception.type),
+                             (403, "agent_paused", "insufficient_quota"))
+            self.assertEqual(caught.exception.message, self.PAUSED)
+        self.assertEqual(self.balances.state(self.account), before, "balance and holds are as they were")
+        self.assertEqual((len(self.balances.ledger(self.account)), len(self.surplus.sent), len(self.topups)),
+                         (ledger, sent, topups), "nothing was bought, topped up or sent upstream")
+        _, keys, _ = self.call("GET", "/api-keys")
+        self.assertEqual(keys["keys"][0]["spentTodayUsd"], spent, "the key's daily cap is not used or left reserved")
+        # The owner approves again: the same balance works.
+        self.stop_text = None
+        _, relay = self.send("/chat/completions", {"messages": [{"role": "user", "content": "again"}]})
+        self.assertEqual(relay.status, 200)
+        self.assertEqual(self.balances.state(self.account)["balanceAtomic"], before["balanceAtomic"] - 1300)
+        self.assertEqual(len(self.surplus.sent), sent + 1)
+
+    def test_an_emergency_stop_refuses_before_any_top_up_and_in_anthropics_shape_on_messages(self):
+        self.stop_text = self.PAUSED
+        with self.assertRaises(ApiError) as caught:
+            self.send("/messages", {"model": "claude-opus-5.5", "max_tokens": 10,
+                                    "messages": [{"role": "user", "content": "Hi"}]})
+        self.assertEqual((caught.exception.status, caught.exception.code), (403, "agent_paused"))
+        self.assertEqual(caught.exception.body(), {"type": "error", "error": {
+            "type": "permission_error", "message": self.PAUSED}})
+        self.assertEqual((self.topups, self.surplus.sent), ([], []), "a low balance is not topped up under a stop")
+        self.assertEqual(self.balances.state(self.account)["balanceAtomic"], 0)
+
+    def test_counting_tokens_is_free_and_not_stopped(self):
+        self.stop_text = self.PAUSED
+        status, relay = self.send("/messages/count_tokens", {"model": "claude-opus-5.5",
+                                                            "messages": [{"role": "user", "content": "Hi"}]})
+        self.assertEqual(relay.status, 200)
+        self.assertEqual(self.stop_checks, [])
+
+    def test_a_stop_check_that_cannot_run_lets_nothing_through(self):
+        for reply, status, code in (((503, {"text": "Payments are paused. Nothing was paid."}), 503, "payments_paused"),
+                                    ((403, {"text": "not ready"}), 403, "payment_not_ready"),
+                                    ((500, {}), 503, "stop_check_failed")):
+            self.api.shop = lambda action, account, body=None, reply=reply: reply
+            with self.subTest(reply=reply[0]), self.assertRaises(ApiError) as caught:
+                self.send("/chat/completions", {"messages": [{"role": "user", "content": "x"}]})
+            self.assertEqual((caught.exception.status, caught.exception.code), (status, code))
+        self.assertEqual(self.surplus.sent, [])
+
+    def test_the_stop_check_is_a_read_that_reaches_the_gateway_and_is_not_a_paying_action(self):
+        self.assertNotIn("spend-check", web_internal.PAYING_ACTIONS)
+        self.assertIn("spend-check", web_internal.SOLANA_READ_ONLY)
+        calls = []
+        server = SimpleNamespace(
+            web_accounts=SimpleNamespace(path=Path("x"), account=lambda a: {"id": a}),
+            allowance=SimpleNamespace(owner_lookup=lambda a: "0x1111",
+                                      ensure_not_paused=lambda a: calls.append(("base", a))),
+            solana_allowance=SimpleNamespace(ensure_not_paused=lambda a: calls.append(("solana", a))))
+        self.assertEqual(web_internal.handle(server, "spend-check", {"account": ACCOUNT}), (200, {"ok": True}))
+        solana = "solana:" + "A" * 43
+        self.assertEqual(web_internal.handle(server, "spend-check", {"account": solana}), (200, {"ok": True}))
+        self.assertEqual(calls, [("base", ACCOUNT), ("solana", solana)])
+        server.allowance.ensure_not_paused = Mock(side_effect=AllowanceError(self.PAUSED))
+        with self.assertRaises(AllowanceError):
+            web_internal.handle(server, "spend-check", {"account": ACCOUNT})
 
     def test_singits_own_upstream_trouble_is_not_shown_as_the_callers(self):
         for status in (401, 402):

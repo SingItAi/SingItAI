@@ -155,6 +155,13 @@ product, denomination, price, network and recipient before anything is paid.
   until the owner revokes it, so the page still recommends Revoke. Known limit:
   a wallet that replaces the prepared blockhash when it signs would keep the
   stop on (fail-safe); none of the tested wallets do that.
+- **API keys and the stop:** a stop (pause on either chain) also refuses every paid `/v1` request
+  of that account's keys, including a request the prepaid SingIt balance would cover. The check
+  (`spend-check`, a read) runs before anything is reserved, held, topped up or sent upstream: the
+  call gets `403 agent_paused` with the pause text, nothing is charged, and the balance stays as it
+  was. When the owner resumes (a new limiter on Base, a new wallet approval on Solana) the same
+  balance works again. Free models, `count_tokens` and the account's own search/tool purchases are
+  unchanged (search and tools already pay from the limits, which refuse while stopped).
 - The page always links to the limiter on revoke.cash, so users know they can
   revoke without us.
 

@@ -793,6 +793,29 @@ class DeviceLaneTests(unittest.TestCase):
         self.assertEqual(len(self.evm.sent), sent)
         self.assertEqual(op["detail"], "Allowance now 0 USDC.")
 
+    def test_ensure_not_paused_refuses_while_the_emergency_stop_is_on_and_reads_only(self):
+        sent = len(self.evm.sent)
+        self.service.ensure_not_paused(USER)                # a live limiter passes
+        self.service.ensure_not_paused("someone-else")      # no limiter: this check has nothing to refuse
+        self.service.pause(USER)
+        sent = len(self.evm.sent)
+        with self.assertRaisesRegex(aa.AllowanceError, r"Your agent is paused \(emergency stop\).*Nothing was paid") as raised:
+            self.service.ensure_not_paused(USER)
+        self.assertIn("set up a new limiter", str(raised.exception))
+        self.assertEqual(len(self.evm.sent), sent, "the check sends no transaction")
+        # A pause the chain reports without our record of it stops too.
+        self.evm.getter_override.pop("paused()")
+        with self.service.store._db() as db:
+            db.execute("DELETE FROM operations WHERE kind = 'PAUSE'")
+        self.service.ensure_not_paused(USER)
+        self.evm.getter_override["paused()"] = 1
+        with self.assertRaisesRegex(aa.AllowanceError, "emergency stop"):
+            self.service.ensure_not_paused(USER)
+        # A new limiter lifts it.
+        self.evm.getter_override.pop("paused()")
+        self.service.setup(USER, "50", "5", "7")
+        self.service.ensure_not_paused(USER)
+
     def test_pause_goes_through_the_guardian_without_the_device(self):
         result = self.service.pause(USER)
         pause_tx = self.evm.sent[-1]
