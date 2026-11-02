@@ -64,3 +64,24 @@ version would make the Registry history contradictory. The dated live
 initialize observation of 0.1.3 above remains unchanged.
 
 Registry still has 0.1.4 until the owner approves publishing 0.1.5; the live server reports 0.1.3 until the gateway is restarted with this code. No publishing or restart was performed.
+
+## Tools reference page
+
+`website/docs/mcp-tools/index.html` uses the same `website/data/mcp-tools.json`
+snapshot for full descriptions, input parameters, bounds, enums and annotations.
+The task-supplied live re-check on 2 November 2026 used a keyless `tools/list`:
+16 tools, with unchanged descriptions, input schemas and annotations. The only
+difference from the snapshot is a top-level `title` per tool, matching
+`annotations.title`. The live server reports 0.1.3; the repository's
+`web_mcp.py` 0.1.4 has the same 16-tool set and only changes the version string
+and the server card's `DOCS_URL`. No network verification was repeated while
+building this page. Access, scope and network claims use the sources above and
+the shared classification from `scripts/generate-mcp-page.mjs`.
+
+Run `node scripts/generate-mcp-tools-page.mjs` to regenerate the overview and
+reference blocks; append `--check` to detect drift. The HTML shell is hand-written
+and Cloudflare serves the checked-in page. Run
+`node --test website/tests/mcp-tools-page.test.mjs` for page checks. The existing
+MCP snapshot and its pinned tests remain unchanged.
+
+The Registry manifest (`server.json`) describes chat, search, page reading and market data "inside owner-set key limits (USDC)" at version 0.1.5, in step with `SERVER_INFO` in `web_mcp.py`. The Registry still has 0.1.4 until the owner approves publishing 0.1.5; nothing was published.
