@@ -72,4 +72,6 @@ Observations as of 1 November 2026:
 4. Install deploy/systemd/singit-uptime.service and .timer; collect history.
 5. Keep the canonical singit-mcp manifest and this repository's server.json
    byte-identical, changing both and bumping both versions together.
-6. Run mcp-publisher after merge. Restart the gateway to serve serverInfo 0.1.4.
+6. Run mcp-publisher after merge. Restart the gateway to serve serverInfo 0.1.5 after owner approval.
+
+Registry still has 0.1.4 until the owner approves publishing 0.1.5; the live server reports 0.1.3 until the gateway is restarted with this code. No publishing or restart was performed.

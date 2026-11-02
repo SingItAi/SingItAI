@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const website = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PAGES = [
+  "https://singitai.app/docs/claude-code/",
   "https://singitai.app/status/",
   "https://singitai.app/",
   "https://singitai.app/developers/",

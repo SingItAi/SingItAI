@@ -10,6 +10,7 @@
     <loc>https://singitai.app/developers/</loc>
   </url>
   <url><loc>https://singitai.app/docs/mcp/</loc></url>
+  <url><loc>https://singitai.app/docs/mcp-tools/</loc></url>
   <url>
     <loc>https://singitai.app/models/</loc>
   </url>
@@ -25,7 +26,11 @@
     <loc>https://singitai.app/pricing/</loc>
   </url>
   <url><loc>https://singitai.app/integrations/</loc></url>
+  <url><loc>https://singitai.app/integrations/langchain/</loc></url>
+  <url><loc>https://singitai.app/integrations/litellm/</loc></url>
+  <url><loc>https://singitai.app/integrations/openai-agents/</loc></url>
   <url><loc>https://singitai.app/status/</loc></url>
+  <url><loc>https://singitai.app/changelog/</loc></url>
   <url><loc>https://singitai.app/docs/</loc></url>
   <url><loc>https://singitai.app/docs/errors/</loc></url>
   <url><loc>https://singitai.app/docs/limits/</loc></url>
@@ -247,4 +252,5 @@
   <url><loc>https://singitai.app/x402-budget-for-agents/</loc></url>
 <!-- generated:model-pages:end -->
   <url><loc>https://singitai.app/docs/mcp-key/</loc></url>
+  <url><loc>https://singitai.app/docs/claude-code/</loc></url>
 </urlset>

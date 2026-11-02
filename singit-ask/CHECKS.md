@@ -316,3 +316,11 @@ Both deployed hashes match; gateway/web API are active and all three service
 health checks return 200. Existing wallet identities were preserved. Activation
 made no payment. This verifies the installed prompt correction; generated model
 wording is not guaranteed by deterministic regression tests.
+
+
+`/health` model entries include 24-hour `reasoning422` (empty reasoning exhaustion) and
+`reasoningRetries` (successful answers after an automatic retry). Exhaustion does not increase
+attempts, successes or failures, and leaves the last outcome unchanged. Successful retries count once
+as success and once as retry. Three or more reasoning 422s with
+`reasoning422 / (attempts + reasoning422) > 0.2` make a model at least degraded; down and unavailable
+statuses are preserved. Persisted files without the new counters remain readable.

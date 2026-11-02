@@ -104,16 +104,19 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
   const used = new Map();
   const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");
 
-  // Free: every voice model, speech per 1000 characters and transcription per minute (transcription: API keys only).
+  // Free: speech prices for x402 and transcription prices for API-key consumers.
   app.get(AUDIO_MODELS_ROUTE, open, async (_req, res) => {
     const voice = await catalogue.voiceModels().catch(() => ({ speech: new Map(), transcription: new Map() }));
-    const speech = [...voice.speech.values()].map((m) => ({ id: m.id, object: "model", kind: "speech", name: m.name,
+    const speech = [...voice.speech.values()].map((m) => ({ id: m.id, object: "model", kind: "speech", x402: true, route: SPEECH_ROUTE, name: m.name,
       owned_by: m.provider || "surplus", voices: m.voices, listUsdPer1kChars: m.usdPerUnit,
       singitUsdPer1kChars: Number((m.usdPerUnit * (1 + SPEECH_TERMS.markupBps / 10000)).toFixed(6)) }));
     const transcription = [...voice.transcription.values()].map((m) => ({ id: m.id, object: "model", kind: "transcription",
+      x402: false, route: null, access: "api-key",
       name: m.name, owned_by: m.provider || "surplus", listUsdPerMinute: m.usdPerUnit,
       singitUsdPerMinute: Number((m.usdPerUnit * (1 + SPEECH_TERMS.markupBps / 10000)).toFixed(6)) }));
-    res.json({ object: "list", endpoint: SPEECH_ROUTE, fees: { markupPct: SPEECH_TERMS.markupBps / 100,
+    res.json({ object: "list", endpoint: SPEECH_ROUTE,
+      note: "Transcription models are priced here for API-key use and are not payable on /v1/audio/speech over x402.",
+      fees: { markupPct: SPEECH_TERMS.markupBps / 100,
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
       data: [...speech.sort((a, b) => a.listUsdPer1kChars - b.listUsdPer1kChars),
              ...transcription.sort((a, b) => a.listUsdPerMinute - b.listUsdPerMinute)] });

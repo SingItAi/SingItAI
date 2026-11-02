@@ -79,6 +79,8 @@ export async function chooseAuto(config, catalogue, input, ErrorClass, log = () 
 export async function priceProtectionSignal(catalogue, candidate) {
   const floor = minDiscountFor(candidate, { ...TERMS, maxChargeAtomic: ceilings(candidate.info, candidate).upto[BASE] });
   if (floor == null) return null;
+  const learned = catalogue.learnedGuardShare?.(candidate.model);
+  if (learned != null) return null;
   if (catalogue.isPriceRejected?.(candidate.model)) return "price_rejected_recently";
   const live = await catalogue.liveDiscount?.(candidate.model);
   return live != null && 100 - live * 100 + 1e-9 < floor ? "price_below_floor" : null;

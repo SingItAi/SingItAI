@@ -104,10 +104,12 @@ class InitializeAndListTests(Fixture):
         tools = out["result"]["tools"]
         names = {t["name"] for t in tools}
         expected = {"get_price", "list_price_symbols", "list_models", "get_balance", "get_limits", "get_receipts",
-                    "web_search", "read_page"} | PAID_TOOL_NAMES
+                    "web_search", "read_page", "chat_free", "chat"} | PAID_TOOL_NAMES
         self.assertEqual(names, expected)
         for tool in tools:
             self.assertEqual(tool["inputSchema"]["type"], "object")
+            for keyword in ("oneOf", "anyOf", "allOf", "not", "enum"):
+                self.assertNotIn(keyword, tool["inputSchema"], "top-level "+keyword+" is refused by some clients")
         self.assertFalse(any(re.search(r"bitrefill|withdraw|allowance|\bbuy\b", n, re.I) for n in names))
 
     def test_ping(self):
@@ -115,12 +117,12 @@ class InitializeAndListTests(Fixture):
         status, out, _ = self.rpc(key, "ping")
         self.assertEqual((status, out["result"]), (200, {}))
 
-    def test_every_tool_has_a_title_and_boolean_annotations_and_there_are_exactly_sixteen(self):
+    def test_every_tool_has_a_title_and_boolean_annotations_and_there_are_exactly_eighteen(self):
         key = self.make_key()["key"]
         status, out, _ = self.rpc(key, "tools/list")
         listed = out["result"]["tools"]
         self.assertEqual(len(listed), len(OWN_TOOLS) + len(PAID_TOOL_NAMES))
-        self.assertEqual(len(listed), 16)
+        self.assertEqual(len(listed), 18)
         for tool in listed:
             self.assertTrue(tool.get("title"), tool["name"])
             annotations = tool["annotations"]
@@ -129,7 +131,7 @@ class InitializeAndListTests(Fixture):
                 self.assertIsInstance(annotations[hint], bool, f"{tool['name']}.{hint}")
             self.assertTrue(annotations["readOnlyHint"])
             self.assertFalse(annotations["destructiveHint"])
-            if tool["name"] in FREE_TOOL_NAMES:
+            if tool["name"] in FREE_TOOL_NAMES - {"chat_free"}:
                 self.assertTrue(annotations["idempotentHint"], tool["name"])
                 self.assertFalse(annotations["openWorldHint"], tool["name"])
             else:
@@ -147,7 +149,7 @@ class ToolCatalogueTests(Fixture):
             with self.subTest(tool=tool["name"]):
                 self.assertNotIn("sign402", tool["description"].lower())
                 self.assertGreater(len(tool["description"]), 60)
-        paid = {t["name"] for t in listed} - FREE_TOOL_NAMES - {"web_search", "read_page"}
+        paid = {t["name"] for t in listed} - FREE_TOOL_NAMES - {"web_search", "read_page", "chat"}
         self.assertEqual(paid - set(wm.PAID_TOOL_DESCRIPTIONS), set())  # every paid tool has an MCP description
 
     def test_networks_are_named_as_they_really_work(self):
@@ -337,7 +339,7 @@ class KeylessTests(Fixture):
         self.assertEqual(self.rpc(None, "ping")[:2], (200, {"jsonrpc": "2.0", "id": 1, "result": {}}))
         status, out, _ = self.rpc(None, "tools/list")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 16)  # the full catalogue, paid tools included
+        self.assertEqual(len(out["result"]["tools"]), 18)  # the full catalogue, paid tools included
         self.assertEqual(self.shop.calls, [])
 
     def test_free_tools_work_without_a_key_and_touch_no_account(self):
@@ -448,7 +450,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
                 self.assertEqual(status, 200)
                 status, out, _ = self.raw_rpc("tools/list", authorization=header)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 16)
+                self.assertEqual(len(out["result"]["tools"]), 18)
                 status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
                                               authorization=header)
                 self.assertFalse(out["result"].get("isError"))
@@ -463,7 +465,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
             with self.subTest(api_key=repr(header)):
                 status, out, _ = self.raw_rpc("tools/list", api_key=header)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 16)
+                self.assertEqual(len(out["result"]["tools"]), 18)
 
     def test_unexpanded_template_placeholder_in_authorization_is_served_keyless(self):
         self.api.mcp.fetch_json = lambda url: {"ok": True}
@@ -472,7 +474,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
             with self.subTest(authorization=placeholder):
                 status, out, _ = self.raw_rpc("tools/list", authorization=placeholder)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 16)
+                self.assertEqual(len(out["result"]["tools"]), 18)
                 status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
                                               authorization=placeholder)
                 self.assertFalse(out["result"].get("isError"))
@@ -485,7 +487,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
     def test_unexpanded_template_placeholder_in_x_api_key_is_served_keyless(self):
         status, out, _ = self.raw_rpc("tools/list", api_key="${SINGIT_API_KEY}")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 16)
+        self.assertEqual(len(out["result"]["tools"]), 18)
 
     def test_a_real_but_wrong_key_still_gets_401(self):
         status, out, _ = self.raw_rpc("tools/list", authorization=f"Bearer {BAD_KEY}")
@@ -556,7 +558,7 @@ class TrustedOriginTests(Fixture):
     def test_a_trusted_scanner_origin_without_a_key_reads_the_catalogue(self):
         status, out, headers = self.rpc(None, "tools/list", origin="https://glama.ai")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 16)
+        self.assertEqual(len(out["result"]["tools"]), 18)
         self.assertEqual(headers["Access-Control-Allow-Origin"], "https://glama.ai")
 
     def test_a_trusted_scanner_origin_with_a_valid_key_gets_cors_headers_back(self):
@@ -849,6 +851,138 @@ class KeyLimitRefusalTests(Fixture):
         self.assertEqual(self.spent(made), (0, 0))
 
 
+class ChatTests(Fixture):
+    def setUp(self):
+        super().setUp()
+        self.answer = {"model": "free/deepseek-v4.1-flash", "choices": [{"message": {"content": "Answer"},
+                       "finish_reason": "stop"}], "usage": {"prompt_tokens": 2, "completion_tokens": 3,
+                       "total_tokens": 5}, "billing": {"remainingToday": 7, "resetsAt": "2026-11-03T00:00:00Z",
+                       "hint": "drop the free/ prefix to pay"}}
+        self.post = Mock(return_value=(200, self.answer, {}))
+        self.api.mcp.post_json = self.post
+        self.api.mcp.free_ask_url = "https://ask.example"
+
+    def result(self, key=None, name="chat_free", args=None, **kw):
+        return self.call_tool(key, name, {"prompt": "Hello"} if args is None else args, **kw)[1]
+
+    def test_keyless_chat_annotations(self):
+        listed = self.rpc(None, "tools/list")[1]["result"]["tools"]
+        self.assertEqual([t["name"] for t in listed][2:5], ["list_models", "chat_free", "chat"])
+        for tool in listed:
+            if tool["name"] in ("chat_free", "chat"):
+                self.assertEqual(tool["annotations"], {"title": "Chat (free)" if tool["name"] == "chat_free" else "Chat",
+                    "readOnlyHint": True, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
+
+    def test_free_upstream_http_errors(self):
+        for status in (400, 404, 500, 503):
+            self.post.return_value = (status, {"error": {"message": "Model unavailable"}}, {})
+            result = self.result(args={"prompt": "Hello", "model": "gpt-5.5"})["result"]
+            self.assertTrue(result["isError"])
+            self.assertIn("chat", result["content"][0]["text"])
+            self.assertNotIn("deepseek", result["content"][0]["text"])
+            self.assertEqual(self.post.call_args.args[1]["model"], "free/gpt-5.5")
+
+    def test_free_answer_and_network_forwarding(self):
+        out = self.result(client_ip="192.0.2.1")["result"]["structuredContent"]
+        self.assertEqual(out["text"], "Answer")
+        self.assertEqual(out["billing"], {**self.answer["billing"], "free": True, "chargedAtomic": 0})
+        url, body, headers = self.post.call_args.args
+        self.assertEqual(body, {"model": "free/deepseek-v4.1-flash", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 400})
+        self.assertEqual(headers, {})
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("SINGIT_MCP_FREE_ASK_URL", None)
+            self.api.mcp = wm.McpServer(self.api.keys, post_json=self.post)
+        self.assertEqual(self.api.mcp.free_ask_url, "http://127.0.0.1:8140")  # default: loopback Ask, never the public URL
+        self.assertNotEqual(self.api.mcp.free_ask_url, ASK_URL)
+        for ip, expected in (("192.0.2.1", {"Cf-Connecting-Ip": "192.0.2.1"}), ("bad", {}), (None, {})):
+            self.result(client_ip=ip)
+            self.assertEqual(self.post.call_args.args[2], expected)
+        for model in ("deepseek-v4.1-flash", "free/deepseek-v4.1-flash", "gpt-5.5"):
+            self.result(args={"prompt": "Hello", "model": model})
+            self.assertEqual(self.post.call_args.args[1]["model"], "free/" + model.removeprefix("free/"))
+
+    def test_argument_validation(self):
+        invalid = ({}, {"prompt": "x", "messages": []}, {"prompt": ""}, {"prompt": 1},
+                   {"messages": [{"role": "tool", "content": "x"}]}, {"prompt": "😀" * 2001},
+                   {"prompt": "x", "max_tokens": True}, {"prompt": "x", "max_tokens": 401})
+        for args in invalid:
+            with self.subTest(args_type=list(args)):
+                self.assertEqual(self.result(args=args)["error"]["code"], -32602)
+        self.assertNotIn("error", self.result(args={"messages": [{"role": "user", "content": "Hi"}]}))
+        self.assertEqual(self.result(self.make_key()["key"], "chat", {"prompt": "x", "model": "free/x"})["error"]["code"], -32602)
+
+    def test_free_errors_and_missing_billing(self):
+        for code in ("free_budget_exhausted", "free_tier_exhausted", "free_tier_busy", "free_limit_reached"):
+            self.post.return_value = (429, {"error": {"code": code, "message": "Try later"}}, {"Retry-After": "42"})
+            result = self.result()["result"]
+            self.assertTrue(result["isError"])
+            self.assertIn("42", result["content"][0]["text"])
+            self.assertIn("chat", result["content"][0]["text"])
+            self.assertEqual(wm._classify(wa.ApiError(429, "", code=code)), ("refused", "limit"))
+        self.post.side_effect = urllib.error.URLError("offline")
+        self.assertTrue(self.result()["result"]["isError"])
+        self.post.side_effect = None
+        self.post.return_value = (200, {"choices": []}, {})
+        self.assertEqual(self.result()["result"]["structuredContent"]["billing"], {"free": True, "chargedAtomic": 0})
+
+    def test_keyed_free_and_keyless_paid(self):
+        made = self.make_key()
+        self.result(made["key"])
+        self.assertEqual(self.store.key_spent(made["id"], NOW // 86400), (0, 0))
+        self.assertEqual(dict(self.api.keys._calls), {})
+        out = self.result(name="chat")["result"]
+        self.assertTrue(out["isError"])
+        self.assertEqual(out["content"][0]["text"], wm.KEYLESS_PAID_MESSAGE)
+        self.assertEqual(self.shop.calls, [])
+
+    def test_paid_legacy_billing_and_analytics(self):
+        made = self.make_key(dailyUsd=1, perRequestUsd=0.1)
+        self.shop.reply = (200, {"text": "Paid answer", "costAtomic": 1234})
+        with patch.object(wm.analytics, "emit") as emit:
+            out = self.result(made["key"], "chat")["result"]["structuredContent"]
+        self.assertEqual(out["billing"]["chargedAtomic"], 1234)
+        self.assertEqual(out["text"], "Paid answer")
+        self.assertEqual(self.store.key_spent(made["id"], NOW // 86400), (1234, 1))
+        self.assertEqual(dict(self.api.keys._calls), {})
+        self.assertTrue(emit.call_args.kwargs["paid"])
+        self.assertEqual(emit.call_args.kwargs["cost_usd"], "0.001234")
+        self.assertEqual(self.shop.calls[-1][2]["maxTokens"], 1024)
+
+    def test_caps_refuse_without_spend(self):
+        made = self.make_key(dailyUsd=0.01, perRequestUsd=0.01)
+        self.shop.reply = (400, {"text": "Above per-request cap"})
+        self.assertTrue(self.result(made["key"], "chat")["result"]["isError"])
+        self.assertEqual(self.store.key_spent(made["id"], NOW // 86400), (0, 0))
+        self.store.record_key_spend(made["id"], NOW // 86400, 10000, NOW)
+        self.shop.calls.clear()
+        self.assertTrue(self.result(made["key"], "chat")["result"]["isError"])
+        self.assertEqual(self.shop.calls, [])
+
+    def test_proxy_errors_and_non_object_answers(self):
+        from sign402_gateway.web_api_proxy import Relay
+        made = self.make_key()
+        self.api.keys.proxy = Mock()
+        for status, answer in ((400, {"error": {"message": "Invalid model"}}), (404, {}),
+                               (429, {}), (500, {}), (200, [])):
+            self.api.keys.proxy.relay.return_value = Relay(status, {}, [json.dumps(answer).encode()])
+            self.assertTrue(self.result(made["key"], "chat")["result"]["isError"])
+
+    def test_proxy_relay_is_consumed_and_settled(self):
+        from sign402_gateway.web_api_proxy import Relay
+        made = self.make_key(dailyUsd=1, perRequestUsd=0.1)
+        def relay(row, path, body, headers, error, reserve):
+            done = reserve(1000)
+            def chunks():
+                yield json.dumps({**self.answer, "billing": {"chargedAtomic": 999}}).encode()
+                done(999)
+            return Relay(200, {}, chunks())
+        self.api.keys.proxy = Mock()
+        self.api.keys.proxy.relay.side_effect = relay
+        self.assertEqual(self.result(made["key"], "chat")["result"]["structuredContent"]["billing"]["chargedAtomic"], 999)
+        self.assertEqual(self.store.key_spent(made["id"], NOW // 86400), (999, 1))
+        self.assertEqual(dict(self.api.keys._calls), {})
+
+
 class ProtocolTests(Fixture):
     def test_a_notification_gets_202_and_no_body(self):
         made = self.make_key()
@@ -988,7 +1122,7 @@ class HttpTests(Fixture):
             {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode(), headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(request, timeout=10) as response:
             self.assertEqual(response.status, 200)
-            self.assertEqual(len(json.loads(response.read())["result"]["tools"]), 16)
+            self.assertEqual(len(json.loads(response.read())["result"]["tools"]), 18)
 
         request = urllib.request.Request(self.base, data=json.dumps(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize"}).encode(),
@@ -1048,11 +1182,11 @@ class HttpTests(Fixture):
         self.assertEqual(card["transport"], {"type": "streamable-http", "url": URI + "/mcp"})
         self.assertFalse(card["authentication"]["required"])  # free tools work keyless; paid ones need a key
         self.assertEqual(card["authentication"]["schemes"], ["bearer"])
-        self.assertEqual(len(card["tools"]), 16)
+        self.assertEqual(len(card["tools"]), 18)
         self.assertLessEqual(len(card["description"]), 200)
         self.assertEqual(card["serverInfo"]["version"], SERVER_INFO["version"])
-        self.assertEqual(SERVER_INFO["version"], "0.1.4")
-        self.assertTrue(card["documentationUrl"].startswith("https://github.com/SingItAi/"))
+        self.assertEqual(SERVER_INFO["version"], "0.1.5")
+        self.assertEqual(card["documentationUrl"], "https://singitai.app/docs/mcp/")
         self.assertNotIn("bubon-ik", card["documentationUrl"])
         self.assertEqual(card, server_card(URI))
 

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { statusLabel, summaryText, modelRows, railRows, numberRows, availabilityRows, tableRows, loadJson } from "../status.mjs";
+import { statusLabel, countsLabel, summaryText, modelRows, railRows, numberRows, availabilityRows, tableRows, loadJson } from "../status.mjs";
 const read = p => readFile(new URL(`../${p}`, import.meta.url), "utf8");
 test("status labels and measured fixture rows", () => {
   assert.equal(statusLabel("down"), "Down"); assert.equal(statusLabel("bad"), "Unknown");
@@ -146,4 +146,14 @@ test("model summary requires all five non-negative integer counts", () => {
     for (const value of [undefined, null, -1, 1.5, Infinity, NaN, "1", {}])
       assert.equal(summaryText({ models_summary: { ...models_summary, [key]: value } }), "");
   }
+});
+
+test("counts basis is visible with a fallback for older responses", async () => {
+  assert.equal(countsLabel({ counts_label: "Includes our own payments." }), "Includes our own payments.");
+  assert.equal(countsLabel({}), "These counts may include our own payments.");
+  assert.equal(countsLabel(null), "These counts may include our own payments.");
+  assert.match(await read("status/index.html"), /id="counts-label"/);
+  const script = await read("status.mjs");
+  assert.match(script, /text\("counts-label", countsLabel\(n\)\)/);
+  assert.match(script, /\["Counts basis", n.counts_basis/);
 });

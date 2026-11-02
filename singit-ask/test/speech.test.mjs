@@ -12,11 +12,12 @@ const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   model: "deepseek-v4.1-flash" };
 const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64");
 const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("utf8"));
+const STT = ["venice-xai-stt-v1", "venice-whisper-1", "venice-whisper-large-v3", "venice-parakeet-asr", "fal-wizper", "elevenlabs-scribe-v2"];
 const VOICE = parseVoiceModels({ data: [
+  ...STT.map(id => ({ id, architecture: { modality: "audio->text" }, pricing: { image: "0.006", media_unit: "minute" } })),
   { id: "venice-kokoro-tts", architecture: { modality: "text->audio" }, pricing: { image: "0.0035", media_unit: "1K characters" },
     voices: ["af_heart", "am_adam"] },
   { id: "venice-elevenlabs-tts-turbo-v2-5", architecture: { modality: "text->audio" }, pricing: { image: "0.0625", media_unit: "1K characters" } },
-  { id: "venice-whisper-1", architecture: { modality: "audio->text" }, pricing: { image: "0.006", media_unit: "minute" } },
   { id: "deepseek-v4.1-flash", architecture: { modality: "text->text" }, pricing: { prompt: "0.0000001" } },
 ] });
 const catalogue = { async voiceModels() { return VOICE; }, async imageModels() { return new Map(); },
@@ -144,7 +145,18 @@ test("prices, and the free list of voice models", async (t) => {
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/audio/models`)).json();
   assert.deepEqual(list.data.map((m) => [m.id, m.kind]), [["venice-kokoro-tts", "speech"],
-    ["venice-elevenlabs-tts-turbo-v2-5", "speech"], ["venice-whisper-1", "transcription"]]);
+    ["venice-elevenlabs-tts-turbo-v2-5", "speech"], ...STT.map(id => [id, "transcription"])]);
+  for (const model of list.data) {
+    assert.equal(model.x402, model.kind === "speech");
+    assert.equal(model.route, model.kind === "speech" ? "/v1/audio/speech" : null);
+    if (model.kind === "transcription") {
+      assert.equal(model.access, "api-key");
+      assert.equal(model.listUsdPerMinute, 0.006);
+      assert.equal(model.singitUsdPerMinute, 0.0078);
+    }
+  }
+  assert.match(list.note, /Transcription models are priced here for API-key use/);
+  assert.match(list.note, /not payable on \/v1\/audio\/speech over x402/);
   assert.equal(list.data[0].singitUsdPer1kChars, 0.00455);
 });
 

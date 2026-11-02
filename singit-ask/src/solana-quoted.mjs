@@ -107,7 +107,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
       const kind=supported.kinds.find(x=>x.x402Version===2&&x.scheme==='exact'&&x.network===SOLANA);
       if(!isAddress(kind?.extra?.feePayer??'')||[owner,agent].includes(kind.extra.feePayer))throw new Error('no_sponsor');
       const asked=Date.now();
-      const answer=await upstream(config,input.messages,input.maxTokens,fetchImpl,chosen.model,{minDiscount:chosen.minDiscount,params:chosen.info?.params});
+      const answer=await upstream(config,input.messages,input.maxTokens,fetchImpl,chosen.model,{minDiscount:chosen.minDiscount,params:chosen.info?.params,info:chosen.info,retryOnReasoning:true});
       log(`singit-ask Solana: model answered in ${Date.now()-asked} ms`);
       // What its own prices allow for this question, clamped to the standing ceiling for the default model so it
       // is never authorized above it; the standing ceiling outright when there is no catalogue entry at all.
@@ -117,7 +117,8 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
       const size={chars:input.chars,maxTokens:input.maxTokens,messageCount:input.messageCount,charsPerToken:1};
       const worst=chosen.info?ceilingAtomic(chosen.info,size,DIRECT_TERMS,chosen.share??1):DIRECT_TERMS.maxChargeAtomic;
       const cap=chosen.isDefault&&BigInt(worst)>BigInt(DIRECT_TERMS.maxChargeAtomic)?DIRECT_TERMS.maxChargeAtomic:worst;
-      const billing=billUsage(answer.usage,{...DIRECT_TERMS,maxChargeAtomic:cap});
+      const billing=billUsage(answer.usage,{...DIRECT_TERMS,maxChargeAtomic:cap},{allowOverrun:answer.retried===true});
+      if(answer.retried&&billing.overrunAtomic)log(`singit-ask: reasoning retry overrun ${billing.overrunAtomic} micro-USDC`);
       const requirement=await new ExactSvmScheme().enhancePaymentRequirements({scheme:'exact',network:SOLANA,
         asset:SOLANA_ASSET,amount:billing.totalAtomic,payTo:SOLANA_PAY_TO,maxTimeoutSeconds:300,
         extra:{billing,memo:`singit-ask:${requestId}`}},kind,[]);

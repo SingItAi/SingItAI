@@ -10,6 +10,8 @@
 //   SINGIT_ASK_DEFAULT_FALLBACKS off disables reviewed pinned defaults; otherwise on
 //   SINGIT_ASK_MODEL           upstream model, default deepseek-v4.1-flash
 //   SINGIT_ASK_UNSERVABLE_TTL_MINUTES  seller rejection cache, default 15 minutes; 0 disables
+//   SINGIT_ASK_PROBE_SHARE     list (default) or live: discovery only, list-price upper bound or seller snapshot
+//   SINGIT_ASK_PROBE_MAX_TOKENS optional positive integer: discovery output budget, capped at 1200; unset uses example
 //   SINGIT_ASK_PORT            default 8140
 //   SINGIT_ASK_BLOCKED_PROVIDERS  provider ids the Surplus key blocks (comma-separated), so models only they sell
 //                              are not offered
@@ -63,7 +65,10 @@ function required(name) {
   return value;
 }
 
+const probeTokens = Number(process.env.SINGIT_ASK_PROBE_MAX_TOKENS);
 const config = {
+  probeShare: process.env.SINGIT_ASK_PROBE_SHARE === "live" ? "live" : "list",
+  probeMaxTokens: Number.isInteger(probeTokens) && probeTokens > 0 ? probeTokens : undefined,
   defaultFallbacks: String(process.env.SINGIT_ASK_DEFAULT_FALLBACKS ?? "").trim().toLowerCase() !== "off",
   directSolana: process.env.SINGIT_ASK_DIRECT_SOLANA === "1",
   // Video is off unless SINGIT_ASK_VIDEO_SOLD=1 (a paid job can fail after settlement; see video.mjs). When sold,

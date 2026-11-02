@@ -1038,7 +1038,7 @@ test("free model answers contribute health but no settled usage", async t => {
 for (const [route, id] of [[ROUTE, CHEAP.id], [ROUTE, CONFIG.model],
   ["/v1/chat/deepseek-v4.1-flash", CONFIG.model]]) {
   for (const code of ["no_healthy_sellers", "upstream_error", "rate_limited"]) {
-    test(`${route} ${id}: paid ${code} hides only an unservable model until its TTL passes`, async (t) => {
+    test(`${route} ${id}: paid ${code} gates failures while preserving backbone listings`, async (t) => {
       let clock = 1000;
       const model = { ...CHEAP, id };
       const catalogue = new ModelCatalogue({ url: CONFIG.surplusUrl, now: () => clock, unservableTtlMs: 60_000 });
@@ -1061,7 +1061,7 @@ for (const [route, id] of [[ROUTE, CHEAP.id], [ROUTE, CONFIG.model],
       const hidden = code === "no_healthy_sellers";
       const listed = (await (await fetch(`${url}/v1/models`)).json()).data;
       const pricing = await (await fetch(`${url}/pricing.json`)).json();
-      assert.equal(listed.some((m) => m.id === model.id), !hidden);
+      assert.equal(listed.some((m) => m.id === model.id), catalogue.neverHide.has(model.id) || !hidden);
       assert.equal(pricing.models.some((m) => m.id === model.id), !hidden);
       const retry = await send();
       assert.equal(retry.status, hidden ? 503 : 402);
@@ -1099,7 +1099,7 @@ test("chooseModel refuses marked default and named models, recovers on expiry an
   assert.equal((await chooseModel(CONFIG, catalogue, { model: CHEAP.id })).model, CHEAP.id);
 });
 
-test("default fallback survives an unserved or unresolved catalogue model", async () => {
+test("default path respects availability even when model resolution fails", async () => {
   for (const resolves of [true, false]) {
     const catalogue = {
       async resolve() { if (!resolves) throw new UnknownModel("unknown"); return { ...CHEAP, id: CONFIG.model }; },
@@ -1107,15 +1107,12 @@ test("default fallback survives an unserved or unresolved catalogue model", asyn
       isUnservable() { return false; },
     };
     for (const model of [undefined, CONFIG.model]) {
-      const chosen = await chooseModel(CONFIG, catalogue, { model });
-      assert.equal(chosen.model, CONFIG.model);
-      assert.equal(chosen.isDefault, true);
-      assert.equal(chosen.info?.id ?? null, resolves ? CONFIG.model : null);
+      await assert.rejects(chooseModel(CONFIG, catalogue, { model }), e => e.status === 503 && e.retryAfter > 0);
     }
   }
 });
 
-test("marked default hides the alias and refuses discovery until expiry", async (t) => {
+test("marked default keeps the alias listed and refuses discovery until expiry", async (t) => {
   let clock = 100;
   const catalogue = new ModelCatalogue({ url: CONFIG.surplusUrl, now: () => clock, unservableTtlMs: 60_000 });
   catalogue.models = new Map([[CONFIG.model, { ...CHEAP, id: CONFIG.model }]]);
@@ -1124,7 +1121,7 @@ test("marked default hides the alias and refuses discovery until expiry", async 
   catalogue.pricesAt = clock;
   catalogue.markUnservable(CONFIG.model);
   const { url } = await serve(t, { catalogue });
-  assert.equal((await (await fetch(`${url}/v1/models`)).json()).data.some((m) => m.id === "singit-ask"), false);
+  assert.equal((await (await fetch(`${url}/v1/models`)).json()).data.some((m) => m.id === "singit-ask"), true);
   for (const method of ["GET", "HEAD", "POST"]) {
     const response = await fetch(`${url}${ROUTE}`, { method });
     assert.equal(response.status, 503);

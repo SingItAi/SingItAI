@@ -77,3 +77,8 @@ test('honest status and forbidden text', () => {
   assert.match(page,/Not tested:<\/strong> paid x402 payment/);
   assert.match(page,/Not published to npm; install from a Git checkout/);
 });
+
+ test("hub distinguishes prepared 18-tool catalogue from dated live checks", () => {
+  assert.match(page, /Repository version: 18 MCP tools, including keyless chat_free and paid chat/);
+  assert.match(page, /served after the next gateway restart/);
+});

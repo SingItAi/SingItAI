@@ -7,10 +7,10 @@ The hand-written page is `website/docs/mcp/index.html`. Run `node scripts/genera
 | Claim | Source |
 | --- | --- |
 | Remote Streamable HTTP; JSON only, no SSE or sessions; no local server installation | `llms-install.md:3–6`; `sign402-gateway/sign402_gateway/web_mcp.py:1–5` |
-| Endpoint, Registry name, title and version | `server.json:3–6`, remote URL in `server.json:14–16`; `sign402-gateway/sign402_gateway/web_mcp.py:73–80` |
-| 16 tools, descriptions, schemas, annotations | Keyless `tools/list` of https://app.singitai.app/mcp, fetched 31 October 2026 at 09:27:44 UTC (see the verification record); fields copied to `website/data/mcp-tools.json` under `result.tools`. |
-| Current serverInfo version 0.1.4, protocol 2025-06-18 | Repository declaration in `sign402-gateway/sign402_gateway/web_mcp.py:73–80`, initialize response at `:557` |
-| Three free keyless tools; three free account-read tools requiring a key | `sign402-gateway/sign402_gateway/web_mcp.py:7–9`, `:110–112`, `:617–621`; `sign402-gateway/tests/test_web_mcp.py:170–215` |
+| Endpoint, Registry name, title and version | `server.json:3–6`, remote URL in `server.json:14–16`; `sign402-gateway/sign402_gateway/web_mcp.py:83` |
+| 18 tools, descriptions, schemas, annotations | Generated offline from repository web_mcp.tools(); served after the next gateway restart. Historical check: keyless `tools/list` of https://app.singitai.app/mcp, fetched 31 October 2026 at 09:27:44 UTC (see the verification record); the current fields are generated from Python into `website/data/mcp-tools.json` under `result.tools`. |
+| Prepared serverInfo version 0.1.5, protocol 2025-06-18 | Repository declaration in `sign402-gateway/sign402_gateway/web_mcp.py:83`, initialize response at `:557` |
+| Four free keyless tools; three free account-read tools requiring a key | `sign402-gateway/sign402_gateway/web_mcp.py:7–9`, `:110–112`, `:617–621`; `sign402-gateway/tests/test_web_mcp.py:170–215` |
 | search scope for web_search/read_page; tools scope for the remaining paid tools | Server initialize instructions in `sign402-gateway/sign402_gateway/web_mcp.py:76–80`, module rules `:10–13`; enforcement in `sign402-gateway/sign402_gateway/web_api_keys.py:313–355` |
 | Account-read tools do not need the paid tools scope | `sign402-gateway/sign402_gateway/web_mcp.py:617–638`; account reads are dispatched before paid-tool enforcement. `llms-install.md:35–36` says “the rest need tools” too broadly; the page follows the implementation for the free account reads. |
 | Web tools: USDC on Base or Solana; paid market/data tools: Base only for now | Snapshot descriptions; `sign402-gateway/README.md:560–562`; `sign402-gateway/sign402_gateway/web_api_keys.py:350–355`; `sign402-gateway/tests/test_web_mcp.py:150–158`. No further Solana limit claims are made. |
@@ -29,7 +29,7 @@ The hand-written page is `website/docs/mcp/index.html`. Run `node scripts/genera
 
 ## Verification and limitations
 
-`website/tests/mcp-page.test.mjs` checks generator drift, exactly 16 unique names against Python declarations (excluding MCP_HIDDEN_TOOLS) and the llms.txt Start here section, scope/network labels, parameters, metadata, sitemap, local links, content constraints and snippet status labels. Client integration runs and paid calls are outside this work. No keys or wallets are used. No prices are asserted. No bridging command is recommended without verification.
+`website/tests/mcp-page.test.mjs` checks generator drift, exactly 18 unique names against Python declarations (excluding MCP_HIDDEN_TOOLS) and the llms.txt Start here section, scope/network labels, parameters, metadata, sitemap, local links, content constraints and snippet status labels. Client integration runs and paid calls are outside this work. No keys or wallets are used. No prices are asserted. No bridging command is recommended without verification.
 
 Claims are sourced to repository code, the live checks of 31 October 2026 (keyless initialize, tools/list and a 401 with an invalid key; `codex mcp add` in a temporary CODEX_HOME) and the vendor pages linked above. The Windsurf/Devin Desktop snippet comes from the vendor docs and was not run on an installation.
 
@@ -47,7 +47,7 @@ Free checks run from the build machine:
 ## Owner-set MCP key guide
 
 The hand-written “Get a key” section now links to `/docs/mcp-key/`. The generated
-tool table is unchanged and was regenerated offline with
+tool table now includes chat_free and chat and was regenerated offline with
 `node scripts/generate-mcp-page.mjs`. Claims for the linked guide are recorded in
 `docs/docs-pages-sources.md` under “MCP key offer and agent onboarding”. No new
 live verification was performed. Client snippets reuse this page's existing
@@ -57,8 +57,31 @@ repository-verified configurations and environment-variable credentials.
 
 The Registry latest version is 0.1.4, published 31 October 2026 from
 `SingItAi/singit-mcp`, the canonical home of `server.json`. The monorepo copy
-is a byte-identical mirror that mcp-publisher can submit. Change both copies
+must remain a byte-identical mirror before mcp-publisher submits it. This work prepares only the monorepo copy; the owner will update the canonical copy separately. Change both copies
 together and bump the version in both. The latest Registry version already
 points at singit-mcp: claiming a different repository for the same name and
 version would make the Registry history contradictory. The dated live
 initialize observation of 0.1.3 above remains unchanged.
+
+Registry still has 0.1.4 until the owner approves publishing 0.1.5; the live server reports 0.1.3 until the gateway is restarted with this code. No publishing or restart was performed.
+
+## Tools reference page
+
+`website/docs/mcp-tools/index.html` uses the same `website/data/mcp-tools.json`
+snapshot for full descriptions, input parameters, bounds, enums and annotations.
+The task-supplied live re-check on 2 November 2026 used a keyless `tools/list`:
+16 tools, with unchanged descriptions, input schemas and annotations. The only
+difference from the snapshot is a top-level `title` per tool, matching
+`annotations.title`. The live server reports 0.1.3; the repository's
+`web_mcp.py` 0.1.4 has the same 16-tool set and only changes the version string
+and the server card's `DOCS_URL`. No network verification was repeated while
+building this page. Access, scope and network claims use the sources above and
+the shared classification from `scripts/generate-mcp-page.mjs`.
+
+Run `node scripts/generate-mcp-tools-page.mjs` to regenerate the overview and
+reference blocks; append `--check` to detect drift. The HTML shell is hand-written
+and Cloudflare serves the checked-in page. Run
+`node --test website/tests/mcp-tools-page.test.mjs` for page checks. The existing
+MCP snapshot and its pinned tests remain unchanged.
+
+The Registry manifest (`server.json`) describes chat, search, page reading and market data "inside owner-set key limits (USDC)" at version 0.1.5, in step with `SERVER_INFO` in `web_mcp.py`. The Registry still has 0.1.4 until the owner approves publishing 0.1.5; nothing was published.

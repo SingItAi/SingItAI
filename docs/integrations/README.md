@@ -12,7 +12,7 @@ chat on [SingIt Ask](../../singit-ask)) from three agent frameworks:
 All three talk to the same two live endpoints:
 
 - **`https://app.singitai.app/mcp`** — SingIt's remote MCP server (Streamable HTTP, JSON responses
-  only). `get_price`, `list_price_symbols` and `list_models` are free, no key needed. `web_search`
+  only). `get_price`, `list_price_symbols`, `list_models` and `chat_free` are free, no key needed. `chat` is paid from the key’s limits with no extra scope. `web_search`
   and `read_page` are paid per call from a SingIt API key's own limits. See
   [`sign402-gateway/README.md#mcp-server-remote-for-claude-code-cursor-codex`](../../sign402-gateway/README.md).
 - **`https://ask.singitai.app`** — [SingIt Ask](../../singit-ask)'s OpenAI-shaped chat endpoint,
@@ -42,3 +42,5 @@ challenge from SingIt Ask's chat route — without spending anything.
 - **LangChain and Vercel AI SDK examples**: runnable recipes, not published packages. Both ship
   free MCP tools, an unpaid 402 probe, and Base-only x402-paid chat behind an explicit
   `SINGIT_ALLOW_PAID=1` flag plus wallet key and spending caps.
+
+The free MCP examples load the full catalogue and invoke only get_price. Their clients also expose keyless chat_free; chat remains paid and is not invoked by free examples.

@@ -20,7 +20,7 @@ const client = await createMCPClient({
 });
 
 try {
-  const tools = await client.tools(); // { get_price, list_price_symbols, list_models, ... }
+  const tools = await client.tools(); // { get_price, list_price_symbols, list_models, chat_free, ... }
   console.log(await tools.get_price.execute({ kind: "crypto", symbol: "BTC" }));
 } finally {
   await client.close();

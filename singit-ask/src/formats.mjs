@@ -1,3 +1,4 @@
+import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
 // what Claude Code and the Anthropic SDK speak) and OpenAI's Responses (POST /v1/responses). Sold over x402 like the
@@ -15,8 +16,9 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { markUnservable, unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { acceptedOf, answerLogFor, recordWhenSettled } from "./answer-log.mjs";
+import { probeInput, probeNote } from "./metered.mjs";
 import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, retryBudget, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -33,7 +35,7 @@ export class FormatError extends Error {
 // A Surplus answer that is not billable. `code` is Surplus's error.code (Anthropic's envelope has none: its
 // error.type then), or ours; never Surplus's message, which is not for matching. The message is safe to log.
 class NoAnswer extends Error {
-  constructor(status, code) { super(`model answered HTTP ${status} (${code})`); this.name = "NoAnswer"; this.code = code; }
+  constructor(status, code) { super(`model answered HTTP ${status} (${code})`); this.name = "NoAnswer"; this.status = status; this.code = code; }
 }
 
 // Sampling knobs a caller may send that a model can refuse outright (Surplus forwards what it does not strip: kimi-k3
@@ -49,8 +51,8 @@ export function fitRequest(request, params) {
 
 // REASONING_HEADROOM (pricing.mjs, SI-112): the room the ceiling already prices for a model that cannot stop
 // thinking is added to the answer limit sent upstream, as askSurplus does on the chat routes.
-export function withHeadroom(request) {
-  const extra = reasoningHeadroom(request?.model);
+export function withHeadroom(request, info) {
+  const extra = reasoningHeadroom(request?.model, info);
   if (!extra) return request;
   const field = Number.isInteger(request.max_output_tokens) ? "max_output_tokens" : Number.isInteger(request.max_tokens) ? "max_tokens" : null;
   return field ? { ...request, [field]: request[field] + extra } : request;
@@ -86,6 +88,10 @@ export const surplusModel = (name) => {
   return m ? `${m[1]}-${m[2]}.${m[3]}` : name;
 };
 
+// Both formats use priceGuard, just like chat. The audit's Messages quotes (18270/8106/8811)
+// reproduce exactly at share=1 and max_tokens=400, not at the guarded shares in its books.
+// That snapshot had no effective guard; this tree already guards real format POSTs. Messages
+// additionally counts serialized envelopes/tools, and formats allow 32000 tokens, versus chat's 1200.
 // The request sent on, its model, its size in characters and the longest answer it can get.
 export function readFormatRequest(route, body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new FormatError(400, "Send a JSON body.");
@@ -144,17 +150,17 @@ const DESCRIPTIONS = {
 };
 const EXAMPLES = {
   "/v1/messages": { model: "claude-sonnet-5.5", max_tokens: 300, messages: [{ role: "user", content: "What is x402?" }] },
-  "/v1/responses": { model: "gpt-5.5", input: "What is x402?", max_output_tokens: 300 },
+  "/v1/responses": { model: "deepseek-v4.1-flash", input: "What is x402?", max_output_tokens: 300 },
 };
 // What each field is, for the Bazaar listing: the fields readFormatRequest() checks, nothing it would refuse.
-const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "gpt-5.5", "gemini-3.8-flash"],
+const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "deepseek-v4.1-flash", "gemini-3.8-flash"],
   description: "Any model id from GET /v1/models; Anthropic's dashed names (claude-sonnet-5-5) work too." };
 const STREAM_FIELD = { type: "boolean", enum: [false], description: "Streaming is not offered: an answer is paid for whole." };
 const INPUT_SCHEMAS = {
   "/v1/messages": { properties: {
     model: MODEL_FIELD,
     max_tokens: { type: "integer", minimum: 1, maximum: FORMAT_LIMITS.maxTokens,
-      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+      description: "The longest answer, in tokens. The payment ceiling grows with it up to 32000; the charge follows what was used." },
     messages: { type: "array", minItems: 1, maxItems: 200, description: "The conversation, oldest first (Anthropic format).",
       items: { type: "object", required: ["role", "content"], properties: {
         role: { type: "string", enum: ["user", "assistant"] },
@@ -168,7 +174,7 @@ const INPUT_SCHEMAS = {
     input: { description: "The question: text, or a non-empty list of input items (OpenAI Responses format).",
       oneOf: [{ type: "string", minLength: 1 }, { type: "array", minItems: 1 }] },
     max_output_tokens: { type: "integer", minimum: 1, maximum: FORMAT_LIMITS.maxTokens, default: FORMAT_LIMITS.defaultTokens,
-      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+      description: "The longest answer, in tokens. The payment ceiling grows with it up to 32000; the charge follows what was used." },
     instructions: { type: "string", description: "Optional system instructions." },
     tools: { type: "array", description: "Optional tool definitions." },
     stream: STREAM_FIELD,
@@ -183,7 +189,7 @@ const OUTPUT_EXAMPLES = {
   "/v1/messages": { id: "msg_01example", type: "message", role: "assistant", model: "claude-sonnet-5.5",
     content: [{ type: "text", text: "x402 is an open standard for paying for an API call with a stablecoin over HTTP 402." }],
     stop_reason: "end_turn", usage: { input_tokens: 12, output_tokens: 24 }, billing: BILLING_EXAMPLE },
-  "/v1/responses": { id: "resp_example", object: "response", status: "completed", model: "gpt-5.5",
+  "/v1/responses": { id: "resp_example", object: "response", status: "completed", model: "deepseek-v4.1-flash",
     output: [{ type: "message", role: "assistant", content: [{ type: "output_text",
       text: "x402 is an open standard for paying for an API call with a stablecoin over HTTP 402." }] }],
     usage: { input_tokens: 12, output_tokens: 24, total_tokens: 36 }, billing: BILLING_EXAMPLE },
@@ -200,7 +206,7 @@ const TAGS = {
                                  "gemini", "deepseek", "singit"),
 };
 
-export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error }) {
+export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, record = () => {} }) {
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const bufferPp = config.priceBufferPp ?? 1;
   const answerLog = answerLogFor(config, log);
@@ -211,15 +217,13 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       .register(BASE, new ExactEvmScheme())
       .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
       .register(SOLANA, new ExactSvmScheme());
-    // The discovery probes (GET/HEAD and the empty, unpaid POST) are offered what this route's own Bazaar example
-    // body is offered right now, through the same parsing and pricing as a real question: that is the price CDP's
-    // Bazaar records for the route, and what vet402 compares its empty POST against (price_mismatch otherwise).
-    // The standing ceiling is kept only when the example cannot be quoted right now. A probe never pays.
+    // Discovery prices the example at list share by default; real POSTs below retain priceGuard.
+    // The same probeInput policy drives chat and formats, including optional discovery output budgets.
     const probeCeilings = perRequest(async () => {
       try {
         const input = readFormatRequest(route, EXAMPLES[route]);
         const info = await catalogue.resolve(input.model);
-        return ceilings(info, { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) }, exactOutputFraction);
+        return ceilings(info, probeInput({ ...input, info, ...priceGuard(catalogue, info.id, bufferPp) }, config), exactOutputFraction);
       } catch {
         return ceilings(null, {}, exactOutputFraction);
       }
@@ -260,11 +264,17 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       mimeType: "application/json",
       description: DESCRIPTIONS[route], serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
       extensions: { ...declareEip2612GasSponsoringExtension(),
-        ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
+        ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: { ...INPUT_SCHEMAS[route], description: probeNote(300, config, true) },
           output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }) },
     } }, server, { log });
     app.post(route, async (req, res) => {
       const started = Date.now();
+      let retried = false, recorded = false;
+      const observe = outcome => {
+        if (recorded) return;
+        recorded = true;
+        try { record(req.format?.model, outcome); } catch {}
+      };
       try {
         const header = req.get("payment-signature") ?? req.get("x-payment");
         const accepted = JSON.parse(Buffer.from(header, "base64").toString()).accepted ?? {};
@@ -274,24 +284,33 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         if (!terms) throw new Error("payment on an unknown network");
         // The price floor only when the model's list-price worst case would not fit what was paid (pricing.mjs).
         const minDiscount = minDiscountFor(req.format, terms);
-        const response = await fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
+        let body = withHeadroom(fitRequest(req.format.request, req.format.info?.params), req.format.info);
+        const send = () => fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                      ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify(withHeadroom(fitRequest(req.format.request, req.format.info?.params))), signal: AbortSignal.timeout(FORMAT_LIMITS.timeoutMs) });
+          body: JSON.stringify(body), signal: AbortSignal.timeout(Math.max(1, started + FORMAT_LIMITS.timeoutMs - Date.now())) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
+        let response = await send();
         // Read for every status: a long request can come back HTTP 200 with an error body.
-        const data = await response.json().catch(() => null);
+        let data = await response.json().catch(() => null);
+        if (response.ok && data && !data.error && data.type !== "error" && data.status !== "failed" && spentOnReasoning(route, data)
+            && started + FORMAT_LIMITS.timeoutMs - Date.now() > 8000) {
+          // One extra call at <= 2x budget; the service absorbs the first attempt and any overrun.
+          const field = Number.isInteger(body.max_output_tokens) ? "max_output_tokens" : "max_tokens";
+          body = { ...body, [field]: retryBudget(body[field]) }; retried = true;
+          response = await send(); data = await response.json().catch(() => null);
+        }
         if (!response.ok || !data || typeof data !== "object" || data.error || data.type === "error" || data.status === "failed") {
           const code = typeof data?.error?.code === "string" ? data.error.code
             : typeof data?.error?.type === "string" ? data.error.type : "upstream_error";
-          throw new NoAnswer(response.status, code);
+          throw Object.assign(new NoAnswer(response.status, code), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
         }
         if (spentOnReasoning(route, data)) throw new NoAnswer(response.status, "max_tokens_spent_reasoning");
         if (!hasAnswer(route, data)) throw new NoAnswer(response.status, "no_text");
         catalogue?.noteAnswered?.(req.format.model);
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
         const usage = billWithDiagnostics({ ...data.usage, buyer_cost_micro: reported },
-          terms, exact, route, req.format.model, log);
+          terms, exact, route, req.format.model, log, retried);
         // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override,
         // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
         const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
@@ -301,8 +320,10 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
         log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms`
           + `${route === "/v1/responses" ? `, isDefault=${req.format.modelOmitted === true}` : ","} settling ${billing.totalAtomic} micro-USDC`);
-        res.json({ ...scrub(data), billing });
+        observe({ ok: true, retried });
+        res.json({ ...scrub(data), ...(retried ? { retried: true } : {}), billing });
       } catch (error) {
+        observe({ ok: false, code: error.code, status: error.status, retried });
         markUnservable(catalogue, req.format?.model, error, log);
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
         log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
