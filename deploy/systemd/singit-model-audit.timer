@@ -1,0 +1,12 @@
+# TEMPLATE ONLY. Installing this USER timer and service needs the owner's OK.
+# Nothing in this repository installs or enables them.
+[Unit]
+Description=Run the SingIt model audit daily at 07:30 local time
+
+[Timer]
+OnCalendar=*-*-* 07:30:00
+Persistent=true
+RandomizedDelaySec=1min
+
+[Install]
+WantedBy=timers.target

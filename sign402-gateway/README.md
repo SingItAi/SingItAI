@@ -540,6 +540,8 @@ Tools:
 | `get_price` | Free | A crypto, metal or fx price |
 | `list_price_symbols` | Free | Every symbol `get_price` knows |
 | `list_models` | Free | Models available through the SingIt API (chat, images, audio), with their SingIt prices |
+| `chat_free` | Free, no key | Short model answers using the public Ask allowance |
+| `chat` | Paid, needs a key; no extra scope | Model answers within the key’s server-enforced limits |
 | `get_balance` | Free, needs a key | The key's account balance: available and held USDC, auto top-up |
 | `get_limits` | Free, needs a key | The key's daily and per-request caps, spent and left today, the account's balance and (Base) its allowance limiter: caps, left today, approved, paused, expiry. Read-only |
 | `get_receipts` | Free, needs a key | Recent receipts, newest first: this key's charges (model, USDC, tokens, upstream reference) or the account's top-ups and refunds (`kind`), paged with `before`. Read-only |
@@ -563,10 +565,10 @@ Base-only for now: a Solana account's key gets a clear refusal. Nothing here can
 (no Bitrefill, no wallet/allowance tools beyond the read-only `get_limits` — changing them stays out of MCP for now, v2 at the earliest).
 
 Every `tools/list` entry carries a `title` and MCP annotations (`readOnlyHint`, `destructiveHint`,
-`idempotentHint`, `openWorldHint`). All 16 tools are read-only and non-destructive: paid ones debit the
+`idempotentHint`, `openWorldHint`). All 18 tools are read-only and non-destructive: paid ones debit the
 key's limits but never touch external state. `get_price`, `list_price_symbols`, `list_models`,
-`get_balance`, `get_limits` and `get_receipts` read SingIt's own data, so they are idempotent and not open-world; every other tool bills again on each call
-(not idempotent) and reaches third-party data (open-world).
+`get_balance`, `get_limits` and `get_receipts` read SingIt's own data, so they are idempotent and not open-world; every paid tool bills again on each call
+(not idempotent) and reaches third-party data (open-world). `chat_free` also consumes allowance and reaches an external model, so it is not idempotent and is open-world.
 
 Install:
 
@@ -610,14 +612,14 @@ curl -s http://127.0.0.1:8130/mcp \
 
 Limits:
 
-- No key at all is allowed for the catalogue: `initialize`, `ping`, `tools/list` and the three free
-  tools (`get_price`, `list_price_symbols`, `list_models`) answer without one, so MCP directories and
+- No key at all is allowed for the catalogue: `initialize`, `ping`, `tools/list` and the four free
+  tools (`get_price`, `list_price_symbols`, `list_models`, `chat_free`) answer without one, so MCP directories and
   people can see what the server offers. A paid tool called without a key returns a tool error asking
   for one; nothing is billed. A request that sends a key must send a valid one: a wrong or revoked key
   is a 401, never a fall back to keyless.
 - Keys made before this change were signed for `answers search` only; they lack the `tools` scope, so
   the paid data tools above refuse them with a message to make a new key. `get_price`,
-  `list_price_symbols`, `list_models`, `web_search` and `read_page` work with any still-live key, per
+  `list_price_symbols`, `list_models`, `chat_free`, `chat`, `web_search` and `read_page` work with any still-live key, per
   its own scopes (`web_search` and `read_page` need `search`).
 - MCP has its own rate limit, separate from `/v1`'s: 60 requests a minute per key (or per client address, without a key) by default (set
   `SINGIT_MCP_REQUESTS_PER_MINUTE` to change it), so heavy use of one never starves the other. It is
@@ -750,7 +752,7 @@ A value that is not a positive whole number stops the web API from starting.
   A refusal, or an answer that does not come back, is not counted.
 - **Listed:** `GET /v1/models` (and the MCP `list_models`) show them first as `free/<id>` entries with
   `free: true` and their `limits`, only when the feature is on.
-- **MCP:** the MCP server has no chat tool, so free answers are only on `/v1`; the MCP rate limit is untouched.
+- **MCP:** free answers are on `/v1` and through `chat_free`, which uses SingIt Ask’s public free route, counted per caller network under Ask’s existing shared daily budget. The free caps are unchanged; the MCP rate limit is untouched.
 - **Restarts:** the counters are in memory. A restart starts the day's counts again, so a restart can give out
   one more day's allowance; the daily ceiling bounds that. The free answers also count only in this process.
 - **Wallet identity:** the account is the one the API key was signed by, so the limit follows the wallet, not

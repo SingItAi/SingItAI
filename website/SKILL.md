@@ -61,8 +61,9 @@ Verification: configuration from the repository; not run live for this guide.
 
 | MCP tools | Access | Scope / network |
 | --- | --- | --- |
-| get_price, list_price_symbols, list_models | Free without a key | No paid scope |
+| get_price, list_price_symbols, list_models, chat_free | Free without a key | No paid scope |
 | get_balance, get_limits, get_receipts | Free with a key, read-only | Account data |
+| chat | Paid from the key’s limits, Base or Solana | No extra scope |
 | web_search, read_page | Paid per call within key caps | search; Base or Solana |
 | get_x_profile, get_crypto_news, get_hyperliquid_market, get_funding_rates, resolve_ens, get_token_price | Paid per call within key caps | tools; Base only for now |
 | get_weather, get_singit_risk_check | Paid demo calls within key caps | tools; Base only for now |
@@ -125,3 +126,5 @@ per-purchase limits. The Solana stop pauses new purchases in SingIt's gateway
 without removing the on-chain delegate approval; only Revoke removes it. There
 is no on-chain emergency stop. A paused Solana account is unpaused only by a
 new grant signed after the pause.
+
+Claude Code + SingIt MCP in 60 seconds: https://singitai.app/docs/claude-code/

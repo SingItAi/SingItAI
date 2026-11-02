@@ -47,7 +47,7 @@ test('skill and key guide name real tools and preserve limits and refusal wordin
   assert.ok(skill.split('\n').length < 150);
   assert.doesNotMatch(skill + page, forbidden);
   const tools = await servedTools();
-  const toolRows = skill.split('\n').filter(l => /^\| (?:get_|list_|web_|read_|resolve_)/.test(l));
+  const toolRows = skill.split('\n').filter(l => /^\| (?:chat|get_|list_|web_|read_|resolve_)/.test(l));
   const listed = toolRows.flatMap(l => l.split('|')[1].trim().split(', '));
   assert.deepEqual([...listed].sort(), [...tools].sort());
   const candidates = new Set((skill + page.replace(/<[^>]+>/g, '')).match(/\b(?:get|list|web|read|resolve)_[a-z_]+\b/g));
@@ -72,6 +72,7 @@ test('onboarding files have content types, CORS and survive the static build', a
       process.argv = [process.execPath, new URL('website/build.mjs', root).pathname, out];
       await import(new URL('../build.mjs?onboarding', import.meta.url));
     } finally { process.argv = argv; }
+    assert.equal(await readFile(join(out, 'docs/claude-code/index.html'), 'utf8'), await read('website/docs/claude-code/index.html'));
     for (const [path, type] of [['/SKILL.md','text/markdown'], ['/.well-known/agent-card.json','application/json']]) {
       assert.ok(headers.includes(`${path}\n  Content-Type: ${type}; charset=utf-8\n  Access-Control-Allow-Origin: *`));
       assert.equal(await readFile(join(out, path), 'utf8'), await read('website' + path));
