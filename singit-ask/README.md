@@ -226,7 +226,7 @@ node --env-file=.env src/server.mjs
 | `SINGIT_ASK_MODEL` | Upstream model. Default: `deepseek-v4.1-flash`. |
 | `SINGIT_ASK_PORT` | Loopback port. Default: `8140`. |
 | `SINGIT_ASK_REASONING_EFFORT` | `model=effort,...` (`none`, `minimal`, `low`, `medium`, `high`) overrides the model default: `claude-opus-5.5` defaults to `low`, other models to `none`. Set `claude-opus-5.5=none` to restore the old behaviour. A value that cannot be read stops the process at start. |
-| `SINGIT_ASK_REASONING_HEADROOM` | Measurement only; unset (default) changes nothing. `model=tokens,...` replaces the model's thinking headroom (`REASONING_HEADROOM` in `src/pricing.mjs`: 256 for Opus and for `openai-gpt-oss-20b`, 1024 for Gemini 3.1 Pro) in both the ceiling the 402 offers and the `max_tokens` sent upstream, e.g. `claude-opus-5.5=128`. Use only on a temporary loopback process for a paid test; it does not change the price formula. |
+| `SINGIT_ASK_REASONING_HEADROOM` | Measurement only; unset (default) changes nothing. `model=tokens,...` replaces the model's thinking headroom (the reasoning-tag floor plus explicit overrides in `src/pricing.mjs`) in both the ceiling the 402 offers and the `max_tokens` sent upstream, e.g. `claude-opus-5.5=128`. Use only on a temporary loopback process for a paid test; it does not change the price formula. |
 | `SINGIT_ASK_EXA_MARKUP_BPS` | Exa markup in basis points: integer 0..10000, default `0`. Invalid values use the default. |
 | `SINGIT_ASK_EXA_FEE_ATOMIC` | Exa settlement fee in atomic USDC: `N` for both networks or `base,solana`, default `1000,1000` (a flat $0.001 on both networks). Non-negative integers; invalid values use the default. Set markup to `3000` and fee to `1000,2000` to restore the former pricing; fee `0` with the default zero markup gives no-fee pass-through pricing. |
 | `SINGIT_ASK_EXACT_RESERVE` | Default `0.25,32,256`. How many thinking tokens an `exact` offer for Claude Opus prices: `clamp(round(factor × max_tokens), min, max)` (125 at `max_tokens` 500), never more than the model's headroom. The whole headroom (256) is still added to `max_tokens` sent upstream, and `upto` still authorizes it. `full` restores pricing all 256 tokens (the behaviour before 29.10.2026). A value that cannot be read stops the process at start. |
@@ -308,9 +308,30 @@ Keep its private configuration out of Git, command output and published logs.
 
 ### Observed health and usage
 
+
+Reasoning headroom is priced into every ceiling and added to the upstream token limit: 256 tokens for
+catalogue entries tagged `reasoning`, with explicit overrides of 1024 for Gemini 3.1 Pro and 256 for
+Opus 5.5 and GPT OSS 20B. The audit also measured thinking on untagged `qwen3.5-plus` (about 193 tokens)
+and `qwen3.5-flash` (about 146); both explicitly receive 256. Process overrides take precedence, including
+zero. Untagged models without an explicit entry keep their previous prices. Only Opus has a reduced
+exact reserve; every other reasoning model's exact price carries the whole headroom.
+
+Paid chat, Messages, Responses and Solana quoted requests retry an empty length-limited answer once,
+when more than eight seconds remain. The second upstream budget is `min(2 * B1, B1 + 2048)` where B1
+includes headroom. The successful answer carries `retried: true`; settlement never exceeds the original
+ceiling, even for upto. The service eats the first attempt and absorbs any retry overrun, bounded by one
+extra call at no more than twice the first budget. A second exhaustion returns 422 without charging.
+Free requests never retry, preserving the shared dollar cap; a near-deadline request may also return
+422 without retrying. Other upstream errors do not trigger a reasoning retry.
+
 `GET /health` retains `ok: true` and the existing service fields, and adds observed text-model results,
 payment-rail status, a cached read-only facilitator check, measurement start and generation timestamps.
 Model and settlement rates cover UTC hourly buckets in the last 24 hours; idle models are omitted.
+Each model exposes `reasoning422` and `reasoningRetries` for that window. Reasoning exhaustion counts
+neither success nor failure and leaves the last outcome unchanged; a successful retried answer counts
+as one success and one retry. At least three reasoning 422s and a ratio
+`reasoning422 / (attempts + reasoning422) > 0.2` make status at least `degraded`, while `down` and
+`unavailable` remain worse. Old persisted files without these counters load with zero values.
 `GET /numbers.json` publishes settled public x402 calls, known USDC volume and distinct payer wallets for
 all recorded history, 24 hours and 7 days, with definitions. Internal web-app payments inform rail health
 but are excluded from usage. Own payers are excluded only once an own-payer list is configured (see `counts_basis`). History before these counters existed
@@ -373,18 +394,43 @@ The CLI applies exclusions in memory without writing or scheduling a flush. It
 prints no payer hashes or addresses. Missing/invalid stats files follow HealthStats'
 empty-counter fallback; check the report's `since` before interpreting it as history.
 
-### Model suspensions
+### Seller down: gate, learned price, hide
 
-A seller rejection with `no_healthy_sellers` blocks requests before payment for 15 minutes. A second consecutive rejection hides the model from listings; explicit requests can retry after backoffs of 30, 60, then at most 120 minutes. An answered request resets the count, and one rejection older than 24 hours does not start a streak. An accepted book refresh also resets it when a new qualifying seller appears, or the model returns after having no qualifying offers. Other errors do not count.
+Models are made to work first. A `minimum_discount_not_met` reply with a valid
+`bestDiscountPct` raises the next quote to at least the seller's deliverable share,
+plus the usual rounding and price buffer. This learned guard lasts ten minutes;
+a successful answer clears it, and expiry returns pricing to the order book.
+The payer signs the new quote as their ceiling; billing never raises that ceiling.
+A stale cheap book alone is no reason to hide a model.
 
-The default model, all configured automatic tiers, the free-list models, and deepseek-v4.1-flash, claude-haiku-4.5, glm-5.3-flash and gpt-6-luna retain the original 15 minute behavior and never suspend. `SINGIT_ASK_SUSPENSIONS_FILE` selects the private persistent state file (default `~/.config/singit-ask/model-suspensions.json`). Health entries retain suspended models even between trials. A pinned model with `fallback_models` is replaced by its fallback while suspended; plain requests make the recovery trial.
+Real seller failures close a gate before payment: `no_healthy_sellers` immediately;
+`minimum_discount_not_met`, `unreachable`, and upstream HTTP 5xx after three
+consecutive seller failures within 24 hours without an answer. Input errors,
+reasoning exhaustion, empty answers and ceiling refusals do not count. A closed
+gate returns 503 `no_healthy_sellers`, Retry-After, and no payment challenge on
+chat, pinned, Messages, Responses and discovery probes. Health publishes only
+the gate reason (`recent_failures` or `no_healthy_sellers`) and retry time.
+
+The initial gate lasts 15 minutes. Failed recovery trials double the wait to at
+most two hours. A successful answer clears the failure streak, learned guard and
+suspension. A fresh qualifying seller in an accepted book refresh also reopens
+all kinds of gate without traffic. Identical healthy-looking offers do not prove
+recovery. After the gate expires an explicit request can make a half-open trial.
+
+Only the configured default, automatic-tier and free-list models never suspend:
+they remain listed as router backbone models, but still return 503 when gated.
+Other models hide after repeated gate-closing rejections and return after a
+successful trial or fresh seller. `NEVER_HIDE` remains exported as an empty list.
+`SINGIT_ASK_SUSPENSIONS_FILE` selects the private persistence file (default
+`~/.config/singit-ask/model-suspensions.json`). Health retains suspended models
+between trials; explicit requests can still make recovery trials.
 
 ### Reviewed pinned defaults
 
 On `POST /v1/chat/completions`, an explicitly pinned `gpt-6-luna` can use
 `gpt-6-luna-pro` before payment if the pin cannot be served or priced safely.
 This reviewed pair shares the underlying model; pro reasoning uses independent
-sellers. No other default substitutions are configured. Omitted/default models
+sellers. `claude-haiku-4.5` also has the reviewed `claude-haiku-5.5` fallback. Omitted/default models
 and other API routes stay pinned. There is no substitution after payment.
 
 An explicit `fallback_models` list takes precedence. The substitute uses its own
@@ -400,3 +446,28 @@ The free GET/HEAD routes `/SKILL.md`, `/.well-known/agent-card.json`,
 through a fixed, case-sensitive allowlist. Agents can fetch them on Ask without
 the browser check on singitai.app. Files are read on every request, with open
 CORS, a five-minute public cache and strong ETags for conditional requests.
+
+Discovery probes (GET, HEAD, and empty unpaid POST) for chat, Messages and Responses quote the example at list price by default. This bounds a later quote for the same example across seller discounts. Real POSTs keep their tight seller guard; `upto` settles actual usage. The default model still has its standing 0.003 USDC cap and all quotes retain the minimum ceiling.
+
+`SINGIT_ASK_PROBE_SHARE=list` is the default; `live` restores the previous seller snapshot for discovery only, which can become stale. `SINGIT_ASK_PROBE_MAX_TOKENS` is an optional positive integer: unset uses the example's own output budget; set quotes discovery as if it requested `min(value, 1200)` tokens. It changes neither the published example body nor real requests. Invalid values leave the example budget unchanged.
+
+A larger output budget or longer prompt can exceed the listed example price. Chat counts `max_tokens` above 1200 as 1200. Set the probe budget to 1200 when listing the chat clamp for verifiers. Messages and Responses allow up to 32000 output tokens; Responses defaults to 4096 when `max_output_tokens` is omitted.
+
+Reviewed against the local 2026-11-02 audit, q400/q2000 quotes (micro-USDC):
+Haiku 4.5 → 5.5 has Solana upto 2236/2704 → 2077/2228 and exact
+2072/2212 → 2024/2069; Base upto 1500/1704 → 1500/1500, exact 1500
+throughout. List input/output per million falls from $1/$5 to $0.10/$0.50.
+No GLM default is configured: Flashx Solana upto 2336/2999 and GLM 5.3
+2038/2114 exceed Flash 2003/2008. No DeepSeek default is configured:
+V4 Flash Solana upto 2078/2232 exceeds V4.1 Flash 2007/2017 (and the
+latter is an eco-tier model, while V4 Flash is not). The existing Luna → Pro
+entry is retained, but the audit's Pro quotes are dearer; the runtime comparison
+will refuse that substitution at those prices. Every fallback is checked again
+on every scheme/network for the actual request, including tier membership.
+
+`GET /v1/audio/models` lists speech and transcription models with their prices.
+Speech entries carry `x402: true` and `route: "/v1/audio/speech"`.
+Transcription entries carry `x402: false`, `route: null` and `access: "api-key"`:
+they are priced here for API-key use, not payable on `/v1/audio/speech` over x402.
+The top-level note explains this distinction; existing model IDs, kinds and price
+fields remain available to the key gateway and MCP consumers.

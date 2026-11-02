@@ -244,5 +244,25 @@ test('validation accepts a config without pinnedDefaultFallbacks', async () => {
   const { validateAutoConfig } = await import('../src/auto-router.mjs');
   const { pinnedDefaultFallbacks, ...without } = AUTO_CONFIG;
   validateAutoConfig(without);
-  assert.deepEqual(AUTO_CONFIG.pinnedDefaultFallbacks, { 'gpt-6-luna': ['gpt-6-luna-pro'] });
+  assert.deepEqual(AUTO_CONFIG.pinnedDefaultFallbacks, { 'gpt-6-luna': ['gpt-6-luna-pro'], 'claude-haiku-4.5': ['claude-haiku-5.5'] });
+});
+
+test('reviewed Haiku default substitutes a gated pin at no higher price on every scheme/network', async () => {
+  const pin = 'claude-haiku-4.5', next = 'claude-haiku-5.5';
+  assert.deepEqual(AUTO_CONFIG.pinnedDefaultFallbacks[pin], [next]);
+  // Audit list prices USD/million: 1/5 versus .1/.5; conservative book shares.
+  const cat = { resolve: async id => ({ id, promptUsdPerToken: id === pin ? 1e-6 : .1e-6,
+    completionUsdPerToken: id === pin ? 5e-6 : .5e-6 }),
+    canAnswer: async id => id !== pin, isUnservable: id => id === pin, guardShare: id => id === pin ? .06 : .43 };
+  for (const max_tokens of [400, 2000]) {
+    const input = readRequest({ model: pin, fallback_models: AUTO_CONFIG.pinnedDefaultFallbacks[pin], messages: [{ role: 'user', content: 'hi' }], max_tokens });
+    const selected = await choosePinnedFallback(CONFIG, cat, input, chooseModel, RequestError);
+    assert.equal(selected.model, next);
+    const { priceGuard } = await import('../src/catalogue.mjs');
+    const original = ceilings(await cat.resolve(pin), { ...input, ...priceGuard(cat, pin, 1) });
+    const actual = ceilings(selected.info, selected);
+    for (const scheme of ['upto', 'exact']) for (const net of Object.keys(original[scheme])) assert.ok(BigInt(actual[scheme][net]) <= BigInt(original[scheme][net]));
+  }
+  assert.equal(AUTO_CONFIG.pinnedDefaultFallbacks['glm-5.3-flash'], undefined);
+  assert.equal(AUTO_CONFIG.pinnedDefaultFallbacks['deepseek-v4.1-flash'], undefined);
 });

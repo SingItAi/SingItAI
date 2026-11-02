@@ -48,7 +48,7 @@ test("negative cache expires on the injected clock, precedes served and is bound
   assert.equal(await disabled.canAnswer("model"), true);
 });
 
-test("only no_healthy_sellers marks and logs the model", () => {
+test("only no_healthy_sellers marks immediately; isolated seller failures do not", () => {
   const catalogue = new ModelCatalogue({ url: "https://unused.test" });
   const logs = [];
   for (const code of ["upstream_error", "unreachable", "429"]) {

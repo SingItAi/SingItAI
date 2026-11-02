@@ -1,0 +1,112 @@
+[
+  {
+    "route": "/v1/chat/completions",
+    "before": 1500,
+    "after": 1500
+  },
+  {
+    "route": "/v1/chat/claude-opus-5.5",
+    "before": 5557,
+    "after": 18524
+  },
+  {
+    "route": "/v1/chat/claude-sonnet-5.5",
+    "before": 3231,
+    "after": 6440
+  },
+  {
+    "route": "/v1/chat/claude-haiku-5.5",
+    "before": 1500,
+    "after": 1500
+  },
+  {
+    "route": "/v1/chat/gpt-5.6-sol",
+    "before": 4581,
+    "after": 11848
+  },
+  {
+    "route": "/v1/chat/gpt-5.6-terra",
+    "before": 3136,
+    "after": 7469
+  },
+  {
+    "route": "/v1/chat/gpt-5.5",
+    "before": 5196,
+    "after": 17133
+  },
+  {
+    "route": "/v1/chat/gemini-3.1-pro-preview",
+    "before": 10204,
+    "after": 23446
+  },
+  {
+    "route": "/v1/chat/gemini-3.8-flash",
+    "before": 2144,
+    "after": 3244
+  },
+  {
+    "route": "/v1/chat/grok-4.7",
+    "before": 1795,
+    "after": 8215
+  },
+  {
+    "route": "/v1/chat/kimi-k3",
+    "before": 2252,
+    "after": 8821
+  },
+  {
+    "route": "/v1/chat/deepseek-v4-pro",
+    "before": 1500,
+    "after": 2852
+  },
+  {
+    "route": "/v1/chat/deepseek-v4.1-flash",
+    "before": 1500,
+    "after": 1500
+  },
+  {
+    "route": "/v1/chat/qwen3.8-max-0902",
+    "before": 1500,
+    "after": 4344
+  },
+  {
+    "route": "/v1/chat/glm-5.3",
+    "before": 1500,
+    "after": 2882
+  },
+  {
+    "route": "/v1/messages",
+    "before": 2650,
+    "after": 5023
+  },
+  {
+    "route": "/v1/responses",
+    "before": 1500,
+    "after": 1500
+  },
+  {
+    "route": "/v1/exa/search",
+    "before": 8000,
+    "after": 8000
+  },
+  {
+    "route": "/v1/exa/contents",
+    "before": 2000,
+    "after": 2000
+  },
+  {
+    "route": "/v1/exa/answer",
+    "before": 6000,
+    "after": 6000
+  },
+  {
+    "route": "/v1/images/generations",
+    "before": 66000,
+    "after": 66000
+  },
+  {
+    "route": "/v1/audio/speech",
+    "before": 1082,
+    "after": 1082
+  }
+]
