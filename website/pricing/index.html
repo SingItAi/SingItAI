@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SingIt vs BlockRun: per-request prices | SingIt</title>
-<meta name="description" content="What one reference question costs over x402 on SingIt (pay-as-you-go upto, and the exact ceiling) against BlockRun's per-request price, model by model, read live from each side's own pricing.">
+<title>Pricing: what one reference question costs | SingIt</title>
+<meta name="description" content="What one reference question costs, priced live from SingIt's GET /pricing.json: upto is the ceiling you sign; exact is a flat price.">
 <link rel="canonical" href="https://singitai.app/pricing/">
-<meta property="og:title" content="SingIt vs BlockRun: per-request prices | SingIt">
-<meta property="og:description" content="What one reference question costs over x402 on SingIt against BlockRun's per-request price, model by model, read live from each side's own pricing.">
+<meta property="og:title" content="Pricing: what one reference question costs | SingIt">
+<meta property="og:description" content="What one reference question costs, priced live from SingIt's GET /pricing.json: upto is the ceiling you sign; exact is a flat price.">
 <meta property="og:url" content="https://singitai.app/pricing/">
 <meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
 <meta property="og:type" content="website">
@@ -41,8 +41,8 @@
       "@type": "WebPage",
       "@id": "https://singitai.app/pricing/#webpage",
       "url": "https://singitai.app/pricing/",
-      "name": "SingIt vs BlockRun: per-request prices | SingIt",
-      "description": "What one reference question costs over x402 on SingIt against BlockRun's per-request price, model by model, read live from each side's own pricing.",
+      "name": "Pricing: what one reference question costs | SingIt",
+      "description": "What one reference question costs, priced live from SingIt's GET /pricing.json: upto is the ceiling you sign; exact is a flat price.",
       "isPartOf": { "@id": "https://singitai.app/#website" },
       "breadcrumb": { "@id": "https://singitai.app/pricing/#breadcrumb" },
       "inLanguage": "en"
@@ -109,8 +109,8 @@
     <div class="shell">
       <div class="hero-copy" data-hero-reveal>
         <p class="eyebrow">Pricing</p>
-        <h1>SingIt vs BlockRun: <em>per-request prices.</em></h1>
-        <p class="hero-sub">One reference question, priced live on both sides: SingIt's own 402 ceilings against BlockRun's published per-token price plus their flat fee. No invented numbers &mdash; every figure below is read straight from each side's own pricing at page load.</p>
+        <h1>Per-request prices.</h1>
+        <p class="hero-sub">One reference question, priced live from our own GET /pricing.json. The SingIt <span class="mono">upto</span> price is the ceiling you sign; a real answer normally settles for less. <span class="mono">exact</span> is a flat price.</p>
       </div>
     </div>
   </section>
@@ -122,25 +122,21 @@
 
       <div class="table-wrap" data-pricing-table>
         <table class="mtable">
-          <caption>USDC on Base, for the reference request above. <b>SingIt upto</b> is the pay-as-you-go (upto) price: the ceiling the reference request would be asked to authorize; a real answer normally settles for less once it comes back. <b>SingIt exact</b> is the flat exact-scheme ceiling, charged in full with no metering; for Claude Opus it carries room for the model's thinking tokens, so sign upto there. <b>BlockRun</b> is their published per-token price for the same request, plus their flat per-request fee, from the snapshot dated <span class="mono" data-snapshot-date>&hellip;</span> (source: <a data-snapshot-source href="#">blockrun.ai/api/v1/models</a>). Only models both sides currently list are shown.</caption>
+          <caption>USDC on Base, for the reference request above. <b>SingIt upto</b> is the pay-as-you-go (upto) price: the ceiling the reference request would be asked to authorize; a real answer normally settles for less once it comes back. <b>SingIt exact</b> is the flat exact-scheme price, charged in full with no metering; for Claude Opus it carries room for the model's thinking tokens, so sign upto there.</caption>
           <thead>
             <tr>
               <th scope="col">Model</th>
-              <th scope="col" class="hide-sm">Provider</th>
               <th scope="col" class="num">SingIt upto</th>
               <th scope="col" class="num hide-sm">SingIt exact</th>
-              <th scope="col" class="num">BlockRun</th>
-              <th scope="col" class="num">Difference</th>
             </tr>
           </thead>
           <tbody data-pricing-rows>
-            <tr><td colspan="6" class="table-state">Loading live prices&hellip;</td></tr>
+            <tr><td colspan="3" class="table-state">Loading live prices&hellip;</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="fine" data-live-fallback hidden>Live prices did not load from <a href="https://ask.singitai.app/pricing.json">ask.singitai.app/pricing.json</a> or the BlockRun snapshot. Try again shortly &mdash; nothing below is a stand-in number.</p>
-      <noscript><p class="fine">This comparison needs JavaScript to read live prices from both sides. No numbers are shown without it.</p></noscript>
-      <p class="fine">"Difference" is BlockRun's price for the reference request minus SingIt's <span class="mono">upto</span> price for the same request; a positive amount is what SingIt would save. Matched by BlockRun's model id (after the provider prefix) against SingIt's own model id. SingIt's side: <a href="https://ask.singitai.app/pricing.json">ask.singitai.app/pricing.json</a>, free, no payment, computed from the same code the 402 challenge uses. BlockRun's side: a committed snapshot of <a href="https://blockrun.ai/api/v1/models">blockrun.ai/api/v1/models</a> (<a href="https://github.com/SingItAi/SingItAI/blob/main/scripts/blockrun-prices-snapshot.mjs">scripts/blockrun-prices-snapshot.mjs</a>), since the page cannot call blockrun.ai directly from the browser.</p>
+      <p class="fine" data-live-fallback hidden>Live prices did not load from <a href="https://ask.singitai.app/pricing.json">ask.singitai.app/pricing.json</a>. Try again shortly &mdash; nothing below is a stand-in number.</p>
+      <noscript><p class="fine">This table needs JavaScript to read our live reference prices. No numbers are shown without it.</p></noscript>
     </div>
   </section>
 

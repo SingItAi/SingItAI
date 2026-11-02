@@ -334,7 +334,7 @@ as one success and one retry. At least three reasoning 422s and a ratio
 `unavailable` remain worse. Old persisted files without these counters load with zero values.
 `GET /numbers.json` publishes settled public x402 calls, known USDC volume and distinct payer wallets for
 all recorded history, 24 hours and 7 days, with definitions. Internal web-app payments inform rail health
-but are excluded from usage. Configured own payers are excluded too. History before these counters existed
+but are excluded from usage. Own payers are excluded only once an own-payer list is configured (see `counts_basis`). History before these counters existed
 is not included. Missing amounts are never estimated; unique counts become null when their bounded sets fill.
 Payers are stored only as salted HMAC hashes, never exposed. Availability is measured separately by the
 external prober at https://app.singitai.app/status.json.
@@ -353,6 +353,13 @@ file out of git, and restart after changing it. An unreadable configured file st
 startup; logs contain only the exclusion count. No own addresses are built in.
 
 `/numbers.json` reports `own_payers_configured`, true only for a non-empty list.
+
+`counts_basis` is `including_own_payments` until a non-empty own-payer list is configured:
+these counts include our own payments and are not external-only. Once configured it is
+`excluding_configured_own_payers`. `counts_label` explains this coverage in plain text.
+Exclusions apply from configuration onward for calls and volume; earlier calls and volume
+still include our own payments. Historical matching unique-payer hashes are removed.
+
 Adding the list removes matching historical unique-payer hashes. Calls and USDC
 volume recorded before configuration still include own test payments: payer-level
 payment history is not stored, so those totals cannot be corrected retroactively.

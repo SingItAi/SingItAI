@@ -15,6 +15,7 @@ export function main({ env = process.env, args = process.argv.slice(2), print = 
     file: env.SINGIT_ASK_STATS_FILE || `${homedir()}/.config/singit-ask/health-stats.json` }));
   if (args.includes("--text")) {
     print([`Since: ${body.since}`, `Generated: ${body.generated_at}`,
+      `Counts basis: ${body.counts_basis}`,
       `Own payers configured: ${body.own_payers_configured}`, `Own payments excluded: ${body.own_payments_excluded}`,
       `External unique (total/24h/7d): ${Object.values(body.external_payers.unique).join(" / ")}`,
       `Paid calls (total/24h/7d): ${Object.values(body.external_payers.paid_calls).join(" / ")}`,

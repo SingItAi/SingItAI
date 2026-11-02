@@ -313,25 +313,32 @@ export function numbersBody(stats) {
   const byNetwork = key => Object.fromEntries(["base", "solana"].map(n =>
     [n, key === "atomic" ? volume(total.byNetwork[n]?.atomic) : total.byNetwork[n]?.calls || 0]));
   return { schema: 1, generated_at: new Date(stats.now()).toISOString(), since,
-    scope: "Settled payments on publicly listed x402 routes",
+    scope: "Settled payments on publicly listed x402 routes; own payers are excluded only once an own-payer list is configured (see counts_basis).",
     paid_calls: { ...fields("calls"), by_network: byNetwork("calls") },
     usdc_volume: { unit: "USDC", total: volume(total.atomic), last_24h: volume(day.atomic),
       last_7d: volume(week.atomic), by_network: byNetwork("atomic"), calls_without_amount: total.noAmount },
-    unique_payers: fields("unique"), own_payers_configured: stats.own.size > 0, own_payments_excluded: total.own,
+    unique_payers: fields("unique"), own_payers_configured: stats.own.size > 0,
+    counts_basis: stats.own.size === 0 ? "including_own_payments" : "excluding_configured_own_payers",
+    counts_label: stats.own.size === 0
+      ? "Includes our own payments: no own-payer list is configured yet, so these counts are not external-only."
+      : "Excludes configured own payers from now on; calls and volume recorded before the list was configured still include our own payments.",
+    own_payments_excluded: total.own,
     settlement_failures: { last_24h: day.fail, last_7d: week.fail },
     definitions: {
       schema: "Version of this response format.", generated_at: "Time this response was generated.",
-      scope: "Only settled payments on publicly listed x402 routes count; internal web-app routes are excluded.",
+      scope: "Only settled payments on publicly listed x402 routes count; internal web-app routes are excluded; own payers are excluded only once an own-payer list is configured (see counts_basis).",
       since: "Measured only since the counters started; history before the counters existed is not included.",
-      paid_calls: "Successful public settlements, excluding configured own payers, counted once per settlement.",
+      paid_calls: "Successful public settlements, counted once per settlement; own payers are excluded only once an own-payer list is configured (see counts_basis).",
       total: "Lifetime observations since the counters started, not historical service totals.",
       last_24h: "Observations in the current UTC hour and the preceding 23 UTC hourly buckets.",
       last_7d: "Observations in the current UTC hour and the preceding 167 UTC hourly buckets.",
       by_network: "Lifetime public observations split by Base and Solana; other networks remain in the total.",
-      usdc_volume: "Known settled atomic USDC amounts divided by one million, excluding own payers.",
+      usdc_volume: "Known settled atomic USDC amounts divided by one million; own payers are excluded only once an own-payer list is configured (see counts_basis).",
       calls_without_amount: "Settlements with unavailable actual amounts count without estimated volume.",
       unique_payers: "Distinct payer wallets counted by salted hash without exposing them; "
-        + "null means a cap prevents measurement.",
+        + "null means a cap prevents measurement; own payers are excluded only once an own-payer list is configured (see counts_basis).",
+      counts_basis: "Whether counts include our own payments or exclude configured own payers from configuration onward.",
+      counts_label: "Human-readable coverage, including the limits of historical own-payment exclusion.",
       own_payers_configured: "True when the own-payer list is non-empty. Adding it removes historical own unique hashes; earlier calls and volume cannot be corrected because payer-level payment history is not stored.",
       own_payments_excluded: "Configured own-payer settlements excluded from calls, volume and unique payers.",
       settlement_failures: "Failed facilitator settlements across all routes during each window.",
@@ -354,7 +361,7 @@ export function privateStatsBody(stats) {
   const fields = o => Object.fromEntries(["total", "last_24h", "last_7d"].map(k => [k, o[k]]));
   return { schema: 1, generated_at: n.generated_at, since: n.since,
     external_payers: { unique: n.unique_payers, paid_calls: fields(n.paid_calls), usdc: fields(n.usdc_volume) },
-    own_payments_excluded: n.own_payments_excluded, own_payers_configured: n.own_payers_configured,
+    own_payments_excluded: n.own_payments_excluded, own_payers_configured: n.own_payers_configured, counts_basis: n.counts_basis,
     issued_402: { total: total.result, last_24h: day.result, last_7d: week.result,
       by_route: { total: total.routes, last_24h: day.routes, last_7d: week.routes } },
     note: "402s count responses, not unique clients. post = POST challenge; probe = GET/HEAD discovery; refused = 402 without PAYMENT-REQUIRED. Windows use UTC hourly buckets. Own unique hashes are removed retroactively; calls and volume before configuration still include own payments." };
