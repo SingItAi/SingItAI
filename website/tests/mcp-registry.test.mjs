@@ -33,6 +33,7 @@ test("server.json names the app.singitai namespace and the live MCP endpoint", a
   assert.equal(server.version, version[1], "Registry mirror and gateway SERVER_INFO versions must agree");
   assert.match(server.name, /^app\.singitai\/[a-z0-9-]+$/);
   assert.ok(server.description.length <= 100, "the Registry rejects descriptions over 100 characters");
+  assert.match(server.description, /limits/i, "the Registry description names the owner-set limits");
   assert.deepEqual(server.remotes.map((remote) => [remote.type, remote.url]),
     [["streamable-http", "https://app.singitai.app/mcp"]]);
 });

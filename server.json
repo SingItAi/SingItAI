@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "app.singitai/singit",
   "title": "SingIt x402",
-  "description": "Web search, page reading, prices and market data for agents, billed to your SingIt API key in USDC.",
+  "description": "Web search, page reading, prices and market data for agents, inside owner-set daily limits (USDC).",
   "version": "0.1.4",
   "websiteUrl": "https://singitai.app/developers/",
   "repository": {
