@@ -141,6 +141,12 @@ class AuditTests(unittest.TestCase):
         self.assertNotIn('price_mismatch', issues)
         self.assertNotIn('above_openapi_max', issues)
 
+    def test_non_text_models_get_no_order_book_check(self):
+        self.fake.paths['/v1/images/generations'] = operation(model='venice-image')
+        report = self.run_audit()
+        self.assertNotIn('book:venice-image', [r['name'] for r in report['results']])
+        self.assertNotIn('health:venice-image', [r['name'] for r in report['results']])
+
     def test_bazaar_unreadable_is_skipped(self):
         self.fake.bazaar = (503, {}, None)
         self.assertTrue(self.row('bazaar')['skipped'])

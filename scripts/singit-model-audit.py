@@ -221,10 +221,11 @@ def audit(*, fetch=fetch, ask_url=DEFAULTS[0], bazaar_url=DEFAULTS[1], surplus_u
             model = example.get('model')
             if path.startswith('/v1/chat/') and path != '/v1/chat/completions':
                 model = path[len('/v1/chat/'):]
-            if isinstance(model, str) and not model.startswith('free/'):
+            chat = path.startswith('/v1/chat/') or path in ('/v1/messages', '/v1/responses')
+            # Only text models are sold from Surplus's order books; image and speech models are not.
+            if chat and isinstance(model, str) and not model.startswith('free/'):
                 pinned.add(model)
                 ids.add(model)
-            chat = path.startswith('/v1/chat/') or path in ('/v1/messages', '/v1/responses')
             variants = [('example', example)]
             if chat:
                 field = 'max_output_tokens' if path == '/v1/responses' else 'max_tokens'
