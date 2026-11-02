@@ -202,7 +202,9 @@ for (const [route, body, model] of [["/v1/messages", MESSAGE, SONNET], ["/v1/res
       assert.deepEqual(facilitator.calls.settle, []);
       const hidden = code === "no_healthy_sellers";
       assert.equal(selected.isUnservable(model.id), hidden);
-      assert.equal((await (await fetch(`${url}/v1/models`)).json()).data.some((m) => m.id === model.id), !hidden);
+      // Both models are in an auto tier, so they stay listed while the 402 is gated (made to work, not hidden).
+      assert.equal((await (await fetch(`${url}/v1/models`)).json()).data.some((m) => m.id === model.id), true);
+      // A gated model has no quote to publish, so pricing.json omits it until the gate reopens.
       assert.equal((await (await fetch(`${url}/pricing.json`)).json()).models.some((m) => m.id === model.id), !hidden);
       const retry = await post(`${url}${route}`, body);
       assert.equal(retry.status, hidden ? 503 : 402);
@@ -213,8 +215,10 @@ for (const [route, body, model] of [["/v1/messages", MESSAGE, SONNET], ["/v1/res
       }
       for (const method of ["GET", "HEAD", "POST"]) {
         const probe = await fetch(`${url}${route}`, { method });
-        assert.equal(probe.status, hidden ? 503 : 402);
-        if (hidden) {
+        // The probe is priced for the route's own example model: Messages' is Sonnet, Responses' is the default model.
+        const gatedProbe = hidden && route === "/v1/messages";
+        assert.equal(probe.status, gatedProbe ? 503 : 402);
+        if (gatedProbe) {
           assert.equal(probe.headers.get("retry-after"), "60");
           assert.equal(probe.headers.get("payment-required"), null);
         }

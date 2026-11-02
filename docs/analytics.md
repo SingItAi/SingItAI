@@ -251,6 +251,12 @@ lands durably in the `events` table, queryable today and ready to backfill into 
 
 ## Ask external payers and issued 402s (31 October 2026)
 
+`counts_basis` is `including_own_payments` until a non-empty own-payer list is configured:
+these counts include our own payments and are not external-only. Once configured it is
+`excluding_configured_own_payers`. `counts_label` explains this coverage in plain text.
+Exclusions apply from configuration onward for calls and volume; earlier calls and volume
+still include our own payments. Historical matching unique-payer hashes are removed.
+
 The local Ask counters distinguish configured own payments from external payments.
 Configure `SINGIT_ASK_OWN_PAYERS_FILE` as described in `singit-ask/README.md` before
 interpreting `/numbers.json` as external usage. `own_payers_configured` indicates a

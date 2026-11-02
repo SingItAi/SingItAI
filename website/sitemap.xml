@@ -10,6 +10,7 @@
     <loc>https://singitai.app/developers/</loc>
   </url>
   <url><loc>https://singitai.app/docs/mcp/</loc></url>
+  <url><loc>https://singitai.app/docs/mcp-tools/</loc></url>
   <url>
     <loc>https://singitai.app/models/</loc>
   </url>
@@ -250,4 +251,5 @@
   <url><loc>https://singitai.app/x402-budget-for-agents/</loc></url>
 <!-- generated:model-pages:end -->
   <url><loc>https://singitai.app/docs/mcp-key/</loc></url>
+  <url><loc>https://singitai.app/docs/claude-code/</loc></url>
 </urlset>

@@ -1,5 +1,5 @@
 // Free mode, part 1: load SingIt's MCP tools with the AI SDK's MCP client (@ai-sdk/mcp) and call
-// one free tool. No API key, no payment — get_price, list_price_symbols and list_models work for
+// one free tool. No API key, no payment — get_price, list_price_symbols, list_models and chat_free work for
 // any caller.
 import { createMCPClient } from "@ai-sdk/mcp";
 

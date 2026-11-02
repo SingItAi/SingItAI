@@ -53,6 +53,9 @@ export function numberRows(numbers) {
     ["Unique payer wallets", numbers.unique_payers]].map(([label, values]) =>
     [label, ...["total", "last_24h", "last_7d"].map(k => values[k] ?? "Not measurable")]);
 }
+export function countsLabel(numbers) {
+  return typeof numbers?.counts_label === "string" ? numbers.counts_label : "These counts may include our own payments.";
+}
 // A state is one spanning cell, rendered through the same safe table helper as data.
 export function tableRows(rows, columns, message) {
   return rows.length ? rows.map(row => row.map(value => ({ text: String(value), colspan: 1 })))
@@ -106,15 +109,18 @@ if (typeof document !== "undefined") {
         .catch(() => table("availability", [], "Could not load availability.")),
       loadJson(NUMBERS_URL).then(n => {
         table("numbers", numberRows(n));
+        text("counts-label", countsLabel(n));
         text("since", `Measured since ${n.since}. History before the counters existed is not included.`);
         const rows = Object.entries(n.definitions).map(([k, v]) => [k, v]);
-        rows.unshift(["Own payments excluded", n.own_payments_excluded],
+        rows.unshift(["Counts basis", n.counts_basis ?? "Not available"],
+          ["Own payments excluded", n.own_payments_excluded],
           ["Calls without amount", n.usdc_volume.calls_without_amount],
           ["Settlement failures (24h / 7d)", `${n.settlement_failures.last_24h} / ${n.settlement_failures.last_7d}`]);
         for (const network of ["base", "solana"]) rows.push([`${network} calls / USDC`,
           `${n.paid_calls.by_network[network]} / ${n.usdc_volume.by_network[network]}`]);
         table("definitions", rows);
       }).catch(() => {
+        text("counts-label", countsLabel(null));
         text("since", "Could not load measured numbers."); table("numbers", [], "Could not load measured numbers.");
         table("definitions", [], "Could not load definitions.");
       })

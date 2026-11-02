@@ -18,7 +18,7 @@ import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } fro
 import { HealthStats, FacilitatorCheck, healthBody, numbersBody, privateStatsBody } from "./health-stats.mjs";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
-import { addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
+import { probeNote, addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue, priceGuard, unservableError } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
@@ -33,7 +33,7 @@ import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
 import { withRejectLog } from "./reject-log.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 
 export const BASE = "eip155:8453";
@@ -102,7 +102,7 @@ export async function chooseModel(config, catalogue, input) {
   const bufferPp = config.priceBufferPp ?? 1;
   if (!input.model || input.model === config.model) {
     const info = catalogue ? await catalogue.resolve(config.model).catch(() => null) : null;
-    if (catalogue?.isUnservable?.(config.model)) {
+    if (catalogue?.isUnservable?.(config.model) || (catalogue?.canAnswer && !await catalogue.canAnswer(config.model))) {
       throw unservableError(catalogue, config.model, RequestError);
     }
     return { ...input, model: config.model, info, isDefault: true,
@@ -196,29 +196,34 @@ const defaultFallbackNote = (config) => {
   if (!pairs.length || config?.defaultFallbacks === false) return "";
   return " Reviewed default fallback, only on POST /v1/chat/completions and only before payment: "
     + pairs.map(([id, ids]) => `a pinned ${id} may be answered by ${ids.join(" or ")}`).join("; ")
-    + ", when the pinned model has no usable seller, quoted at its own ceiling, never above the pinned model's. "
+    + ", when the pinned model has no usable seller, quoted at its own ceiling, never above the pinned model's on any scheme or network, and in the same auto tier when applicable. "
     + "The 402 and the answer carry X-SingIt-Model, X-SingIt-Fallback-From and X-SingIt-Fallback-Policy: default, and the "
     + "answer's model field names the model that answered. Send fallback_models to choose your own list, or the header "
     + "X-SingIt-Fallback: off to stay strictly pinned.";
 };
 
-export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs } = {}) {
+export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs } = {}) {
   const sends = (name) => !params || params.includes(name);
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
   const off = Object.hasOwn(REASONING_OFF, model) ? REASONING_OFF[model] : null;
   // The process override (config.reasoningEffort, even "none") wins over the model's default.
   const wanted = config.reasoningEffort && Object.hasOwn(config.reasoningEffort, model) ? config.reasoningEffort[model]
     : Object.hasOwn(REASONING_DEFAULT_EFFORT, model) ? REASONING_DEFAULT_EFFORT[model] : "none";
-  const ask = (reasoning, extra = {}) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
-               ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens + reasoningHeadroom(model), ...(sends("temperature") ? { temperature: 0.4 } : {}),
-                           ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
-                             : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
-                           ...extra, si_route: { objective: "price" } }),
-    signal: AbortSignal.timeout(Math.max(1, Math.min(LIMITS.timeoutMs, timeoutMs, deadline - Date.now()))),
-  });
+  let budget = maxTokens + reasoningHeadroom(model, info), retried = false;
+  let sentReasoning = wanted, sentExtra = {};
+  const ask = (reasoning, extra = {}) => {
+    sentReasoning = reasoning; sentExtra = extra;
+    return fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
+                 ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
+      body: JSON.stringify({ model, messages, max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
+                             ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
+                               : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
+                             ...extra, si_route: { objective: "price" } }),
+      signal: AbortSignal.timeout(Math.max(1, Math.min(LIMITS.timeoutMs, timeoutMs, deadline - Date.now()))),
+    });
+  };
   const refusedReasoning = async (response) => {
     if (response.status !== 400) return false;
     const refusal = await response.clone().json().catch(() => null);
@@ -233,21 +238,29 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
   } catch (error) {
     throw new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" });
   }
-  const data = await response.json().catch(() => null);
-  const choice = data?.choices?.[0];
+  let data = await response.json().catch(() => null);
+  let choice = data?.choices?.[0];
+  if (retryOnReasoning && response.ok && !data?.error && choice?.finish_reason === "length"
+      && (typeof choice.message?.content !== "string" || !choice.message.content.trim()) && deadline - Date.now() > 8000) {
+    // The service eats the first attempt; exposure is bounded by one extra call at <= 2x budget.
+    budget = retryBudget(budget); retried = true;
+    try { response = await ask(sentReasoning, sentExtra); }
+    catch (error) { throw Object.assign(new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" }), { retried: true }); }
+    data = await response.json().catch(() => null); choice = data?.choices?.[0];
+  }
   if (!response.ok || data?.error || !choice) {
     const code = typeof data?.error?.code === "string" ? data.error.code : "upstream_error";
-    throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
+    throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
   const content = choice.message?.content;
   if (typeof content !== "string" || !content.trim()) {
     const code = choice.finish_reason === "length" ? "max_tokens_spent_reasoning" : "no_text";
-    throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
+    throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
   // The cost is in the body, and in a header too (docs: x-si-buyer-cost-micro); billUsage reads the body's field.
   const header = response.headers?.get?.("x-si-buyer-cost-micro");
   const usage = data.usage?.buyer_cost_micro == null && header != null ? { ...data.usage, buyer_cost_micro: header } : data.usage ?? null;
-  return { content, finishReason: choice.finish_reason ?? "stop", usage };
+  return { ...(retried ? { retried: true } : {}), content, finishReason: choice.finish_reason ?? "stop", usage };
 }
 
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
@@ -263,7 +276,7 @@ const INPUT_SCHEMA = {
         content: { type: "string", description: `Plain text; all messages together under ${LIMITS.chars} characters.` },
       } } },
     max_tokens: { type: "integer", minimum: 1, maximum: LIMITS.maxTokens, default: LIMITS.defaultTokens,
-      description: "The longest answer, in tokens. The payment ceiling grows with it; the charge follows what was used." },
+      description: "The longest answer, in tokens; above 1200 counts as 1200. The payment ceiling grows with it; the charge follows what was used." },
     model: { type: "string", examples: ["deepseek-v4.1-flash", "claude-opus-5.5", "gpt-5.5", "gemini-3.8-flash"],
       description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
     fallback_models: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string" },
@@ -456,7 +469,7 @@ const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, sch
   413: errorBody(TOO_LARGE, schema, errorExample("invalid_request_error", "The request body is too large.", "payload_too_large", schema)),
   ...(notFound ? { 404: errorBody(notFound, schema) } : {}),
   ...(duplicate ? { 409: errorBody(DUPLICATE, schema) } : {}),
-  ...(reasoning ? { 422: errorBody(MAX_TOKENS_TOO_SMALL, schema, errorExample("invalid_request_error", MAX_TOKENS_TOO_SMALL, "max_tokens_too_small", schema)) } : {}),
+  ...(reasoning ? { 422: errorBody("After one automatic retry with a larger budget: " + MAX_TOKENS_TOO_SMALL, schema, errorExample("invalid_request_error", MAX_TOKENS_TOO_SMALL, "max_tokens_too_small", schema)) } : {}),
   503: { ...errorBody(unavailable ?? `${UNAVAILABLE}. Also: ${noAnswer}`, schema,
     errorExample(schema === ANTHROPIC_ERROR_SCHEMA ? "api_error" : "upstream_error", exampleMessage, exampleCode, schema)), headers: RETRY_AFTER },
 });
@@ -564,9 +577,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const freeListed = free.models.map((m) => ({ id: FREE_PREFIX + m, object: "model", owned_by: "singit", free: true,
     limits: freeLimits }));
   // The question's shape; where free answers are on, the model field says so (Bazaar and OpenAPI read it).
-  const inputSchema = freeOffer ? { ...INPUT_SCHEMA, properties: { ...INPUT_SCHEMA.properties,
+  const baseInputSchema = { ...INPUT_SCHEMA, description: probeNote(EXAMPLE.input.max_tokens, config) };
+  const inputSchema = freeOffer ? { ...baseInputSchema, properties: { ...INPUT_SCHEMA.properties,
     model: { ...INPUT_SCHEMA.properties.model, description: `${INPUT_SCHEMA.properties.model.description} `
-      + `Free to try, no payment: ${freeOffer.models.join(", ")}.` } } } : INPUT_SCHEMA;
+      + `Free to try, no payment: ${freeOffer.models.join(", ")}.` } } } : baseInputSchema;
   // What a payer pays on top of the model's own cost: the markup, and one settlement fee per answer.
   const fees = { markupPct: TERMS.markupBps / 100,
     perAnswerUsd: { [BASE]: Number(usd(TERMS.settlementFeeAtomic)), [SOLANA]: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) } };
@@ -609,7 +623,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     // Only models that can be answered now, including the default after a routing rejection.
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
     const answerable = await Promise.all(listed.map((m) => (catalogue.listable ? catalogue.listable(m.id) : catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
-    const models = listed.filter((m, i) => answerable[i] || (m.id === config.model && !catalogue.isUnservable?.(m.id)));
+    const models = listed.filter((m, i) => answerable[i] || catalogue.neverHide?.has(m.id) || m.id === config.model);
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       savings: {
@@ -621,8 +635,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         expectedPrice: "expectedUsdPerMillionTokens.basis: observed = median of what SingIt's own paid answers for this "
           + "model cost against list, last 20; trusted = Surplus's best trusted-seller offer as a share of "
           + "list" },
-      data: [...(catalogue.isUnservable?.(config.model) ? [] :
-        [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model }]),
+      data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
         // Virtual routes have no fixed token rate; priced-model consumers use property presence.
         { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION },
         ...freeListed,
@@ -657,7 +670,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
     const answerable = await Promise.all(listed.map((m) => (catalogue.listable ? catalogue.listable(m.id) : catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
-    const models = listed.filter((m, i) => answerable[i] || (m.id === config.model && !catalogue.isUnservable?.(m.id)));
+    const models = listed.filter((m, i) => answerable[i] || catalogue.neverHide?.has(m.id) || m.id === config.model);
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     const priced = [];
     for (const m of models) {
@@ -715,7 +728,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             + `with no payment, within ${freeOffer.perVisitorPerDay} answers a day per network, ${freeOffer.maxTokens} tokens `
             + `and ${freeOffer.maxChars} characters each.` : ""),
           ...(freeOffer ? { "x-free-models": freeListed } : {}),
-          "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
+          "x-payment-info": { notes: probeNote(EXAMPLE.input.max_tokens, config), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": {
             schema: { type: "object", ...inputSchema, properties: { ...inputSchema.properties,
               min_tier: { type: "string", enum: TIERS, description: "Minimum tier; only valid with model singit/auto." },
@@ -760,7 +773,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         // Per-model routes (#66) answer the same errors as /v1/chat/completions minus the free tier's 429, plus 404
         // for a model the catalogue does not list; documented with the shared JSON error shapes (SI-63).
         ...(catalogue ? Object.fromEntries(Object.entries(await modelOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA,
-          outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price })).map(([route, item]) => [route,
+          outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config })).map(([route, item]) => [route,
           { post: { ...item.post, responses: { 200: item.post.responses[200],
             ...paidErrors({ notFound: "This model is not available; nothing was charged",
                             noAnswer: "No billable answer came back; nothing was charged", reasoning: true }) } } }])) : {}),
@@ -770,7 +783,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           description: "The request in that API's own format, without streaming. Pays actual token cost + 30% + a settlement "
             + "fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's price and the request's "
             + "size; nothing is charged without an answer. Models: GET /v1/models.",
-          "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
+          "x-payment-info": { notes: probeNote(300, config, true), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: formatRequestBody(route),
           responses: { 200: { description: "The answer in that API's format, with billing" },
                        ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged", reasoning: true,
@@ -800,7 +813,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                          ...paidErrors({ exactTimeout: 120, exampleMessage: "No audio was made. You were not charged.", exampleCode: "no_billable_answer", notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },
-          "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "List voice models and their prices",
+          "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "List speech and transcription models with prices",
             responses: { 200: { description: "Model list" } }, security: [] } },
           ...(config.videoSold ? {
           [VIDEO_ROUTE]: { post: {
@@ -897,6 +910,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                     "lastSuccessAt": "2026-10-31T12:00:00.000Z",
                     "lastFailureAt": null,
                     "lastOutcome": "success",
+                    "reasoning422": 0,
+                    "reasoningRetries": 0,
                     "sellerFailures": 0,
                     "failureReasons": {},
                     "reason": null
@@ -911,6 +926,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                     "lastSuccessAt": "2026-10-31T12:00:00.000Z",
                     "lastFailureAt": null,
                     "lastOutcome": "success",
+                    "reasoning422": 0,
+                    "reasoningRetries": 0,
                     "sellerFailures": 0,
                     "failureReasons": {},
                     "reason": null
@@ -953,17 +970,17 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                   .map(key => [key, { type: "integer", minimum: 0 }])) },
               models: { type: "object", additionalProperties: { type: "object",
                 required: ["status", "windowHours", "attempts", "successes", "failures", "errorRatePct",
-                  "lastSuccessAt", "lastFailureAt", "lastOutcome", "sellerFailures", "failureReasons", "reason"],
+                  "lastSuccessAt", "lastFailureAt", "lastOutcome", "sellerFailures", "failureReasons", "reason", "reasoning422", "reasoningRetries"],
                 properties: {
                 status: { enum: ["up", "degraded", "down", "insufficient_data", "unavailable"] },
                 windowHours: { type: "integer", const: 24 },
-                ...Object.fromEntries(["attempts", "successes", "failures", "sellerFailures"]
+                ...Object.fromEntries(["attempts", "successes", "failures", "sellerFailures", "reasoning422", "reasoningRetries"]
                   .map(key => [key, { type: "integer", minimum: 0 }])),
                 errorRatePct: { type: "number", minimum: 0, maximum: 100 },
                 lastSuccessAt: { type: ["string", "null"], format: "date-time" },
                 lastFailureAt: { type: ["string", "null"], format: "date-time" },
                 lastOutcome: { enum: ["success", "failure", null] },
-                reason: { enum: ["no_healthy_sellers", "minimum_discount_not_met", "other", null] },
+                reason: { enum: ["no_healthy_sellers", "minimum_discount_not_met", "recent_failures", "other", null] },
                 failureReasons: { type: "object", additionalProperties: false,
                   properties: Object.fromEntries(["no_healthy_sellers", "minimum_discount_not_met", "other"]
                     .map(key => [key, { type: "integer", minimum: 0 }])) },
@@ -974,7 +991,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                 networks: { type: "object" } } }
             } } } } } } } },
         "/numbers.json": { get: { operationId: "getNumbers", security: [], summary: "Get measured usage numbers with definitions",
-          responses: { 200: { description: "Calls, USDC volume and unique payer counts since counters began", content: { "application/json": { schema: { type: "object", required: ["own_payers_configured"], properties: { own_payers_configured: { type: "boolean" } } } } } } } } },
+          responses: { 200: { description: "Calls, USDC volume and unique payer counts since counters began", content: { "application/json": { schema: { type: "object", required: ["own_payers_configured"], properties: { own_payers_configured: { type: "boolean" }, counts_basis: { type: "string", enum: ["including_own_payments", "excluding_configured_own_payers"] }, counts_label: { type: "string" } } } } } } } } },
         "/pricing.json": { get: {
           operationId: "listPricing", summary: "Get per-model upto/exact prices for one reference question",
           description: "What GET/HEAD discovery and a real paid request would be offered for each model that can be "
@@ -1052,7 +1069,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       "## Free", "",
       `- GET ${base}/v1/models — models and their prices`,
       ...(catalogue ? [`- GET ${base}/v1/images/models — image models and their prices`,
-        `- GET ${base}/v1/audio/models — voice models and their prices`] : []),
+        `- GET ${base}/v1/audio/models — speech and transcription models and their prices`] : []),
       ...(priceBook ? [`- GET ${base}/v1/prices — crypto, metal and fx prices, no payment`] : []),
       `- GET ${base}/health — service, model and payment-rail status`,
       `- GET ${base}/numbers.json — measured usage numbers with definitions`, "",
@@ -1097,7 +1114,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       throw error;
     }
     catalogue?.noteAnswered?.(model);
-    try { app.locals.healthStats.recordModel(model, { ok: true }); } catch {}
+    try { app.locals.healthStats.recordModel(model, { ok: true, retried: answer.retried }); } catch {}
     catalogue?.resolve(model, { allowUnpriced: true }).then((list) => {
       if (list.priceBasis === "reference") {
         const usage = answer.usage;
@@ -1121,7 +1138,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Speech from Surplus's voice models, the same way.
   if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
-  if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log });
+  if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
   if (catalogue) addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,

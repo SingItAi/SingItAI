@@ -89,3 +89,21 @@ Documentation/discovery only. No live key, model, search or payment calls were m
 The suggested $1/day, $0.25/request, seven-day terms are an example, not defaults.
 The custom AgentCard binding and its protocol identifier are specified by this task;
 no A2A task capability or external conformance verification is claimed.
+
+
+## Claude Code + SingIt MCP in 60 seconds
+
+Page: `website/docs/claude-code/index.html`; public URL: https://singitai.app/docs/claude-code/ .
+
+| Claim | Source |
+| --- | --- |
+| User-scoped HTTP add, list output and session `/mcp` | Owner-supplied live checks of 2 November 2026: Claude Code 2.1.310, clean config, `claude mcp add` / `claude mcp list` against the live endpoint. No new network checks in this work. |
+| Free answer, default model, 400 tokens, remaining/reset/hint | `sign402-gateway/sign402_gateway/web_mcp.py:343` (`_chat_schema`), `:376` (tool description), `:713` onward (`_chat_answer`); public Ask route and unchanged free caps. |
+| Paid chat uses the caller key with no extra scope | `web_mcp.py:377`, `:687` onward; `web_api_keys.py` server cap reservation. |
+| Signed key limits, top-up and receipts | `/docs/mcp-key/`, `web_mcp.py:381–390`; `web_api_keys.py` limit enforcement. |
+| Wrong/revoked key 401; keyless behavior; 60/minute | `web_mcp.py` authentication and rate-limit handling; gateway MCP tests. |
+| Codex command | Existing `/docs/mcp/` command (keyless form); original configuration verification recorded in `docs/mcp-page-sources.md`. |
+
+Deployment limitation: the live checks of 2 November still saw the previous 16-tool server, version 0.1.3. `chat_free` and `chat` become available once this change is deployed and the gateway restarted. Steps 2 and 3 are accurate only after that deployment; they were verified here against repository code, not live paid calls. Registry remains at 0.1.4 pending owner approval to publish 0.1.5.
+
+The build copies docs recursively; no explicit page build list or redirect is needed. The page is wired into the docs index, sitemap, llms references and docs/SEO/build tests. Existing 404 handling serves missing paths and needs no change.

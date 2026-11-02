@@ -3,7 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { test } from 'node:test';
 import { ERROR_CODES, defaultErrorCode } from '../../singit-ask/src/errors.mjs';
 const site = new URL('../', import.meta.url);
-const slugs = ['', 'errors', 'limits', 'payments', 'security', 'faq', 'mcp-key'];
+const slugs = ['', 'errors', 'limits', 'payments', 'security', 'faq', 'mcp-key', 'claude-code'];
 const read = p => readFile(new URL(p, site), 'utf8');
 const text = s => s.replace(/<[^>]*>/g, '').replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#x27;', "'").replace(/\s+/g, ' ').trim();
 const nodes = html => JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1])['@graph'];
@@ -44,7 +44,7 @@ test('docs metadata, schema, sitemap, tracking and links', async () => {
       const file = new URL('.' + pathname + (pathname.endsWith('/') ? 'index.html' : ''), site);
       assert.ok((await stat(file)).isFile(), `${path}: ${href}`);
     }
-    for (const [, attrs] of html.matchAll(/<pre><code([^>]*)>/g)) assert.match(attrs, /data-verification="(?:live-2026-10-31|source-schema)"/);
+    for (const [, attrs] of html.matchAll(/<pre><code([^>]*)>/g)) assert.match(attrs, /data-verification="(?:live-2026-10-31|live-2026-11-02|source-schema)"/);
   }
 });
 test('docs error vocabulary exactly matches dependency-free API source', async () => {
