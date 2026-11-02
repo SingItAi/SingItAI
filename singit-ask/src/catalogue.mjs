@@ -9,6 +9,7 @@ const TTL_MS = 6 * 60 * 60 * 1000;
 const MARKET_TTL_MS = 10 * 60 * 1000;
 const VIDEO_HEALTH_TTL_MS = 60 * 1000;
 // A single rejection older than this does not make the next one a second consecutive rejection.
+export const SELLER_FAILURE_CODES = Object.freeze(["no_healthy_sellers", "minimum_discount_not_met", "unreachable"]);
 const STREAK_MS = 24 * 60 * 60 * 1000;
 
 export class UnknownModel extends Error {}
@@ -175,18 +176,21 @@ export function priceGuard(catalogue, id, bufferPp) {
 // cached is served at once even when it is old, and one refresh at a time runs in the background. Only the very
 // first read, with nothing cached yet, waits.
 export class ModelCatalogue {
-  constructor({ url, fetchImpl = fetch, now = Date.now, blocked = [], unservableTtlMs = 15 * 60 * 1000, priceRejectedTtlMs = 120_000, liveDiscountTtlMs = 30_000, neverHide = [], suspensionsFile = null }) {
+  constructor({ url, fetchImpl = fetch, now = Date.now, blocked = [], unservableTtlMs = 15 * 60 * 1000, learnedGuardTtlMs = 600_000, priceRejectedTtlMs = 120_000, liveDiscountTtlMs = 30_000, neverHide = [], suspensionsFile = null }) {
     Object.assign(this, { url, fetchImpl, now, unservableTtlMs });
     this.unservable = new Map();
+    this.sellerFailures = new Map();
+    this.learnedGuards = new Map();
+    this.learnedGuardTtlMs = learnedGuardTtlMs;
     this.sellers = new Map();
     this.neverHide = new Set([...NEVER_HIDE, ...neverHide]);
     this.suspensionsFile = suspensionsFile;
     this.rejections = new Map();
     this.rejectionSeq = 0;
     if (unservableTtlMs > 0) for (const [id, r] of readSuspensions(suspensionsFile)) {
-      if (this.neverHide.has(id)) continue;
       const { until, ...record } = r;
       this.rejections.set(id, record);
+      this.sellerFailures.set(id, { count: 3, lastAt: record.lastAt });
       if (until > this.now()) this.unservable.set(id, until);
     }
     Object.assign(this, { priceRejectedTtlMs, liveDiscountTtlMs });
@@ -393,14 +397,14 @@ export class ModelCatalogue {
     if (!this.suspensionsFile) return;
     clearTimeout(this.suspensionsTimer);
     this.suspensionsTimer = setTimeout(() => {
-      const data = Object.fromEntries([...this.rejections].map(([id, r]) => [id, { count: r.count, lastAt: r.lastAt, providers: r.providers, truncated: r.truncated === true || r.unknown === true, gone: r.gone, until: this.unservable.get(id) ?? 0 }]));
+      const data = Object.fromEntries([...this.rejections].map(([id, r]) => [id, { count: r.count, lastAt: r.lastAt, providers: r.providers, truncated: r.truncated === true || r.unknown === true, gone: r.gone, reason: r.reason ?? "no_healthy_sellers", until: this.unservable.get(id) ?? 0 }]));
       this.suspensionsWrite = (this.suspensionsWrite ?? Promise.resolve()).then(() => writeSuspensions(this.suspensionsFile, data));
     }, 20);
     this.suspensionsTimer.unref?.();
   }
 
-  noteRejected(id) {
-    if (!(this.unservableTtlMs > 0) || !validId(id) || this.neverHide.has(id)) {
+  noteRejected(id, reason = "no_healthy_sellers") {
+    if (!(this.unservableTtlMs > 0) || !validId(id)) {
       this.markUnservable(id); return;
     }
     // One old rejection is not a streak: it only counts toward suspension while it is recent.
@@ -413,12 +417,26 @@ export class ModelCatalogue {
       this.rejections.delete(oldest); this.unservable.delete(oldest);
     }
     this.rejections.set(id, { count, seq: ++this.rejectionSeq, lastAt: this.now(), providers: [...(this.sellers.get(id) ?? [])].slice(0, MAX_PROVIDERS),
-      truncated: (this.sellers.get(id)?.size ?? 0) > MAX_PROVIDERS, unknown: !this.sellers.has(id), gone: false });
+      truncated: (this.sellers.get(id)?.size ?? 0) > MAX_PROVIDERS, unknown: !this.sellers.has(id), gone: false, reason });
     this.markUnservable(id, Math.min(7200000, this.unservableTtlMs * 2 ** Math.min(count - 1, 30)));
     this.saveSuspensions();
   }
 
+  noteSellerFailure(id, reason) {
+    if (!validId(id)) return;
+    const before = this.sellerFailures.get(id);
+    const count = (before && this.now() - before.lastAt <= STREAK_MS ? before.count : 0) + 1;
+    this.sellerFailures.delete(id);
+    while (this.sellerFailures.size >= 1000) this.sellerFailures.delete(this.sellerFailures.keys().next().value);
+    this.sellerFailures.set(id, { count, lastAt: this.now() });
+    const rejected = this.rejections.get(id);
+    if (reason === "no_healthy_sellers" || count >= 3 || (rejected && this.now() - rejected.lastAt <= STREAK_MS)) this.noteRejected(id, reason);
+  }
+
   noteAnswered(id) {
+    this.sellerFailures.delete(id);
+    this.learnedGuards.delete(id);
+    this.priceRejected.delete(id);
     const changed = this.rejections.delete(id);
     const marked = this.unservable.delete(id);
     if (changed || marked) this.saveSuspensions();
@@ -426,7 +444,7 @@ export class ModelCatalogue {
 
   isSuspended(id) { return !this.neverHide.has(id) && (this.rejections.get(id)?.count ?? 0) >= 2; }
   suspensionSnapshot() { return new Map([...this.rejections].filter(([id]) => this.isSuspended(id))); }
-  async listable(id) { return !this.isSuspended(id) && !(this.unservable.get(id) > this.now()) && (!this.served || this.served.has(id)); }
+  async listable(id) { return this.neverHide.has(id) || !this.isSuspended(id) && !(this.unservable.get(id) > this.now()) && (!this.served || this.served.has(id)); }
 
   markUnservable(id, ttlMs = this.unservableTtlMs) {
     if (!(this.unservableTtlMs > 0) || !(ttlMs > 0)) return;
@@ -437,6 +455,11 @@ export class ModelCatalogue {
   }
 
   markPriceRejected(id, { bestDiscountPct = null } = {}) {
+    if (typeof bestDiscountPct === "number" && Number.isFinite(bestDiscountPct) && bestDiscountPct >= 0 && bestDiscountPct <= 100 && this.learnedGuardTtlMs > 0) {
+      this.learnedGuards.delete(id);
+      while (this.learnedGuards.size >= 1000) this.learnedGuards.delete(this.learnedGuards.keys().next().value);
+      this.learnedGuards.set(id, { share: (100 - bestDiscountPct) / 100, expiry: this.now() + this.learnedGuardTtlMs });
+    }
     for (const [key, value] of this.priceRejected) if (value.expiry <= this.now()) this.priceRejected.delete(key);
     this.priceRejected.delete(id);
     if (!(this.priceRejectedTtlMs > 0)) return;
@@ -477,7 +500,7 @@ export class ModelCatalogue {
   }
 
   unservableSnapshot() {
-    return new Map([...this.unservable].filter(([, expiry]) => expiry > this.now()));
+    return new Map([...this.unservable].filter(([, expiry]) => expiry > this.now()).map(([id, until]) => [id, { until, reason: this.rejections.get(id)?.reason ?? "no_healthy_sellers" }]));
   }
 
   unservableRetryAfter(id) {
@@ -498,7 +521,16 @@ export class ModelCatalogue {
     // A reference-priced model is bought at an absolute price, never against a discount: its list price is 0, so a
     // discount_pct on its book (Surplus has none today) must not lower the ceiling or send X-Min-Discount.
     if (this.rawModels?.get(id)?.listZero) return null;
-    return this.guardShares.has(id) ? this.guardShares.get(id) : null;
+    const book = this.guardShares.get(id) ?? null;
+    const learned = this.learnedGuardShare(id);
+    return learned === null ? book : Math.min(1, Math.max(book ?? 0, learned));
+  }
+
+  learnedGuardShare(id) {
+    const learned = this.learnedGuards.get(id);
+    if (learned?.expiry > this.now()) return learned.share;
+    this.learnedGuards.delete(id);
+    return null;
   }
 
   async all() {
@@ -580,14 +612,17 @@ export class ModelCatalogue {
 // Shared by all paid text formats; match the machine code, never the upstream's human message.
 export function markUnservable(catalogue, model, error, log) {
   if (error.code === "minimum_discount_not_met") catalogue?.markPriceRejected?.(model, { bestDiscountPct: error.bestDiscountPct });
-  if (error.code !== "no_healthy_sellers") return;
-  if (catalogue?.noteRejected) catalogue.noteRejected(model);
-  else catalogue?.markUnservable?.(model);
-  if (catalogue?.isUnservable?.(model)) {
-    const minutes = catalogue.unservableTtlMs / 60_000;
-    log(`singit-ask: model ${model} marked unservable for ${minutes} min (no_healthy_sellers)`);
+  const excluded = ["no_text", "max_tokens_spent_reasoning", "ceiling_exceeded"];
+  const sellerFailure = !excluded.includes(error.code) && ![400, 413, 422].includes(error.status) &&
+    (SELLER_FAILURE_CODES.includes(error.code) || (["UpstreamError", "NoAnswer"].includes(error.name) && error.status >= 500));
+  if (!sellerFailure) return;
+  const reason = error.code === "no_healthy_sellers" ? "no_healthy_sellers" : "recent_failures";
+  if (catalogue?.noteSellerFailure) catalogue.noteSellerFailure(model, reason);
+  else if (error.code === "no_healthy_sellers") {
+    if (catalogue?.noteRejected) catalogue.noteRejected(model);
+    else catalogue?.markUnservable?.(model);
   }
-  if (catalogue?.isSuspended?.(model)) log(`singit-ask: model ${model} suspended after ${catalogue.rejections.get(model).count} consecutive no_healthy_sellers, retry in ${Math.ceil((catalogue.unservable.get(model) - catalogue.now()) / 60000)} min`);
+  if (catalogue?.isUnservable?.(model)) log(`singit-ask: model ${model} marked unservable for ${catalogue.unservableTtlMs / 60_000} min (${reason})`);
 }
 
 export function unservableError(catalogue, id, ErrorClass) {

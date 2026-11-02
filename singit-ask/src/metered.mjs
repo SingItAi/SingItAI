@@ -90,7 +90,7 @@ export function ceilings(info, input, exactOutputFraction = DEFAULT_EXACT_OUTPUT
     const amount = ceilingAtomic(info, { ...size, maxTokens, charsPerToken, reserveTokens }, terms, input.share ?? 1);
     return [net, input.isDefault && BigInt(amount) > BigInt(terms.maxChargeAtomic) ? terms.maxChargeAtomic : amount];
   }));
-  return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction), undefined, exactReserveTokens(info?.id, input.maxTokens)) };
+  return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction), undefined, exactReserveTokens(info?.id, input.maxTokens, info)) };
 }
 
 // The terms of the network the payer chose, with the ceiling this question was offered for the scheme they
@@ -220,18 +220,28 @@ export function addPaymentRoute(app, routes, server,
   return httpServer;
 }
 
-// What the discovery probes (GET/HEAD and the empty, unpaid POST) are quoted, per scheme and network: the ceilings a
-// real POST of `probeBody` would be offered right now, through the very same `readRequest`, `choose` and
-// `ceilings` a paid question goes through. `probeBody` is the example body the route declares in its Bazaar
-// discovery extension, which is the body CDP's Bazaar sends to record the route's price; vet402 then compares that
-// recorded price with what its own empty, unpaid POST is offered (price_mismatch when no accept carries it). The
-// standing ceiling (the old probe price) is kept only when the example cannot be quoted right now. Probes never pay:
-// a payment on an empty body is refused before settlement (see `isDiscoveryProbe` and the handlers below).
-export function exampleProbe({ probeBody, readRequest, choose, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION }) {
+// Discovery quotes the declared example at list price, an upper bound across seller changes.
+// Live mode restores snapshot pricing. Missing catalogue data retains the standing fallback.
+// Only discovery drops the live seller guard. Real POSTs retain their quote-time guard.
+export function probeInput(input, config = {}) {
+  const maxTokens = Number.isInteger(config.probeMaxTokens) && config.probeMaxTokens > 0
+    ? Math.min(config.probeMaxTokens, 1200) : input.maxTokens;
+  return { ...input, maxTokens, ...(config.probeShare === "live" ? {} : { share: 1, minDiscount: null }) };
+}
+
+export function probeNote(tokens, config = {}, format = false) {
+  const n = probeInput({ maxTokens: tokens }, config).maxTokens;
+  return `Listed price = ceiling for the example (max_tokens ${n}, ${config.probeShare === "live" ? "live seller" : "list"} price); `
+    + (format ? "a larger max_tokens or longer prompt is quoted higher (max_tokens up to 32000; Responses defaults to 4096); "
+      : "a larger max_tokens or longer prompt is quoted higher (max_tokens above 1200 counts as 1200); ")
+    + "upto settles actual usage.";
+}
+
+export function exampleProbe({ probeBody, readRequest, choose, config = {}, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION }) {
   const probe = perRequest(async () => {
     try {
       const input = await choose(readRequest(probeBody));
-      return ceilings(input.info, input, exactOutputFraction);
+      return ceilings(input.info, probeInput(input, config), exactOutputFraction);
     } catch {
       return ceilings(null, {}, exactOutputFraction);
     }
@@ -258,7 +268,7 @@ export function perRequest(quote) {
 export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, catalogue, config, readRequest,
   choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log,
   offerEmptyProbe = false, probeBody }) {
-  const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose,
+  const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose, config,
     exactOutputFraction: config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION });
   const offers = makeOffers(quotes, probeFallback);
   const server = new x402ResourceServer(facilitatorClient)
@@ -316,7 +326,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       const exact = paid.scheme === "exact";
       const deadline = started + 95_000;
       const attempt = input => upstream(config, input.messages, input.maxTokens, fetchImpl, input.model,
-        { minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params,
+        { minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: true,
           timeoutMs: Math.max(1, deadline - Date.now()), deadline });
       let answer;
       try { answer = await attempt(req.askInput); }
@@ -339,8 +349,8 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       if (req.askInput.autoTier) {
         res.set("X-SingIt-Tier", req.askInput.autoTier);
       }
-      // Auto must retain its margin against actual provider cost, even on a flat exact offer.
-      const usage = billWithDiagnostics(answer.usage, paid.terms, exact, route, req.askInput.model, log);
+      // A reasoning retry is delivered at no more than the signed ceiling; the service absorbs its exposure.
+      const usage = billWithDiagnostics(answer.usage, paid.terms, exact, route, req.askInput.model, log, answer.retried);
       // `exact` already settled the full ceiling it was offered: there is no lower amount to settle to, and no
       // way to refund the unused part, so the override below is only ever for `upto`. Its actual cost may run
       // over that flat ceiling (usage.overrunAtomic): the payer is never charged more than they signed for, this
@@ -353,6 +363,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       res.locals.singitReceipt = { ref: `singit-ask-${started}`, chargedAtomic: billing.totalAtomic };
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: req.askInput.fallbackFrom ? req.askInput.model : "singit-ask",
+        ...(answer.retried ? { retried: true } : {}),
         ...(req.askInput.fallbackFrom ? { singit_fallback_from: req.askInput.fallbackFrom } : {}), choices: [{ index: 0, message: { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing });
     } catch (error) {
@@ -372,8 +383,12 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
 
 // Preserve the provider's usage only for an overrun diagnostic: no prompt, answer or payment payload belongs
 // in this log. Centralizing it keeps both API formats equally observable without changing their pricing.
-export function billWithDiagnostics(usage, terms, exact, route, model, log) {
-  try { return billUsage(usage, terms, { allowOverrun: exact }); }
+export function billWithDiagnostics(usage, terms, exact, route, model, log, retried = false) {
+  try {
+    const billed = billUsage(usage, terms, { allowOverrun: exact || retried });
+    if (retried && billed.overrunAtomic) log(`singit-ask: reasoning retry overrun ${billed.overrunAtomic} micro-USDC`);
+    return billed;
+  }
   catch (error) {
     if (error.code === "ceiling_exceeded") {
       log(`singit-ask: ${route} ${model} ceiling exceeded ${JSON.stringify({

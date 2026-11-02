@@ -5,6 +5,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { renderLlms } from "./generate-llms.mjs";
 import { limits } from "./templates/spending-limits.mjs";
 
+// Audit measured thinking at effort none despite missing catalogue tags (193 / 146 tokens).
+export const REASONING_BY_MEASUREMENT = new Set(["qwen3.5-plus", "qwen3.5-flash"]);
+
 const hasTokenPrice = (m) => ["input", "output"].every((key) => {
   const v = m.singitUsdPerMillionTokens?.[key];
   return Number.isFinite(v) && v >= 0 && (v > 0 || m.usdPerMillionTokens?.[key] === 0);
@@ -126,7 +129,8 @@ function modelPage(shell, s, m) {
   const basisText = basis === "observed" ? "based on what answers from this model have cost us" : "estimate from sellers' quotes, not yet confirmed by answers we paid for, so the real price can be higher";
   const facts = [m.owned_by !== undefined && `Provider: ${e(m.owned_by)}`, m.contextLength !== undefined && `Context window: ${m.contextLength.toLocaleString("en-US")} tokens`, m.tags?.filter((t) => t.toLowerCase() !== "video").length && `Tags: ${m.tags.filter((t) => t.toLowerCase() !== "video").map(e).join(", ")}`].filter(Boolean).join(" · ");
   const date = new Date(s.fetchedAt).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
-  const request = JSON.stringify({ model: m.id, max_tokens: 200, messages: [{ role: "user", content: "Hello" }] });
+  const reasoning = m.tags?.includes("reasoning") || REASONING_BY_MEASUREMENT.has(m.id);
+  const request = JSON.stringify({ model: m.id, max_tokens: reasoning ? 400 : 200, messages: [{ role: "user", content: reasoning ? "Say hello in one sentence." : "Hello" }] });
   const curl = `curl -i https://ask.singitai.app/v1/chat/completions \\\n  -H 'Content-Type: application/json' \\\n  -d '${request}'`;
   const faq = [
     ["What is x402?", "x402 is an HTTP payment protocol. An unpaid request returns HTTP 402 with a payment offer; sign one offer and retry the same request with proof of payment."],

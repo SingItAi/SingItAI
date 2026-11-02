@@ -10,6 +10,7 @@
   "reasoningWords": ["prove", "step by step", "analyze", "debug", "refactor"],
   "policy": "Eco requires all short plain conditions. Premium matches any premium condition. Otherwise standard. Escalate only upward; ties follow tier order.",
   "pinnedDefaultFallbacks": {
-    "gpt-6-luna": ["gpt-6-luna-pro"]
+    "gpt-6-luna": ["gpt-6-luna-pro"],
+    "claude-haiku-4.5": ["claude-haiku-5.5"]
   }
 }

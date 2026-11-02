@@ -398,3 +398,6 @@ requests or payments were made.
 ## Daily model audit — 2 November 2026
 
 Operational follow-up in the merged SingItAI tree (branch `feat/daily-model-audit`, draft PR #211): `scripts/singit-model-audit.py` checks the paid-route inventory, unpaid listing prices against max_tokens 400 and 2000 quotes, the `/health` outcome windows, the Surplus order books and one free canary per free model. It sends no payment header and alerts only on changes through the existing health-alert delivery. This is shared service monitoring, not a new Solana payment feature. Verification: 19 audit tests and the existing health-alert tests, plus a read-only dry run against the live service. The systemd units are uninstalled templates; no paid answers were made.
+### Post-competition maintenance — 2026-11-02
+
+Ask: every reasoning-tagged model now gets a priced 256-token thinking floor, one retry at a larger budget inside the signed ceiling before a 422, a per-model 422 counter in `/health`, and one-sentence examples that answer within 400 tokens. Branch `fix/reasoning-floor`, draft PR #208. This is shared Ask maintenance, not a new Solana contribution. Verification: singit-ask 629 tests, website 437, scripts 46, `bazaar-lint` 22 routes with 0 failures; no paid calls. Limitation: only a paid answer proves a route end to end.
