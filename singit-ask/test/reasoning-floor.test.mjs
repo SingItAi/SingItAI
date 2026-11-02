@@ -122,7 +122,8 @@ test('compare-402 exact price delta from no headroom, in micro-USDC', t => {
 });
 test('every model of the 2026-11-02 audit that 422d at the example size has headroom in the real inventory', async () => {
   const { readFileSync } = await import('node:fs');
-  const snapshot = JSON.parse(readFileSync(new URL('../../website/data/models-snapshot.json', import.meta.url), 'utf8'));
+  const parsed = JSON.parse(readFileSync(new URL('../../website/data/models-snapshot.json', import.meta.url), 'utf8'));
+  const snapshot = Array.isArray(parsed) ? parsed : parsed.models;
   for (const id of ['qwen3.5-plus', 'qwen3.5-flash', 'qwen3-5-9b', 'e2ee-glm-5.1', 'glm-5.3-flash', 'claude-haiku-5.5']) {
     const model = snapshot.find(m => m.id === id);
     assert.ok(model, id);
