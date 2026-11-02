@@ -1,8 +1,11 @@
-"""A free, public spend report for one wallet: GET /v1/wallet/{address}/reconciliation (web_api.py).
+"""A free, owner-only spend report for one wallet: GET /v1/wallet/{address}/reconciliation (web_api.py).
 
-Unauthenticated, so it says only what the chain already shows or what is a coarse total: the limit the owner set,
-what settled in the window by category, what is left today. Never a resource URL, invoice id, purchase description,
-transaction hash, chat or contact. No RPC call is made here; everything comes from the two allowance databases.
+Free (no x402 payment) but private: web_api.py answers only a caller that sends an API key of the account that signs in
+with this wallet (no key 401, another account's key 403), or the signed-in session's own wallet on /web/v1/wallet/report.
+This module never checks that itself; it trusts its caller. It says only what the chain already shows or what is a coarse
+total: the limit the owner set, what settled in the window by category, what is left today. Never a resource URL,
+invoice id, purchase description, transaction hash, chat or contact. No RPC call is made here; everything comes from the
+two allowance databases.
 """
 
 from __future__ import annotations
