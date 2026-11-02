@@ -50,3 +50,10 @@ test("website/llms.txt explains the first paid x402 call, upto before exact, wit
   assert.ok(!/video/i.test(text));
   assert.ok(!text.includes("when enabled"));
 });
+
+test("measured-number discovery discloses own-payment coverage", async () => {
+  for (const file of ["llms.txt", "llms-full.txt"]) {
+    const content = await readFile(path.join(website, file), "utf8");
+    assert.ok(content.includes("https://ask.singitai.app/numbers.json (measured numbers; counts include our own payments until an own-payer list is configured)"));
+  }
+});

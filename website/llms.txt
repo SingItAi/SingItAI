@@ -1,6 +1,6 @@
 # SingIt
 
-> SingIt: pay for AI with USDC and keep spending limits. Your agent spends, your wallet keeps the money: set a daily and a per-purchase limit once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits. Limits protect only SingIt's own agent: on Base they are enforced by an on-chain contract, on a SingIt API key the server checks them. On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated.
+> SingIt: pay for AI with USDC and keep spending limits. Your agent pays per call, only within the daily and per-purchase limits you sign: set them once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits. Limits protect only SingIt's own agent: on Base they are enforced by an on-chain contract, on a SingIt API key the server checks them. On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated.
 
 Agents and scripts: fetch machine-readable files from https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt); this host serves the human site.
 
@@ -102,7 +102,7 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 
 ## For developers
 
-- Health and status: https://ask.singitai.app/health (JSON: model and payment-rail status), https://singitai.app/status/ (page), https://ask.singitai.app/numbers.json (measured numbers)
+- Health and status: https://ask.singitai.app/health (JSON: model and payment-rail status), https://singitai.app/status/ (page), https://ask.singitai.app/numbers.json (measured numbers; counts include our own payments until an own-payer list is configured)
 - Docs: https://singitai.app/developers/
 - Docs index: https://singitai.app/docs/
 - Errors: https://singitai.app/docs/errors/

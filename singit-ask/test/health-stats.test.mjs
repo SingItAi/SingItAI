@@ -273,3 +273,18 @@ test('suspended health entries persist between trials without recent attempts', 
   assert.equal(entry.attempts, 0);
   assert.equal(entry.unavailableUntil, undefined);
 });
+
+test("public counts disclose the own-payment basis and historical limits", () => {
+  for (const configured of [false, true]) {
+    const stats = new HealthStats({ ownPayers: configured ? [own] : [] });
+    const n = numbersBody(stats);
+    assert.equal(n.counts_basis, configured ? "excluding_configured_own_payers" : "including_own_payments");
+    assert.equal(n.counts_label, configured
+      ? "Excludes configured own payers from now on; calls and volume recorded before the list was configured still include our own payments."
+      : "Includes our own payments: no own-payer list is configured yet, so these counts are not external-only.");
+    assert.equal(n.own_payers_configured, configured);
+    assert.equal(Object.hasOwn(n, "external_payers"), false);
+    assert.equal(typeof n.definitions.counts_basis, "string");
+    assert.equal(typeof n.definitions.counts_label, "string");
+  }
+});
