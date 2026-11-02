@@ -172,3 +172,12 @@ jobs:
                   assert any(n.endswith('/' + file) for n in names)
               assert not any(part in ('test', 'tests') for name in names for part in name.split('/'))
           PYTHON
+
+  model-audit-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m unittest scripts/tests/test_singit_model_audit.py -v

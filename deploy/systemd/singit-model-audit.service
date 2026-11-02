@@ -1,0 +1,15 @@
+# TEMPLATE ONLY. Nothing in this repository installs or enables this USER unit.
+# Installing this service and timer on any host needs the owner's OK.
+# Point ExecStart at the actual checkout before copying to ~/.config/systemd/user/.
+# Exit 2 records audit findings; SuccessExitStatus keeps those findings out of failed state.
+[Unit]
+Description=SingIt daily unpaid model, listing price and free canary audit
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/singit/health-alert.env
+# Placeholder checkout path: replace /path/to/SingItAI before installation.
+ExecStart=/usr/bin/python3 /path/to/SingItAI/scripts/singit-model-audit.py --append %h/.local/state/singit/model-audit.jsonl
+SuccessExitStatus=2
+TimeoutStartSec=300
+Nice=10
