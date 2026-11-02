@@ -1,0 +1,18 @@
+[
+  {
+    "repo": "SingItAi/singit-mcp",
+    "version": "v0.1.0",
+    "status": "upcoming",
+    "date": null,
+    "notes": "singit-mcp-v0.1.0.md",
+    "repoUrl": "https://github.com/SingItAi/singit-mcp"
+  },
+  {
+    "repo": "SingItAi/singit-examples",
+    "version": "v0.1.0",
+    "status": "upcoming",
+    "date": null,
+    "notes": "singit-examples-v0.1.0.md",
+    "repoUrl": "https://github.com/SingItAi/singit-examples"
+  }
+]
