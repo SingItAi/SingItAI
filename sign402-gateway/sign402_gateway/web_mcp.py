@@ -5,6 +5,7 @@ JSON responses only, no SSE stream and no sessions, so one request is one answer
 between calls. Built on plain JSON-RPC 2.0 dicts, since this process is http.server, not ASGI.
 
 Tools:
+  * chat_free: public free model answers without a key; chat: paid answers from any valid key, no extra scope.
   * Free: get_price, list_price_symbols, list_models (no key needed), and get_balance, get_limits and
     get_receipts (the key's own balance, limits and charges, so they need the key; read-only).
   * Paid from the key's own limits, needing the "search" scope: web_search, read_page (Exa, through
@@ -14,11 +15,11 @@ Tools:
 Every tools/list entry carries a title and MCP annotations (readOnlyHint, destructiveHint, idempotentHint,
 openWorldHint): paid tools debit the key's SingIt limits but never touch external state, so they are
 readOnlyHint/not destructive like the free ones, but not idempotent (each call bills again) and, except
-the four free lookups that only read SingIt's own data, openWorldHint (they reach third-party data).
+the free account and catalogue lookups that only read SingIt's own data, openWorldHint (they reach third-party data).
 get_sign402_report (server.PAID_TOOLS) is not offered over MCP: its demo upstream is not running in production.
 
-A request with no credentials at all is served keyless: initialize, ping, tools/list and the three free
-tools work, so catalogues and people can see what the server offers before they make a key. The same
+A request with no credentials at all is served keyless: initialize, ping, tools/list and the free public
+tools (including chat_free) work, so catalogues and people can see what the server offers before they make a key. The same
 applies to a header that only looks like a credential - empty/whitespace Authorization or x-api-key, a
 bare "Bearer" with nothing after it, or an unexpanded client template like "${SINGIT_API_KEY}" or
 "Bearer ${env:SINGIT_API_KEY}" - since those are a client misconfiguration, not an attempt to send a key
@@ -42,7 +43,11 @@ Browser Origin: refused with 403 unless it is trusted, same as /v1 refuses one. 
 same origin as the MCP host itself (McpServer's public_origin, normally SIGN402_WEB_URI) or one of
 DEFAULT_ALLOWED_ORIGINS / SINGIT_MCP_ALLOWED_ORIGINS below — known MCP inspectors and scanners that need to
 read tools/list without a key before a human adds one. A trusted origin still needs a valid key for
-anything beyond the CORS preflight; an untrusted one is refused before authentication is even checked.
+account lookups and paid calls; an untrusted one is refused before authentication is even checked.
+
+chat_free uses the public Ask route, never key limits or the /v1 bucket. SINGIT_MCP_FREE_ASK_URL
+overrides its base URL (read once at construction). Only a loopback base receives Cf-Connecting-Ip,
+and only when the caller address is a valid IP, so Ask counts the caller network.
 
 Catalog metadata that other files or endpoints read from here: server_card() for
 GET /.well-known/mcp/server-card.json (SEP-1649) and glama_json() for GET /.well-known/glama.json
@@ -51,6 +56,7 @@ GET /.well-known/mcp/server-card.json (SEP-1649) and glama_json() for GET /.well
 
 from __future__ import annotations
 
+import ipaddress
 import functools
 import json
 import logging
@@ -62,8 +68,10 @@ import urllib.error
 import urllib.request
 from collections import defaultdict
 from typing import Any, Callable, Mapping
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
+from .web_ask import API_MAX_CHARS, _api_messages
+from .web_free import MAX_CHARS
 from . import analytics
 from .web_accounts import chain_of_account
 from .web_api_keys import ASK_URL, ApiError, ApiKeys
@@ -72,10 +80,10 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 OUR_VERSION = SUPPORTED_VERSIONS[0]
-SERVER_INFO = {"name": "singit", "title": "SingIt x402", "version": "0.1.4"}
+SERVER_INFO = {"name": "singit", "title": "SingIt x402", "version": "0.1.5"}
 INSTRUCTIONS = (
     "Look up prices, models, web pages and market data. get_price, list_price_symbols and list_models are "
-    "free and work without a key. Paid tools need a SingIt API key and are charged per call to that key's "
+    "free and work without a key; chat_free also answers without a key. chat is paid from your key. Paid tools need a SingIt API key and are charged per call to that key's "
     "SingIt limits, in USDC on Base or Solana. web_search and read_page need the key's \"search\" scope; the "
     "market data tools need its \"tools\" scope and a Base account for now. Keys made before paid data tools existed need a new key for those."
 )
@@ -105,11 +113,11 @@ def _env_requests_per_minute() -> int:
 
 # Tools billed through ApiKeys._search: it rates the key itself, so McpServer must not rate it again.
 SEARCH_TOOLS = frozenset({"web_search", "read_page"})
-# The only tools that read SingIt's own data for free; every other tool bills the key per call and, except
-# for these three, reaches third-party data.
-FREE_TOOL_NAMES = frozenset({"get_price", "list_price_symbols", "list_models", "get_balance", "get_limits", "get_receipts"})
+# Free tools; chat_free uses the public Ask allowance rather than the key balance.
+FREE_TOOL_NAMES = frozenset({"get_price", "list_price_symbols", "list_models", "get_balance", "get_limits", "get_receipts", "chat_free"})
 # Free, but about the caller's own account, so it needs a key even though it bills nothing.
 KEYED_FREE_TOOLS = frozenset({"get_balance", "get_limits", "get_receipts"})
+FREE_NON_IDEMPOTENT = OPEN_WORLD_FREE = frozenset({"chat_free"})
 RECEIPT_KINDS = ("charge", "topup", "refund")
 RECEIPTS_DEFAULT, RECEIPTS_MAX = 10, 50
 # server.PAID_TOOLS entries kept out of MCP: get_sign402_report's upstream is a local demo service
@@ -140,6 +148,8 @@ TOOL_TITLES: dict[str, str] = {
     "get_price": "Get price",
     "list_price_symbols": "List price symbols",
     "list_models": "List models",
+    "chat_free": "Chat (free)",
+    "chat": "Chat",
     "web_search": "Web search",
     "read_page": "Read page",
     "get_weather": "Get weather",
@@ -199,13 +209,13 @@ def allowed_origins_from_env(env: Mapping[str, str] | None = None) -> frozenset[
 def _annotated(entry: dict[str, Any]) -> dict[str, Any]:
     """Title + MCP tool annotations (SEP: title, readOnlyHint, destructiveHint, idempotentHint, openWorldHint).
     Every tool here is read-only and non-destructive: paid ones debit the key's limits but never change
-    external state. Free lookups are idempotent and read SingIt's own data; paid ones bill again on every
-    call (not idempotent) and, except the three free ones, reach third-party data (open world)."""
+    external state. chat_free uses allowance and reaches an external model. Other free lookups are idempotent and read SingIt's own data; paid ones bill again on every
+    call (not idempotent) and reach third-party data (open world)."""
     name = entry["name"]
     free = name in FREE_TOOL_NAMES
     title = TOOL_TITLES.get(name) or name.replace("_", " ").capitalize()
     annotations = {"title": title, "readOnlyHint": True, "destructiveHint": False,
-                   "idempotentHint": free, "openWorldHint": not free}
+                   "idempotentHint": free and name not in FREE_NON_IDEMPOTENT, "openWorldHint": not free or name in OPEN_WORLD_FREE}
     return {**entry, "title": title, "annotations": annotations}
 
 
@@ -259,6 +269,32 @@ def _default_fetch_json(url: str) -> dict[str, Any]:
         raise ApiError(502, "The upstream answer could not be read.", type_="api_error", code="upstream_error") from None
 
 
+class _SameHostRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urlsplit(req.full_url).netloc != urlsplit(newurl).netloc:
+            raise ApiError(502, "Free answer redirect refused. Use chat with a key for a paid answer.", code="upstream_error")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _default_post_json(url, body, headers):
+    request = urllib.request.Request(url, data=json.dumps(body).encode(), headers={
+        "User-Agent": USER_AGENT, "Content-Type": "application/json", **headers}, method="POST")
+    try:
+        try:
+            response = urllib.request.build_opener(_SameHostRedirect()).open(request, timeout=60)
+        except urllib.error.HTTPError as exc:
+            response = exc
+        with response:
+            data = response.read(READ_CAP)
+            try:
+                parsed = json.loads(data)
+            except ValueError:
+                parsed = {}
+            return response.code, parsed if isinstance(parsed, dict) else {}, dict(response.headers)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise ApiError(503, "Free answers are unavailable. Use chat with a key for a paid answer.", code="unavailable") from None
+
+
 def _symbol(value: Any) -> str:
     text = str(value or "").strip()
     if not SYMBOL_RE.fullmatch(text):
@@ -303,6 +339,29 @@ READ_PAGE_SCHEMA = {
     "required": ["url"],
 }
 
+def _chat_schema(free: bool) -> dict[str, Any]:
+    """Input schema of chat_free / chat. No top-level oneOf/anyOf: some clients (Anthropic's API among them)
+    refuse such a schema, so "exactly one of prompt or messages" is said in the descriptions and enforced in _chat_answer."""
+    cap, default = (400, 400) if free else (8192, 1024)
+    properties: dict[str, Any] = {
+        "prompt": {"type": "string", "minLength": 1, "maxLength": MAX_CHARS if free else API_MAX_CHARS,
+                   "description": "The question, as one user message. Send exactly one of prompt or messages."},
+        "messages": {"type": "array", "description": "A whole conversation instead of prompt: text messages, oldest first.",
+                     "items": {"type": "object", "properties": {
+                         "role": {"type": "string", "enum": ["system", "user", "assistant"]},
+                         "content": {"type": "string"}}, "required": ["role", "content"]}},
+        "model": {"type": "string", "description": (
+            "A free model id such as deepseek-v4.1-flash; the free/ prefix is added if missing. Defaults to free/deepseek-v4.1-flash."
+            if free else "A SingIt model id from list_models, without a free/ prefix. Omit it for SingIt's default model.")},
+        "max_tokens": {"type": "integer", "minimum": 1, "maximum": cap, "default": default,
+                       "description": f"Longest answer, in tokens (1 to {cap}, default {default})."
+                       + ("" if free else " Reasoning models think inside this budget, so leave room.")},
+    }
+    if not free:
+        properties["system"] = {"type": "string", "description": "An optional system message; only together with prompt."}
+    return {"type": "object", "properties": properties}
+
+
 OWN_TOOLS: list[dict[str, Any]] = [_annotated(entry) for entry in (
     {"name": "get_price", "description": "Current price of a major cryptocurrency, gold or silver (Chainlink on "
      "Base), or an exchange rate between two currencies. Use for quick quotes of well-known assets; call "
@@ -311,9 +370,11 @@ OWN_TOOLS: list[dict[str, Any]] = [_annotated(entry) for entry in (
      "Call it before get_price when unsure a symbol is covered. Free, no key needed.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "list_models", "description": "The AI models (chat, images or audio) available through SingIt, with "
-     "their prices. They are called through SingIt's OpenAI-compatible API at https://app.singitai.app/v1 (or "
-     "https://ask.singitai.app over x402), not through these MCP tools. Free, no key needed.",
+     "their prices. Chat models can be called with chat or through SingIt's OpenAI-compatible API at "
+     "https://app.singitai.app/v1. Free, no key needed.",
      "inputSchema": LIST_MODELS_SCHEMA},
+    {"name": "chat_free", "description": "Free model answers, no key needed. Answers are short (400 tokens), with a small daily allowance shared per network and a shared daily budget that can run out. To pay for a model answer with your key use chat with the same model without the free/ prefix.", "inputSchema": _chat_schema(True)},
+    {"name": "chat", "description": "Paid per call from your key's SingIt balance and limits in USDC. The server enforces per-request and daily caps; a call over a cap is refused before anything is charged. Use list_models for model ids and prices, get_limits for what remains, and get_receipts for the charge. Pass max_tokens high enough for reasoning models: thinking uses the same budget.", "inputSchema": _chat_schema(False)},
     {"name": "get_balance", "description": "Your SingIt API balance: available and held USDC, auto top-up and "
      "pending top-ups. Use to check funds before paid calls. Free, but needs your API key.",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -342,10 +403,9 @@ def tools() -> list[dict[str, Any]]:
 
 # Catalog metadata served by web_api.py's GET dispatch, public and keyless.
 ICON_URL = "https://singitai.app/assets/icons/icon-512.png"
-DOCS_URL = ("https://github.com/SingItAi/SingItAI/blob/main/sign402-gateway/README.md"
-            "#mcp-server-remote-for-claude-code-cursor-codex")
-SERVER_CARD_DESCRIPTION = ("Free price, model and symbol lookups, plus paid web search, page reading and x402 "
-                           "market data, in USDC on Base or Solana within your API key's SingIt limits.")
+DOCS_URL = "https://singitai.app/docs/mcp/"
+SERVER_CARD_DESCRIPTION = ("Free price and model lookups and short free chat answers without a key; paid chat, web search, "
+                           "page reading and x402 market data, in USDC within your API key's SingIt limits.")
 AUTH_INSTRUCTIONS = ("Free tools work without a key. For paid tools, create a SingIt API key in the app at "
                      "https://app.singitai.app/app/, then send it as \"Authorization: Bearer sk_singit_...\" or "
                      "\"x-api-key: sk_singit_...\".")
@@ -410,7 +470,7 @@ def _classify(exc: ApiError | None) -> tuple[str, str]:
         return "rate_limited", "limit"
     if code in ("scope_missing", "base_only"):
         return "refused", "scope"
-    if code in ("insufficient_quota", "payment_not_ready"):
+    if code in ("insufficient_quota", "payment_not_ready", "free_tier_exhausted", "free_budget_exhausted", "free_tier_busy", "free_limit_reached"):
         return "refused", "limit"
     if exc.status in (401, 403):
         return "refused", "auth"
@@ -428,15 +488,17 @@ class McpServer:
 
     public_origin is this MCP server's own origin (normally SIGN402_WEB_URI); together with
     allowed_origins (default: allowed_origins_from_env()) it decides which browser Origins are trusted
-    enough to even reach the auth check, below. A key is still required for anything beyond that: trust
-    here only buys an untrusted scanner a 401 instead of a 403, plus the CORS headers to read it.
+    enough to reach the auth check. Public free tools work keyless; account lookups and paid calls need a key.
     """
 
     def __init__(self, keys: ApiKeys, *, fetch_json: Callable[[str], dict[str, Any]] | None = None,
+                 post_json: Callable[[str, dict, dict], tuple[int, dict, dict[str, str]]] | None = None,
                  requests_per_minute: int | None = None, public_origin: str = "",
                  allowed_origins: frozenset[str] | None = None):
         self.keys = keys
         self.fetch_json = fetch_json or _default_fetch_json
+        self.post_json = post_json or _default_post_json
+        self.free_ask_url = os.environ.get("SINGIT_MCP_FREE_ASK_URL", ASK_URL).rstrip("/")
         self.requests_per_minute = requests_per_minute if requests_per_minute is not None else _env_requests_per_minute()
         self._lock = threading.Lock()
         self._calls: dict[str, list[float]] = defaultdict(list)
@@ -459,7 +521,7 @@ class McpServer:
             # A key is for server code; the page never holds one. Also satisfies the spec's DNS-rebinding check.
             return 403, rpc_error(None, -32600, "API keys are for server code, not browsers. Keep the key out of "
                                   "web pages."), {}
-        status, result, headers = self._authenticated(authorization, api_key, protocol_version, body, client_ip)
+        status, result, headers = self._authenticated(authorization, api_key, protocol_version, body, client_ip=client_ip)
         if origin:  # trusted, checked above: let the caller read the answer across origins
             # Expose-Headers on the real answer too, not only the preflight: a 401's WWW-Authenticate is
             # otherwise unreadable to the page (Codex review).
@@ -505,7 +567,7 @@ class McpServer:
                                    "Slow down."), {"Retry-After": str(exc.retry_after)})
         params = parsed.get("params") if isinstance(parsed.get("params"), dict) else {}
         try:
-            result = self._dispatch(row, method, params, protocol_version)
+            result = self._dispatch(row, method, params, protocol_version, client_ip=client_ip)
         except _MethodNotFound as exc:
             return 200, rpc_error(msg_id, -32601, str(exc)), {}
         except _BadArgs as exc:
@@ -539,7 +601,7 @@ class McpServer:
             self._auth_failures[client_ip] = recent
             return over
 
-    def _dispatch(self, row, method: str, params: dict[str, Any], protocol_version: str | None) -> Any:
+    def _dispatch(self, row, method: str, params: dict[str, Any], protocol_version: str | None, *, client_ip: str | None = None) -> Any:
         if method == "initialize":
             return self._initialize(params)
         if method == "ping":
@@ -547,7 +609,7 @@ class McpServer:
         if method == "tools/list":
             return {"tools": tools()}
         if method == "tools/call":
-            return self._tools_call_observed(row, params)
+            return self._tools_call_observed(row, params, client_ip=client_ip)
         raise _MethodNotFound(f"Unknown method '{method}'.")
 
     def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -556,12 +618,12 @@ class McpServer:
         return {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": dict(SERVER_INFO), "instructions": INSTRUCTIONS}
 
-    def _tools_call_observed(self, row, params: dict[str, Any]) -> dict[str, Any]:
+    def _tools_call_observed(self, row, params: dict[str, Any], *, client_ip: str | None = None) -> dict[str, Any]:
         """_tools_call, then one `mcp_call` analytics event (docs/analytics.md). The event is built from the
         outcome only; it never reads tool arguments, and nothing in here can raise into the request."""
         started, seen = time.monotonic(), []
         try:
-            result = self._tools_call(row, params, seen)
+            result = self._tools_call(row, params, seen, client_ip=client_ip)
         except _BadArgs:
             self._record_call(row, params, started, None, "error", "bad_args")
             raise
@@ -575,7 +637,7 @@ class McpServer:
     def _record_call(self, row, params, started: float, result, status: str, error_kind: str | None) -> None:
         try:
             name = params.get("name")
-            paid_names = set(SEARCH_TOOLS) | set(_paid_tools()[0])
+            paid_names = set(SEARCH_TOOLS) | {"chat"} | set(_paid_tools()[0])
             known = {t["name"] for t in OWN_TOOLS} | paid_names
             tool = name if isinstance(name, str) and name in known else "unknown"
             # `paid` is whether the tool is a paid one (Codex review: don't infer it from the result shape);
@@ -597,7 +659,7 @@ class McpServer:
         except Exception as exc:  # noqa: BLE001 - analytics must never break a tool call
             logger.warning("mcp_call analytics failed: %s", exc)
 
-    def _tools_call(self, row, params: dict[str, Any], seen: list | None = None) -> dict[str, Any]:
+    def _tools_call(self, row, params: dict[str, Any], seen: list | None = None, *, client_ip: str | None = None) -> dict[str, Any]:
         # handle() already rated this call once in the MCP bucket; web_search and read_page must not
         # also be rated in ApiKeys._search (the /v1 bucket) - see their rate=False below.
         name = params.get("name")
@@ -606,22 +668,24 @@ class McpServer:
         args = params.get("arguments")
         args = args if isinstance(args, dict) else {}
         try:
-            data = self._call_tool(row, name, args)
+            data = self._call_tool(row, name, args, client_ip=client_ip)
         except ApiError as exc:
             if seen is not None:
                 seen.append(exc)
             return _tool_error(exc.message)
         return _tool_success(data)
 
-    def _call_tool(self, row, name: str, args: dict[str, Any]) -> Any:
+    def _call_tool(self, row, name: str, args: dict[str, Any], *, client_ip: str | None = None) -> Any:
         if row is None and name in KEYED_FREE_TOOLS:
             raise ApiError(401, "This tool reads your own SingIt account, so it needs your API key (it costs "
                            "nothing). Send it as \"Authorization: Bearer sk_singit_...\".",
                            type_="authentication_error", code="api_key_required")
         if row is None and name not in FREE_TOOL_NAMES:
-            if name in SEARCH_TOOLS or name in _paid_tools()[0]:
+            if name == "chat" or name in SEARCH_TOOLS or name in _paid_tools()[0]:
                 raise ApiError(401, KEYLESS_PAID_MESSAGE, type_="authentication_error", code="api_key_required")
             raise _BadArgs(f"Unknown tool '{name}'.")
+        if name in ("chat_free", "chat"):
+            return self._chat_answer(row, args, free=name == "chat_free", client_ip=client_ip)
         if name == "get_price":
             return self._get_price(args)
         if name == "list_price_symbols":
@@ -645,6 +709,76 @@ class McpServer:
             raise _BadArgs(f"Unknown tool '{name}'.")
         _status, data, _headers = self.keys.tool(row, tool_id, args)
         return data
+
+    def _chat_answer(self, row, args, *, free, client_ip=None):
+        if ("prompt" in args) == ("messages" in args):
+            raise _BadArgs("Provide exactly one of prompt or messages.")
+        if "system" in args and (free or "messages" in args or not isinstance(args["system"], str)):
+            raise _BadArgs("system must be a string and can only accompany a paid prompt.")
+        if "prompt" in args:
+            if not isinstance(args["prompt"], str) or not args["prompt"]:
+                raise _BadArgs("prompt must be a nonempty string.")
+            messages = ([{"role": "system", "content": args["system"]}] if "system" in args else [])
+            messages.append({"role": "user", "content": args["prompt"]})
+        else:
+            messages = args["messages"]
+        try:
+            messages = _api_messages(messages)
+            if free and sum(len(m["content"].encode("utf-16-le")) // 2 for m in messages) > MAX_CHARS:
+                raise ValueError(f"Keep messages within {MAX_CHARS} characters in all.")
+        except (ValueError, UnicodeError) as exc:
+            raise _BadArgs(str(exc)) from None
+        tokens = args.get("max_tokens", 400 if free else 1024)
+        if type(tokens) is not int or not 1 <= tokens <= (400 if free else 8192):
+            raise _BadArgs("max_tokens must be a whole number from 1 to " + ("400." if free else "8192."))
+        model = args.get("model", "free/deepseek-v4.1-flash" if free else None)
+        if "model" in args and (not isinstance(model, str) or not model.strip()):
+            raise _BadArgs("model must be a nonempty string.")
+        if not free and model is not None and model.startswith("free/"):
+            raise _BadArgs("Use chat_free for free/ models.")
+        if free:
+            model = "free/" + model.removeprefix("free/")
+        body = {"messages": messages, "max_tokens": tokens}
+        if model is not None:
+            body["model"] = model
+        if free:
+            headers = {}
+            try:
+                host = urlsplit(self.free_ask_url).hostname
+                loopback = host == "localhost" or (host is not None and ipaddress.ip_address(host).is_loopback)
+            except ValueError:
+                loopback = False
+            try:
+                if loopback and client_ip is not None:
+                    headers["Cf-Connecting-Ip"] = str(ipaddress.ip_address(client_ip))
+            except ValueError:
+                pass
+            try:
+                status, answer, response_headers = self.post_json(self.free_ask_url + "/v1/chat/completions", body, headers)
+            except (urllib.error.URLError, TimeoutError, OSError):
+                raise ApiError(503, "Free answers are unavailable. Try again or use chat with a key for a paid answer.", code="unavailable") from None
+            if status >= 400:
+                error = answer.get("error", {})
+                error = error if isinstance(error, dict) else {"message": str(error)}
+                retry = next((v for k, v in response_headers.items() if k.lower() == "retry-after"), None)
+                message = str(error.get("message") or answer.get("message") or "Free answer unavailable.")[:500]
+                if retry:
+                    message += f" Retry after {retry} seconds."
+                raise ApiError(status, message + " A paid answer is available with chat and a key.", code=error.get("code") or "upstream_error")
+            if not isinstance(answer, dict):
+                raise ApiError(502, "Free answer could not be read. Use chat with a key for a paid answer.", code="upstream_error")
+            billing = {"free": True, "chargedAtomic": 0}
+            source = answer.get("billing") or {}
+            billing.update({k: source[k] for k in ("remainingToday", "resetsAt", "hint") if k in source})
+        else:
+            answer = self.keys.chat_answer(row, body, rate=False)
+            billing = dict(answer.get("billing") or {})
+        choice = (answer.get("choices") or [{}])[0]
+        return {"object": "chat_free" if free else "chat", "model": model if free else answer.get("model", model),
+                "text": (choice.get("message") or {}).get("content") or "",
+                "finishReason": choice.get("finish_reason"),
+                "usage": {k: (answer.get("usage") or {}).get(k, 0) for k in
+                          ("prompt_tokens", "completion_tokens", "total_tokens")}, "billing": billing}
 
     def _get_limits(self, row) -> dict[str, Any]:
         """The key's own caps and today's spend, the account's balance, and the account's allowance limiter on Base.

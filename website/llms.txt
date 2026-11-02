@@ -64,9 +64,9 @@ fallback_models is optional on paid POST /v1/chat/completions with a pinned mode
 1. Free: POST https://ask.singitai.app/v1/chat/completions with model "free/deepseek-v4.1-flash". One of 6 free models; up to 20 answers a day per network, shared $0.25/day cost cap. May run out for the day (free_budget_exhausted); resets at midnight UTC. No wallet or key.
 2. API key: in the SingIt app (https://app.singitai.app/app/), Settings → API keys. The wallet signs the key's limits (per day, per request, how many days); top up $1 to $50 at a time in USDC. With a key, OpenAI SDK, Anthropic SDK and Claude Code work at https://app.singitai.app/v1 (cost + 30%, no per-call fee).
 3. MCP: https://app.singitai.app/mcp (Streamable HTTP), official MCP Registry name app.singitai/singit.
-   - Free, no key: get_price, list_price_symbols, list_models.
+   - Free, no key: get_price, list_price_symbols, list_models, chat_free.
    - Free with a key (read-only): get_balance, get_limits, get_receipts.
-   - Paid per call from the key's limits (USDC on Base or Solana): web_search, read_page.
+   - Paid per call from the key's limits (USDC on Base or Solana): chat, web_search, read_page.
    - Paid, Base accounts for now: get_x_profile, get_crypto_news, get_hyperliquid_market, get_funding_rates, resolve_ens, get_token_price; demo calls get_weather, get_singit_risk_check.
    - Claude Code: claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'
      Single quotes keep ${SINGIT_API_KEY} as a reference so the key is not written into Claude Code's configuration.
@@ -115,6 +115,8 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 - Source: https://github.com/SingItAi/SingItAI
 
 ## Links
+
+- Claude Code + SingIt MCP in 60 seconds: https://singitai.app/docs/claude-code/
 
 - Home: https://singitai.app/
 - Developers: https://singitai.app/developers/

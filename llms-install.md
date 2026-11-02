@@ -32,7 +32,7 @@ This repo's root `.mcp.json` has the same block for clients (like cursor.directo
 
 Call `initialize`, then `tools/list`; neither needs the key - both work keyless too, so catalogues and
 people can see what the server offers before they make one. `tools/list` shows every tool; a call checks
-the key's scopes (`get_price`, `list_price_symbols` and `list_models` need none and work keyless; `web_search`/
+the key's scopes (`get_price`, `list_price_symbols`, `list_models` and `chat_free` need none and work keyless; `chat` is paid within the key’s limits with no extra scope; `web_search`/
 `read_page` need `search`; the rest need `tools` - all of those need a real key). A missing key behaves the
 same as an empty or unexpanded `${env:SINGIT_API_KEY}` header (e.g. the client never substituted the
 environment variable): both are treated as no key, not as a wrong one. A revoked or otherwise wrong key
