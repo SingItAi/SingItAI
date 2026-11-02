@@ -4,11 +4,11 @@ import path from 'node:path';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const e = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function classifyTool(name) {
-  const free = new Set(['get_price', 'list_price_symbols', 'list_models']);
+  const free = new Set(['get_price', 'list_price_symbols', 'list_models', 'chat_free']);
   const account = new Set(['get_balance', 'get_limits', 'get_receipts']);
   const search = new Set(['web_search', 'read_page']);
-  const access = free.has(name) ? ['No', 'Free; none'] : account.has(name) ? ['Yes; free, read-only', 'Account read; no paid-tool scope'] : ['Yes; paid', search.has(name) ? 'search' : 'tools'];
-  const network = free.has(name) ? 'No payment' : account.has(name) ? 'Account data' : search.has(name) ? 'USDC on Base or Solana' : 'USDC on Base only for now';
+  const access = free.has(name) ? ['No', 'Free; none'] : account.has(name) ? ['Yes; free, read-only', 'Account read; no paid-tool scope'] : ['Yes; paid', name === 'chat' ? 'No extra scope' : search.has(name) ? 'search' : 'tools'];
+  const network = free.has(name) ? 'No payment' : account.has(name) ? 'Account data' : (search.has(name) || name === 'chat') ? 'USDC on Base or Solana' : 'USDC on Base only for now';
   return { access, network };
 }
 export function renderTools(data) {
@@ -21,7 +21,7 @@ export function renderTools(data) {
     const annotations = `readOnlyHint: ${tool.annotations.readOnlyHint}; idempotentHint: ${tool.annotations.idempotentHint}`;
     return `<tr><th scope="row"><code>${e(tool.name)}</code></th><td>${e(first)}</td><td>${params}</td><td>${e(access[0])}</td><td>${e(access[1])}</td><td>${e(network)}</td><td>${e(annotations)}</td></tr>`;
   });
-  return `<div class="table-wrap"><table class="mtable">\n<caption>16 tools from the keyless tools/list snapshot. Paid tools are paid per call within the key's caps; get_limits shows spent and remaining today.</caption>\n<thead><tr><th>Tool</th><th>What it does</th><th>Parameters</th><th>Needs a key?</th><th>Scope</th><th>Network</th><th>Annotation hints</th></tr></thead>\n<tbody>\n${rows.join('\n')}\n</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="mtable">\n<caption>18 tools generated from repository web_mcp.tools(). Paid tools are paid per call within the key's caps; get_limits shows spent and remaining today.</caption>\n<thead><tr><th>Tool</th><th>What it does</th><th>Parameters</th><th>Needs a key?</th><th>Scope</th><th>Network</th><th>Annotation hints</th></tr></thead>\n<tbody>\n${rows.join('\n')}\n</tbody></table></div>`;
 }
 export async function generate(check = false) {
   const file = path.join(root, 'website/docs/mcp/index.html');

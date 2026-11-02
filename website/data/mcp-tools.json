@@ -1,6 +1,6 @@
 {
-  "fetchedAt": "2026-10-31T09:27:44Z",
-  "source": "https://app.singitai.app/mcp tools/list, server version 0.1.3",
+  "fetchedAt": "2026-11-02T17:12:16Z",
+  "source": "generated from the repository's web_mcp.tools(); the live server serves these after the next gateway restart",
   "result": {
     "tools": [
       {
@@ -35,6 +35,7 @@
             "kind"
           ]
         },
+        "title": "Get price",
         "annotations": {
           "title": "Get price",
           "readOnlyHint": true,
@@ -50,6 +51,7 @@
           "type": "object",
           "properties": {}
         },
+        "title": "List price symbols",
         "annotations": {
           "title": "List price symbols",
           "readOnlyHint": true,
@@ -60,7 +62,7 @@
       },
       {
         "name": "list_models",
-        "description": "The AI models (chat, images or audio) available through SingIt, with their prices. They are called through SingIt's OpenAI-compatible API at https://app.singitai.app/v1 (or https://ask.singitai.app over x402), not through these MCP tools. Free, no key needed.",
+        "description": "The AI models (chat, images or audio) available through SingIt, with their prices. Chat models can be called with chat or through SingIt's OpenAI-compatible API at https://app.singitai.app/v1. Free, no key needed.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -75,6 +77,7 @@
             }
           }
         },
+        "title": "List models",
         "annotations": {
           "title": "List models",
           "readOnlyHint": true,
@@ -84,12 +87,133 @@
         }
       },
       {
+        "name": "chat_free",
+        "description": "Free model answers, no key needed. Answers are short (400 tokens), with a small daily allowance shared per network and a shared daily budget that can run out. To pay for a model answer with your key use chat with the same model without the free/ prefix.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "description": "The question, as one user message. Send exactly one of prompt or messages."
+            },
+            "messages": {
+              "type": "array",
+              "description": "A whole conversation instead of prompt: text messages, oldest first.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant"
+                    ]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ]
+              }
+            },
+            "model": {
+              "type": "string",
+              "description": "A free model id such as deepseek-v4.1-flash; the free/ prefix is added if missing. Defaults to free/deepseek-v4.1-flash."
+            },
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 400,
+              "default": 400,
+              "description": "Longest answer, in tokens (1 to 400, default 400)."
+            }
+          }
+        },
+        "title": "Chat (free)",
+        "annotations": {
+          "title": "Chat (free)",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
+        "name": "chat",
+        "description": "Paid per call from your key's SingIt balance and limits in USDC. The server enforces per-request and daily caps; a call over a cap is refused before anything is charged. Use list_models for model ids and prices, get_limits for what remains, and get_receipts for the charge. Pass max_tokens high enough for reasoning models: thinking uses the same budget.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 24000,
+              "description": "The question, as one user message. Send exactly one of prompt or messages."
+            },
+            "messages": {
+              "type": "array",
+              "description": "A whole conversation instead of prompt: text messages, oldest first.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "system",
+                      "user",
+                      "assistant"
+                    ]
+                  },
+                  "content": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "role",
+                  "content"
+                ]
+              }
+            },
+            "model": {
+              "type": "string",
+              "description": "A SingIt model id from list_models, without a free/ prefix. Omit it for SingIt's default model."
+            },
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8192,
+              "default": 1024,
+              "description": "Longest answer, in tokens (1 to 8192, default 1024). Reasoning models think inside this budget, so leave room."
+            },
+            "system": {
+              "type": "string",
+              "description": "An optional system message; only together with prompt."
+            }
+          }
+        },
+        "title": "Chat",
+        "annotations": {
+          "title": "Chat",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": false,
+          "openWorldHint": true
+        }
+      },
+      {
         "name": "get_balance",
         "description": "Your SingIt API balance: available and held USDC, auto top-up and pending top-ups. Use to check funds before paid calls. Free, but needs your API key.",
         "inputSchema": {
           "type": "object",
           "properties": {}
         },
+        "title": "Get balance",
         "annotations": {
           "title": "Get balance",
           "readOnlyHint": true,
@@ -105,6 +229,7 @@
           "type": "object",
           "properties": {}
         },
+        "title": "Get limits",
         "annotations": {
           "title": "Get limits",
           "readOnlyHint": true,
@@ -141,6 +266,7 @@
             }
           }
         },
+        "title": "Get receipts",
         "annotations": {
           "title": "Get receipts",
           "readOnlyHint": true,
@@ -179,6 +305,7 @@
             "query"
           ]
         },
+        "title": "Web search",
         "annotations": {
           "title": "Web search",
           "readOnlyHint": true,
@@ -202,6 +329,7 @@
             "url"
           ]
         },
+        "title": "Read page",
         "annotations": {
           "title": "Read page",
           "readOnlyHint": true,
@@ -218,6 +346,7 @@
           "properties": {},
           "required": []
         },
+        "title": "Get weather",
         "annotations": {
           "title": "Get weather",
           "readOnlyHint": true,
@@ -234,6 +363,7 @@
           "properties": {},
           "required": []
         },
+        "title": "SingIt risk check",
         "annotations": {
           "title": "SingIt risk check",
           "readOnlyHint": true,
@@ -257,6 +387,7 @@
             "username"
           ]
         },
+        "title": "Get X profile",
         "annotations": {
           "title": "Get X profile",
           "readOnlyHint": true,
@@ -273,6 +404,7 @@
           "properties": {},
           "required": []
         },
+        "title": "Get crypto news",
         "annotations": {
           "title": "Get crypto news",
           "readOnlyHint": true,
@@ -296,6 +428,7 @@
             "asset"
           ]
         },
+        "title": "Get Hyperliquid market",
         "annotations": {
           "title": "Get Hyperliquid market",
           "readOnlyHint": true,
@@ -319,6 +452,7 @@
             "symbol"
           ]
         },
+        "title": "Get funding rates",
         "annotations": {
           "title": "Get funding rates",
           "readOnlyHint": true,
@@ -346,6 +480,7 @@
             "input"
           ]
         },
+        "title": "Resolve ENS name",
         "annotations": {
           "title": "Resolve ENS name",
           "readOnlyHint": true,
@@ -369,6 +504,7 @@
             "symbol"
           ]
         },
+        "title": "Get token price",
         "annotations": {
           "title": "Get token price",
           "readOnlyHint": true,

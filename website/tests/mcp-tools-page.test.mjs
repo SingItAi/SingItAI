@@ -33,7 +33,7 @@ test('reference generation, ordered sections and complete parameter schemas', as
   const overview = renderGroupOverview(data);
   assert.ok(html.includes(overview));
   assert.deepEqual([...overview.matchAll(/<code>([^<]+)<\/code>/g)].map(m => m[1]), data.result.tools.map(t => t.name));
-  assert.equal((overview.match(/<th scope="row">/g) ?? []).length, 4);
+  assert.equal((overview.match(/<th scope="row">/g) ?? []).length, 5);
   const synthetic = structuredClone(data);
   synthetic.result.tools[0].description = '<script>alert("x")</script>';
   synthetic.result.tools[0].inputSchema.properties.kind.description = '<script>parameter</script>';
@@ -46,7 +46,7 @@ test('reference generation, ordered sections and complete parameter schemas', as
 test('reference metadata, discovery links and local targets', () => {
   const title = html.match(/<title>([^<]+)<\/title>/)[1];
   const desc = html.match(/<meta name="description" content="([^"]+)"/)[1];
-  assert.equal(title, 'SingIt MCP tools reference: 16 tools | SingIt');
+  assert.equal(title, 'SingIt MCP tools reference: 18 tools | SingIt');
   assert.ok(title.length <= 60 && desc.length > 0 && desc.length <= 155);
   for (const file of readdirSync(path.join(root, 'website'), { recursive: true })) {
     if (file.endsWith('.html') && file !== 'docs/mcp-tools/index.html') assert.notEqual(read(`website/${file}`).match(/<title>([^<]+)<\/title>/)?.[1], title, file);
@@ -62,7 +62,7 @@ test('reference metadata, discovery links and local targets', () => {
   assert.equal(crumbs.at(-1).item, url);
   assert.ok(read('website/sitemap.xml').includes(`<loc>${url}</loc>`));
   for (const file of ['docs/index.html', 'docs/mcp/index.html']) assert.ok(read(`website/${file}`).includes('href="/docs/mcp-tools/"'));
-  assert.ok(read('website/llms.txt').includes(`   - Tool reference (all 16 tools, parameters, scopes): ${url}`));
+  assert.ok(read('website/llms.txt').includes(`   - Tool reference (all 18 tools, parameters, scopes): ${url}`));
   for (const [, target] of html.matchAll(/(?:href|src)="([^" ]+)"/g)) {
     if (target.startsWith('#')) { assert.ok(html.includes(`id="${target.slice(1)}"`)); continue; }
     if (!target.startsWith('/')) continue;

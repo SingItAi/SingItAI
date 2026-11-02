@@ -446,12 +446,39 @@ class ApiKeys:
                  "outputTokens": r["output_tokens"] or 0} for r in rows]
         return {"object": "list", "days": days, "totalUsd": sum(d["chargedUsd"] for d in data), "data": data}
 
-    def _chat(self, row, body: Mapping[str, Any]) -> tuple[int, Any, dict[str, str]]:
+    def chat_answer(self, row, body, *, rate=True):
+        """An authenticated paid chat, fully consumed so relay settlement completes."""
+        if self.proxy is None:
+            return self._chat(row, body, rate=rate)[1]
+        if rate:
+            self._rate(row["key_id"])
+        relay = self.proxy.relay(row, "/chat/completions", body, {}, ApiError,
+                                 lambda amount: self._reserve(row, amount))
+        try:
+            data = b"".join(relay)
+        finally:
+            relay.close()
+        try:
+            answer = json.loads(data)
+        except (ValueError, UnicodeError):
+            answer = None
+        if relay.status >= 400 or not isinstance(answer, dict):
+            error = answer.get("error", {}) if isinstance(answer, dict) else {}
+            message = error.get("message") if isinstance(error, dict) else None
+            status = relay.status if relay.status in (400, 404, 429) else 502
+            text = str(message or "The upstream answer could not be read.")[:500]
+            if status in (400, 404, 429):
+                raise _api_error(status, {"text": text})
+            raise ApiError(502, text, code="upstream_error")
+        return answer
+
+    def _chat(self, row, body: Mapping[str, Any], *, rate: bool = True) -> tuple[int, Any, dict[str, str]]:
         if body.get("tools") or body.get("functions"):
             raise ApiError(400, "Tools are not offered yet.", code="tools_unsupported")
         key_id, account = row["key_id"], row["account_id"]
         per, daily = int(row["per_request_cap_atomic"]), int(row["daily_cap_atomic"])
-        self._rate(key_id)
+        if rate:
+            self._rate(key_id)
         day = self._day()
         with self._lock:
             spent, _ = self.store.key_spent(key_id, day)

@@ -5,13 +5,14 @@ import { e, classifyTool } from './generate-mcp-page.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const groups = [
   'Free lookups',
+  'Chat, paid per call, no extra scope, USDC on Base or Solana',
   'Your account, free and read-only, needs a key',
   'Web, paid per call, search scope, USDC on Base or Solana',
   'Market and data, paid per call, tools scope, Base accounts for now',
 ];
 export function toolGroup(name) {
   const { access } = classifyTool(name);
-  return access[0] === 'No' ? 0 : access[0] === 'Yes; free, read-only' ? 1 : access[1] === 'search' ? 2 : 3;
+  return access[0] === 'No' ? 0 : name === 'chat' ? 1 : access[0] === 'Yes; free, read-only' ? 2 : access[1] === 'search' ? 3 : 4;
 }
 export function renderGroupOverview(data) {
   return `<div class="table-wrap"><table class="mtable">\n<caption>Tool groups</caption>\n<thead><tr><th>Group</th><th>Tools</th><th>Key</th><th>Scope</th><th>Network</th></tr></thead>\n<tbody>\n${groups.map((group, i) => {

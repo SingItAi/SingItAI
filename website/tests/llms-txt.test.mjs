@@ -32,7 +32,7 @@ test("website/llms.txt starts free, then a key, then MCP, naming only tools the 
   const served = new Set([...mcp.matchAll(/^\s+\{"name": "(\w+)", "description"/gm), ...gateway.matchAll(/"mcpStyleName": "(\w+)"/g)]
     .map((m) => m[1]).filter((name) => !hidden.includes(name)));
   const listed = [...start.matchAll(/^\s+- [^:]+: (.+)$/gm)].filter(([line]) => !/Claude Code|Install guide/.test(line))
-    .flatMap(([, names]) => names.replace(/\.$/, "").split(/[,;]\s*|\s+/)).filter((word) => /^[a-z]+(_[a-z0-9]+)+$/.test(word));
+    .flatMap(([, names]) => names.replace(/\.$/, "").split(/[,;]\s*|\s+/)).filter((word) => /^(?:chat|[a-z]+(_[a-z0-9]+)+)$/.test(word));
   assert.ok(listed.length >= 10, `tools listed: ${listed}`);
   for (const name of listed) assert.ok(served.has(name), `${name} is not an MCP tool`);
   for (const name of served) assert.ok(listed.includes(name), `${name} is missing from llms.txt`);
@@ -49,6 +49,15 @@ test("website/llms.txt explains the first paid x402 call, upto before exact, wit
   assert.match(paid, /https:\/\/github\.com\/SingItAi\/SingItAI\/blob\/main\/docs\/first-paid-call\.md/);
   assert.ok(!/video/i.test(text));
   assert.ok(!text.includes("when enabled"));
+});
+
+test('MCP free and paid lists and Claude Code guide are explicit in both agent references', async () => {
+  for (const file of ['llms.txt', 'llms-full.txt']) {
+    const doc = await readFile(path.join(repo, 'website', file), 'utf8');
+    assert.ok(doc.includes('Free, no key: get_price, list_price_symbols, list_models, chat_free.'));
+    assert.ok(doc.includes("Paid per call from the key's limits (USDC on Base or Solana): chat, web_search, read_page."));
+    assert.ok(doc.includes('https://singitai.app/docs/claude-code/'));
+  }
 });
 
 test("measured-number discovery discloses own-payment coverage", async () => {
