@@ -24,6 +24,8 @@ and the agent takes only what each purchase needs, inside those limits.
 
 [Website](https://singitai.app) · [Open the app](https://app.singitai.app/app/) · [Documentation](docs/README.md)
 
+Also listed on [PayAPI Market](https://payapi.market/provider/llm-chat-completions-api-openai-compatible-one-endpoint-for-100-models) (verified x402 listings, e.g. [Claude Haiku 5.5](https://payapi.market/api/claude-haiku-5)).
+
 ## Quick start
 
 Three commands. The first needs no account, key or wallet.

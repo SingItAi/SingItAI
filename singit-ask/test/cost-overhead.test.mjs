@@ -90,6 +90,6 @@ test("claude-opus-5.5 gets 256 tokens of reasoning headroom, sent upstream and p
   await askSurplus({ surplusUrl: "https://surplus.invalid", surplusKey: "k" }, [{ role: "user", content: "hi" }], 64, ok,
     "claude-opus-5.5", { params: ["max_tokens", "reasoning", "reasoning_effort"] });
   assert.equal(sent[0].max_tokens, 64 + 256);
-  assert.equal(sent[0].reasoning_effort, "none", "thinking is still asked to be off");
+  assert.equal(sent[0].reasoning_effort, "low", "Opus cannot be switched off; it is asked for low (REASONING_DEFAULT_EFFORT)");
   assert.equal(withHeadroom({ model: "claude-opus-5.5", max_tokens: 64, messages: [] }).max_tokens, 64 + 256);
 });
