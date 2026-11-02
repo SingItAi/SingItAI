@@ -38,7 +38,10 @@ test('release metadata, notes, titles and upcoming labels', async () => {
     }
   }
   assert.equal(page.split('Upcoming, not released yet').length - 1, releases.filter(r => r.status === 'upcoming').length);
-  if (releases.some(r => r.status === 'upcoming')) assert.doesNotMatch(page, /\/releases\/tag\//);
+  for (const r of releases) {
+    const link = `href="${r.repoUrl}/releases/tag/${r.version}"`;
+    assert.equal(page.includes(link), r.status === 'published', `${r.repo} ${r.version} release link`);
+  }
 });
 
 test('metadata, sitemap, documentation link and neutral content', async () => {
@@ -94,6 +97,11 @@ test('published entries require dates and URLs and sort newest first', () => {
   const older = { ...published, version: 'v0.0.1', date: '2026-11-01', releaseUrl: `${fixture.repoUrl}/releases/tag/v0.0.1` };
   assert.throws(() => validateReleases([older, published]), /newest first/);
   assert.throws(() => validateReleases([published, {...fixture, version: 'v0.2.0'}]), /newest first/);
+  const upcoming = { ...fixture, version: 'v0.2.0' };
+  const mixed = renderPage([upcoming, published], { 'example.md': '# Title\n\nNotes' });
+  assert.ok(mixed.includes(`href="${published.releaseUrl}"`), 'published entry keeps its release link next to an upcoming one');
+  assert.equal(mixed.split('/releases/tag/').length - 1, 1);
+  assert.throws(() => renderPage([upcoming], { 'example.md': `# Title\n\n[notes](${fixture.repoUrl}/releases/tag/v0.2.0)` }), /Release tag links/);
 });
 
 for (const [name, release, notes, error] of [

@@ -218,13 +218,12 @@ export function renderMarkdown(markdown) {
 // notes maps each notes filename to its unchanged Markdown source.
 export function renderPage(releases, notes) {
   validateReleases(releases);
-  const hasUpcoming = releases.some(r => r.status === 'upcoming');
   const entries = releases.map(r => {
     if (typeof notes[r.notes] !== 'string') fail(`Missing notes: ${r.notes}`);
     const html = renderMarkdown(notes[r.notes]);
-    if (hasUpcoming && /href="[^" ]*\/releases\/tag\//.test(html)) fail('Release tag links are not allowed while entries are upcoming');
+    if (r.status === 'upcoming' && /href="[^" ]*\/releases\/tag\//.test(html)) fail('Release tag links are not allowed while entries are upcoming');
     const status = r.status === 'upcoming' ? 'Upcoming, not released yet' : `Published · <time datetime="${r.date}">${r.date}</time>`;
-    const releaseLink = r.status === 'published' && !hasUpcoming ? ` · <a href="${escape(r.releaseUrl)}">Release notes on GitHub</a>` : '';
+    const releaseLink = r.status === 'published' ? ` · <a href="${escape(r.releaseUrl)}">Release notes on GitHub</a>` : '';
     return `<section class="lp-section"><div class="shell"><article><p class="eyebrow"><a href="${escape(r.repoUrl)}">${escape(r.repo)}</a> · ${escape(r.version)}</p><p class="tab-note"><strong>${status}</strong>${releaseLink}</p>\n${html}\n</article></div></section>`;
   }).join('\n');
   return template.replace('{{CONTENT}}', () => `<main id="top"><section class="hero dev-hero"><div class="shell"><p class="eyebrow"><a href="/docs/">Documentation</a></p><h1>Changelog</h1><p class="hero-sub">Release notes and upcoming changes for SingIt repositories.</p></div></section>\n${entries}\n</main>`);
