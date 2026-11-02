@@ -40,7 +40,7 @@ function validState(s) {
   const counts = o => object(o) && count(o.ok) && count(o.fail);
   const reasons = o => object(o) && Object.entries(o).every(([key, n]) => REASONS.includes(key) && count(n));
   const modelLast = o => last(o) && (o.lastReason === undefined || REASONS.includes(o.lastReason));
-  const modelCounts = o => counts(o) && (o.reasons === undefined || reasons(o.reasons));
+  const modelCounts = o => counts(o) && [o.r422, o.rt].every(n => n === undefined || count(n)) && (o.reasons === undefined || reasons(o.reasons));
   const totals = o => object(o) && Object.entries(o).every(([n, t]) =>
     ["base", "solana", "other"].includes(n) && object(t)
     && [t.calls, t.noAmount, t.own, t.fail].every(count) && /^\d+$/.test(t.atomic));
@@ -129,14 +129,18 @@ export class HealthStats {
       this.changed();
     } catch {}
   }
-  recordModel(model, { ok, code, status } = {}) {
+  recordModel(model, { ok, code, status, retried } = {}) {
     try {
-      if (typeof model !== "string" || !/^[A-Za-z0-9._:/-]{1,80}$/.test(model) || code === "max_tokens_spent_reasoning"
-        || (!ok && [400, 413, 422].includes(status))) return;
+      if (typeof model !== "string" || !/^[A-Za-z0-9._:/-]{1,80}$/.test(model)
+        || (code !== "max_tokens_spent_reasoning" && !ok && [400, 413, 422].includes(status))) return;
       if (!Object.hasOwn(this.state.models, model) && Object.keys(this.state.models).length >= MODEL_CAP) return;
-      const last = this.state.models[model] ??= {};
-      last[ok ? "ok" : "fail"] = this.now(); last.failed = !ok;
+      const last = this.state.models[model] ??= { failed: false };
       const counts = this.bucket().models[model] ??= { ok: 0, fail: 0 };
+      if (code === "max_tokens_spent_reasoning") {
+        counts.r422 = (counts.r422 || 0) + 1; this.changed(); return;
+      }
+      if (ok && retried) counts.rt = (counts.rt || 0) + 1;
+      last[ok ? "ok" : "fail"] = this.now(); last.failed = !ok;
       counts[ok ? "ok" : "fail"]++;
       if (!ok) {
         last.lastReason = failureReason(code);
@@ -191,6 +195,7 @@ export class HealthStats {
     for (const id of suspended.keys()) active.set(id, active.get(id) ?? 0);
     for (const b of this.window(hours)) for (const [id, c] of Object.entries(b.models ?? {})) {
       const t = counts[id] ??= { ok: 0, fail: 0, reasons: {} }; t.ok += c.ok; t.fail += c.fail;
+      t.r422 = (t.r422 || 0) + (c.r422 || 0); t.rt = (t.rt || 0) + (c.rt || 0);
       // Old buckets have no reasons; their failures still count as other.
       for (const reason of REASONS) t.reasons[reason] = (t.reasons[reason] || 0) + (c.reasons?.[reason] || 0);
       t.reasons.other += c.fail - Object.values(c.reasons ?? {}).reduce((sum, n) => sum + n, 0);
@@ -204,10 +209,11 @@ export class HealthStats {
       .map(([id, c]) => {
         const attempts = c.ok + c.fail, rate = attempts ? c.fail / attempts : 0;
         const last = this.state.models[id], expiry = active.get(id);
-        return [id, { status: active.has(id) ? "unavailable" : attempts < 5 ? "insufficient_data"
-          : rate > 0.5 ? "down" : rate > 0.2 ? "degraded" : "up",
+        return [id, { status: active.has(id) ? "unavailable" : attempts >= 5 && rate > 0.5 ? "down"
+          : (c.r422 >= 3 && c.r422 / (attempts + c.r422) > 0.2) ? "degraded"
+          : attempts < 5 ? "insufficient_data" : rate > 0.2 ? "degraded" : "up",
           ...(suspended.has(id) ? { suspended: true, consecutiveRejections: suspended.get(id).count } : {}),
-          windowHours: hours, attempts, successes: c.ok, failures: c.fail,
+          windowHours: hours, reasoning422: c.r422 || 0, reasoningRetries: c.rt || 0, attempts, successes: c.ok, failures: c.fail,
           errorRatePct: Math.round(rate * 1000) / 10,
           // As before, last* are the latest ever seen (not limited to the window); lastOutcome is the newest of the two.
           lastSuccessAt: minute(last?.ok), lastFailureAt: minute(last?.fail),

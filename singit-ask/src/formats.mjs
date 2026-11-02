@@ -16,7 +16,7 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { markUnservable, unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { acceptedOf, answerLogFor, recordWhenSettled } from "./answer-log.mjs";
 import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, retryBudget, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -49,8 +49,8 @@ export function fitRequest(request, params) {
 
 // REASONING_HEADROOM (pricing.mjs, SI-112): the room the ceiling already prices for a model that cannot stop
 // thinking is added to the answer limit sent upstream, as askSurplus does on the chat routes.
-export function withHeadroom(request) {
-  const extra = reasoningHeadroom(request?.model);
+export function withHeadroom(request, info) {
+  const extra = reasoningHeadroom(request?.model, info);
   if (!extra) return request;
   const field = Number.isInteger(request.max_output_tokens) ? "max_output_tokens" : Number.isInteger(request.max_tokens) ? "max_tokens" : null;
   return field ? { ...request, [field]: request[field] + extra } : request;
@@ -200,7 +200,7 @@ const TAGS = {
                                  "gemini", "deepseek", "singit"),
 };
 
-export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error }) {
+export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, record = () => {} }) {
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const bufferPp = config.priceBufferPp ?? 1;
   const answerLog = answerLogFor(config, log);
@@ -265,6 +265,12 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
     } }, server, { log });
     app.post(route, async (req, res) => {
       const started = Date.now();
+      let retried = false, recorded = false;
+      const observe = outcome => {
+        if (recorded) return;
+        recorded = true;
+        try { record(req.format?.model, outcome); } catch {}
+      };
       try {
         const header = req.get("payment-signature") ?? req.get("x-payment");
         const accepted = JSON.parse(Buffer.from(header, "base64").toString()).accepted ?? {};
@@ -274,13 +280,22 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         if (!terms) throw new Error("payment on an unknown network");
         // The price floor only when the model's list-price worst case would not fit what was paid (pricing.mjs).
         const minDiscount = minDiscountFor(req.format, terms);
-        const response = await fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
+        let body = withHeadroom(fitRequest(req.format.request, req.format.info?.params), req.format.info);
+        const send = () => fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                      ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify(withHeadroom(fitRequest(req.format.request, req.format.info?.params))), signal: AbortSignal.timeout(FORMAT_LIMITS.timeoutMs) });
+          body: JSON.stringify(body), signal: AbortSignal.timeout(Math.max(1, started + FORMAT_LIMITS.timeoutMs - Date.now())) });
+        let response = await send();
         // Read for every status: a long request can come back HTTP 200 with an error body.
-        const data = await response.json().catch(() => null);
+        let data = await response.json().catch(() => null);
+        if (response.ok && data && !data.error && data.type !== "error" && data.status !== "failed" && spentOnReasoning(route, data)
+            && started + FORMAT_LIMITS.timeoutMs - Date.now() > 8000) {
+          // One extra call at <= 2x budget; the service absorbs the first attempt and any overrun.
+          const field = Number.isInteger(body.max_output_tokens) ? "max_output_tokens" : "max_tokens";
+          body = { ...body, [field]: retryBudget(body[field]) }; retried = true;
+          response = await send(); data = await response.json().catch(() => null);
+        }
         if (!response.ok || !data || typeof data !== "object" || data.error || data.type === "error" || data.status === "failed") {
           const code = typeof data?.error?.code === "string" ? data.error.code
             : typeof data?.error?.type === "string" ? data.error.type : "upstream_error";
@@ -291,7 +306,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         catalogue?.noteAnswered?.(req.format.model);
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
         const usage = billWithDiagnostics({ ...data.usage, buyer_cost_micro: reported },
-          terms, exact, route, req.format.model, log);
+          terms, exact, route, req.format.model, log, retried);
         // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override,
         // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
         const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
@@ -301,8 +316,10 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
         log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms`
           + `${route === "/v1/responses" ? `, isDefault=${req.format.modelOmitted === true}` : ","} settling ${billing.totalAtomic} micro-USDC`);
-        res.json({ ...scrub(data), billing });
+        observe({ ok: true, retried });
+        res.json({ ...scrub(data), ...(retried ? { retried: true } : {}), billing });
       } catch (error) {
+        observe({ ok: false, code: error.code, status: error.status, retried });
         markUnservable(catalogue, req.format?.model, error, log);
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
         log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);

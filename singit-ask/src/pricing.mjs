@@ -55,9 +55,8 @@ export const DEFAULT_EXACT_OUTPUT_FRACTION = 0.3;
 // free to move: it only ever pushes a ceiling up, never past that maximum.
 export const MIN_CEILING_ATOMIC = "1500";
 
-// `allowOverrun` is for `exact`: that scheme already charged the flat ceiling regardless of actual usage (see
-// metered.mjs), so going over it costs this service the difference instead of refusing the answer. `upto` never
-// sets it: a metered payment that would collect more than it is authorized to is refused instead, as before.
+// `allowOverrun` absorbs the difference above the signed ceiling for exact payments and reasoning retries.
+// Ordinary upto answers still refuse an overrun; retries clamp settlement to the authorization.
 export function billUsage(usage, terms = TERMS, { allowOverrun = false } = {}) {
   const raw = usage?.buyer_cost_micro;
   if (!(typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0)
@@ -93,7 +92,7 @@ export const usd = atomic => (Number(atomic) / 1e6).toFixed(6).replace(/0+$/, ""
 // actual usage.
 //
 // The output is priced at the whole token budget the answer may ask for (its `max_tokens`, sent to Surplus
-// unchanged: see askSurplus), since thinking shares that same budget instead of getting room beyond it.
+// plus priced reasoning headroom: see askSurplus), since thinking shares the upstream budget.
 //
 // `share` is the worst-case fraction of list price this answer can be bought at, 1 when no better guarantee is
 // known (metered.mjs's `ceilings`, catalogue.mjs's `priceGuard`): Surplus's own list prices are above what a
@@ -128,10 +127,15 @@ export const MODEL_COST_OVERHEAD = Object.freeze({
 // back 422 max_tokens_too_small, while at 400 "Say hi in three words" took 220 completion tokens and a one-sentence
 // coffee question 196. 256 more tokens upstream put the first free call on this model within reach of any max_tokens; the
 // free budget and a paid ceiling both price them (costOverhead), and the answer is billed what it used.
+export const REASONING_FLOOR_TOKENS = 256;
+export const retryBudget = b1 => Math.min(2 * b1, b1 + 2048);
 export const REASONING_HEADROOM = Object.freeze({
   "gemini-3.1-pro-preview": 1024,
   "claude-opus-5.5": 256,
   "openai-gpt-oss-20b": 256,
+  // Audit: these untagged models spent about 193 / 146 tokens thinking at effort none.
+  "qwen3.5-plus": 256,
+  "qwen3.5-flash": 256,
 });
 // A measurement knob (28 October), not a price change: SINGIT_ASK_REASONING_HEADROOM="claude-opus-5.5=128" (server.mjs)
 // replaces a model's headroom above for this process, so a paid test can see whether Opus's default `reasoning_effort:
@@ -149,16 +153,17 @@ export function parseReasoningHeadroom(text) {
   }
   return out;
 }
-export const reasoningHeadroom = (id) => (typeof id !== "string" ? 0
+export const reasoningHeadroom = (id, info) => (typeof id !== "string" ? 0
   : Object.hasOwn(headroomOverrides, id) ? headroomOverrides[id]
-  : Object.hasOwn(REASONING_HEADROOM, id) ? REASONING_HEADROOM[id] : 0);
+  : Math.max((Object.hasOwn(REASONING_HEADROOM, id) ? REASONING_HEADROOM[id] : 0), info?.tags?.includes("reasoning") ? REASONING_FLOOR_TOKENS : 0));
 // EXACT_RESERVE (29 October): what `exact` prices of the thinking headroom. The whole headroom still goes upstream
 // (askSurplus sends max_tokens + REASONING_HEADROOM, so Opus cannot spend a small max_tokens thinking) and still
 // bounds `upto`'s ceiling, but a flat `exact` price that carried all 256 tokens at 1.3x was 46% of the price of a
-// short answer. For Claude Opus, `exact` now prices R = clamp(round(factor * max_tokens), min, max) of it (default
+// short answer. For Claude Opus and models using the generic floor, `exact` prices R = clamp(round(factor * max_tokens), min, max) of it (default
 // 0.25, 32, 256: 125 tokens at max_tokens 500), never more than the headroom itself. An answer that thinks past R
 // is still delivered and settled at the flat price (`allowOverrun`), the same as one longer than the output
-// fraction; `upto` and every other model are untouched. SINGIT_ASK_EXACT_RESERVE (server.mjs) sets "factor,min,max"
+// fraction; `upto` and explicit headroom larger than the floor are untouched.
+// SINGIT_ASK_EXACT_RESERVE (server.mjs) sets "factor,min,max"
 // or "full" (the old behaviour: the whole headroom is priced).
 export const DEFAULT_EXACT_RESERVE = Object.freeze({ factor: 0.25, min: 32, max: 256 });
 export const EXACT_RESERVE_FULL = Object.freeze({ factor: null, min: 0, max: 0 });
@@ -175,10 +180,13 @@ export function parseExactReserve(text) {
     throw new Error(`SINGIT_ASK_EXACT_RESERVE: cannot read "${raw}" (want "full" or "factor,min,max": factor in (0,1], 0 <= min <= max <= 2048)`);
   return Object.freeze({ factor, min, max });
 }
+// Reduce the generic floor (including explicit entries equal to it) and Opus headroom.
+// Explicit larger headroom keeps its existing full pricing.
 // The thinking tokens `exact` prices for this model and max_tokens (a number, or null: price the whole headroom).
-export function exactReserveTokens(id, maxTokens) {
-  const headroom = reasoningHeadroom(id);
-  if (!headroom || !isUptoPrimary(id) || exactReserve.factor === null) return null;
+export function exactReserveTokens(id, maxTokens, info) {
+  const headroom = reasoningHeadroom(id, info);
+  const usesFloor = !Object.hasOwn(REASONING_HEADROOM, id) || REASONING_HEADROOM[id] === REASONING_FLOOR_TOKENS;
+  if (!headroom || (!usesFloor && !isUptoPrimary(id)) || exactReserve.factor === null) return null;
   const wanted = Math.min(exactReserve.max, Math.max(exactReserve.min, Math.round(exactReserve.factor * (Number.isFinite(maxTokens) ? maxTokens : 0))));
   return Math.min(wanted, headroom);
 }
@@ -197,7 +205,7 @@ export const UPTO_PRIMARY = Object.freeze({
 export const costOverhead = (model) => {
   const id = typeof model?.id === "string" ? model.id : "";
   const extra = Object.hasOwn(MODEL_COST_OVERHEAD, id) ? MODEL_COST_OVERHEAD[id] : null;
-  return { promptTokens: extra?.promptTokens ?? 0, reasoningTokens: (extra?.reasoningTokens ?? 0) + reasoningHeadroom(id) };
+  return { promptTokens: extra?.promptTokens ?? 0, reasoningTokens: (extra?.reasoningTokens ?? 0) + reasoningHeadroom(id, model) };
 };
 
 // The most the model itself could bill for this question and answer size, in micro-units, before markup and fee.
@@ -206,7 +214,7 @@ export function worstModelCostMicro(model, { chars, maxTokens, messageCount, cha
   const extra = costOverhead(model);
   const inputTokens = Math.ceil(chars / charsPerToken) + 4 * messageCount + extra.promptTokens;
   const reasoning = reserveTokens === null ? extra.reasoningTokens
-    : extra.reasoningTokens - reasoningHeadroom(model?.id) + reserveTokens;
+    : extra.reasoningTokens - reasoningHeadroom(model?.id, model) + reserveTokens;
   const outputTokens = maxTokens + reasoning;
   return Math.ceil((inputTokens * model.promptUsdPerToken + outputTokens * model.completionUsdPerToken) * share * 1e6);
 }

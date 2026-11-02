@@ -226,7 +226,7 @@ node --env-file=.env src/server.mjs
 | `SINGIT_ASK_MODEL` | Upstream model. Default: `deepseek-v4.1-flash`. |
 | `SINGIT_ASK_PORT` | Loopback port. Default: `8140`. |
 | `SINGIT_ASK_REASONING_EFFORT` | `model=effort,...` (`none`, `minimal`, `low`, `medium`, `high`) overrides the model default: `claude-opus-5.5` defaults to `low`, other models to `none`. Set `claude-opus-5.5=none` to restore the old behaviour. A value that cannot be read stops the process at start. |
-| `SINGIT_ASK_REASONING_HEADROOM` | Measurement only; unset (default) changes nothing. `model=tokens,...` replaces the model's thinking headroom (`REASONING_HEADROOM` in `src/pricing.mjs`: 256 for Opus and for `openai-gpt-oss-20b`, 1024 for Gemini 3.1 Pro) in both the ceiling the 402 offers and the `max_tokens` sent upstream, e.g. `claude-opus-5.5=128`. Use only on a temporary loopback process for a paid test; it does not change the price formula. |
+| `SINGIT_ASK_REASONING_HEADROOM` | Measurement only; unset (default) changes nothing. `model=tokens,...` replaces the model's thinking headroom (the reasoning-tag floor plus explicit overrides in `src/pricing.mjs`) in both the ceiling the 402 offers and the `max_tokens` sent upstream, e.g. `claude-opus-5.5=128`. Use only on a temporary loopback process for a paid test; it does not change the price formula. |
 | `SINGIT_ASK_EXA_MARKUP_BPS` | Exa markup in basis points: integer 0..10000, default `0`. Invalid values use the default. |
 | `SINGIT_ASK_EXA_FEE_ATOMIC` | Exa settlement fee in atomic USDC: `N` for both networks or `base,solana`, default `1000,1000` (a flat $0.001 on both networks). Non-negative integers; invalid values use the default. Set markup to `3000` and fee to `1000,2000` to restore the former pricing; fee `0` with the default zero markup gives no-fee pass-through pricing. |
 | `SINGIT_ASK_EXACT_RESERVE` | Default `0.25,32,256`. How many thinking tokens an `exact` offer for Claude Opus prices: `clamp(round(factor × max_tokens), min, max)` (125 at `max_tokens` 500), never more than the model's headroom. The whole headroom (256) is still added to `max_tokens` sent upstream, and `upto` still authorizes it. `full` restores pricing all 256 tokens (the behaviour before 29.10.2026). A value that cannot be read stops the process at start. |
@@ -308,9 +308,30 @@ Keep its private configuration out of Git, command output and published logs.
 
 ### Observed health and usage
 
+
+Reasoning headroom is priced into every ceiling and added to the upstream token limit: 256 tokens for
+catalogue entries tagged `reasoning`, with explicit overrides of 1024 for Gemini 3.1 Pro and 256 for
+Opus 5.5 and GPT OSS 20B. The audit also measured thinking on untagged `qwen3.5-plus` (about 193 tokens)
+and `qwen3.5-flash` (about 146); both explicitly receive 256. Process overrides take precedence, including
+zero. Untagged models without an explicit entry keep their previous prices. Only Opus has a reduced
+exact reserve; every other reasoning model's exact price carries the whole headroom.
+
+Paid chat, Messages, Responses and Solana quoted requests retry an empty length-limited answer once,
+when more than eight seconds remain. The second upstream budget is `min(2 * B1, B1 + 2048)` where B1
+includes headroom. The successful answer carries `retried: true`; settlement never exceeds the original
+ceiling, even for upto. The service eats the first attempt and absorbs any retry overrun, bounded by one
+extra call at no more than twice the first budget. A second exhaustion returns 422 without charging.
+Free requests never retry, preserving the shared dollar cap; a near-deadline request may also return
+422 without retrying. Other upstream errors do not trigger a reasoning retry.
+
 `GET /health` retains `ok: true` and the existing service fields, and adds observed text-model results,
 payment-rail status, a cached read-only facilitator check, measurement start and generation timestamps.
 Model and settlement rates cover UTC hourly buckets in the last 24 hours; idle models are omitted.
+Each model exposes `reasoning422` and `reasoningRetries` for that window. Reasoning exhaustion counts
+neither success nor failure and leaves the last outcome unchanged; a successful retried answer counts
+as one success and one retry. At least three reasoning 422s and a ratio
+`reasoning422 / (attempts + reasoning422) > 0.2` make status at least `degraded`, while `down` and
+`unavailable` remain worse. Old persisted files without these counters load with zero values.
 `GET /numbers.json` publishes settled public x402 calls, known USDC volume and distinct payer wallets for
 all recorded history, 24 hours and 7 days, with definitions. Internal web-app payments inform rail health
 but are excluded from usage. Configured own payers are excluded too. History before these counters existed

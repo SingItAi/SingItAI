@@ -33,7 +33,7 @@ import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
 import { withRejectLog } from "./reject-log.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 
 export const BASE = "eip155:8453";
@@ -202,23 +202,28 @@ const defaultFallbackNote = (config) => {
     + "X-SingIt-Fallback: off to stay strictly pinned.";
 };
 
-export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs } = {}) {
+export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs } = {}) {
   const sends = (name) => !params || params.includes(name);
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
   const off = Object.hasOwn(REASONING_OFF, model) ? REASONING_OFF[model] : null;
   // The process override (config.reasoningEffort, even "none") wins over the model's default.
   const wanted = config.reasoningEffort && Object.hasOwn(config.reasoningEffort, model) ? config.reasoningEffort[model]
     : Object.hasOwn(REASONING_DEFAULT_EFFORT, model) ? REASONING_DEFAULT_EFFORT[model] : "none";
-  const ask = (reasoning, extra = {}) => fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
-               ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
-    body: JSON.stringify({ model, messages, max_tokens: maxTokens + reasoningHeadroom(model), ...(sends("temperature") ? { temperature: 0.4 } : {}),
-                           ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
-                             : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
-                           ...extra, si_route: { objective: "price" } }),
-    signal: AbortSignal.timeout(Math.max(1, Math.min(LIMITS.timeoutMs, timeoutMs, deadline - Date.now()))),
-  });
+  let budget = maxTokens + reasoningHeadroom(model, info), retried = false;
+  let sentReasoning = wanted, sentExtra = {};
+  const ask = (reasoning, extra = {}) => {
+    sentReasoning = reasoning; sentExtra = extra;
+    return fetchImpl(`${config.surplusUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
+                 ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
+      body: JSON.stringify({ model, messages, max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
+                             ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
+                               : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
+                             ...extra, si_route: { objective: "price" } }),
+      signal: AbortSignal.timeout(Math.max(1, Math.min(LIMITS.timeoutMs, timeoutMs, deadline - Date.now()))),
+    });
+  };
   const refusedReasoning = async (response) => {
     if (response.status !== 400) return false;
     const refusal = await response.clone().json().catch(() => null);
@@ -233,21 +238,29 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
   } catch (error) {
     throw new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" });
   }
-  const data = await response.json().catch(() => null);
-  const choice = data?.choices?.[0];
+  let data = await response.json().catch(() => null);
+  let choice = data?.choices?.[0];
+  if (retryOnReasoning && response.ok && !data?.error && choice?.finish_reason === "length"
+      && (typeof choice.message?.content !== "string" || !choice.message.content.trim()) && deadline - Date.now() > 8000) {
+    // The service eats the first attempt; exposure is bounded by one extra call at <= 2x budget.
+    budget = retryBudget(budget); retried = true;
+    try { response = await ask(sentReasoning, sentExtra); }
+    catch (error) { throw Object.assign(new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" }), { retried: true }); }
+    data = await response.json().catch(() => null); choice = data?.choices?.[0];
+  }
   if (!response.ok || data?.error || !choice) {
     const code = typeof data?.error?.code === "string" ? data.error.code : "upstream_error";
-    throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
+    throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
   const content = choice.message?.content;
   if (typeof content !== "string" || !content.trim()) {
     const code = choice.finish_reason === "length" ? "max_tokens_spent_reasoning" : "no_text";
-    throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
+    throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
   // The cost is in the body, and in a header too (docs: x-si-buyer-cost-micro); billUsage reads the body's field.
   const header = response.headers?.get?.("x-si-buyer-cost-micro");
   const usage = data.usage?.buyer_cost_micro == null && header != null ? { ...data.usage, buyer_cost_micro: header } : data.usage ?? null;
-  return { content, finishReason: choice.finish_reason ?? "stop", usage };
+  return { ...(retried ? { retried: true } : {}), content, finishReason: choice.finish_reason ?? "stop", usage };
 }
 
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
@@ -456,7 +469,7 @@ const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, sch
   413: errorBody(TOO_LARGE, schema, errorExample("invalid_request_error", "The request body is too large.", "payload_too_large", schema)),
   ...(notFound ? { 404: errorBody(notFound, schema) } : {}),
   ...(duplicate ? { 409: errorBody(DUPLICATE, schema) } : {}),
-  ...(reasoning ? { 422: errorBody(MAX_TOKENS_TOO_SMALL, schema, errorExample("invalid_request_error", MAX_TOKENS_TOO_SMALL, "max_tokens_too_small", schema)) } : {}),
+  ...(reasoning ? { 422: errorBody("After one automatic retry with a larger budget: " + MAX_TOKENS_TOO_SMALL, schema, errorExample("invalid_request_error", MAX_TOKENS_TOO_SMALL, "max_tokens_too_small", schema)) } : {}),
   503: { ...errorBody(unavailable ?? `${UNAVAILABLE}. Also: ${noAnswer}`, schema,
     errorExample(schema === ANTHROPIC_ERROR_SCHEMA ? "api_error" : "upstream_error", exampleMessage, exampleCode, schema)), headers: RETRY_AFTER },
 });
@@ -897,6 +910,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                     "lastSuccessAt": "2026-10-31T12:00:00.000Z",
                     "lastFailureAt": null,
                     "lastOutcome": "success",
+                    "reasoning422": 0,
+                    "reasoningRetries": 0,
                     "sellerFailures": 0,
                     "failureReasons": {},
                     "reason": null
@@ -911,6 +926,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                     "lastSuccessAt": "2026-10-31T12:00:00.000Z",
                     "lastFailureAt": null,
                     "lastOutcome": "success",
+                    "reasoning422": 0,
+                    "reasoningRetries": 0,
                     "sellerFailures": 0,
                     "failureReasons": {},
                     "reason": null
@@ -953,11 +970,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                   .map(key => [key, { type: "integer", minimum: 0 }])) },
               models: { type: "object", additionalProperties: { type: "object",
                 required: ["status", "windowHours", "attempts", "successes", "failures", "errorRatePct",
-                  "lastSuccessAt", "lastFailureAt", "lastOutcome", "sellerFailures", "failureReasons", "reason"],
+                  "lastSuccessAt", "lastFailureAt", "lastOutcome", "sellerFailures", "failureReasons", "reason", "reasoning422", "reasoningRetries"],
                 properties: {
                 status: { enum: ["up", "degraded", "down", "insufficient_data", "unavailable"] },
                 windowHours: { type: "integer", const: 24 },
-                ...Object.fromEntries(["attempts", "successes", "failures", "sellerFailures"]
+                ...Object.fromEntries(["attempts", "successes", "failures", "sellerFailures", "reasoning422", "reasoningRetries"]
                   .map(key => [key, { type: "integer", minimum: 0 }])),
                 errorRatePct: { type: "number", minimum: 0, maximum: 100 },
                 lastSuccessAt: { type: ["string", "null"], format: "date-time" },
@@ -1097,7 +1114,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       throw error;
     }
     catalogue?.noteAnswered?.(model);
-    try { app.locals.healthStats.recordModel(model, { ok: true }); } catch {}
+    try { app.locals.healthStats.recordModel(model, { ok: true, retried: answer.retried }); } catch {}
     catalogue?.resolve(model, { allowUnpriced: true }).then((list) => {
       if (list.priceBasis === "reference") {
         const usage = answer.usage;
@@ -1121,7 +1138,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Speech from Surplus's voice models, the same way.
   if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
-  if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log });
+  if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
   if (catalogue) addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,

@@ -206,7 +206,7 @@ test("unavailable entries override rates, include empty models and survive cap",
   assert.equal(c.isUnservable("empty"), true);
   let h = healthBody(s, null, "empty", c.unservableSnapshot());
   assert.deepEqual(h.models.empty, { status: "unavailable", windowHours: 24, attempts: 0,
-    successes: 0, failures: 0, errorRatePct: 0, lastSuccessAt: null, lastFailureAt: null,
+    successes: 0, failures: 0, reasoning422: 0, reasoningRetries: 0, errorRatePct: 0, lastSuccessAt: null, lastFailureAt: null,
     lastOutcome: null, sellerFailures: 0, failureReasons: {}, reason: null,
     unavailableUntil: new Date(now + 900000).toISOString(), retryAfterSeconds: 900 });
   assert.equal(h.status, "degraded");
@@ -272,4 +272,40 @@ test('suspended health entries persist between trials without recent attempts', 
   assert.equal(entry.consecutiveRejections, 3);
   assert.equal(entry.attempts, 0);
   assert.equal(entry.unavailableUntil, undefined);
+});
+
+
+test("reasoning counters degrade independently, persist and load old buckets", t => {
+  const dir = mkdtempSync(join(tmpdir(), "health-reasoning-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "stats.json"), s = new HealthStats({ file });
+  s.recordModel("reasoning-only", { ok: false, code: "max_tokens_spent_reasoning" });
+  s.recordModel("text", { ok: true, retried: true });
+  for (let i = 0; i < 3; i++) s.recordModel("text", { ok: false, status: 422, code: "max_tokens_spent_reasoning" });
+  const m = s.models().text;
+  assert.equal(m.reasoning422, 3); assert.equal(m.reasoningRetries, 1);
+  assert.equal(m.attempts, 1); assert.equal(m.failures, 0);
+  assert.equal(m.lastOutcome, "success"); assert.equal(m.lastFailureAt, null);
+  assert.equal(m.status, "degraded");
+  s.flush(); assert.deepEqual(new HealthStats({ file }).models(), s.models());
+  const state = JSON.parse(readFileSync(file, "utf8"));
+  const bucket = Object.values(state.buckets)[0].models.text;
+  delete bucket.r422; delete bucket.rt;
+  writeFileSync(file, JSON.stringify(state));
+  assert.equal(new HealthStats({ file }).models().text.reasoning422, 0);
+  assert.equal(new HealthStats({ file }).models().text.reasoningRetries, 0);
+  for (const key of ["r422", "rt"]) {
+    bucket[key] = -1; writeFileSync(file, JSON.stringify(state));
+    assert.deepEqual(new HealthStats({ file }).models(), {}); delete bucket[key];
+  }
+});
+test("reasoning degradation threshold is strict and never improves down status", () => {
+  const s = new HealthStats();
+  for (let i = 0; i < 12; i++) s.recordModel("text", { ok: true });
+  for (let i = 0; i < 3; i++) s.recordModel("text", { code: "max_tokens_spent_reasoning" });
+  assert.equal(s.models().text.status, "up"); // 3 / 15 = 0.2
+  s.recordModel("text", { code: "max_tokens_spent_reasoning" });
+  assert.equal(s.models().text.status, "degraded");
+  for (let i = 0; i < 20; i++) s.recordModel("text", { ok: false });
+  assert.equal(s.models().text.status, "down");
 });

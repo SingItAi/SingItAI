@@ -90,7 +90,7 @@ export function ceilings(info, input, exactOutputFraction = DEFAULT_EXACT_OUTPUT
     const amount = ceilingAtomic(info, { ...size, maxTokens, charsPerToken, reserveTokens }, terms, input.share ?? 1);
     return [net, input.isDefault && BigInt(amount) > BigInt(terms.maxChargeAtomic) ? terms.maxChargeAtomic : amount];
   }));
-  return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction), undefined, exactReserveTokens(info?.id, input.maxTokens)) };
+  return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction), undefined, exactReserveTokens(info?.id, input.maxTokens, info)) };
 }
 
 // The terms of the network the payer chose, with the ceiling this question was offered for the scheme they
@@ -316,7 +316,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       const exact = paid.scheme === "exact";
       const deadline = started + 95_000;
       const attempt = input => upstream(config, input.messages, input.maxTokens, fetchImpl, input.model,
-        { minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params,
+        { minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: true,
           timeoutMs: Math.max(1, deadline - Date.now()), deadline });
       let answer;
       try { answer = await attempt(req.askInput); }
@@ -339,8 +339,8 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       if (req.askInput.autoTier) {
         res.set("X-SingIt-Tier", req.askInput.autoTier);
       }
-      // Auto must retain its margin against actual provider cost, even on a flat exact offer.
-      const usage = billWithDiagnostics(answer.usage, paid.terms, exact, route, req.askInput.model, log);
+      // A reasoning retry is delivered at no more than the signed ceiling; the service absorbs its exposure.
+      const usage = billWithDiagnostics(answer.usage, paid.terms, exact, route, req.askInput.model, log, answer.retried);
       // `exact` already settled the full ceiling it was offered: there is no lower amount to settle to, and no
       // way to refund the unused part, so the override below is only ever for `upto`. Its actual cost may run
       // over that flat ceiling (usage.overrunAtomic): the payer is never charged more than they signed for, this
@@ -353,6 +353,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       res.locals.singitReceipt = { ref: `singit-ask-${started}`, chargedAtomic: billing.totalAtomic };
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: req.askInput.fallbackFrom ? req.askInput.model : "singit-ask",
+        ...(answer.retried ? { retried: true } : {}),
         ...(req.askInput.fallbackFrom ? { singit_fallback_from: req.askInput.fallbackFrom } : {}), choices: [{ index: 0, message: { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing });
     } catch (error) {
@@ -372,8 +373,12 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
 
 // Preserve the provider's usage only for an overrun diagnostic: no prompt, answer or payment payload belongs
 // in this log. Centralizing it keeps both API formats equally observable without changing their pricing.
-export function billWithDiagnostics(usage, terms, exact, route, model, log) {
-  try { return billUsage(usage, terms, { allowOverrun: exact }); }
+export function billWithDiagnostics(usage, terms, exact, route, model, log, retried = false) {
+  try {
+    const billed = billUsage(usage, terms, { allowOverrun: exact || retried });
+    if (retried && billed.overrunAtomic) log(`singit-ask: reasoning retry overrun ${billed.overrunAtomic} micro-USDC`);
+    return billed;
+  }
   catch (error) {
     if (error.code === "ceiling_exceeded") {
       log(`singit-ask: ${route} ${model} ceiling exceeded ${JSON.stringify({

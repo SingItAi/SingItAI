@@ -394,3 +394,7 @@ the remaining packages lack installed dependencies (including viem, express,
 @solana/kit and rxjs). No dependencies were downloaded. The final old-host search
 returns no matches. Nothing was published, committed or pushed, and no network
 requests or payments were made.
+
+### Post-competition maintenance — 2026-11-02
+
+Ask: every reasoning-tagged model now gets a priced 256-token thinking floor, one retry at a larger budget inside the signed ceiling before a 422, a per-model 422 counter in `/health`, and one-sentence examples that answer within 400 tokens. Branch `fix/reasoning-floor`; the PR is linked from the Ask repository's pull request list. This is shared Ask maintenance, not a new Solana contribution. Verification: singit-ask 629 tests, website 437, scripts 46, `bazaar-lint` 22 routes with 0 failures; no paid calls. Limitation: only a paid answer proves a route end to end.

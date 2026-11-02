@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { test } from "node:test";
 import { snapshot } from "../../scripts/models-snapshot.mjs";
-import { price, escapeHtml, safeSlug, modelTitle, modelDescription, mergeBlock, renderPages, visibleSnapshot, hiddenRedirects } from "../../scripts/generate-model-pages.mjs";
+import { price, escapeHtml, safeSlug, modelTitle, modelDescription, REASONING_BY_MEASUREMENT, mergeBlock, renderPages, visibleSnapshot, hiddenRedirects } from "../../scripts/generate-model-pages.mjs";
 import { limits } from "../../scripts/templates/spending-limits.mjs";
 
 const exec = promisify(execFile);
@@ -190,7 +190,9 @@ test("all committed pages are current, crawlable and follow content rules", asyn
         assert.doesNotMatch(html, /\$0(?:[^.\d]|\.0+(?:[^\d]|$))/);
       }
       for (const scheme of ["upto", "exact"]) for (const network of ["base", "solana"]) assert.ok(html.includes(`$${price(model[scheme][network].usd)}`));
-      assert.ok(html.includes("max_tokens&quot;:200"));
+      const reasoning = model.tags?.includes("reasoning") || REASONING_BY_MEASUREMENT.has(model.id);
+      assert.ok(html.includes(`max_tokens&quot;:${reasoning ? 400 : 200}`));
+      assert.ok(html.includes(`content&quot;:&quot;${reasoning ? "Say hello in one sentence." : "Hello"}`));
       assert.ok(html.includes(new Date(s.fetchedAt).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC")));
     } else if (dir !== "models/all") {
       const visible = html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, " ");
