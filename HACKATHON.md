@@ -394,3 +394,7 @@ the remaining packages lack installed dependencies (including viem, express,
 @solana/kit and rxjs). No dependencies were downloaded. The final old-host search
 returns no matches. Nothing was published, committed or pushed, and no network
 requests or payments were made.
+
+## Daily model audit — 2 November 2026
+
+Operational follow-up in the merged SingItAI tree (branch `feat/daily-model-audit`): `scripts/singit-model-audit.py` checks the paid-route inventory, unpaid listing prices against max_tokens 400 and 2000 quotes, the `/health` outcome windows, the Surplus order books and one free canary per free model. It sends no payment header and alerts only on changes through the existing health-alert delivery. This is shared service monitoring, not a new Solana payment feature. Verification: 19 audit tests and the existing health-alert tests, plus a read-only dry run against the live service. The systemd units are uninstalled templates; no paid answers were made.
