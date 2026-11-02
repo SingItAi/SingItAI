@@ -1,3 +1,4 @@
+import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
 // what Claude Code and the Anthropic SDK speak) and OpenAI's Responses (POST /v1/responses). Sold over x402 like the
@@ -34,7 +35,7 @@ export class FormatError extends Error {
 // A Surplus answer that is not billable. `code` is Surplus's error.code (Anthropic's envelope has none: its
 // error.type then), or ours; never Surplus's message, which is not for matching. The message is safe to log.
 class NoAnswer extends Error {
-  constructor(status, code) { super(`model answered HTTP ${status} (${code})`); this.name = "NoAnswer"; this.code = code; }
+  constructor(status, code) { super(`model answered HTTP ${status} (${code})`); this.name = "NoAnswer"; this.status = status; this.code = code; }
 }
 
 // Sampling knobs a caller may send that a model can refuse outright (Surplus forwards what it does not strip: kimi-k3
@@ -149,10 +150,10 @@ const DESCRIPTIONS = {
 };
 const EXAMPLES = {
   "/v1/messages": { model: "claude-sonnet-5.5", max_tokens: 300, messages: [{ role: "user", content: "What is x402?" }] },
-  "/v1/responses": { model: "gpt-5.5", input: "What is x402?", max_output_tokens: 300 },
+  "/v1/responses": { model: "deepseek-v4.1-flash", input: "What is x402?", max_output_tokens: 300 },
 };
 // What each field is, for the Bazaar listing: the fields readFormatRequest() checks, nothing it would refuse.
-const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "gpt-5.5", "gemini-3.8-flash"],
+const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "deepseek-v4.1-flash", "gemini-3.8-flash"],
   description: "Any model id from GET /v1/models; Anthropic's dashed names (claude-sonnet-5-5) work too." };
 const STREAM_FIELD = { type: "boolean", enum: [false], description: "Streaming is not offered: an answer is paid for whole." };
 const INPUT_SCHEMAS = {
@@ -188,7 +189,7 @@ const OUTPUT_EXAMPLES = {
   "/v1/messages": { id: "msg_01example", type: "message", role: "assistant", model: "claude-sonnet-5.5",
     content: [{ type: "text", text: "x402 is an open standard for paying for an API call with a stablecoin over HTTP 402." }],
     stop_reason: "end_turn", usage: { input_tokens: 12, output_tokens: 24 }, billing: BILLING_EXAMPLE },
-  "/v1/responses": { id: "resp_example", object: "response", status: "completed", model: "gpt-5.5",
+  "/v1/responses": { id: "resp_example", object: "response", status: "completed", model: "deepseek-v4.1-flash",
     output: [{ type: "message", role: "assistant", content: [{ type: "output_text",
       text: "x402 is an open standard for paying for an API call with a stablecoin over HTTP 402." }] }],
     usage: { input_tokens: 12, output_tokens: 24, total_tokens: 36 }, billing: BILLING_EXAMPLE },
@@ -288,7 +289,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                      ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify(body), signal: AbortSignal.timeout(Math.max(1, started + FORMAT_LIMITS.timeoutMs - Date.now())) });
+          body: JSON.stringify(body), signal: AbortSignal.timeout(Math.max(1, started + FORMAT_LIMITS.timeoutMs - Date.now())) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
         let response = await send();
         // Read for every status: a long request can come back HTTP 200 with an error body.
         let data = await response.json().catch(() => null);
@@ -302,7 +303,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
         if (!response.ok || !data || typeof data !== "object" || data.error || data.type === "error" || data.status === "failed") {
           const code = typeof data?.error?.code === "string" ? data.error.code
             : typeof data?.error?.type === "string" ? data.error.type : "upstream_error";
-          throw new NoAnswer(response.status, code);
+          throw Object.assign(new NoAnswer(response.status, code), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
         }
         if (spentOnReasoning(route, data)) throw new NoAnswer(response.status, "max_tokens_spent_reasoning");
         if (!hasAnswer(route, data)) throw new NoAnswer(response.status, "no_text");

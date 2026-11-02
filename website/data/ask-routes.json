@@ -35,7 +35,7 @@
     {
       "path": "/v1/audio/models",
       "method": "GET",
-      "summary": "List voice models and their prices",
+      "summary": "List speech and transcription models with prices",
       "price": {
         "min": 0,
         "max": 0,

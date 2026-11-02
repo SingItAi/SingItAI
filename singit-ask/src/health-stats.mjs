@@ -191,7 +191,7 @@ export class HealthStats {
   }
   models(hours = 24, unservable = new Map(), suspended = new Map()) {
     const counts = Object.create(null), now = this.now();
-    const active = new Map([...unservable].filter(([, expiry]) => expiry > now));
+    const active = new Map([...unservable].filter(([, value]) => (value?.until ?? value) > now));
     for (const id of suspended.keys()) active.set(id, active.get(id) ?? 0);
     for (const b of this.window(hours)) for (const [id, c] of Object.entries(b.models ?? {})) {
       const t = counts[id] ??= { ok: 0, fail: 0, reasons: {} }; t.ok += c.ok; t.fail += c.fail;
@@ -208,7 +208,7 @@ export class HealthStats {
       .filter(([id], i) => active.has(id) || i < 50)
       .map(([id, c]) => {
         const attempts = c.ok + c.fail, rate = attempts ? c.fail / attempts : 0;
-        const last = this.state.models[id], expiry = active.get(id);
+        const last = this.state.models[id], gate = active.get(id), expiry = gate?.until ?? gate;
         return [id, { status: active.has(id) ? "unavailable" : attempts >= 5 && rate > 0.5 ? "down"
           : (c.r422 >= 3 && c.r422 / (attempts + c.r422) > 0.2) ? "degraded"
           : attempts < 5 ? "insufficient_data" : rate > 0.2 ? "degraded" : "up",
@@ -220,7 +220,7 @@ export class HealthStats {
           lastOutcome: last && (Number.isFinite(last.ok) || Number.isFinite(last.fail)) ? (last.failed ? "failure" : "success") : null,
           sellerFailures: (c.reasons.no_healthy_sellers || 0) + (c.reasons.minimum_discount_not_met || 0),
           failureReasons: Object.fromEntries(Object.entries(c.reasons).filter(([, n]) => n > 0)),
-          reason: Number.isFinite(last?.fail) ? last.lastReason ?? "other" : null,
+          reason: gate?.reason ?? (Number.isFinite(last?.fail) ? last.lastReason ?? "other" : null),
           ...(expiry ? { unavailableUntil: new Date(expiry).toISOString(),
             retryAfterSeconds: Math.max(30, Math.ceil((expiry - now) / 1000)) } : {}) }];
       }));

@@ -102,7 +102,7 @@ export async function chooseModel(config, catalogue, input) {
   const bufferPp = config.priceBufferPp ?? 1;
   if (!input.model || input.model === config.model) {
     const info = catalogue ? await catalogue.resolve(config.model).catch(() => null) : null;
-    if (catalogue?.isUnservable?.(config.model)) {
+    if (catalogue?.isUnservable?.(config.model) || (catalogue?.canAnswer && !await catalogue.canAnswer(config.model))) {
       throw unservableError(catalogue, config.model, RequestError);
     }
     return { ...input, model: config.model, info, isDefault: true,
@@ -196,7 +196,7 @@ const defaultFallbackNote = (config) => {
   if (!pairs.length || config?.defaultFallbacks === false) return "";
   return " Reviewed default fallback, only on POST /v1/chat/completions and only before payment: "
     + pairs.map(([id, ids]) => `a pinned ${id} may be answered by ${ids.join(" or ")}`).join("; ")
-    + ", when the pinned model has no usable seller, quoted at its own ceiling, never above the pinned model's. "
+    + ", when the pinned model has no usable seller, quoted at its own ceiling, never above the pinned model's on any scheme or network, and in the same auto tier when applicable. "
     + "The 402 and the answer carry X-SingIt-Model, X-SingIt-Fallback-From and X-SingIt-Fallback-Policy: default, and the "
     + "answer's model field names the model that answered. Send fallback_models to choose your own list, or the header "
     + "X-SingIt-Fallback: off to stay strictly pinned.";
@@ -623,7 +623,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     // Only models that can be answered now, including the default after a routing rejection.
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
     const answerable = await Promise.all(listed.map((m) => (catalogue.listable ? catalogue.listable(m.id) : catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
-    const models = listed.filter((m, i) => answerable[i] || (m.id === config.model && !catalogue.isUnservable?.(m.id)));
+    const models = listed.filter((m, i) => answerable[i] || catalogue.neverHide?.has(m.id) || m.id === config.model);
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       savings: {
@@ -635,8 +635,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         expectedPrice: "expectedUsdPerMillionTokens.basis: observed = median of what SingIt's own paid answers for this "
           + "model cost against list, last 20; trusted = Surplus's best trusted-seller offer as a share of "
           + "list" },
-      data: [...(catalogue.isUnservable?.(config.model) ? [] :
-        [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model }]),
+      data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
         // Virtual routes have no fixed token rate; priced-model consumers use property presence.
         { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION },
         ...freeListed,
@@ -671,7 +670,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
     const answerable = await Promise.all(listed.map((m) => (catalogue.listable ? catalogue.listable(m.id) : catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
-    const models = listed.filter((m, i) => answerable[i] || (m.id === config.model && !catalogue.isUnservable?.(m.id)));
+    const models = listed.filter((m, i) => answerable[i] || catalogue.neverHide?.has(m.id) || m.id === config.model);
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
     const priced = [];
     for (const m of models) {
@@ -814,7 +813,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                          ...paidErrors({ exactTimeout: 120, exampleMessage: "No audio was made. You were not charged.", exampleCode: "no_billable_answer", notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },
-          "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "List voice models and their prices",
+          "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "List speech and transcription models with prices",
             responses: { 200: { description: "Model list" } }, security: [] } },
           ...(config.videoSold ? {
           [VIDEO_ROUTE]: { post: {
@@ -981,7 +980,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                 lastSuccessAt: { type: ["string", "null"], format: "date-time" },
                 lastFailureAt: { type: ["string", "null"], format: "date-time" },
                 lastOutcome: { enum: ["success", "failure", null] },
-                reason: { enum: ["no_healthy_sellers", "minimum_discount_not_met", "other", null] },
+                reason: { enum: ["no_healthy_sellers", "minimum_discount_not_met", "recent_failures", "other", null] },
                 failureReasons: { type: "object", additionalProperties: false,
                   properties: Object.fromEntries(["no_healthy_sellers", "minimum_discount_not_met", "other"]
                     .map(key => [key, { type: "integer", minimum: 0 }])) },
@@ -1070,7 +1069,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       "## Free", "",
       `- GET ${base}/v1/models — models and their prices`,
       ...(catalogue ? [`- GET ${base}/v1/images/models — image models and their prices`,
-        `- GET ${base}/v1/audio/models — voice models and their prices`] : []),
+        `- GET ${base}/v1/audio/models — speech and transcription models and their prices`] : []),
       ...(priceBook ? [`- GET ${base}/v1/prices — crypto, metal and fx prices, no payment`] : []),
       `- GET ${base}/health — service, model and payment-rail status`,
       `- GET ${base}/numbers.json — measured usage numbers with definitions`, "",

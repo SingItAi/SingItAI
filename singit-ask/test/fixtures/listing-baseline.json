@@ -96,9 +96,9 @@
     "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2497
   },
   "/v1/responses": {
-    "upto:eip155:8453": 4072,
-    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 5072,
-    "exact:eip155:8453": 1927,
-    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2927
+    "upto:eip155:8453": 1500,
+    "upto:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2006,
+    "exact:eip155:8453": 1500,
+    "exact:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 2002
   }
 }

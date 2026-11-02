@@ -207,7 +207,7 @@ test("unavailable entries override rates, include empty models and survive cap",
   let h = healthBody(s, null, "empty", c.unservableSnapshot());
   assert.deepEqual(h.models.empty, { status: "unavailable", windowHours: 24, attempts: 0,
     successes: 0, failures: 0, reasoning422: 0, reasoningRetries: 0, errorRatePct: 0, lastSuccessAt: null, lastFailureAt: null,
-    lastOutcome: null, sellerFailures: 0, failureReasons: {}, reason: null,
+    lastOutcome: null, sellerFailures: 0, failureReasons: {}, reason: "no_healthy_sellers",
     unavailableUntil: new Date(now + 900000).toISOString(), retryAfterSeconds: 900 });
   assert.equal(h.status, "degraded");
   for (let i = 0; i < 60; i++) s.recordModel(`model-${i}`, { ok: true });
