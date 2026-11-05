@@ -225,3 +225,18 @@ If macOS refuses to run scripts or virtualenvs inside `Documents` with
 The observed health and numbers change also touches `website/`, so merging it triggers the site publish.
 The new Ask endpoints require `systemctl --user restart singit-ask` on the deployment to appear.
 This note records the required operation; it does not claim a restart or deployment has been performed.
+
+## API-key readiness monitoring
+
+See [the key-path checker](../scripts/README.md#api-key-path-readiness) for the
+zero-spend probe and opt-in daily workflow. Enable it with a dedicated small-cap
+app key, repository secret `SINGIT_KEY_CHECK_API_KEY`, and repository variable
+`KEY_CHECK_ENABLED=true`. Until enabled the job is skipped. Require seven
+consecutive successful scheduled runs; limited or skipped checks are incomplete,
+never green. Inspect summaries and 30-day report artifacts for failures.
+
+This does not establish that the paid proxy/balance path is enabled. Only the
+owner can verify `SIGN402_WEB_SURPLUS_API_KEY` in the running server environment.
+Free models and the paid fallback refuse tools/functions with guidance to
+`POST https://ask.singitai.app/v1/messages` over x402; the proxy forwards tools
+upstream. The default monitor never tests paid tools.

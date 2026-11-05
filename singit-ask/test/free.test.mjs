@@ -316,7 +316,7 @@ for (const code of ["max_tokens_spent_reasoning", "no_text"]) {
 }
 
 
-test("all 22 directory descriptions fit 160 characters and model operations agree", async () => {
+test("all 23 directory descriptions fit 160 characters and model operations agree", async () => {
   const { modelRoutePaths } = await import("../src/model-routes.mjs");
   const { lintChallenge } = await import("../../scripts/bazaar-lint.mjs");
   const app = createApp(CONFIG, { facilitatorClient: facilitator(), log: () => {}, exaKey: "exa_test",
@@ -325,7 +325,7 @@ test("all 22 directory descriptions fit 160 characters and model operations agre
     fetchImpl: async () => { throw new Error("no upstream calls"); } });
   const routes = [ROUTE, "/v1/messages", "/v1/responses", "/v1/images/generations", "/v1/audio/speech",
     "/v1/exa/search", "/v1/exa/contents", "/v1/exa/answer", ...modelRoutePaths()];
-  assert.equal(routes.length, 22);
+  assert.equal(routes.length, 23);
   const doc = (await request(app, "/openapi.json")).body;
   for (const route of routes) {
     const result = await request(app, route, { headers: { "x-forwarded-proto": "https" } });
@@ -355,6 +355,12 @@ test("agent intro and model selection guidance follow the free offer configurati
     assert.ok(limitsLine.includes("On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated."));
     assert.doesNotMatch(limitsLine, new RegExp('cheap' + '(er|est)', 'i'));
     for (const [count] of text.matchAll(/\b\d+\+? models\b/g)) assert.equal(count, '200+ models');
+    const section = text.split("## Spending limits\n")[1]?.split("\n## ")[0];
+    assert.ok(section, "llms.txt has a Spending limits section");
+    assert.match(section, /nothing is charged without an answer/i);
+    assert.match(section, /maxPerCallUsd and maxPerDayUsd .*required.*your own process.*client-side/s);
+    assert.match(section, /API key, the owner sets the key's limits.*server enforces them/s);
+    assert.doesNotMatch(section, /on-?chain/i);
     assert.match(text, /Start here: POST http:\/\/ask.test\/v1\/chat\/completions/);
     assert.equal(text.includes("Free first call, no wallet: model free/deepseek-v4.1-flash."), freeModels.length > 0);
     assert.equal(text.includes("Each free answer reports billing.remainingToday; when used up, drop the free/ prefix to pay, or come back tomorrow."), freeModels.length > 0);

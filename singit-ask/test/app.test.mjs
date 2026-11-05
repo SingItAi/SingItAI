@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { request as httpRequest } from "node:http";
 import { BASE, SOLANA, ROUTE, LIMITS, RequestError, UpstreamError, chooseModel, readRequest, askSurplus, createApp, REASONING_OFF } from "../src/app.mjs";
+import { AGENT_LIMITS } from "../src/limits.mjs";
 import { FORMAT_ROUTES } from "../src/formats.mjs";
 import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage } from "../src/pricing.mjs";
 import { ModelCatalogue, UnknownModel, priceGuard } from "../src/catalogue.mjs";
@@ -242,8 +243,8 @@ test("the listing tells agents what to send and what comes back, within Coinbase
   assert.match(required.resource.description, /^OpenAI-compatible chat API/);
   const bazaar = required.extensions.bazaar;
   const body = bazaar.schema.properties.input.properties.body;
-  assert.deepEqual(body.properties.messages.items.properties.role.enum, ["system", "user", "assistant"]);
-  assert.equal(body.properties.max_tokens.maximum, LIMITS.maxTokens);
+  assert.deepEqual(body.properties.messages.items.properties.role.enum, ["system", "developer", "user", "assistant", "tool"]);
+  assert.equal(body.properties.max_tokens.maximum, AGENT_LIMITS.maxTokens);
   // The declared example must satisfy the declared schema, or the Bazaar rejects the listing.
   const example = bazaar.info.input.body;
   assert.ok(example.messages.length >= body.properties.messages.minItems);
@@ -329,19 +330,19 @@ test("the OpenAPI document guides agents and names a contact, for x402scan", asy
   assert.deepEqual(doc.info.contact, { name: "SingIt", email: "contact@singitai.app", url: "https://singitai.app" });
 });
 
-test("/.well-known/x402 points to the paid route at its public URL", async (t) => {
-  const { url } = await serve(t);
-  const response = await new Promise((resolve, reject) => {
-    const req = httpRequest(`${url}/.well-known/x402`, { headers: { Host: "ask.singitai.app", "X-Forwarded-Proto": "https" } },
-      (res) => { let body = ""; res.on("data", (c) => { body += c; }); res.on("end", () => resolve({ status: res.statusCode, body })); res.on("error", reject); });
-    req.on("error", reject);
-    req.end();
-  });
-  assert.equal(response.status, 200);
-  const doc = JSON.parse(response.body);
+test("/.well-known/x402 points to the paid route at its public URL", async () => {
+  const app = createApp(CONFIG, { facilitatorClient: fakeFacilitator(), catalogue: fakeCatalogue,
+    fetchImpl: () => { throw new Error('discovery must not call upstream'); }, log: () => {} });
+  let doc;
+  // Invoke with the public protocol/host Express obtains behind the trusted proxy.
+  await app.router.stack.find(l => l.route?.path === '/.well-known/x402').route.stack.at(-1)
+    .handle({ protocol: 'https', get: name => name === 'host' ? 'ask.singitai.app' : undefined },
+      { json(value) { doc = value; } });
   assert.equal(doc.version, 1);
   assert.deepEqual(doc.resources, ["https://ask.singitai.app/v1/chat/completions",
                                    "https://ask.singitai.app/v1/messages", "https://ask.singitai.app/v1/responses",
+                                   "https://ask.singitai.app/v1/images/edits", "https://ask.singitai.app/v1/images/image2image",
+                                   "https://ask.singitai.app/v1/embeddings",
                                    "https://ask.singitai.app/v1/images/generations", "https://ask.singitai.app/v1/audio/speech",
                                    // no video: unlisted while SINGIT_ASK_VIDEO_DISCOVERABLE is off
                                    ...modelRoutePaths().map((route) => `https://ask.singitai.app${route}`)]);
@@ -459,7 +460,7 @@ test("readRequest keeps the question within what one answer pays for", () => {
   assert.equal(readRequest({ ...QUESTION, max_tokens: -5 }).maxTokens, LIMITS.defaultTokens);
   assert.throws(() => readRequest(null), RequestError);
   assert.throws(() => readRequest({ messages: [] }), RequestError);
-  assert.throws(() => readRequest({ ...QUESTION, stream: true }), RequestError);
+  assert.throws(() => readRequest({ ...QUESTION, stream: "invalid" }), RequestError);
   assert.throws(() => readRequest({ messages: [{ role: "user", content: 5 }] }), RequestError);
   assert.throws(() => readRequest({ messages: [{ role: "user", content: "x".repeat(LIMITS.chars + 1) }] }), RequestError);
   assert.throws(() => readRequest({ messages: Array(LIMITS.messages + 1).fill({ role: "user", content: "x" }) }), RequestError);

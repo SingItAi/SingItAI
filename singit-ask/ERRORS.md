@@ -1,9 +1,14 @@
 # Ask API errors
 
-JSON errors retain their existing status, message, type and envelope. OpenAI-compatible routes add `error.code`; Anthropic Messages also puts the code inside `error`. Errors with a string `error` retain that string and add a top-level `code`. Clients should handle unknown codes for forward compatibility.
+JSON errors retain their existing status, message, type and envelope. OpenAI-compatible routes add `error.code`; Anthropic Messages also puts the code inside `error`. Errors with a string `error` retain that string and add a top-level `code`. Clients should handle unknown codes for forward compatibility. With stream:true, errors remain JSON (never partial SSE). Invalid stream values or stream_options return 400 invalid_request before payment; stream_options accepts only include_usage:boolean and requires stream:true.
 
 | Code | Meaning |
 | --- | --- |
+| `tools_unsupported` | This route does not support tools. |
+| `content_blocks_unsupported` | This route does not support content blocks. |
+| `tools_unsupported_for_model` | The selected model does not support tools. |
+| `images_unsupported_for_model` | The selected model does not support image inputs. |
+| `upstream_rejected_request` | The upstream provider rejected the request. |
 | `invalid_json` | Request body is unreadable JSON. |
 | `invalid_request` | Request fields cannot be accepted, including fallback_models unless it is an array of 1–3 unique nonempty model ids excluding the pinned model and singit/auto. |
 | `payload_too_large` | Request exceeds the 128 kB JSON limit. |
@@ -11,6 +16,11 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 | `not_found` | Route or price symbol is unavailable. |
 | `payment_required` | Payment challenge; select an offer and retry with a signature. |
 | `stale_payment_permit` | Payment permit is stale; obtain a fresh challenge. |
+| `payment_unfunded` | Fund the wallet and its token account. Nothing was charged for this request. |
+| `payment_blockhash_stale` | On Solana, sign again with a fresh blockhash. Nothing was charged for this request. |
+| `payment_replay` | Check the previous result before paying again. Nothing was charged for this request. |
+| `payment_invalid` | Fix the payment before retrying. Nothing was charged for this request. |
+| `permit2_allowance_required` | An `upto` payment on Base carried no EIP-2612 permit and the payer's USDC allowance to Permit2 is below the signed ceiling. Nothing was charged and no model ran: add a permit (or approve Permit2 for at least the ceiling) and retry. |
 | `payment_duplicate` | Payment signature was already used. |
 | `rate_limited` | Request allowance exhausted. |
 | `free_tier_exhausted` | Visitor allowance or shared daily answer allowance exhausted. |
@@ -30,7 +40,7 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 
 Existing route-specific codes remain unchanged. Error schema examples list the common vocabulary without restricting future or existing provider-specific values.
 
-Solana verification failures mentioning `InvalidAccountData` retain the original facilitator code prefix in the 402 `error` and explain that the payer must fund their wallet with USDC on Solana mainnet to create its token account, then pay from the wallet that owns it.
+Solana verification failures mentioning `InvalidAccountData` retain the original facilitator code prefix in the 402 `error` and explain that the payer must fund their wallet with USDC on Solana mainnet to create its token account, then pay from the wallet that owns it. They also carry the code `payment_unfunded`.
 
 The OpenAPI document carries error response examples, daily and busy rate-limit header examples, and a synthetic per-model health example generated from HealthStats in tests. Payment challenges use route-specific examples: chat shows Base upto and exact offers (Solana follows each Base offer in the full challenge); Exa, images and speech show exact offers on both networks. The 503 examples use the corresponding handler messages and codes, and the 413 example matches the JSON parser response.
 
@@ -40,7 +50,7 @@ An OpenAI-compatible error looks like:
 {"error":{"type":"invalid_request_error","message":"Send valid JSON.","code":"invalid_json"}}
 ```
 
-The 402 challenge body contains `x402Version`, `accepts`, `error: "payment_required"` and `code: "payment_required"`. `x402Version` and `accepts` exactly match the decoded `PAYMENT-REQUIRED` header, whose bytes remain unchanged. Existing spend-limit metadata remains available. When a payment was submitted but could not be settled, the 402 has no `PAYMENT-REQUIRED` header and its body is only `{"error":"payment_required","code":"payment_required"}`. `x402Version` and `accepts` are optional in the schema: present for a payment challenge and absent for this settlement failure. A payment refusal without a challenge header retains its existing error and adds its code; it does not invent offers.
+The 402 challenge body contains `x402Version`, `accepts`, `error: "payment_required"` and `code: "payment_required"`. `x402Version` and `accepts` exactly match the decoded `PAYMENT-REQUIRED` header, whose bytes remain unchanged. Existing spend-limit metadata remains available. When a payment was submitted but could not be settled, the 402 has no `PAYMENT-REQUIRED` header and its body includes error, the refusal code, action and message. `x402Version` and `accepts` are optional in the schema: present for a payment challenge and absent for this settlement failure. A payment refusal without a challenge header retains its existing error and adds its code; it does not invent offers.
 
 429 responses retain `Retry-After` in seconds. Exhausted free daily allowances add `X-RateLimit-Limit` (configured per-visitor daily allowance), `X-RateLimit-Remaining: 0` (no free requests currently available), and `X-RateLimit-Reset` (Unix seconds at the next UTC midnight). `free_budget_exhausted` includes only `Retry-After` until midnight UTC, without per-visitor X-RateLimit headers. Busy responses include only `Retry-After: 5`; a daily allowance cannot describe the concurrency limit.
 
@@ -53,3 +63,16 @@ attempts, successes or failures, and leaves the last outcome unchanged. Successf
 as success and once as retry. Three or more reasoning 422s with
 `reasoning422 / (attempts + reasoning422) > 0.2` make a model at least degraded; down and unavailable
 statuses are preserved. Persisted files without the new counters remain readable.
+
+## Payment refusal codes
+
+Refused payments keep error: "payment_required" and add a specific code, action and safe message, also exposed in X-SingIt-Error. Nothing was charged for this request, on Base or Solana: the x402 middleware holds the answer until settlement succeeds. Clients should treat payment_duplicate and payment_replay as the same condition.
+
+| Code | Action | What to do | Charged? |
+| --- | --- | --- | --- |
+| `payment_unfunded` | `fund_wallet` | Fund the wallet and its token account. | Nothing was charged for this request. |
+| `payment_blockhash_stale` | `sign_again` | On Solana, sign again with a fresh blockhash. | Nothing was charged for this request. |
+| `payment_replay` | `check_previous_result` | Check the previous result before paying again. | Nothing was charged for this request. |
+| `payment_invalid` | `fix_payment` | Fix the payment before retrying. | Nothing was charged for this request. |
+
+Limits of the classification: a refusal is coded only when the facilitator reports it (verification refusal, or a settlement failure with a reason). A settlement that may have reached the chain (transaction hash present, pending, timeout, transport error) keeps the plain `payment_required` answer without an action, because it cannot be said that nothing was charged. A payment rejected before verification (malformed `PAYMENT-SIGNATURE`, or one that does not match an offer) also keeps the plain `payment_required` challenge.

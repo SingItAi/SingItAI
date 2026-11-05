@@ -1,3 +1,5 @@
+import { routeCopy } from "./listing-snapshot.mjs";
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt images: an image from any of Surplus's image models, sold over x402 at the model's list price + 30% + the
 // network's settlement fee, and bought on Surplus with this service's own key, like the answers.
 //
@@ -76,7 +78,7 @@ export function imagePrice(listAtomic, network) {
 }
 
 // Keep discovery descriptions within 160 characters, capability first (see app.mjs).
-const DESCRIPTION = "Text-to-image API (Nano Banana, GPT Image, Flux, Seedream and more), OpenAI images format. Pay per image in USDC on Base or Solana, no key.";
+const DESCRIPTION = routeCopy("/v1/images/generations").description;
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["venice-seedream-v5-lite"], description: "An image model id from GET /v1/images/models." },
@@ -108,10 +110,11 @@ const OUTPUT_SCHEMA = { type: "object", required: ["data", "billing"], propertie
 const EXAMPLE = Object.freeze({ model: "venice-seedream-v5-lite", prompt: "a small green robot holding a coin, flat illustration",
   n: 1, size: "1024x1024" });
 
-export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
+export function addImageRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
+  attachPaymentFailureCodes(server);
   const priced = new WeakMap();   // parsed body -> { request, listAtomic }
   const used = new Map();         // payment signature digest -> when
   const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");
@@ -121,10 +124,10 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
     const models = await catalogue.imageModels().catch(() => new Map());
     res.json({ object: "list", endpoint: IMAGE_ROUTE, fees: { markupPct: IMAGE_TERMS.markupBps / 100,
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
-      data: [...models.values()].map((m) => {
+      data: [...models.values(), ...((await catalogue.editModels?.().catch(() => new Map()))?.values() ?? [])].map((m) => {
         const list = imageListAtomic(m, { prompt: "", n: 1, size: m.sizes?.includes("1024x1024") || !m.sizes ? "1024x1024" : m.sizes[0] });
         return { id: m.id, object: "model", name: m.name, owned_by: m.provider || "surplus", metering: m.metering,
-          sizes: m.sizes, listUsdPerImage: list / 1e6, singitUsdPerImage: Number(imagePrice(list, BASE).totalAtomic) / 1e6 };
+          edits: m.id.endsWith("-edit"), sizes: m.sizes, listUsdPerImage: list / 1e6, singitUsdPerImage: Number(imagePrice(list, BASE).totalAtomic) / 1e6 };
       }).sort((a, b) => a.singitUsdPerImage - b.singitUsdPerImage) });
   });
 
@@ -169,12 +172,12 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 180, price: price(SOLANA) },
     ],
     mimeType: "application/json", description: DESCRIPTION, serviceName: SERVICE_NAMES[IMAGE_ROUTE], iconUrl: ICON_URL,
-    tags: discoveryTags("image-generation", "text-to-image", "image", "openai-compatible", "flux", "pay-per-use", "solana",
+    tags: discoveryTags(...routeCopy("/v1/images/generations").tags, "image-generation", "text-to-image", "image", "openai-compatible", "flux", "pay-per-use", "solana",
                         "base", "singit"),
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
-  } }, server, { log });
+  } }, server, { log, publicClient });
   app.post(IMAGE_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;

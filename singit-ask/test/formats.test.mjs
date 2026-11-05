@@ -138,7 +138,7 @@ test("no billable answer, no charge", async (t) => {
 
 test("what is not sold is refused before any payment is asked", async (t) => {
   const { url, surplus } = await serve(t);
-  for (const [path, body, status] of [["/v1/messages", { ...MESSAGE, stream: true }, 400],
+  for (const [path, body, status] of [["/v1/messages", { ...MESSAGE, stream: "invalid" }, 400],
     ["/v1/messages", { ...MESSAGE, max_tokens: undefined }, 400], ["/v1/messages", { ...MESSAGE, model: "nope" }, 404],
     ["/v1/messages", { ...MESSAGE, messages: [] }, 400], ["/v1/responses", { model: "gpt-5.5" }, 400],
     ["/v1/responses", { ...RESPONSE, input: "x".repeat(FORMAT_LIMITS.chars + 1) }, 400]]) {

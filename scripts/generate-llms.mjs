@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { breakdown } from './generate-catalog-page.mjs';
+const catalog = JSON.parse(readFileSync(new URL('../website/data/catalog-snapshot.json', import.meta.url), 'utf8'));
 // Dependency-free: website CI runs on a clean Node checkout without npm install.
 import { limits } from './templates/spending-limits.mjs';
 import { DEFAULT_FREE_MODELS, FREE_DEFAULTS } from '../singit-ask/src/free.mjs';
@@ -12,6 +15,8 @@ export const tasks = [
   ['Anthropic Messages', 'POST', ['/v1/messages']],
   ['OpenAI Responses', 'POST', ['/v1/responses']],
   ['Per-model chat routes', 'POST', ['/v1/chat/{model}']],
+  ['Image edits (JSON data URIs)', 'POST', ['/v1/images/edits', '/v1/images/image2image']],
+  ['Embeddings (exact input estimate)', 'POST', ['/v1/embeddings']],
   ['Image generation', 'POST', ['/v1/images/generations']],
   ['Speech', 'POST', ['/v1/audio/speech']],
   ['Exa web search', 'POST', ['/v1/exa/search']],
@@ -47,9 +52,12 @@ export function renderLlms(text, s, routes, format) {
   const money = renderMoney(s, format);
   text = replaceBlock(text, 'ask-guide', table + '\n\n' + money);
   text = replaceBlock(text, 'model-pages', renderModelLinks());
+  if (Buffer.byteLength(text) > 14000) throw new Error('llms.txt exceeds 14000 bytes');
   const models = renderModelList(s, format);
   const body = text.replace(/^<!-- generated:[^\n]+ -->\n/gm, '');
-  return new Map([['llms.txt', text], ['llms-models.txt', models], ['llms-full.txt', body.trimEnd() + '\n\n' + models.replace(/^# SingIt model pages/, '## Model pages with prices')]]);
+
+  const audioDraft = 'Draft Ask audio: POST /v1/audio/sound-effects and /v1/audio/generations return audio bytes after bounded server-side generation; Base-only exact USDC (Solana refused; disabled until credit, route and pricing readiness are confirmed), model capabilities and flat prices at GET /v1/audio/generation-models. Not yet published.';
+  return new Map([['llms.txt', text], ['llms-models.txt', models], ['llms-full.txt', body.trimEnd() + '\n\n' + models.replace(/^# SingIt model pages/, '## Model pages with prices').trimEnd() + '\n\n' + audioDraft + '\n']]);
 }
 
 export function renderModelList(s, format) {
@@ -61,29 +69,64 @@ export function renderModelList(s, format) {
 export function renderModelLinks() {
   const links = [
     ['Privacy policy', 'https://singitai.app/privacy/'],
+    ['Terms of service', 'https://singitai.app/terms/'],
     ['Data deletion', 'https://singitai.app/data-deletion/'],
     ['Model pages with prices', 'https://ask.singitai.app/llms-models.txt'],
     ['All model pages', 'https://singitai.app/models/all/'],
-    ['Live models', 'https://ask.singitai.app/v1/models'],
+    ['Live catalog (all modalities)', 'https://ask.singitai.app/v1/catalog'],
     ['Live reference prices', 'https://ask.singitai.app/pricing.json'],
     ...limits.map(p => [p.title.replace(' | SingIt', ''), `https://singitai.app/${p.slug}/`]),
   ];
-  return '## Models\n\n' + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');
-}
+  // Compact: snapshot counts here; full route DESCRIPTION lives on Ask discovery (D2).
+  return '## Models\n\nSnapshot: ' + breakdown(catalog)
+    + (catalog.coverage ? ' (partial offline snapshot).' : '.') + '\n\n'
+    + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');}
 
 export function renderMoney(s, format) {
   const fees = ['base', 'solana'].map(n => format(s.fees.perAnswerUsd[s.networks[n].chain]));
   return `## Money rules for agents
 
-Call without payment: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). Decode that header, sign one offer, and retry the same request with PAYMENT-SIGNATURE. Success is HTTP 200 with PAYMENT-RESPONSE.
+Unpaid calls: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). Decode it, sign one offer, retry the same request with PAYMENT-SIGNATURE. Success: HTTP 200 with PAYMENT-RESPONSE.
 
-\`upto\` is listed first: pay the actual cost up to the signed ceiling. \`exact\` is a flat price for a typical-length answer (about 30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Do not sign above your budget.
+\`upto\` is listed first: pay the actual cost up to the signed ceiling. \`exact\` is priced for a typical answer (~30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Never sign above budget.
 
-LLM, image and speech charges are model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup, plus a flat settlement fee of $0.001 on both Base and Solana. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
+LLM/image/speech: model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Base and Solana share API URLs. Exa: own price, no markup, plus settlement fee of $0.001 on both Base and Solana. Route ranges are USDC; the request's 402 offer is authoritative.
 
-Charged only when a billable answer came back: an upstream 503 never charges. Do not retry a 400/413/422 on another model; fix the request. A 409 means this payment signature was already used. For 503, wait for Retry-After where supplied. A 429 on the free tier means wait for Retry-After.
+Only billable answers charge; upstream 503s never charge. For 400/413/422, fix the request; do not switch models. 409: payment signature already used. For 503, wait Retry-After if supplied; for free-tier 429, wait Retry-After.
 
-Free tier: ${DEFAULT_FREE_MODELS.length} free models, up to ${FREE_DEFAULTS.perVisitorPerDay} answers a day per network, with a shared daily cost cap of $${FREE_DEFAULTS.budgetUsdPerDay}. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
+Free tier: ${DEFAULT_FREE_MODELS.length} free models, ${FREE_DEFAULTS.perVisitorPerDay} answers/day/network, shared daily cost cap $${FREE_DEFAULTS.budgetUsdPerDay}. The shared cap may run out (free_budget_exhausted); resets at midnight UTC. No wallet or key required. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
+
+Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools included; 8000 per image), 64 tools/calls, four images, max_tokens 8192 (default 800), 128 kB JSON body. Model capabilities constrain tools/images. Messages/Responses support tools and 32000 output tokens.
+
+Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
+
+/numbers.json agent_traffic: 24h/7d paid/free with_tools/stream/images; fixed by_source. No raw headers/prompts/addresses.
 
 Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Per-model reference prices are in the full models list, with upto before exact.`;
 }
+
+// Regenerate only the LLM references from committed snapshots; no network access.
+async function runCli() {
+  if (!process.argv[1]) return;
+  const { pathToFileURL } = await import('node:url');
+  const { resolve } = await import('node:path');
+  if (import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+    if (process.argv.slice(2).some(arg => arg !== '--check')) throw new Error('Usage: generate-llms.mjs [--check]');
+    const { readFile, writeFile } = await import('node:fs/promises');
+    const { price, visibleSnapshot } = await import('./generate-model-pages.mjs');
+    const website = new URL('../website/', import.meta.url);
+    const read = name => readFile(new URL(name, website), 'utf8');
+    const snapshot = JSON.parse(await read('data/models-snapshot.json'));
+    const hidden = JSON.parse(await readFile(new URL('./hidden-models.json', import.meta.url), 'utf8'));
+    const routes = JSON.parse(await read('data/ask-routes.json'));
+    const stale = [];
+    for (const [name, content] of renderLlms(await read('llms.txt'), visibleSnapshot(snapshot, hidden), routes, price)) {
+      if (await read(name) === content) continue;
+      stale.push(name);
+      if (!process.argv.includes('--check')) await writeFile(new URL(name, website), content);
+    }
+    if (process.argv.includes('--check') && stale.length) throw new Error(`Generated files differ: ${stale.join(', ')}`);
+  }
+}
+
+runCli().catch(error => { console.error(error.message); process.exitCode = 1; });

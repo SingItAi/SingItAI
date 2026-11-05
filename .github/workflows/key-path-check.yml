@@ -1,0 +1,41 @@
+# Owner: create an app API key with small caps, add the repository secret
+# SINGIT_KEY_CHECK_API_KEY, then set repository variable KEY_CHECK_ENABLED=true.
+# Readiness requires 7 consecutive successful daily scheduled runs.
+name: Key path readiness
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 5 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  key-path-check:
+    if: ${{ vars.KEY_CHECK_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Zero-spend key path check
+        env:
+          SINGIT_KEY_CHECK_API_KEY: ${{ secrets.SINGIT_KEY_CHECK_API_KEY }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/singit-key-path-check.py --report --write key-path-report.json > key-path-summary.md 2>&1
+          status=$?
+          cat key-path-summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: key-path-check
+          path: |
+            key-path-report.json
+            key-path-summary.md
+          retention-days: 30

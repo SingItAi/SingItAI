@@ -1,10 +1,12 @@
+import { PAYMENT_ERROR_CODES, ACTIONS } from "./payment-codes.mjs";
 export const MAX_TOKENS_TOO_SMALL = "This model spent the whole max_tokens budget reasoning and wrote no answer. Raise max_tokens (for reasoning models try 1000 or more; on /v1/responses use max_output_tokens). You were not charged.";
 
 // Additive error metadata shared by all Ask routes. Never replace a supplied code.
 export const ERROR_CODES = Object.freeze([
+  "tools_unsupported", "content_blocks_unsupported", "tools_unsupported_for_model", "images_unsupported_for_model", "upstream_rejected_request",
   "invalid_json", "invalid_request", "payload_too_large", "model_not_found", "not_found",
   "rate_limited", "free_tier_exhausted", "free_budget_exhausted", "free_tier_busy", "payment_required",
-  "payment_duplicate", "stale_payment_permit", "no_billable_answer", "no_healthy_sellers", "max_tokens_too_small",
+  ...PAYMENT_ERROR_CODES, "payment_duplicate", "stale_payment_permit", "permit2_allowance_required", "no_billable_answer", "no_healthy_sellers", "max_tokens_too_small",
   "upstream_unavailable", "unauthorized", "forbidden", "internal_error",
   "invalid_identity", "request_changed", "already_prepared", "previous_quote_pending", "unknown_model",
   "already_paid", "already_submitted", "quote_unavailable", "invalid_payment", "terms_changed",
@@ -41,7 +43,8 @@ export const ERROR_SCHEMAS = {
   PaymentRequired402: { type: "object", required: ["error", "code"], properties: {
     x402Version: { type: "integer", description: "Present when the 402 is a payment challenge; equals x402Version in the decoded PAYMENT-REQUIRED header. Absent when a payment was submitted but could not be settled." },
     accepts: { type: "array", description: "Present when the 402 is a payment challenge; equals accepts in the decoded PAYMENT-REQUIRED header. Absent when a payment was submitted but could not be settled.", items: { type: "object", additionalProperties: true } },
-    error: { type: "string" }, code: { const: "payment_required" },
+    error: { type: "string" }, code: { enum: ["payment_required", ...PAYMENT_ERROR_CODES] },
+    action: { enum: Object.values(ACTIONS) }, message: { type: "string" },
   } },
   RateLimited429: { $ref: "#/components/schemas/ErrorResponse" },
 };

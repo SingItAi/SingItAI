@@ -1,3 +1,4 @@
+import { routeCopy } from "./listing-snapshot.mjs";
 import { errorRef } from "./errors.mjs";
 // SI-62: one x402 resource per popular model, `/v1/chat/<model>`, so a Bazaar search for a model name ("claude
 // opus 5.5") finds a dedicated SingIt Ask listing with that model's own description and price, instead of only
@@ -14,7 +15,8 @@ import { unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, ICON_URL, ceilingAtomic, discoveryTags, modelServiceName, usd } from "./pricing.mjs";
 
-// The id is Surplus's own model id (catalogue.mjs's ModelCatalogue.resolve), and must be URL-safe: it becomes
+// Public ids resolve through the catalogue; model-aliases.mjs maps any upstream difference.
+// Each id must be URL-safe: it becomes
 // `/v1/chat/<id>` verbatim (see test/model-routes.test.mjs's id-shape assertion). None of these may ever be
 // "completions": that id would collide with /v1/chat/completions itself.
 export const MODEL_ROUTES = [
@@ -46,6 +48,8 @@ export const MODEL_ROUTES = [
     blurb: "Alibaba's largest Qwen 3.8 model: coding and reasoning tasks" },
   { id: "glm-5.3", name: "GLM 5.3", provider: "Zhipu AI", family: ["glm"],
     blurb: "Zhipu AI's GLM 5.3 model: general-purpose chat and reasoning" },
+  { id: "nemotron-3.5-lightning", name: "NVIDIA Nemotron 3.5 Lightning", provider: "NVIDIA", family: ["nemotron"],
+    blurb: "NVIDIA's fast 30B mixture-of-experts model: long-context coding and agentic tasks" },
 ];
 
 const ID_SHAPE = /^[a-z0-9.-]+$/;
@@ -81,10 +85,9 @@ export async function chooseModelRoute(catalogue, id, bufferPp, input) {
   return { ...input, model: id, info, isDefault: false, ...priceGuard(catalogue, info.id, bufferPp) };
 }
 
-// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
+// Keep discovery descriptions within 500 characters, capability first (see app.mjs).
 export function discoveryDescription(model) {
-  return `Chat completions API for ${model.name} (${model.provider}), OpenAI-compatible. `
-    + "Pay per call in USDC on Base or Solana, no key; you sign a price cap.";
+  return routeCopy(routePath(model.id)).description;
 }
 
 const providerTag = (provider) => provider.toLowerCase().replace(/\s+/g, "");
@@ -132,7 +135,7 @@ const modelInputSchema = (schema, config = {}) => ({ ...schema, description: pro
         + "The price cap you sign grows with it (the 402 states the exact amount for your request); the charge follows what was used." }])),
 });
 
-export function addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest, upstream, fetchImpl, log,
+export function addModelRoutes(app, config, { facilitatorClient, publicClient, catalogue, readRequest, upstream, fetchImpl, log,
                                               inputSchema, outputSchema, exampleOutput }) {
   const bufferPp = config.priceBufferPp ?? 1;
   inputSchema = modelInputSchema(inputSchema, config);
@@ -157,7 +160,7 @@ export function addModelRoutes(app, config, { facilitatorClient, catalogue, read
     }, {
       facilitatorClient, catalogue, config, readRequest,
       choose: (input) => chooseModelRoute(catalogue, model.id, bufferPp, input),
-      upstream, fetchImpl, log,
+      upstream, fetchImpl, log, publicClient,
       offerEmptyProbe: true,
       probeBody: modelExample(model),
     });
@@ -177,7 +180,7 @@ export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, 
         schema: { type: "object", ...inputSchema }, example: modelExample(model) } } },
       responses: {
         200: { description: "The answer, with what it was charged",
-               content: { "application/json": { schema: outputSchema, example: exampleOutput } } },
+               content: { "application/json": { schema: outputSchema, example: exampleOutput }, "text/event-stream": { schema: { type: "string" }, description: "Complete buffered chat SSE after settlement, ending with [DONE]." } } },
         400: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "model does not match this route's model, or the question cannot be answered; nothing was charged" },
         402: { content: { "application/json": { schema: errorRef("PaymentRequired402") } }, description: "Payment Required: x402 challenge in the PAYMENT-REQUIRED header" },
         404: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "This model is not available; nothing was charged" },

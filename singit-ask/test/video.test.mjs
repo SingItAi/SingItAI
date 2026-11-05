@@ -106,7 +106,7 @@ test("a clip is offered at its list price + 30% + the fee; nothing is started be
   const unpaid = await post(`${url}${VIDEO_ROUTE}`, VIDEO);
   assert.equal(unpaid.status, 402);
   const required = decode(unpaid.headers.get("payment-required"));
-  assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[BASE, "261000"], [SOLANA, "262000"]]);
+  assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[BASE, "261000"]]);
   assert.ok(required.extensions?.bazaar);
   assert.ok(required.accepts.every((a) => a.maxTimeoutSeconds === 150));
   assert.deepEqual(surplus.calls, []);
@@ -132,7 +132,18 @@ test("a paid clip starts one job, the payer is settled once it succeeds, and get
 test("a job Surplus does not accept costs nothing", async (t) => {
   const { url, facilitator } = await serve(t, { surplus: fakeSurplus({ submitStatus: 402 }) });
   const required = decode((await post(`${url}${VIDEO_ROUTE}`, VIDEO)).headers.get("payment-required"));
-  assert.equal((await post(`${url}${VIDEO_ROUTE}`, VIDEO, pay(required, SOLANA))).status, 503);
+  assert.equal((await post(`${url}${VIDEO_ROUTE}`, VIDEO, pay(required, BASE))).status, 503);
+  assert.deepEqual(facilitator.calls.settle, []);
+});
+
+test("video refuses Solana before starting a job", async (t) => {
+  const { url, surplus, facilitator } = await serve(t);
+  const required = decode((await post(`${url}${VIDEO_ROUTE}`, VIDEO)).headers.get("payment-required"));
+  assert.ok(required.accepts.every((a) => a.network === BASE));
+  // A Solana signature is not among the Base-only accepts; middleware/handler answers 402 and never submits.
+  const refused = await post(`${url}${VIDEO_ROUTE}`, VIDEO, pay(required, SOLANA));
+  assert.equal(refused.status, 402);
+  assert.deepEqual(surplus.calls, []);
   assert.deepEqual(facilitator.calls.settle, []);
 });
 
@@ -189,7 +200,7 @@ test("with videoDiscoverable on, an empty unpaid probe gets the standing offer, 
     const probe = await fetch(`${url}${VIDEO_ROUTE}`, init);
     assert.equal(probe.status, 402, `${init.method} ${init.body ?? ""}`);
     const required = JSON.parse(Buffer.from(probe.headers.get("payment-required"), "base64").toString());
-    assert.deepEqual(required.accepts.map((a) => a.network), [BASE, SOLANA], "exact on Base first");
+    assert.deepEqual(required.accepts.map((a) => a.network), [BASE], "exact on Base only");
     assert.ok(required.extensions?.bazaar);
   }
   assert.ok(JSON.stringify(await (await fetch(`${url}/.well-known/x402`)).json()).includes(VIDEO_ROUTE));
@@ -434,17 +445,15 @@ test("timeout cancels with the job token and never settles", async (t) => {
   assert.deepEqual(service.facilitator.calls.settle, []);
 });
 
-test("Base can serve a 60 second clip while Solana stops at its 35 second window", async (t) => {
-  for (const network of [BASE, SOLANA]) {
-    let time = 0;
-    const service = await serve(t, { config: { ...CONFIG, videoPollMs: 10_000,
-      videoNow: () => time, videoSleep: async (ms) => { time += ms; } },
-      surplus: fakeSurplus({ scripts: [[...Array(5).fill("running"), "succeeded"]] }) });
-    const response = await paidVideo(service, network);
-    assert.equal(response.status, network === BASE ? 200 : 503);
-    assert.equal(time, network === BASE ? 60_000 : 35_000);
-    assert.deepEqual(service.facilitator.calls.settle, network === BASE ? [[BASE, "261000"]] : []);
-  }
+test("Base can serve a 60 second clip within the hold window", async (t) => {
+  let time = 0;
+  const service = await serve(t, { config: { ...CONFIG, videoPollMs: 10_000,
+    videoNow: () => time, videoSleep: async (ms) => { time += ms; } },
+    surplus: fakeSurplus({ scripts: [[...Array(5).fill("running"), "succeeded"]] }) });
+  const response = await paidVideo(service, BASE);
+  assert.equal(response.status, 200);
+  assert.equal(time, 60_000);
+  assert.deepEqual(service.facilitator.calls.settle, [[BASE, "261000"]]);
 });
 
 test("transient thrown and 500 polls can recover without another submission", async (t) => {

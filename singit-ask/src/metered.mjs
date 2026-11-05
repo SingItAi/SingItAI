@@ -1,3 +1,7 @@
+import { LIMITS } from "./limits.mjs";
+import { unsupportedCapability, capabilityError } from "./agent-chat.mjs";
+
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // Pay for actual usage: the payer authorizes a ceiling with x402 `upto`, and CDP settles only what the
 // answer cost, after it came back. A request that ends in 400 or above is never charged.
@@ -76,19 +80,21 @@ export const exactSolanaOffer = (config, quotes, fallback) => ({
 // configured: `upto` still authorizes and settles the full answer regardless). `info` null means no catalogue
 // entry for the model (not on Surplus's list, or not looked up): the old standing ceiling, for both. `input.share`
 // and `input.isDefault` come from `chooseModel`/`priceGuard` (app.mjs, catalogue.mjs), fixed at quote time so the
-// paid call is billed exactly what was quoted; the default model's ceiling is clamped to the standing maximum so
-// nothing is ever authorized above it, same as before this formula existed.
+// paid call is billed exactly what was quoted. Only the legacy default-model envelope keeps the standing clamp;
+// agent conversations and larger output budgets use the full formula.
 //
 // `upto` authorizes with the loosest, one-token-per-character input estimate (see pricing.mjs's `ceilingAtomic`):
 // it only ever settles actual usage, so a higher authorization costs the payer nothing, and a dense prompt (CJK,
 // emoji, ...) can never tokenize to more than it authorized. `exact` is charged flat at the tighter ~4-chars-per-
 // token estimate, since it already absorbs an overrun via `allowOverrun` instead of refusing the answer.
+export const legacyEnvelope = input => input.maxTokens <= LIMITS.maxTokens && input.chars <= LIMITS.chars && !input.flags?.tools && !input.flags?.images;
+
 export function ceilings(info, input, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION) {
   const size = { chars: input.chars, messageCount: input.messageCount };
   const build = (maxTokens, charsPerToken, reserveTokens = null) => Object.fromEntries(Object.entries(TERMS_BY_NETWORK).map(([net, terms]) => {
     if (!info) return [net, terms.maxChargeAtomic];
     const amount = ceilingAtomic(info, { ...size, maxTokens, charsPerToken, reserveTokens }, terms, input.share ?? 1);
-    return [net, input.isDefault && BigInt(amount) > BigInt(terms.maxChargeAtomic) ? terms.maxChargeAtomic : amount];
+    return [net, input.isDefault && legacyEnvelope(input) && BigInt(amount) > BigInt(terms.maxChargeAtomic) ? terms.maxChargeAtomic : amount];
   }));
   return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction), undefined, exactReserveTokens(info?.id, input.maxTokens, info)) };
 }
@@ -163,14 +169,51 @@ function discoveryChallenge(httpServer) {
 // challenge: `routes` is `paymentMiddleware`'s own shape, `{ "POST /the/route": { accepts, mimeType, ... } }`.
 // `discoverable` should mirror whichever check already grants that route's empty-POST probe the same 402 (see
 // `isDiscoveryProbe` above) — a route that does not offer that probe should not advertise itself over GET either.
+const ALLOWANCE_ABI = [{ type: "function", name: "allowance", stateMutability: "view",
+  inputs: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }],
+  outputs: [{ name: "", type: "uint256" }] }];
+const PERMIT2 = "0x000000000022d473030f116ddee9f6b43ac78ba3";
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const allowanceServers = new WeakSet();
+// Buyers echo the server's declared extension (`info: { version }`) back whether or not they signed anything for it,
+// so only a payload that carries the signed material counts as sponsored.
+const signedExtension = (extension, field) => typeof extension?.info?.[field] === "string" && extension.info[field].length > 0;
 const statsServers = new WeakSet(), statsRoutes = new WeakMap();
 export function addPaymentRoute(app, routes, server,
-  { discoverable = true, log = console.log, permitGuard = defaultPermitGuard } = {}) {
+  { discoverable = true, log = console.log, permitGuard = defaultPermitGuard, publicClient, allowanceTimeoutMs = 3_000 } = {}) {
   const paths = statsRoutes.get(server) ?? new Set();
   for (const key of Object.keys(routes)) if (key.startsWith("POST ")) paths.add(key.slice(5));
   statsRoutes.set(server, paths);
   app.locals.paidRoutes ??= new Set();
   for (const path of paths) app.locals.paidRoutes.add(path);
+  if (!allowanceServers.has(server)) {
+    allowanceServers.add(server);
+    server.onBeforeVerify(async ctx => {
+      let timer;
+      try {
+        const { requirements, paymentPayload } = ctx;
+        const authorization = paymentPayload?.payload?.permit2Authorization;
+        const extensions = paymentPayload?.extensions;
+        if (!publicClient || requirements?.scheme !== "upto" ||
+            !/^eip155:[0-9]+$/.test(requirements.network) || !authorization ||
+            signedExtension(extensions?.eip2612GasSponsoring, "signature") || signedExtension(extensions?.erc20ApprovalGasSponsoring, "signedTransaction") ||
+            !ADDRESS.test(authorization.from) || !ADDRESS.test(requirements.asset) ||
+            typeof requirements.amount !== "string" || !/^[0-9]+$/.test(requirements.amount)) return;
+        const allowance = await Promise.race([
+          publicClient.readContract({ address: requirements.asset, abi: ALLOWANCE_ABI, functionName: "allowance",
+            args: [authorization.from, PERMIT2], blockTag: "latest" }),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), allowanceTimeoutMs); }),
+        ]);
+        if (typeof allowance !== "bigint" || allowance < 0n || allowance >= BigInt(requirements.amount)) return;
+        const path = ctx.transportContext?.request?.path;
+        const route = statsRoutes.get(server)?.has(path) ? path : "payment";
+        try { log(`singit-ask: ${route} pre-verify allowance too low network=${requirements.network} scheme=upto amount=${requirements.amount}`); } catch {}
+        return { abort: true, reason: "permit2_allowance_required",
+          message: "Include an EIP-2612 permit or approve Permit2 for at least the ceiling. Nothing was charged." };
+      } catch { /* An unavailable or unreadable allowance leaves verification to the facilitator. */ }
+      finally { clearTimeout(timer); }
+    });
+  }
   if (!statsServers.has(server)) {
     statsServers.add(server);
     const record = ok => ctx => {
@@ -266,7 +309,7 @@ export function perRequest(quote) {
 // `makeOffers(quotes, probeFallback)`: `probeFallback(bucket, network)` is the discovery probes' price for that
 // offer (see `exampleProbe`), present only when `probeBody` is given; without it the probes keep the standing ceiling.
 export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, catalogue, config, readRequest,
-  choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log,
+  choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, publicClient,
   offerEmptyProbe = false, probeBody }) {
   const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose, config,
     exactOutputFraction: config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION });
@@ -276,6 +319,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
     .register(SOLANA, new ExactSvmScheme());
+  attachPaymentFailureCodes(server);
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const answerLog = answerLogFor(config, log);
@@ -296,6 +340,11 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     }
     try {
       req.askInput = await choose(readRequest(req.body), req);
+      // A standing fallback cannot safely price a larger request without model prices.
+      if (req.askInput.request && !legacyEnvelope(req.askInput) && !req.askInput.info)
+        throw Object.assign(new Error("Model prices are unavailable; try again shortly. You were not charged."), { status: 503, code: "quote_unavailable" });
+      const unsupported = unsupportedCapability(req.askInput.info, req.askInput.flags);
+      if (unsupported) throw capabilityError(unsupported, req.askInput.model);
       if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
       if (req.askInput.fallbackFrom) {
         res.set("X-SingIt-Fallback-From", req.askInput.fallbackFrom);
@@ -317,7 +366,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     }
   });
   addPaymentRoute(app, { [`POST ${route}`]: { accepts: offers, mimeType: "application/json", ...details } }, server,
-    { discoverable: offerEmptyProbe, log });
+    { discoverable: offerEmptyProbe, log, publicClient });
   app.post(route, async (req, res) => {
     const started = Date.now();
     try {
@@ -326,13 +375,13 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       const exact = paid.scheme === "exact";
       const deadline = started + 95_000;
       const attempt = input => upstream(config, input.messages, input.maxTokens, fetchImpl, input.model,
-        { minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: true,
+        { ...(input.request ? { agent: input.request } : {}), minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: true,
           timeoutMs: Math.max(1, deadline - Date.now()), deadline });
       let answer;
       try { answer = await attempt(req.askInput); }
       catch (error) {
         const bucket = exact ? "exact" : "upto";
-        const alternate = error.name === "UpstreamError" && error.status >= 400  // refused before any answer; a 200 with no text (no_text, max_tokens_spent_reasoning) may already be billed
+        const alternate = !(req.askInput.request && error.status === 400) && error.name === "UpstreamError" && error.status >= 400  // refused before any answer; a 200 with no text (no_text, max_tokens_spent_reasoning) may already be billed
           && Date.now() < deadline && req.askInput.autoAlternates?.find(candidate =>
             BigInt(ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network]) <= BigInt(paid.terms.maxChargeAtomic));
         if (!alternate) throw error;
@@ -364,9 +413,12 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: req.askInput.fallbackFrom ? req.askInput.model : "singit-ask",
         ...(answer.retried ? { retried: true } : {}),
-        ...(req.askInput.fallbackFrom ? { singit_fallback_from: req.askInput.fallbackFrom } : {}), choices: [{ index: 0, message: { role: "assistant", content: answer.content },
+        ...(req.askInput.fallbackFrom ? { singit_fallback_from: req.askInput.fallbackFrom } : {}), choices: [{ index: 0, message: answer.message?.tool_calls ? answer.message : { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing });
     } catch (error) {
+      if (req.askInput?.request && error.status === 400) return res.status(400).json({ error: {
+        type: "invalid_request_error", code: "upstream_rejected_request",
+        message: "The seller rejected this request (tools, images or length). You were not charged." } });
       markUnservable(catalogue, req.askInput?.model, error, log);
       // Not settled (status >= 400): on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
       // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.

@@ -15,7 +15,7 @@ import { modelRoutePaths } from "../src/model-routes.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
-  model: "deepseek-v4.1-flash", videoSold: true };
+  model: "deepseek-v4.1-flash", videoSold: true, audioSold: true, audioDiscoverable: true, audioGenerationReady: () => true };
 const unknown = () => { throw new UnknownModel("That model is not available."); };
 const never = () => { throw new Error("no upstream in this test"); };
 const catalogue = { async resolve() { never(); }, async canAnswer() { return true; }, async list() { return []; },
@@ -33,7 +33,7 @@ const facilitator = { async getSupported() {
   async verify() { never(); }, async settle() { never(); } };
 
 async function serve(t) {
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue, exaKey: "exa_test_key", fetchImpl: never,
+  const app = createApp({ ...CONFIG, maxEditImageBytes: 1024 }, { facilitatorClient: facilitator, catalogue, exaKey: "exa_test_key", fetchImpl: never,
     exaFetch: never, log: () => {}, upstream: never });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
@@ -44,6 +44,8 @@ async function serve(t) {
 // search.mjs, video.mjs, metered.mjs). 413/400 also cover the body parser.
 const COMMON = [400, 402, 413, 503];
 const EXPECTED = {
+  ...Object.fromEntries(["/v1/audio/sound-effects", "/v1/audio/generations"].map(path => [path, [...COMMON, 409, 422]])),
+  ...Object.fromEntries(["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings"].map(path => [path, [...COMMON, 404, 409, 422]])),
   [ROUTE]: [...COMMON, 422, 429],
   "/v1/messages": [...COMMON, 404, 422],
   "/v1/responses": [...COMMON, 404, 422],

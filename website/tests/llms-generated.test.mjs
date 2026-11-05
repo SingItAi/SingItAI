@@ -37,6 +37,7 @@ test('llms files derive route prices, fees, reference prices and all visible mod
   const full = await read('llms-full.txt');
   const rendered = renderLlms(text, visible, routes, price);
   for (const [name, content] of rendered) assert.equal(await read(name), content, name);
+  assert.ok(text.includes('[Terms of service](https://singitai.app/terms/)'));
   assert.match(text, /^# SingIt\n\n> /);
   assert.ok(Buffer.byteLength(text) < 14000);
   const top = text.indexOf('## I need to... -> Call -> Price');
@@ -113,10 +114,13 @@ test('free list input keeps a positive SingIt output listed', async () => {
   assert.doesNotMatch(text, /Not listed/);
 });
 
-test('200+ claim has at least 200 visible models and agent guides explain routing', async () => {
+test('snapshot breakdown replaces the model count claim and agent guides explain routing', async () => {
   const s = await json('data/models-snapshot.json');
   const hold = JSON.parse(await readFile(new URL('../../scripts/hidden-models.json', import.meta.url), 'utf8'));
-  assert.ok(visibleSnapshot(s, hold).models.length >= 200);
+  const catalog = await json('data/catalog-snapshot.json');
+  const { breakdown } = await import('../../scripts/generate-catalog-page.mjs');
+  assert.equal(catalog.counts.chat, visibleSnapshot(s, hold).models.length + catalog.data.filter(m => m.kind !== 'model' && m.modality === 'chat').length);
+  assert.ok((await read('llms.txt')).includes(breakdown(catalog)));
   for (const file of ['llms.txt', 'SKILL.md', 'llms-full.txt']) {
     const text = await read(file);
     for (const term of ['singit/auto', 'min_tier', 'fallback_models']) assert.ok(text.includes(term), `${file}: ${term}`);
@@ -147,6 +151,6 @@ test('public agent guides explain Solana enforcement and use a consistent model 
     const text = await read(file);
     assert.ok(text.includes("On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated."), file);
     assert.doesNotMatch(text, new RegExp('cheap' + 'er', 'i'), file);
-    for (const [count] of text.matchAll(/\b\d+\+? models\b/g)) assert.equal(count, '200+ models', file);
+    assert.doesNotMatch(text, /200\+ models/, file);
   }
 });

@@ -1,0 +1,7517 @@
+{
+  "fetchedAt": "2026-10-30T19:50:05.166Z",
+  "source": "offline migration from models-snapshot.json and existing search routes",
+  "object": "list",
+  "counts": {
+    "chat": 217,
+    "image": 0,
+    "image_edit": 0,
+    "embeddings": 0,
+    "speech": 0,
+    "transcription": 0,
+    "search": 3
+  },
+  "data": [
+    {
+      "id": "aion-labs-aion-3-0",
+      "name": "Aion 3.0",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3613",
+            "usd": 0.003613
+          },
+          "solana": {
+            "priceAtomic": "4613",
+            "usd": 0.004613
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1788",
+            "usd": 0.001788
+          },
+          "solana": {
+            "ceilingAtomic": "2788",
+            "usd": 0.002788
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "aion-labs-aion-3-0-mini",
+      "name": "Aion 3.0 Mini",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1610",
+            "usd": 0.00161
+          },
+          "solana": {
+            "priceAtomic": "2610",
+            "usd": 0.00261
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2185",
+            "usd": 0.002185
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "aion-labs.aion-2-0",
+      "name": "Aion 2.0",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1697",
+            "usd": 0.001697
+          },
+          "solana": {
+            "priceAtomic": "2697",
+            "usd": 0.002697
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2211",
+            "usd": 0.002211
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "beam-1.0-501b-a23b",
+      "name": "Reflection: Beam 1.0 501B A23B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2327",
+            "usd": 0.002327
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2099",
+            "usd": 0.002099
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-fable-5",
+      "name": "Claude Fable 5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "8867",
+            "usd": 0.008867
+          },
+          "solana": {
+            "priceAtomic": "9867",
+            "usd": 0.009867
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "3364",
+            "usd": 0.003364
+          },
+          "solana": {
+            "ceilingAtomic": "4364",
+            "usd": 0.004364
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-fable-5.1",
+      "name": "Claude Fable 5.1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "27221",
+            "usd": 0.027221
+          },
+          "solana": {
+            "priceAtomic": "28221",
+            "usd": 0.028221
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "8878",
+            "usd": 0.008878
+          },
+          "solana": {
+            "ceilingAtomic": "9878",
+            "usd": 0.009878
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-haiku-4.5",
+      "name": "Claude Haiku 4.5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1631",
+            "usd": 0.001631
+          },
+          "solana": {
+            "priceAtomic": "2631",
+            "usd": 0.002631
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2190",
+            "usd": 0.00219
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-haiku-5.5",
+      "name": "Claude Haiku 5.5",
+      "modality": "chat",
+      "route": "/v1/chat/claude-haiku-5.5",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2080",
+            "usd": 0.00208
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2025",
+            "usd": 0.002025
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-opus-4-8-fast",
+      "name": "Claude Opus 4.8 Fast",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "41906",
+            "usd": 0.041906
+          },
+          "solana": {
+            "priceAtomic": "42906",
+            "usd": 0.042906
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "13291",
+            "usd": 0.013291
+          },
+          "solana": {
+            "ceilingAtomic": "14291",
+            "usd": 0.014291
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-opus-4.5",
+      "name": "Claude Opus 4.5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3624",
+            "usd": 0.003624
+          },
+          "solana": {
+            "priceAtomic": "4624",
+            "usd": 0.004624
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1790",
+            "usd": 0.00179
+          },
+          "solana": {
+            "ceilingAtomic": "2790",
+            "usd": 0.00279
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-opus-4.6",
+      "name": "Claude Opus 4.6",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1526",
+            "usd": 0.001526
+          },
+          "solana": {
+            "priceAtomic": "2526",
+            "usd": 0.002526
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2159",
+            "usd": 0.002159
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-opus-4.7",
+      "name": "Claude Opus 4.7",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2312",
+            "usd": 0.002312
+          },
+          "solana": {
+            "priceAtomic": "3312",
+            "usd": 0.003312
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2396",
+            "usd": 0.002396
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-opus-4.8",
+      "name": "Claude Opus 4.8",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3099",
+            "usd": 0.003099
+          },
+          "solana": {
+            "priceAtomic": "4099",
+            "usd": 0.004099
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1631",
+            "usd": 0.001631
+          },
+          "solana": {
+            "ceilingAtomic": "2631",
+            "usd": 0.002631
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-opus-5",
+      "name": "Claude Opus 5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2312",
+            "usd": 0.002312
+          },
+          "solana": {
+            "priceAtomic": "3312",
+            "usd": 0.003312
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2396",
+            "usd": 0.002396
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-opus-5-fast",
+      "name": "Claude Opus 5 (Fast)",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "28271",
+            "usd": 0.028271
+          },
+          "solana": {
+            "priceAtomic": "29271",
+            "usd": 0.029271
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "9194",
+            "usd": 0.009194
+          },
+          "solana": {
+            "ceilingAtomic": "10194",
+            "usd": 0.010194
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-opus-5.5",
+      "name": "Claude Opus 5.5",
+      "modality": "chat",
+      "route": "/v1/chat/claude-opus-5.5",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "5422",
+            "usd": 0.005422
+          },
+          "solana": {
+            "priceAtomic": "6422",
+            "usd": 0.006422
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2841",
+            "usd": 0.002841
+          },
+          "solana": {
+            "ceilingAtomic": "3841",
+            "usd": 0.003841
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-sonnet-4.5",
+      "name": "Claude Sonnet 4.5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3519",
+            "usd": 0.003519
+          },
+          "solana": {
+            "priceAtomic": "4519",
+            "usd": 0.004519
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1757",
+            "usd": 0.001757
+          },
+          "solana": {
+            "ceilingAtomic": "2757",
+            "usd": 0.002757
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-sonnet-4.6",
+      "name": "Claude Sonnet 4.6",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2316",
+            "usd": 0.002316
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2095",
+            "usd": 0.002095
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-sonnet-5",
+      "name": "Claude Sonnet 5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1735",
+            "usd": 0.001735
+          },
+          "solana": {
+            "priceAtomic": "2735",
+            "usd": 0.002735
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2221",
+            "usd": 0.002221
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "claude-sonnet-5.5",
+      "name": "Claude Sonnet 5.5",
+      "modality": "chat",
+      "route": "/v1/chat/claude-sonnet-5.5",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3728",
+            "usd": 0.003728
+          },
+          "solana": {
+            "priceAtomic": "4728",
+            "usd": 0.004728
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1821",
+            "usd": 0.001821
+          },
+          "solana": {
+            "ceilingAtomic": "2821",
+            "usd": 0.002821
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "command-a-plus",
+      "name": "Cohere: Command A+",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2489",
+            "usd": 0.002489
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2147",
+            "usd": 0.002147
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-r1",
+      "name": "DeepSeek R1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2000",
+            "usd": 0.002
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2000",
+            "usd": 0.002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v3.1",
+      "name": "DeepSeek V3.1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2021",
+            "usd": 0.002021
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2007",
+            "usd": 0.002007
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v3.2",
+      "name": "DeepSeek V3.2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2010",
+            "usd": 0.00201
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2004",
+            "usd": 0.002004
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2032",
+            "usd": 0.002032
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2011",
+            "usd": 0.002011
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v4-flash-0731",
+      "name": "DeepSeek V4 Flash 0731",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2006",
+            "usd": 0.002006
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v4-flash-0731-fast",
+      "name": "DeepSeek V4 Flash 0731 Fast",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1530",
+            "usd": 0.00153
+          },
+          "solana": {
+            "priceAtomic": "2530",
+            "usd": 0.00253
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2160",
+            "usd": 0.00216
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v4-flash-vision-exp",
+      "name": "DeepSeek: DeepSeek V4 Flash Vision Exp",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2281",
+            "usd": 0.002281
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2085",
+            "usd": 0.002085
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "modality": "chat",
+      "route": "/v1/chat/deepseek-v4-pro",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2036",
+            "usd": 0.002036
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2012",
+            "usd": 0.002012
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "name": "DeepSeek V4 Pro 0813",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2168",
+            "usd": 0.002168
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2051",
+            "usd": 0.002051
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/deepseek-v4.1-flash",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2012",
+            "usd": 0.002012
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2004",
+            "usd": 0.002004
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v4.1-flash-1017",
+      "name": "DeepSeek V4.1 Flash 1017",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2051",
+            "usd": 0.002051
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2016",
+            "usd": 0.002016
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "deepseek-v4.1-flash-uncensored",
+      "name": "DeepSeek V4.1 Flash Uncensored",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1523",
+            "usd": 0.001523
+          },
+          "solana": {
+            "priceAtomic": "2523",
+            "usd": 0.002523
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2158",
+            "usd": 0.002158
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "devstral-2-123b",
+      "name": "Devstral 2 123B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2064",
+            "usd": 0.002064
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2020",
+            "usd": 0.00202
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "e2ee-deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash E2EE",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2283",
+            "usd": 0.002283
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2086",
+            "usd": 0.002086
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "e2ee-gemma-4-26b-a4b-uncensored-p",
+      "name": "Gemma 4 26B A4B Uncensored (E2EE)",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1805",
+            "usd": 0.001805
+          },
+          "solana": {
+            "priceAtomic": "2805",
+            "usd": 0.002805
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2242",
+            "usd": 0.002242
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "e2ee-glm-5-2-p",
+      "name": "GLM 5.2 E2EE",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "5302",
+            "usd": 0.005302
+          },
+          "solana": {
+            "priceAtomic": "6302",
+            "usd": 0.006302
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2294",
+            "usd": 0.002294
+          },
+          "solana": {
+            "ceilingAtomic": "3294",
+            "usd": 0.003294
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "e2ee-glm-5.1",
+      "name": "GLM 5.1 E2EE",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2000",
+            "usd": 0.002
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2000",
+            "usd": 0.002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "e2ee-gpt-oss-120b-p",
+      "name": "GPT OSS 120B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1595",
+            "usd": 0.001595
+          },
+          "solana": {
+            "priceAtomic": "2595",
+            "usd": 0.002595
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2180",
+            "usd": 0.00218
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "e2ee-gpt-oss-20b-p",
+      "name": "GPT OSS 20B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2000",
+            "usd": 0.002
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2000",
+            "usd": 0.002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "e2ee-qwen-2-5-7b-p",
+      "name": "Qwen 2.5 7B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2127",
+            "usd": 0.002127
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2038",
+            "usd": 0.002038
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "e2ee-qwen3-6-35b-a3b",
+      "name": "Qwen 3.6 35B A3B (E2EE)",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1878",
+            "usd": 0.001878
+          },
+          "solana": {
+            "priceAtomic": "2878",
+            "usd": 0.002878
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2264",
+            "usd": 0.002264
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "e2ee-qwen3-6-35b-a3b-uncensored-p",
+      "name": "Qwen 3.6 35B A3B Uncensored (E2EE)",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2000",
+            "usd": 0.002
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2000",
+            "usd": 0.002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "ember-1",
+      "name": "Fireworks: Ember-1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "5878",
+            "usd": 0.005878
+          },
+          "solana": {
+            "priceAtomic": "6878",
+            "usd": 0.006878
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2467",
+            "usd": 0.002467
+          },
+          "solana": {
+            "ceilingAtomic": "3467",
+            "usd": 0.003467
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "exa/answer",
+      "name": "exa/answer",
+      "modality": "search",
+      "route": "/v1/exa/answer",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "min": "0.002",
+        "max": "0.051"
+      }
+    },
+    {
+      "id": "exa/contents",
+      "name": "exa/contents",
+      "modality": "search",
+      "route": "/v1/exa/contents",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "min": "0.002",
+        "max": "0.051"
+      }
+    },
+    {
+      "id": "exa/search",
+      "name": "exa/search",
+      "modality": "search",
+      "route": "/v1/exa/search",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "min": "0.002",
+        "max": "0.051"
+      }
+    },
+    {
+      "id": "free/deepseek-v4.1-flash",
+      "name": "free/deepseek-v4.1-flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "free",
+      "networks": [],
+      "kind": "free",
+      "price": {
+        "usd": 0,
+        "limits": {
+          "perVisitorPerDay": 20,
+          "maxTokens": 400,
+          "maxChars": 4000
+        }
+      }
+    },
+    {
+      "id": "free/gemma-3-27b-it",
+      "name": "free/gemma-3-27b-it",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "free",
+      "networks": [],
+      "kind": "free",
+      "price": {
+        "usd": 0,
+        "limits": {
+          "perVisitorPerDay": 20,
+          "maxTokens": 400,
+          "maxChars": 4000
+        }
+      }
+    },
+    {
+      "id": "free/gemma-4-e2b",
+      "name": "free/gemma-4-e2b",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "free",
+      "networks": [],
+      "kind": "free",
+      "price": {
+        "usd": 0,
+        "limits": {
+          "perVisitorPerDay": 20,
+          "maxTokens": 400,
+          "maxChars": 4000
+        }
+      }
+    },
+    {
+      "id": "free/mistral-small-3.2-24b-instruct",
+      "name": "free/mistral-small-3.2-24b-instruct",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "free",
+      "networks": [],
+      "kind": "free",
+      "price": {
+        "usd": 0,
+        "limits": {
+          "perVisitorPerDay": 20,
+          "maxTokens": 400,
+          "maxChars": 4000
+        }
+      }
+    },
+    {
+      "id": "free/openai-gpt-oss-20b",
+      "name": "free/openai-gpt-oss-20b",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "free",
+      "networks": [],
+      "kind": "free",
+      "price": {
+        "usd": 0,
+        "limits": {
+          "perVisitorPerDay": 20,
+          "maxTokens": 400,
+          "maxChars": 4000
+        }
+      }
+    },
+    {
+      "id": "free/qwen3-coder-30b-a3b-instruct",
+      "name": "free/qwen3-coder-30b-a3b-instruct",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "free",
+      "networks": [],
+      "kind": "free",
+      "price": {
+        "usd": 0,
+        "limits": {
+          "perVisitorPerDay": 20,
+          "maxTokens": 400,
+          "maxChars": 4000
+        }
+      }
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "name": "Gemini 2.5 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2054",
+            "usd": 0.002054
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2017",
+            "usd": 0.002017
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-2.5-pro",
+      "name": "Gemini 2.5 Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3615",
+            "usd": 0.003615
+          },
+          "solana": {
+            "priceAtomic": "4615",
+            "usd": 0.004615
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1786",
+            "usd": 0.001786
+          },
+          "solana": {
+            "ceilingAtomic": "2786",
+            "usd": 0.002786
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-3-5-flash",
+      "name": "Gemini 3.5 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2190",
+            "usd": 0.00219
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2058",
+            "usd": 0.002058
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-3-5-flash-lite",
+      "name": "Gemini 3.5 Flash Lite",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1812",
+            "usd": 0.001812
+          },
+          "solana": {
+            "priceAtomic": "2812",
+            "usd": 0.002812
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2245",
+            "usd": 0.002245
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-3-6-flash",
+      "name": "Gemini 3.6 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2220",
+            "usd": 0.00222
+          },
+          "solana": {
+            "priceAtomic": "3220",
+            "usd": 0.00322
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2367",
+            "usd": 0.002367
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-3-flash-preview",
+      "name": "Gemini 3 Flash Preview",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2064",
+            "usd": 0.002064
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2020",
+            "usd": 0.00202
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-3.1-flash-lite",
+      "name": "Gemini 3.1 Flash Lite",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2033",
+            "usd": 0.002033
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2011",
+            "usd": 0.002011
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-3.1-pro-preview",
+      "name": "Gemini 3.1 Pro Preview",
+      "modality": "chat",
+      "route": "/v1/chat/gemini-3.1-pro-preview",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3285",
+            "usd": 0.003285
+          },
+          "solana": {
+            "priceAtomic": "4285",
+            "usd": 0.004285
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2581",
+            "usd": 0.002581
+          },
+          "solana": {
+            "ceilingAtomic": "3581",
+            "usd": 0.003581
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "name": "Gemini 3.7 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2080",
+            "usd": 0.00208
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2025",
+            "usd": 0.002025
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-3.8-flash",
+      "name": "Gemini 3.8 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/gemini-3.8-flash",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2088",
+            "usd": 0.002088
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2026",
+            "usd": 0.002026
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemini-4-argon",
+      "name": "Google: Gemini 4 Argon",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2889",
+            "usd": 0.002889
+          },
+          "solana": {
+            "priceAtomic": "3889",
+            "usd": 0.003889
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1569",
+            "usd": 0.001569
+          },
+          "solana": {
+            "ceilingAtomic": "2569",
+            "usd": 0.002569
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemma-3-12b-it",
+      "name": "Gemma 3 12B IT",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2004",
+            "usd": 0.002004
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2002",
+            "usd": 0.002002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemma-3-27b-it",
+      "name": "Gemma 3 27B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2006",
+            "usd": 0.002006
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2002",
+            "usd": 0.002002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemma-3-4b-it",
+      "name": "Gemma 3 4B IT",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2003",
+            "usd": 0.002003
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2002",
+            "usd": 0.002002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemma-4-26b-a4b-it",
+      "name": "Gemma 4 26B A4B IT",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2007",
+            "usd": 0.002007
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemma-4-31b",
+      "name": "Gemma 4 31B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2008",
+            "usd": 0.002008
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemma-4-31b-it",
+      "name": "Gemma 4 31B IT",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2008",
+            "usd": 0.002008
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemma-4-e2b",
+      "name": "Gemma 4 E2B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2006",
+            "usd": 0.002006
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gemma-4-uncensored",
+      "name": "Gemma 4 Uncensored",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2481",
+            "usd": 0.002481
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2145",
+            "usd": 0.002145
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glimpse",
+      "name": "Elorian: Glimpse",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1977",
+            "usd": 0.001977
+          },
+          "solana": {
+            "priceAtomic": "2977",
+            "usd": 0.002977
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2294",
+            "usd": 0.002294
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-4.5",
+      "name": "GLM 4.5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2047",
+            "usd": 0.002047
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2015",
+            "usd": 0.002015
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-4.5-air",
+      "name": "GLM 4.5 Air",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2019",
+            "usd": 0.002019
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2007",
+            "usd": 0.002007
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-4.6",
+      "name": "GLM 4.6",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2038",
+            "usd": 0.002038
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2012",
+            "usd": 0.002012
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-4.7",
+      "name": "GLM 4.7",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2043",
+            "usd": 0.002043
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2013",
+            "usd": 0.002013
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-4.7-flash",
+      "name": "GLM 4.7 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2010",
+            "usd": 0.00201
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-4.7-flash-heretic",
+      "name": "GLM 4.7 Flash Heretic",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2298",
+            "usd": 0.002298
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2090",
+            "usd": 0.00209
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-5",
+      "name": "GLM 5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2068",
+            "usd": 0.002068
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2021",
+            "usd": 0.002021
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-5-turbo",
+      "name": "GLM-5 Turbo",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2085",
+            "usd": 0.002085
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2026",
+            "usd": 0.002026
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-5.1",
+      "name": "GLM 5.1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2094",
+            "usd": 0.002094
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2029",
+            "usd": 0.002029
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-5.2",
+      "name": "GLM 5.2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2093",
+            "usd": 0.002093
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2029",
+            "usd": 0.002029
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-5.3",
+      "name": "GLM 5.3",
+      "modality": "chat",
+      "route": "/v1/chat/glm-5.3",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2076",
+            "usd": 0.002076
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2024",
+            "usd": 0.002024
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-5.3-flash",
+      "name": "GLM 5.3 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2012",
+            "usd": 0.002012
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2004",
+            "usd": 0.002004
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-5.3-flashx",
+      "name": "Z.ai: GLM 5.3 FlashX",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2409",
+            "usd": 0.002409
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2124",
+            "usd": 0.002124
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-5.3-prime",
+      "name": "Z.ai: GLM 5.3 Prime",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2280",
+            "usd": 0.00228
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2085",
+            "usd": 0.002085
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "glm-5v-turbo",
+      "name": "GLM 5V Turbo",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "4751",
+            "usd": 0.004751
+          },
+          "solana": {
+            "priceAtomic": "5751",
+            "usd": 0.005751
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2129",
+            "usd": 0.002129
+          },
+          "solana": {
+            "ceilingAtomic": "3129",
+            "usd": 0.003129
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-4o",
+      "name": "GPT-4o",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2422",
+            "usd": 0.002422
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2128",
+            "usd": 0.002128
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-4o-mini",
+      "name": "GPT-4o Mini",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2026",
+            "usd": 0.002026
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2008",
+            "usd": 0.002008
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5-mini",
+      "name": "GPT 5 Mini",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1545",
+            "usd": 0.001545
+          },
+          "solana": {
+            "priceAtomic": "2545",
+            "usd": 0.002545
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2164",
+            "usd": 0.002164
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5-nano",
+      "name": "GPT 5 Nano",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2055",
+            "usd": 0.002055
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2017",
+            "usd": 0.002017
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.2",
+      "name": "GPT-5.2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2294",
+            "usd": 0.002294
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2089",
+            "usd": 0.002089
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.2-codex",
+      "name": "GPT-5.2 Codex",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "4807",
+            "usd": 0.004807
+          },
+          "solana": {
+            "priceAtomic": "5807",
+            "usd": 0.005807
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2144",
+            "usd": 0.002144
+          },
+          "solana": {
+            "ceilingAtomic": "3144",
+            "usd": 0.003144
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.3-codex",
+      "name": "GPT-5.3 Codex",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "4660",
+            "usd": 0.00466
+          },
+          "solana": {
+            "priceAtomic": "5660",
+            "usd": 0.00566
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2100",
+            "usd": 0.0021
+          },
+          "solana": {
+            "ceilingAtomic": "3100",
+            "usd": 0.0031
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.4",
+      "name": "GPT-5.4",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2472",
+            "usd": 0.002472
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2142",
+            "usd": 0.002142
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "name": "GPT-5.4 Mini",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1519",
+            "usd": 0.001519
+          },
+          "solana": {
+            "priceAtomic": "2519",
+            "usd": 0.002519
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2156",
+            "usd": 0.002156
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.4-nano",
+      "name": "GPT 5.4 Nano",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2276",
+            "usd": 0.002276
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2084",
+            "usd": 0.002084
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.4-pro",
+      "name": "GPT-5.4 Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "29279",
+            "usd": 0.029279
+          },
+          "solana": {
+            "priceAtomic": "30279",
+            "usd": 0.030279
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "9495",
+            "usd": 0.009495
+          },
+          "solana": {
+            "ceilingAtomic": "10495",
+            "usd": 0.010495
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.5",
+      "name": "GPT-5.5",
+      "modality": "chat",
+      "route": "/v1/chat/gpt-5.5",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1630",
+            "usd": 0.00163
+          },
+          "solana": {
+            "priceAtomic": "2630",
+            "usd": 0.00263
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2190",
+            "usd": 0.00219
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.5-pro",
+      "name": "GPT-5.5 Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "57558",
+            "usd": 0.057558
+          },
+          "solana": {
+            "priceAtomic": "58558",
+            "usd": 0.058558
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "17989",
+            "usd": 0.017989
+          },
+          "solana": {
+            "ceilingAtomic": "18989",
+            "usd": 0.018989
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "name": "GPT-5.6 Luna",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2039",
+            "usd": 0.002039
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2012",
+            "usd": 0.002012
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.6-luna-pro",
+      "name": "GPT-5.6 Luna Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2266",
+            "usd": 0.002266
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2080",
+            "usd": 0.00208
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "name": "GPT-5.6 Sol",
+      "modality": "chat",
+      "route": "/v1/chat/gpt-5.6-sol",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1631",
+            "usd": 0.001631
+          },
+          "solana": {
+            "priceAtomic": "2631",
+            "usd": 0.002631
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2190",
+            "usd": 0.00219
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.6-sol-pro",
+      "name": "GPT-5.6 Sol Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "5406",
+            "usd": 0.005406
+          },
+          "solana": {
+            "priceAtomic": "6406",
+            "usd": 0.006406
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2325",
+            "usd": 0.002325
+          },
+          "solana": {
+            "ceilingAtomic": "3325",
+            "usd": 0.003325
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "name": "GPT-5.6 Terra",
+      "modality": "chat",
+      "route": "/v1/chat/gpt-5.6-terra",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1756",
+            "usd": 0.001756
+          },
+          "solana": {
+            "priceAtomic": "2756",
+            "usd": 0.002756
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2228",
+            "usd": 0.002228
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-5.6-terra-pro",
+      "name": "GPT-5.6 Terra Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "4898",
+            "usd": 0.004898
+          },
+          "solana": {
+            "priceAtomic": "5898",
+            "usd": 0.005898
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2172",
+            "usd": 0.002172
+          },
+          "solana": {
+            "ceilingAtomic": "3172",
+            "usd": 0.003172
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "5721",
+            "usd": 0.005721
+          },
+          "solana": {
+            "priceAtomic": "6721",
+            "usd": 0.006721
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2419",
+            "usd": 0.002419
+          },
+          "solana": {
+            "ceilingAtomic": "3419",
+            "usd": 0.003419
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-6-luna",
+      "name": "GPT-6 Luna",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2023",
+            "usd": 0.002023
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2007",
+            "usd": 0.002007
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-6-luna-pro",
+      "name": "GPT-6 Luna Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2164",
+            "usd": 0.002164
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2050",
+            "usd": 0.00205
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-6-sol",
+      "name": "GPT-6 Sol",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3099",
+            "usd": 0.003099
+          },
+          "solana": {
+            "priceAtomic": "4099",
+            "usd": 0.004099
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1631",
+            "usd": 0.001631
+          },
+          "solana": {
+            "ceilingAtomic": "2631",
+            "usd": 0.002631
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-6-sol-pro",
+      "name": "GPT-6 Sol Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "4253",
+            "usd": 0.004253
+          },
+          "solana": {
+            "priceAtomic": "5253",
+            "usd": 0.005253
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1978",
+            "usd": 0.001978
+          },
+          "solana": {
+            "ceilingAtomic": "2978",
+            "usd": 0.002978
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "name": "GPT-6.1 Sol",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2469",
+            "usd": 0.002469
+          },
+          "solana": {
+            "priceAtomic": "3469",
+            "usd": 0.003469
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2442",
+            "usd": 0.002442
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-6.1-sol-pro",
+      "name": "OpenAI: GPT-6.1 Sol Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3728",
+            "usd": 0.003728
+          },
+          "solana": {
+            "priceAtomic": "4728",
+            "usd": 0.004728
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1821",
+            "usd": 0.001821
+          },
+          "solana": {
+            "ceilingAtomic": "2821",
+            "usd": 0.002821
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-6.1-terra",
+      "name": "OpenAI: GPT-6.1 Terra",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1735",
+            "usd": 0.001735
+          },
+          "solana": {
+            "priceAtomic": "2735",
+            "usd": 0.002735
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2221",
+            "usd": 0.002221
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "gpt-6.1-terra-pro",
+      "name": "OpenAI: GPT-6.1 Terra Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2627",
+            "usd": 0.002627
+          },
+          "solana": {
+            "priceAtomic": "3627",
+            "usd": 0.003627
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2489",
+            "usd": 0.002489
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "grok-4.20-beta",
+      "name": "Grok 4.20 Beta",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2426",
+            "usd": 0.002426
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2129",
+            "usd": 0.002129
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "grok-4.20-multi-agent-beta",
+      "name": "Grok 4.20 Multi-Agent Beta",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2426",
+            "usd": 0.002426
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2129",
+            "usd": 0.002129
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "grok-4.3",
+      "name": "Grok 4.3",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2054",
+            "usd": 0.002054
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2017",
+            "usd": 0.002017
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "grok-4.5",
+      "name": "Grok 4.5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2013",
+            "usd": 0.002013
+          },
+          "solana": {
+            "priceAtomic": "3013",
+            "usd": 0.003013
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2306",
+            "usd": 0.002306
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "grok-4.6",
+      "name": "Grok 4.6",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2203",
+            "usd": 0.002203
+          },
+          "solana": {
+            "priceAtomic": "3203",
+            "usd": 0.003203
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2363",
+            "usd": 0.002363
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "grok-4.7",
+      "name": "Grok 4.7",
+      "modality": "chat",
+      "route": "/v1/chat/grok-4.7",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2124",
+            "usd": 0.002124
+          },
+          "solana": {
+            "priceAtomic": "3124",
+            "usd": 0.003124
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1637",
+            "usd": 0.001637
+          },
+          "solana": {
+            "ceilingAtomic": "2637",
+            "usd": 0.002637
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "grok-build-0-1",
+      "name": "Grok Build 0.1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2785",
+            "usd": 0.002785
+          },
+          "solana": {
+            "priceAtomic": "3785",
+            "usd": 0.003785
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1539",
+            "usd": 0.001539
+          },
+          "solana": {
+            "ceilingAtomic": "2539",
+            "usd": 0.002539
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "hermes-3-llama-3.1-405b",
+      "name": "Hermes 3 Llama 3.1 405b",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1869",
+            "usd": 0.001869
+          },
+          "solana": {
+            "priceAtomic": "2869",
+            "usd": 0.002869
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2263",
+            "usd": 0.002263
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "hy3",
+      "name": "Tencent HY3",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2112",
+            "usd": 0.002112
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2034",
+            "usd": 0.002034
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "kimi-k2",
+      "name": "Kimi K2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1751",
+            "usd": 0.001751
+          },
+          "solana": {
+            "priceAtomic": "2751",
+            "usd": 0.002751
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2227",
+            "usd": 0.002227
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "kimi-k2-thinking",
+      "name": "Kimi K2 Thinking",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2054",
+            "usd": 0.002054
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2017",
+            "usd": 0.002017
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "kimi-k2.5",
+      "name": "Kimi K2.5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2054",
+            "usd": 0.002054
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2017",
+            "usd": 0.002017
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "kimi-k2.6",
+      "name": "Kimi K2.6",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2180",
+            "usd": 0.00218
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2055",
+            "usd": 0.002055
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "name": "Kimi K2.7 Code",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2130",
+            "usd": 0.00213
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2041",
+            "usd": 0.002041
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "kimi-k3",
+      "name": "Kimi K3",
+      "modality": "chat",
+      "route": "/v1/chat/kimi-k3",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2314",
+            "usd": 0.002314
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2095",
+            "usd": 0.002095
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "kimi-k3-fast-api",
+      "name": "Kimi K3 Fast",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "15397",
+            "usd": 0.015397
+          },
+          "solana": {
+            "priceAtomic": "16397",
+            "usd": 0.016397
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "5326",
+            "usd": 0.005326
+          },
+          "solana": {
+            "ceilingAtomic": "6326",
+            "usd": 0.006326
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "kimi-k3.1-pro",
+      "name": "Kimi K3.1 Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2679",
+            "usd": 0.002679
+          },
+          "solana": {
+            "priceAtomic": "3679",
+            "usd": 0.003679
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1505",
+            "usd": 0.001505
+          },
+          "solana": {
+            "ceilingAtomic": "2505",
+            "usd": 0.002505
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "lfm-2.5-24b-a2b",
+      "name": "LiquidAI: LFM2.5-24B-A2B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2228",
+            "usd": 0.002228
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2069",
+            "usd": 0.002069
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "ling-3.1-flash",
+      "name": "inclusionAI: Ling 3.1 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2075",
+            "usd": 0.002075
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2024",
+            "usd": 0.002024
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "llama-3.2-3b-instruct",
+      "name": "Llama 3.2 3B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2091",
+            "usd": 0.002091
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2028",
+            "usd": 0.002028
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "llama-3.3-70b-instruct",
+      "name": "Llama 3.3 70B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2034",
+            "usd": 0.002034
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2011",
+            "usd": 0.002011
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "magistral-small-2509",
+      "name": "Magistral Small 2509",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2049",
+            "usd": 0.002049
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2015",
+            "usd": 0.002015
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mercury-2",
+      "name": "Mercury 2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1705",
+            "usd": 0.001705
+          },
+          "solana": {
+            "priceAtomic": "2705",
+            "usd": 0.002705
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2212",
+            "usd": 0.002212
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mercury-2.5",
+      "name": "Inception: Mercury 2.5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2050",
+            "usd": 0.00205
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2016",
+            "usd": 0.002016
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mercury-3",
+      "name": "Mercury 3",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2115",
+            "usd": 0.002115
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2036",
+            "usd": 0.002036
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mimo-v2.5-pro",
+      "name": "MiMo-V2.5-Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2342",
+            "usd": 0.002342
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2103",
+            "usd": 0.002103
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mimo-v2.6-flash",
+      "name": "MiMo-V2.6-Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2093",
+            "usd": 0.002093
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2029",
+            "usd": 0.002029
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mimo-v2.6-pro",
+      "name": "MiMo-V2.6-Pro",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2288",
+            "usd": 0.002288
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2088",
+            "usd": 0.002088
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mimo-v2.6-pro-ultraspeed",
+      "name": "MiMo-V2.6-Pro-UltraSpeed",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "4790",
+            "usd": 0.00479
+          },
+          "solana": {
+            "priceAtomic": "5790",
+            "usd": 0.00579
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2142",
+            "usd": 0.002142
+          },
+          "solana": {
+            "ceilingAtomic": "3142",
+            "usd": 0.003142
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "minimax-m2",
+      "name": "MiniMax M2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2023",
+            "usd": 0.002023
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2007",
+            "usd": 0.002007
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "minimax-m2.1",
+      "name": "MiniMax M2.1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2026",
+            "usd": 0.002026
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2008",
+            "usd": 0.002008
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "minimax-m2.5",
+      "name": "MiniMax M2.5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2021",
+            "usd": 0.002021
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2007",
+            "usd": 0.002007
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "minimax-m2.7",
+      "name": "MiniMax M2.7",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2316",
+            "usd": 0.002316
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2095",
+            "usd": 0.002095
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "minimax-m2.7-highspeed",
+      "name": "MiniMax M2.7 Highspeed",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2000",
+            "usd": 0.002
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2000",
+            "usd": 0.002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "minimax-m3",
+      "name": "MiniMax M3",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2148",
+            "usd": 0.002148
+          },
+          "solana": {
+            "priceAtomic": "3148",
+            "usd": 0.003148
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2346",
+            "usd": 0.002346
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "minimax-m3-preview",
+      "name": "MiniMax M3 Preview",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1896",
+            "usd": 0.001896
+          },
+          "solana": {
+            "priceAtomic": "2896",
+            "usd": 0.002896
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2271",
+            "usd": 0.002271
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "ministral-3-14b-instruct",
+      "name": "Ministral 14B 3.0",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2006",
+            "usd": 0.002006
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "ministral-3-3b-instruct",
+      "name": "Ministral 3B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2003",
+            "usd": 0.002003
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2002",
+            "usd": 0.002002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "ministral-3-8b-instruct",
+      "name": "Ministral 3 8B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2006",
+            "usd": 0.002006
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mistral-large",
+      "name": "Venice Medium",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2381",
+            "usd": 0.002381
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2115",
+            "usd": 0.002115
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mistral-large-3",
+      "name": "Mistral Large 3",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2097",
+            "usd": 0.002097
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2029",
+            "usd": 0.002029
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mistral-large-4-0",
+      "name": "Mistral: Mistral Large 4",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1688",
+            "usd": 0.001688
+          },
+          "solana": {
+            "priceAtomic": "2688",
+            "usd": 0.002688
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2207",
+            "usd": 0.002207
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mistral-small-3.2-24b-instruct",
+      "name": "Mistral Small 3.2 24B Instruct",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2019",
+            "usd": 0.002019
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2006",
+            "usd": 0.002006
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "mistral-small-4",
+      "name": "Mistral Small 4",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2210",
+            "usd": 0.00221
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2064",
+            "usd": 0.002064
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "moondream3-preview",
+      "name": "Moondream: Moondream 3 Preview",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1812",
+            "usd": 0.001812
+          },
+          "solana": {
+            "priceAtomic": "2812",
+            "usd": 0.002812
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2245",
+            "usd": 0.002245
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "moondream3.1-9b-a2b",
+      "name": "Moondream: Moondream 3.1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1812",
+            "usd": 0.001812
+          },
+          "solana": {
+            "priceAtomic": "2812",
+            "usd": 0.002812
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2245",
+            "usd": 0.002245
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "muse-glimmer-30b",
+      "name": "Meta: Muse Glimmer 30B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2392",
+            "usd": 0.002392
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2119",
+            "usd": 0.002119
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "muse-spark-1.1",
+      "name": "Meta: Muse Spark 1.1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2136",
+            "usd": 0.002136
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2042",
+            "usd": 0.002042
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "muse-spark-1.2",
+      "name": "Meta: Muse Spark 1.2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2136",
+            "usd": 0.002136
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2042",
+            "usd": 0.002042
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "muse-spark-1.2-contributor",
+      "name": "Meta: Muse Spark 1.2 Contributor",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2088",
+            "usd": 0.002088
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2028",
+            "usd": 0.002028
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "muse-spark-1.3",
+      "name": "Meta: Muse Spark 1.3",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2090",
+            "usd": 0.00209
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2028",
+            "usd": 0.002028
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "muse-spark-1.3-contributor",
+      "name": "Meta: Muse Spark 1.3 Contributor",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2006",
+            "usd": 0.002006
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2002",
+            "usd": 0.002002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "muse-spark-open",
+      "name": "Meta: Muse Spark Open",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2389",
+            "usd": 0.002389
+          },
+          "solana": {
+            "priceAtomic": "3389",
+            "usd": 0.003389
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2418",
+            "usd": 0.002418
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "muse-wonder",
+      "name": "Meta: Muse Wonder",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2420",
+            "usd": 0.00242
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2127",
+            "usd": 0.002127
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "nemotron-3.5-lightning",
+      "name": "NVIDIA Nemotron 3.5 Lightning",
+      "modality": "chat",
+      "route": "/v1/chat/nemotron-3.5-lightning",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2279",
+            "usd": 0.002279
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2116",
+            "usd": 0.002116
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model",
+      "access": "x402",
+      "available": true,
+      "router": false,
+      "free": false
+    },
+    {
+      "id": "nemotron-3.5-super-vl",
+      "name": "NVIDIA: Nemotron 3.5 Super VL",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2164",
+            "usd": 0.002164
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2050",
+            "usd": 0.00205
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "nvidia-nemotron-3-nano-30b-a3b",
+      "name": "NVIDIA Nemotron 3 Nano 30B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2007",
+            "usd": 0.002007
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "nvidia-nemotron-3-super-120b",
+      "name": "NVIDIA Nemotron 3 Super 120B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2051",
+            "usd": 0.002051
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2016",
+            "usd": 0.002016
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "nvidia-nemotron-3-ultra-550b-a55b",
+      "name": "NVIDIA Nemotron 3 Ultra 550B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3329",
+            "usd": 0.003329
+          },
+          "solana": {
+            "priceAtomic": "4329",
+            "usd": 0.004329
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1700",
+            "usd": 0.0017
+          },
+          "solana": {
+            "ceilingAtomic": "2700",
+            "usd": 0.0027
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "nvidia-nemotron-nano-12b-v2",
+      "name": "NVIDIA Nemotron Nano 12B v2 VL BF16",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2020",
+            "usd": 0.00202
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2007",
+            "usd": 0.002007
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "nvidia-nemotron-nano-9b-v2",
+      "name": "NVIDIA Nemotron Nano 9B v2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2008",
+            "usd": 0.002008
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "openai-gpt-oss-120b",
+      "name": "OpenAI GPT OSS 120B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2007",
+            "usd": 0.002007
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "openai-gpt-oss-20b",
+      "name": "gpt-oss-20b",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2003",
+            "usd": 0.002003
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2002",
+            "usd": 0.002002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "openai-gpt-oss-safeguard-120b",
+      "name": "GPT OSS Safeguard 120B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2020",
+            "usd": 0.00202
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2007",
+            "usd": 0.002007
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "openai-gpt-oss-safeguard-20b",
+      "name": "GPT OSS Safeguard 20B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2007",
+            "usd": 0.002007
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "palmyra-vision-7b",
+      "name": "Palmyra Vision 7B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2026",
+            "usd": 0.002026
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2008",
+            "usd": 0.002008
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "pareto-26.9",
+      "name": "Pareto 26.9",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "4244",
+            "usd": 0.004244
+          },
+          "solana": {
+            "priceAtomic": "5244",
+            "usd": 0.005244
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1977",
+            "usd": 0.001977
+          },
+          "solana": {
+            "ceilingAtomic": "2977",
+            "usd": 0.002977
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "particle-1",
+      "name": "Particle AI: Particle-1",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2432",
+            "usd": 0.002432
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2130",
+            "usd": 0.00213
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen-3-7-max",
+      "name": "Qwen 3.7 Max",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "7710",
+            "usd": 0.00771
+          },
+          "solana": {
+            "priceAtomic": "8710",
+            "usd": 0.00871
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "3018",
+            "usd": 0.003018
+          },
+          "solana": {
+            "ceilingAtomic": "4018",
+            "usd": 0.004018
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen-3-7-plus",
+      "name": "Qwen 3.7 Plus",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2703",
+            "usd": 0.002703
+          },
+          "solana": {
+            "priceAtomic": "3703",
+            "usd": 0.003703
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1513",
+            "usd": 0.001513
+          },
+          "solana": {
+            "ceilingAtomic": "2513",
+            "usd": 0.002513
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen-3-8-27b",
+      "name": "Qwen 3.8 27B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2041",
+            "usd": 0.002041
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2013",
+            "usd": 0.002013
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-235b-a22b-2507",
+      "name": "Qwen 3 235B A22B Instruct 2507",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2012",
+            "usd": 0.002012
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2004",
+            "usd": 0.002004
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-235b-a22b-thinking-2507",
+      "name": "Qwen 3 235B A22B Thinking 2507",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2147",
+            "usd": 0.002147
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2045",
+            "usd": 0.002045
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-30b-a3b",
+      "name": "Qwen3 30B A3B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2164",
+            "usd": 0.002164
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2050",
+            "usd": 0.00205
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-32b",
+      "name": "Qwen3 32B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2007",
+            "usd": 0.002007
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-5-35b-a3b",
+      "name": "Qwen 3.5 35B A3B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1744",
+            "usd": 0.001744
+          },
+          "solana": {
+            "priceAtomic": "2744",
+            "usd": 0.002744
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2224",
+            "usd": 0.002224
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-5-9b",
+      "name": "Qwen 3.5 9B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2000",
+            "usd": 0.002
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2000",
+            "usd": 0.002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-6-35b-a3b",
+      "name": "Qwen 3.6 35B A3B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2064",
+            "usd": 0.002064
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2020",
+            "usd": 0.00202
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-coder",
+      "name": "Qwen 3 Coder 480b",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2023",
+            "usd": 0.002023
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2007",
+            "usd": 0.002007
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-coder-30b-a3b-instruct",
+      "name": "Qwen3 Coder 30B A3B Instruct",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2007",
+            "usd": 0.002007
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-coder-next",
+      "name": "Qwen3 Coder Next",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2017",
+            "usd": 0.002017
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2006",
+            "usd": 0.002006
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-coder-turbo",
+      "name": "Qwen 3 Coder 480B Turbo",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2120",
+            "usd": 0.00212
+          },
+          "solana": {
+            "priceAtomic": "3120",
+            "usd": 0.00312
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2337",
+            "usd": 0.002337
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-next-80b-a3b-instruct",
+      "name": "Qwen 3 Next 80b",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2024",
+            "usd": 0.002024
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2008",
+            "usd": 0.002008
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-vl-235b-a22b-instruct",
+      "name": "Qwen3 VL 235B A22B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2041",
+            "usd": 0.002041
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2013",
+            "usd": 0.002013
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-vl-235b-a22b-thinking",
+      "name": "Qwen3 VL 235B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2411",
+            "usd": 0.002411
+          },
+          "solana": {
+            "priceAtomic": "3411",
+            "usd": 0.003411
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2424",
+            "usd": 0.002424
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3-vl-30b-a3b-thinking",
+      "name": "Qwen3 VL 30B A3B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2294",
+            "usd": 0.002294
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2089",
+            "usd": 0.002089
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.5-397b-a17b",
+      "name": "Qwen 3.5 397B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2189",
+            "usd": 0.002189
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2058",
+            "usd": 0.002058
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.5-flash",
+      "name": "Qwen3.5 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2000",
+            "usd": 0.002
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2000",
+            "usd": 0.002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.5-plus",
+      "name": "Qwen3.5 Plus",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2000",
+            "usd": 0.002
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2000",
+            "usd": 0.002
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.6-27b",
+      "name": "Qwen 3.6 27B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2202",
+            "usd": 0.002202
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2062",
+            "usd": 0.002062
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.6-plus-uncensored",
+      "name": "Qwen 3.6 Plus Uncensored",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "4575",
+            "usd": 0.004575
+          },
+          "solana": {
+            "priceAtomic": "5575",
+            "usd": 0.005575
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2074",
+            "usd": 0.002074
+          },
+          "solana": {
+            "ceilingAtomic": "3074",
+            "usd": 0.003074
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.7-flash",
+      "name": "Qwen: Qwen3.7 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2010",
+            "usd": 0.00201
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.8-2.4t-a95b",
+      "name": "Qwen3.8 2.4T A95B",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2128",
+            "usd": 0.002128
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2039",
+            "usd": 0.002039
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.8-flash",
+      "name": "Qwen3.8 Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2011",
+            "usd": 0.002011
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2004",
+            "usd": 0.002004
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.8-max-0902",
+      "name": "Qwen: Qwen3.8 Max (0902)",
+      "modality": "chat",
+      "route": "/v1/chat/qwen3.8-max-0902",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2381",
+            "usd": 0.002381
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2115",
+            "usd": 0.002115
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.8-max-prime",
+      "name": "Qwen: Qwen3.8 Max Prime",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "6190",
+            "usd": 0.00619
+          },
+          "solana": {
+            "priceAtomic": "7190",
+            "usd": 0.00719
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2562",
+            "usd": 0.002562
+          },
+          "solana": {
+            "ceilingAtomic": "3562",
+            "usd": 0.003562
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "qwen3.8-omni-flash",
+      "name": "Qwen: Qwen3.8 Omni Flash",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2011",
+            "usd": 0.002011
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2004",
+            "usd": 0.002004
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "seed-2-1-turbo",
+      "name": "Seed 2.1 Turbo",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1814",
+            "usd": 0.001814
+          },
+          "solana": {
+            "priceAtomic": "2814",
+            "usd": 0.002814
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2245",
+            "usd": 0.002245
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "seed-2.0-code",
+      "name": "ByteDance Seed: Seed-2.0-Code",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1975",
+            "usd": 0.001975
+          },
+          "solana": {
+            "priceAtomic": "2975",
+            "usd": 0.002975
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2294",
+            "usd": 0.002294
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "singit-ask",
+      "name": "SingIt Ask default / fallback",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "router",
+      "price": {
+        "mode": "selected_model"
+      }
+    },
+    {
+      "id": "singit/auto",
+      "name": "SingIt Auto",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "router",
+      "price": {
+        "mode": "selected_model",
+        "description": "Picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets the minimum tier. X-SingIt-Model and X-SingIt-Tier report the choice. Only POST /v1/chat/completions. If the chosen model's seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered."
+      }
+    },
+    {
+      "id": "venice-uncensored-1.2",
+      "name": "Venice Uncensored 1.2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1823",
+            "usd": 0.001823
+          },
+          "solana": {
+            "priceAtomic": "2823",
+            "usd": 0.002823
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2249",
+            "usd": 0.002249
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "venice-uncensored-role-play",
+      "name": "Venice Role Play Uncensored",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "2830",
+            "usd": 0.00283
+          },
+          "solana": {
+            "priceAtomic": "3830",
+            "usd": 0.00383
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1550",
+            "usd": 0.00155
+          },
+          "solana": {
+            "ceilingAtomic": "2550",
+            "usd": 0.00255
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "xiaomi-mimo-v2-5",
+      "name": "MiMo-V2.5",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1652",
+            "usd": 0.001652
+          },
+          "solana": {
+            "priceAtomic": "2652",
+            "usd": 0.002652
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2197",
+            "usd": 0.002197
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model"
+    }
+  ],
+  "coverage": "Partial offline snapshot: chat and search only; image, image_edit, embeddings, speech and transcription inventories require a fresh catalog capture"
+}

@@ -1,3 +1,13 @@
+import { routeCopy } from "./listing-snapshot.mjs";
+import { buildCatalog, catalogResponse, MODALITIES } from './catalog.mjs';
+import { validateStream, agentResponses } from './agent-stream.mjs';
+import { upstreamModelId } from "./model-aliases.mjs";
+import { imagePrice } from "./images.mjs";
+import { addRoutes as addEditRoutes, REQUEST_BODY as EDIT_BODY } from "./image-edits.mjs";
+import { addRoutes as addEmbeddingRoutes, REQUEST_BODY as EMBEDDING_BODY } from "./embeddings.mjs";
+import { EXAMPLE as EDIT_REFERENCE, readEditRequest, listAtomic as editListAtomic, catalogueCeiling as editCeiling, OUTPUT_SCHEMA as EDIT_OUTPUT, OUTPUT_EXAMPLE as EDIT_EXAMPLE } from "./image-edits-request.mjs";
+import { EXAMPLE as EMBEDDING_REFERENCE, readEmbeddingRequest, listAtomic as embeddingListAtomic, catalogueCeiling as embeddingCeiling, OUTPUT_SCHEMA as EMBEDDING_OUTPUT, OUTPUT_EXAMPLE as EMBEDDING_EXAMPLE } from "./embeddings-request.mjs";
+const EXTRA_PAID = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings"];
 // SingIt Ask: one answer from a language model, paid over x402 in USDC on Solana or Base for what it
 // actually cost: model tokens + 30% + the network's settlement fee, up to a ceiling that follows the model's
 // price (0.003 USDC for the default and cheap ones). Coinbase CDP settles.
@@ -21,13 +31,15 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { probeNote, addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue, priceGuard, unservableError } from "./catalogue.mjs";
-import { LIMITS } from "./limits.mjs";
+import { normalizeAgent, toolCalls } from "./agent-chat.mjs";
+import { AGENT_LIMITS, LIMITS } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
 import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { CREDIT_ROUTE, addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody, exaPriceRange } from "./search.mjs";
 import { IMAGE_ROUTE, IMAGE_REQUEST_BODY, addImageRoutes } from "./images.mjs";
+import { MEDIA_MODELS_ROUTE, availableAudioPrices, audioOpenapi, addAudioGenerationRoutes } from "./audio-generation.mjs";
 import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
@@ -35,6 +47,7 @@ import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs
 import { withRejectLog } from "./reject-log.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
+import { paymentCodesMiddleware } from "./payment-failure-hooks.mjs";
 
 export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -54,24 +67,33 @@ export class RequestError extends Error {
 }
 
 // The messages and size of an answer, or a RequestError: checked before the model is asked.
-export function readRequest(body, { allowFallback = true } = {}) {
+export function readRequest(body, { allowFallback = true, agent = false } = {}) {
   if (!body || typeof body !== "object") throw new RequestError(400, "Send a JSON body with messages.");
-  if (body.stream) throw new RequestError(400, "Streaming is not offered; send stream: false.");
+  validateStream(body, RequestError);
+  const limits = agent ? AGENT_LIMITS : LIMITS;
+  if (!agent) {
+    if (['tools','tool_choice','functions','function_call','parallel_tool_calls'].some(k => body[k] != null) || (Array.isArray(body.messages) && body.messages.some(m => m?.role === 'tool')))
+      throw Object.assign(new RequestError(400, 'This route does not take tools; use POST /v1/chat/completions (the paid agent route).'), { code: 'tools_unsupported' });
+    if (Array.isArray(body.messages) && body.messages.some(m => Array.isArray(m?.content)))
+      throw Object.assign(new RequestError(400, 'This route does not take content blocks; use POST /v1/chat/completions (the paid agent route).'), { code: 'content_blocks_unsupported' });
+  }
   const messages = body.messages;
-  if (!Array.isArray(messages) || messages.length === 0 || messages.length > LIMITS.messages) {
-    throw new RequestError(400, `Send 1 to ${LIMITS.messages} messages.`);
+  if (!Array.isArray(messages) || messages.length === 0 || messages.length > limits.messages) {
+    throw new RequestError(400, `Send 1 to ${limits.messages} messages.`);
   }
   let chars = 0;
-  const clean = messages.map((message) => {
+  const normalized = agent ? normalizeAgent(body, RequestError) : null;
+  const clean = normalized?.messages ?? messages.map((message) => {
     if (!message || !ROLES.has(message.role) || typeof message.content !== "string") {
       throw new RequestError(400, "Each message needs a role (system, user or assistant) and text content.");
     }
     chars += message.content.length;
     return { role: message.role, content: message.content };
   });
-  if (chars > LIMITS.chars) throw new RequestError(400, `Keep the messages under ${LIMITS.chars} characters in all.`);
+  chars = normalized?.chars ?? chars;
+  if (chars > limits.chars) throw new RequestError(400, `Keep the messages under ${LIMITS.chars} characters in all.`);
   const asked = Number(body.max_tokens ?? LIMITS.defaultTokens);
-  const maxTokens = Number.isInteger(asked) && asked > 0 ? Math.min(asked, LIMITS.maxTokens) : LIMITS.defaultTokens;
+  const maxTokens = Number.isInteger(asked) && asked > 0 ? Math.min(asked, limits.maxTokens) : LIMITS.defaultTokens;
   const modelOmitted = body.model === undefined || body.model === null;
   const model = modelOmitted || body.model === "singit-ask" ? undefined : body.model;
   if (model !== undefined && (typeof model !== "string" || !model.trim() || model.length > 120)) {
@@ -91,7 +113,7 @@ export function readRequest(body, { allowFallback = true } = {}) {
     }
     fallbackModels = values.map(id => id.trim());
   }
-  return { ...(fallbackModels ? { fallbackModels } : {}), ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, modelOmitted, model: model?.trim(), messageCount: clean.length };
+  return { ...(normalized ? { request: normalized, flags: normalized.flags } : {}), ...(fallbackModels ? { fallbackModels } : {}), ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, modelOmitted, model: model?.trim(), messageCount: clean.length };
 }
 
 // The model an answer is bought from and what it may cost. No model, or the default one, is still looked up on
@@ -202,7 +224,7 @@ const defaultFallbackNote = (config) => {
     + "X-SingIt-Fallback: off to stay strictly pinned.";
 };
 
-export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs } = {}) {
+export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs, agent } = {}) {
   const sends = (name) => !params || params.includes(name);
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
   const off = Object.hasOwn(REASONING_OFF, model) ? REASONING_OFF[model] : null;
@@ -217,7 +239,10 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                  ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
-      body: JSON.stringify({ model, messages, max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
+      body: JSON.stringify({ model: upstreamModelId(model), messages,
+        ...(agent?.tools !== undefined ? { tools: agent.tools } : {}),
+        ...(agent?.toolChoice !== undefined ? { tool_choice: agent.toolChoice } : {}),
+        ...(agent?.parallelToolCalls !== undefined ? { parallel_tool_calls: agent.parallelToolCalls } : {}), max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
                              ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
                                : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
                              ...extra, si_route: { objective: "price" } }),
@@ -241,6 +266,7 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
   let data = await response.json().catch(() => null);
   let choice = data?.choices?.[0];
   if (retryOnReasoning && response.ok && !data?.error && choice?.finish_reason === "length"
+      && !toolCalls(choice.message?.tool_calls)
       && (typeof choice.message?.content !== "string" || !choice.message.content.trim()) && deadline - Date.now() > 8000) {
     // The service eats the first attempt; exposure is bounded by one extra call at <= 2x budget.
     budget = retryBudget(budget); retried = true;
@@ -252,15 +278,16 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
     const code = typeof data?.error?.code === "string" ? data.error.code : "upstream_error";
     throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
-  const content = choice.message?.content;
-  if (typeof content !== "string" || !content.trim()) {
+  const calls = toolCalls(choice.message?.tool_calls);
+  const content = typeof choice.message?.content === "string" ? choice.message.content : null;
+  if (!calls && (typeof content !== "string" || !content.trim())) {
     const code = choice.finish_reason === "length" ? "max_tokens_spent_reasoning" : "no_text";
     throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
   // The cost is in the body, and in a header too (docs: x-si-buyer-cost-micro); billUsage reads the body's field.
   const header = response.headers?.get?.("x-si-buyer-cost-micro");
   const usage = data.usage?.buyer_cost_micro == null && header != null ? { ...data.usage, buyer_cost_micro: header } : data.usage ?? null;
-  return { ...(retried ? { retried: true } : {}), content, finishReason: choice.finish_reason ?? "stop", usage };
+  return { ...(retried ? { retried: true } : {}), content, ...(calls ? { message: { role: "assistant", content, tool_calls: calls } } : {}), finishReason: choice.finish_reason ?? "stop", usage };
 }
 
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
@@ -281,10 +308,41 @@ const INPUT_SCHEMA = {
       description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
     fallback_models: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string" },
       description: "Optional on paid /v1/chat/completions only: 1–3 trimmed unique model ids, excluding the pinned model and singit/auto. Before payment, an unavailable pinned model may use the first healthy priced candidate whose Base upto ceiling is no higher than the pinned ceiling, and in the same auto tier if the pinned model has one. The chosen model determines the quote and usage charge." },
-    stream: { type: "boolean", enum: [false], description: "Streaming is not offered." },
+    stream_options: { type: "object", additionalProperties: false, properties: { include_usage: { type: "boolean" } }, description: "Only with stream:true." },
+    stream: { type: "boolean", enum: [false, true], description: "Buffered SSE: the complete answer is released after settlement, not token by token." },
   },
   required: ["messages"],
 };
+
+// Separate objects keep free and per-model routes on the legacy envelope.
+const AGENT_INPUT_SCHEMA = structuredClone(INPUT_SCHEMA);
+const functionNameSchema = { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,64}$' };
+const callSchema = { type: 'object', required: ['id','type','function'], properties: {
+  id: { type: 'string', minLength: 1, maxLength: 64 }, type: { const: 'function', type: 'string' },
+  function: { type: 'object', required: ['name','arguments'], properties: { name: functionNameSchema, arguments: { type: 'string' } } } } };
+const blocksSchema = { type: 'array', items: { oneOf: [
+  { type: 'object', required: ['type','text'], properties: { type: { type: 'string', const: 'text' }, text: { type: 'string' } } },
+  { type: 'object', required: ['type','image_url'], properties: { type: { type: 'string', const: 'image_url' }, image_url: {
+    type: 'object', required: ['url'], properties: { url: { type: 'string', pattern: '^https:|^data:image/(png|jpeg|webp|gif);base64,', description: 'HTTPS URL or base64 image data URL; at most four images per request.' }, detail: { type: 'string', enum: ['auto','low','high'] } } } } }
+] } };
+Object.assign(AGENT_INPUT_SCHEMA.properties, {
+  messages: { type: 'array', minItems: 1, maxItems: AGENT_LIMITS.messages, description: 'Conversation; at most 100000 characters-equivalent including tools and an estimated 8000 per image. Body limit 128 kb.', items: {
+    type: 'object', required: ['role'], properties: {
+      role: { type: 'string', enum: ['system','developer','user','assistant','tool'], description: 'developer is mapped to system.' },
+      content: { oneOf: [{ type: 'string' }, blocksSchema, { type: 'null' }], description: 'Null or omitted only for assistant tool_calls; tool messages accept strings or text blocks.' },
+      tool_calls: { type: 'array', minItems: 1, maxItems: 64, items: callSchema, description: 'Assistant function calls.' },
+      tool_call_id: { type: 'string', minLength: 1, maxLength: 64, description: 'Required on tool messages.' }
+    } } },
+  max_tokens: { type: 'integer', minimum: 1, maximum: 8192, default: 800, description: 'Output token budget; values above 8192 are clamped. Invalid values default to 800.' },
+  tools: { type: 'array', maxItems: 64, description: 'Function tools available to the model; at most 64 definitions.', items: { type: 'object', required: ['type','function'], properties: {
+    type: { type: 'string', const: 'function' }, function: { type: 'object', required: ['name'], properties: {
+      name: functionNameSchema, description: { type: 'string', maxLength: 4000 }, parameters: { type: 'object', description: 'JSON Schema for function parameters.' }
+    } } } } },
+  tool_choice: { oneOf: [{ type: 'string', enum: ['none','auto','required'] }, { type: 'object', required: ['type','function'], properties: {
+    type: { type: 'string', const: 'function' }, function: { type: 'object', required: ['name'], properties: { name: functionNameSchema } }
+  } }], description: 'Requires tools; a named function must appear in tools.' },
+  parallel_tool_calls: { type: 'boolean', description: 'Requires tools.' }
+});
 
 const OUTPUT_SCHEMA = {
   type: "object", required: ["choices", "billing"],
@@ -309,6 +367,15 @@ const OUTPUT_SCHEMA = {
     } },
   },
 };
+
+const AGENT_OUTPUT_SCHEMA = structuredClone(OUTPUT_SCHEMA);
+AGENT_OUTPUT_SCHEMA.properties.choices.items.properties.message = {
+  type: 'object', required: ['role','content'], properties: {
+    role: { type: 'string', const: 'assistant' }, content: { type: ['string','null'] },
+    tool_calls: { type: 'array', minItems: 1, maxItems: 64, items: callSchema }
+  }
+};
+AGENT_OUTPUT_SCHEMA.properties.choices.items.properties.finish_reason.description = 'stop, length, or tool_calls.';
 
 // Which scheme to sign for a model, when one is clearly better (pricing.mjs's isUptoPrimary): spread into a model's
 // /pricing.json and /v1/models entries, nothing for the others. Advice only: every offer stays in the 402.
@@ -445,13 +512,15 @@ const exactExampleOffers = timeout => [
 const PAYMENT_REQUIRED = (exactTimeout) => ({ description: "Payment Required: the x402 v2 challenge is in the PAYMENT-REQUIRED response header "
     + "(base64 JSON: x402Version, resource, accepts); the body contains matching x402Version and accepts only for a payment challenge. Sign one of the accepts and retry "
     + "with PAYMENT-SIGNATURE. If a payment was submitted but could not be settled, the 402 has no PAYMENT-REQUIRED header "
-    + "and the body contains only error and code (payment_required).",
+    + "and the body contains error, a refusal code, action and message.",
   ...(exactTimeout ? {} : { description: "Chat challenge example: one Base offer per scheme. The full accepts order is upto Base, upto Solana, exact Base, exact Solana. " +
-    "The PAYMENT-REQUIRED header carries the base64 JSON challenge; settlement failures have only error and code in the body." }),
-  headers: { "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
-  content: { "application/json": { schema: errorRef("PaymentRequired402"), example: {
-    x402Version: 2, accepts: exactTimeout ? exactExampleOffers(exactTimeout) : chatExampleOffers,
-    error: "payment_required", code: "payment_required",
+    "The PAYMENT-REQUIRED header carries the base64 JSON challenge; settlement refusals include a code, action and message." }),
+  headers: { "X-SingIt-Error": { description: "Machine-readable payment refusal code", schema: { type: "string" } }, "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
+  content: { "application/json": { schema: errorRef("PaymentRequired402"), examples: {
+    challenge: { value: { x402Version: 2, accepts: exactTimeout ? exactExampleOffers(exactTimeout) : chatExampleOffers,
+      error: "payment_required", code: "payment_required" } },
+    unfunded: { value: { error: "payment_required", code: "payment_unfunded", action: "fund_wallet",
+      message: "Fund the wallet and its token account. Nothing was charged for this request." } },
   } } } });
 const BAD_REQUEST = "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged";
 const TOO_LARGE = "The JSON body is over 128 kB; nothing was charged";
@@ -474,7 +543,7 @@ const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, sch
     errorExample(schema === ANTHROPIC_ERROR_SCHEMA ? "api_error" : "upstream_error", exampleMessage, exampleCode, schema)), headers: RETRY_AFTER },
 });
 
-export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
+export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, resolveHostname, log = console.error,
                                     agentFilesDir, exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({
                                       url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
@@ -482,7 +551,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                                     observed = new ObservedPrices({ file: config.observedFile }),
                                     spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
-  fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log });
+  fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log, responseLimits: {
+    [`${config.surplusUrl}/v1/music/generations`]: 256 * 1024,
+    [`${config.surplusUrl}/v1/images/edits`]: config.maxEditResponseBytes ?? 40 * 1024 * 1024,
+    [`${config.surplusUrl}/v1/embeddings`]: config.maxEmbeddingResponseBytes ?? 8 * 1024 * 1024,
+  } });
   for (const id of [config.model, ...Object.values(AUTO_CONFIG.tiers).flat()]) catalogue?.neverHide?.add(id);
   const app = express();
   app.locals.paidRoutes = new Set([CREDIT_ROUTE]);
@@ -495,6 +568,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");
   app.use(errorCodesMiddleware);
+  app.use(paymentCodesMiddleware({ stats: app.locals.healthStats, log }));
   app.use((req, res, next) => {
     res.on("finish", () => {
       try {
@@ -523,7 +597,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         args[index] = Array.isArray(headers) ? rest.flat() : Object.fromEntries(rest);
       }
       const seen = new Set();
-      const merged = [...values, "X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From", "X-SingIt-Fallback-Policy"]
+      const merged = [...values, "X-SingIt-Error", "X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From", "X-SingIt-Fallback-Policy"]
         .flat().flatMap(value => String(value).split(",")).map(value => value.trim())
         .filter(value => {
           const key = value.toLowerCase();
@@ -536,6 +610,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     };
     next();
   });
+  // Keep the challenge observer and exposed-header wrapper ahead of response adapters.
+  // The adapter still wraps every route, before payment middleware buffers responses.
+  app.use(agentResponses(app.locals.healthStats));
   if (config.statsToken && config.statsToken.length < 32) log("singit-ask: SINGIT_ASK_STATS_TOKEN must be at least 32 characters; internal stats disabled");
   if (config.statsToken?.length >= 32) {
     const digest = value => createHash("sha256").update(value).digest();
@@ -547,6 +624,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       res.json(privateStatsBody(app.locals.healthStats));
     });
   }
+  // Four images (or one image plus mask), base64 expansion and JSON overhead; other routes stay at 128 KB.
+  app.post(EXTRA_PAID.slice(0, 2), express.json({ limit: Math.ceil((config.maxEditImageBytes ?? 8 * 1024 * 1024) * 4 / 3) * 4 + 65536 }));
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
   // ...with a JSON body like every other refusal, not Express's HTML page (documented in openapi.json).
   app.use((error, req, res, next) => {
@@ -577,8 +656,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const freeListed = free.models.map((m) => ({ id: FREE_PREFIX + m, object: "model", owned_by: "singit", free: true,
     limits: freeLimits }));
   // The question's shape; where free answers are on, the model field says so (Bazaar and OpenAPI read it).
-  const baseInputSchema = { ...INPUT_SCHEMA, description: probeNote(EXAMPLE.input.max_tokens, config) };
-  const inputSchema = freeOffer ? { ...baseInputSchema, properties: { ...INPUT_SCHEMA.properties,
+  const baseInputSchema = { ...AGENT_INPUT_SCHEMA, description: probeNote(EXAMPLE.input.max_tokens, config).replace("above 1200 counts as 1200", "above 8192 counts as 8192") };
+  const inputSchema = freeOffer ? { ...baseInputSchema, properties: { ...AGENT_INPUT_SCHEMA.properties,
     model: { ...INPUT_SCHEMA.properties.model, description: `${INPUT_SCHEMA.properties.model.description} `
       + `Free to try, no payment: ${freeOffer.models.join(", ")}.` } } } : baseInputSchema;
   // What a payer pays on top of the model's own cost: the markup, and one settlement fee per answer.
@@ -588,17 +667,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Public, read-only documents: the website reads them straight from the browser.
   const open = (_req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); next(); };
   // At most 500 characters: Coinbase's facilitator rejects longer descriptions.
-  const DESCRIPTION = "Ask a language model without an API key: any model listed at GET /v1/models (Claude, GPT, Gemini, "
-    + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
-    + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
-    + "price; nothing is charged without an answer. Exact payers instead pay a flat price for a typical-length answer.";
-  // Keep every route within 160 characters so directories show the capability first.
-  // CDP's hard limit is 500 (enforced by the lint); billing stays in DESCRIPTION.
-  const DISCOVERY_DESCRIPTION = "OpenAI-compatible chat API: 200+ models, or singit/auto to pick by tier. "
-    + `Pay per call in USDC on Base or Solana${freeOffer ? `; ${FREE_PREFIX} models need no payment` : ""}.`;
-  const LLMS_INTRO = "OpenAI-compatible chat API: 200+ models (Claude, GPT, Gemini, Grok, DeepSeek, Qwen), "
-    + "or singit/auto to pick one by tier. One endpoint, pay per call in USDC on Base or Solana, no account."
-    + (freeOffer ? ` Free first call, no wallet: model ${freeOffer.models[0]}.` : "");
+  const DESCRIPTION = routeCopy(ROUTE).description;
+  const DISCOVERY_DESCRIPTION = DESCRIPTION;
+  const LLMS_INTRO = DESCRIPTION;
   const AUTO_GUIDE = "\"model\":\"singit/auto\" on POST /v1/chat/completions picks an eco, standard or premium model for "
     + "text prompts by simple rules; optional \"min_tier\" (eco, standard or premium) sets the minimum "
     + "tier. X-SingIt-Model and X-SingIt-Tier identify the model and tier that answered. If the chosen "
@@ -618,6 +689,30 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.get("/numbers.json", open, (_req, res) => {
     res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
   });
+  app.get("/v1/catalog", open, async (req, res) => {
+    try {
+      const data = await buildCatalog({ catalogue, config, free, searchEnabled: !!exaKey,
+        chatPrice: m => pricingFor(config, catalogue, m.id),
+        extraPrice: async (model, modality) => {
+          const embedding = modality === 'embeddings';
+          const reference = { ...(embedding ? EMBEDDING_REFERENCE : EDIT_REFERENCE), model: model.id };
+          const amount = (embedding ? embeddingListAtomic : editListAtomic)(model,
+            (embedding ? readEmbeddingRequest : readEditRequest)(reference, model, config));
+          return { referenceRequest: reference, exact: Object.fromEntries([['base', BASE], ['solana', SOLANA]].map(([name, chain]) => {
+            const p = imagePrice(amount, chain);
+            return [name, { ceilingAtomic: p.totalAtomic, usd: Number(usd(p.totalAtomic)) }];
+          })) };
+        } });
+      try { res.json(catalogResponse(data, req.query.modality)); }
+      catch (error) {
+        if (!(error instanceof RangeError)) throw error;
+        res.status(400).json({ error: { message: 'Unknown modality', code: 'invalid_request' } });
+      }
+    } catch {
+      res.set('Retry-After', '5').status(503).json({ error: { message: 'Catalog unavailable; retry shortly', code: 'upstream_unavailable' } });
+    }
+  });
+
   // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
   app.get("/v1/models", open, async (_req, res) => {
     // Only models that can be answered now, including the default after a routing rejection.
@@ -639,6 +734,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         // Virtual routes have no fixed token rate; priced-model consumers use property presence.
         { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION },
         ...freeListed,
+        ...(catalogue ? availableAudioPrices(config, catalogue).map(m => ({ ...m, object: "model", tags: [m.kind, "audio"] })) : []),
+        ...[...((await catalogue?.embeddingModels?.().catch(() => new Map()))?.values() ?? [])].map(m => ({ ...m, object: "model", tags: ["embedding"] })),
         ...models.map(m => {
           const price = displayPrice(m, observed, market);
           const { share = null, basis, ours = null } = price ?? {};
@@ -686,6 +783,23 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     let autoPrice = { upto: null, exact: null };
     try { autoPrice = await pricingFor(config, catalogue, AUTO_ID); } catch { /* no eligible healthy model */ }
     priced.push({ id: AUTO_ID, name: "SingIt Auto", description: AUTO_DESCRIPTION, ...autoPrice });
+    for (const [kind, route, entries, reference, read, estimate] of [
+      ['image-editing', '/v1/images/edits', await catalogue?.editModels?.() ?? new Map(), EDIT_REFERENCE, readEditRequest, editListAtomic],
+      ['embedding', '/v1/embeddings', await catalogue?.embeddingModels?.() ?? new Map(), EMBEDDING_REFERENCE, readEmbeddingRequest, embeddingListAtomic],
+    ]) {
+      for (const model of entries.values()) {
+        const referenceRequest = { ...reference, model: model.id };
+        const amount = estimate(model, read(referenceRequest, model, config));
+        const exact = Object.fromEntries([['base', BASE], ['solana', SOLANA]].map(([name, network]) => {
+          const price = imagePrice(amount, network);
+          return [name, { ceilingAtomic: price.totalAtomic, usd: Number(usd(price.totalAtomic)) }];
+        }));
+        priced.push({ id: model.id, name: model.name ?? model.id, kind, route, referenceRequest, exact,
+          ...(kind === 'embedding' ? { usdPerMillionTokens: model.usdPerMillionTokens,
+            priceDescription: 'Exact on a conservative estimate: one token per UTF-8 input byte plus eight bytes per input; rounded up to micro-USD. No usage refund.' }
+            : { priceDescription: 'Exact per output image; one output image per request.' }) });
+      }
+    }
     const chars = PRICING_REFERENCE.content.length;
     res.json({
       generatedAt: new Date().toISOString(),
@@ -702,17 +816,20 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + `${Math.round((config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION) * 100)}% of max_tokens), `
         + "and the whole answer is still returned. A model with recommendedScheme upto (Claude Opus) is best paid with "
         + "upto: its exact price carries room for thinking tokens, so it is usually dearer than the answer used.",
-      models: priced,
+      models: [...priced, ...(catalogue ? availableAudioPrices(config, catalogue) : [])],
     });
   });
 
   // Free: how directories (x402scan, agents) find the paid route. x402scan reads this first, then /.well-known/x402.
   app.get("/openapi.json", open, async (req, res) => {
     const price = await priceRange(catalogue);
+    const editMax = usd(imagePrice(await editCeiling(catalogue), SOLANA).totalAtomic);
+    const embeddingMax = usd(imagePrice(await embeddingCeiling(catalogue, config), SOLANA).totalAtomic);
     res.json({
       openapi: "3.1.0",
       info: { title: "SingIt Ask", version: "1.0.0",
-              description: "Language-model answers paid per answer over x402 in USDC on Base or Solana. No accounts or API keys."
+              termsOfService: "https://singitai.app/terms/",
+              description: DESCRIPTION
                 + (freeOffer ? ` Free to try: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day, no payment.` : ""),
               "x-guidance": "POST JSON in OpenAI chat-completions format to the paths below. A first request without "
                 + "payment returns 402 with the challenge in the PAYMENT-REQUIRED header; sign an x402 v2 \"exact\" or "
@@ -728,14 +845,14 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             + `with no payment, within ${freeOffer.perVisitorPerDay} answers a day per network, ${freeOffer.maxTokens} tokens `
             + `and ${freeOffer.maxChars} characters each.` : ""),
           ...(freeOffer ? { "x-free-models": freeListed } : {}),
-          "x-payment-info": { notes: probeNote(EXAMPLE.input.max_tokens, config), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
+          "x-payment-info": { notes: probeNote(EXAMPLE.input.max_tokens, config).replace("above 1200 counts as 1200", "above 8192 counts as 8192"), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": {
             schema: { type: "object", ...inputSchema, properties: { ...inputSchema.properties,
               min_tier: { type: "string", enum: TIERS, description: "Minimum tier; only valid with model singit/auto." },
               model: { ...inputSchema.properties.model, description: inputSchema.properties.model.description + " " + AUTO_DESCRIPTION + defaultFallbackNote(config) } } }, example: EXAMPLE.input } } },
           responses: {
             200: { description: "The answer, with what it was charged", headers: { ...autoHeaders, "X-SingIt-Free-Remaining": { description: "Free answers left today for this network; the shared cost budget may end free answers sooner", schema: { type: "integer", minimum: 0 } } },
-                   content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
+                   content: { "application/json": { schema: AGENT_OUTPUT_SCHEMA, example: EXAMPLE.output }, "text/event-stream": { schema: { type: "string" }, description: "Complete buffered SSE answer after settlement; billing in the final choice chunk; optional usage chunk; ends with [DONE]." } } },
             ...Object.fromEntries(Object.entries(paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }))
               .map(([status, response]) => [status, { ...response, headers: { ...response.headers, ...autoHeaders } }])),
             429: {
@@ -762,8 +879,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           summary: { "/v1/exa/search": "Search the web with Exa and return ranked results",
                      "/v1/exa/contents": "Fetch page contents from Exa for up to 10 URLs",
                      "/v1/exa/answer": "Generate a cited answer with Exa" }[route],
-          description: "Exa's own request and answer, paid per request over x402: Exa's list price plus a flat 0.001 USDC settlement fee, the same on Base and Solana. "
-            + "Nothing is charged without an answer.",
+          description: routeCopy(route).description,
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...exaPriceRange() }, protocols: [{ x402: {} }] },
           requestBody: exaRequestBody(route),
           responses: { 200: { description: "Exa's answer, with billing" },
@@ -780,21 +896,30 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         ...(catalogue ? Object.fromEntries(Object.keys(FORMAT_ROUTES).map((route) => [route, { post: {
           operationId: route === "/v1/messages" ? "createMessage" : "createResponse",
           summary: route === "/v1/messages" ? "Create a message in Anthropic's format, any listed model" : "Create a response in OpenAI's format, any listed model",
-          description: "The request in that API's own format, without streaming. Pays actual token cost + 30% + a settlement "
-            + "fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's price and the request's "
-            + "size; nothing is charged without an answer. Models: GET /v1/models.",
+          description: routeCopy(route).description,
           "x-payment-info": { notes: probeNote(300, config, true), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: formatRequestBody(route),
-          responses: { 200: { description: "The answer in that API's format, with billing" },
+          responses: { 200: { description: "The answer in that API's format, with billing; stream:true returns complete buffered SSE after settlement.", content: { "application/json": { schema: { type: "object" } }, "text/event-stream": { schema: { type: "string" } } } },
                        ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged", reasoning: true,
                                        schema: route === "/v1/messages" ? ANTHROPIC_ERROR_SCHEMA : ERROR_SCHEMA }) },
           security: [{ x402: [] }],
         } }])) : {}),
+        ...(catalogue ? Object.fromEntries(EXTRA_PAID.map((path, i) => [path, { post: {
+          operationId: ["createImageEdit", "createImageEditAlias", "createEmbeddings"][i],
+          summary: i === 2 ? "Create embeddings for input text" : "Create edited images from input images",
+          description: routeCopy(path).description,
+          "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: i === 2 ? embeddingMax : editMax }, protocols: [{ x402: {} }] },
+          requestBody: i === 2 ? EMBEDDING_BODY() : EDIT_BODY(),
+          responses: { 200: { description: "Result with billing", content: { "application/json": { schema: i === 2 ? EMBEDDING_OUTPUT : EDIT_OUTPUT, example: i === 2 ? EMBEDDING_EXAMPLE : EDIT_EXAMPLE } } },
+            ...paidErrors({ exactTimeout: 180, notFound: "No such model is available", duplicate: true, noAnswer: "Upstream failed or returned no usable result; nothing charged" }),
+            413: errorBody(i === 2 ? "Embedding input exceeds the configured byte limit" : "Image exceeds the configured decoded byte limit or JSON body limit",
+              ERROR_SCHEMA, errorExample("invalid_request_error", "The request body is too large.", "payload_too_large")),
+            422: errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request")) },
+          security: [{ x402: [] }],
+        } }])) : {}),
         ...(catalogue ? { [IMAGE_ROUTE]: { post: {
           operationId: "createImage", summary: "Generate images with any listed image model",
-          description: "OpenAI images request (model, prompt, n, size). Paid per request over x402: the model's list price "
-            + "+ 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models and prices: GET /v1/images/models. "
-            + "Nothing is charged without an image.",
+          description: routeCopy(IMAGE_ROUTE).description,
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.014", max: "2.602" }, protocols: [{ x402: {} }] },
           requestBody: IMAGE_REQUEST_BODY(),
           responses: { 200: { description: "The images, with billing" },
@@ -802,11 +927,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
+          ...(config.audioSold ? { ...audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))),
+          [MEDIA_MODELS_ROUTE]: { get: { operationId: "listGenerationAudioModels", summary: "List music and sound effect models with exact prices", responses: { 200: { description: "Pinned per-job prices and model metadata" } } } } } : {}),
           [SPEECH_ROUTE]: { post: {
             operationId: "createSpeech", summary: "Generate speech with any listed voice model",
-            description: "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: the "
-              + "model's list price for the text + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models: "
-              + "GET /v1/audio/models. Nothing is charged without audio.",
+            description: routeCopy(SPEECH_ROUTE).description,
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
             requestBody: SPEECH_REQUEST_BODY(),
             responses: { 200: { description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type.", content: Object.fromEntries([...Object.values(SPEECH_CONTENT_TYPES), "audio/mp4"].map((type) => [type, {}])) },
@@ -887,6 +1012,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               400: { description: "Not an address, or days out of range" },
               429: { description: "Too many requests; see Retry-After" } },
           } },
+        "/v1/catalog": { get: {
+          operationId: "listCatalog", summary: "List all currently sold modalities, payment access and prices",
+          parameters: [{ name: "modality", in: "query", schema: { type: "string", enum: [...MODALITIES, ...new Set(availableAudioPrices(config, catalogue).map(m => m.kind === 'music' ? 'music' : 'sound_effects')), ...(config.videoSold === true ? ['video'] : [])] } }],
+          responses: { 200: { description: "Catalog entries and global per-modality counts" }, 400: { description: "Unknown modality" }, 503: { description: "Catalog unavailable" } },
+        } },
         "/v1/models": { get: {
           operationId: "listModels", summary: "List models that can be asked for now, with prices",
           responses: { 200: { description: "Model list" } }, security: [],
@@ -991,7 +1121,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                 networks: { type: "object" } } }
             } } } } } } } },
         "/numbers.json": { get: { operationId: "getNumbers", security: [], summary: "Get measured usage numbers with definitions",
-          responses: { 200: { description: "Calls, USDC volume and unique payer counts since counters began", content: { "application/json": { schema: { type: "object", required: ["own_payers_configured"], properties: { own_payers_configured: { type: "boolean" }, counts_basis: { type: "string", enum: ["including_own_payments", "excluding_configured_own_payers"] }, counts_label: { type: "string" } } } } } } } } },
+          responses: { 200: { description: "Calls, USDC volume, unique payer counts and agent_traffic since counters began. agent_traffic has total/last_24h/last_7d calls, with_tools, with_stream, with_images and fixed by_source product labels for served paid and free answers.", content: { "application/json": { schema: { type: "object", required: ["own_payers_configured"], properties: { agent_traffic: { type: "object", description: "Served paid and free answers; total, last_24h and last_7d contain calls, with_tools, with_stream, with_images and fixed by_source counters. No raw client headers or prompt data." }, own_payers_configured: { type: "boolean" }, counts_basis: { type: "string", enum: ["including_own_payments", "excluding_configured_own_payers"] }, counts_label: { type: "string" } } } } } } } } },
         "/pricing.json": { get: {
           operationId: "listPricing", summary: "Get per-model upto/exact prices for one reference question",
           description: "What GET/HEAD discovery and a real paid request would be offered for each model that can be "
@@ -1010,30 +1140,40 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           + "https://app.singitai.app/app/. Only the wallet spend report on app.singitai.app uses it." } } },
     });
   });
+  const audioRoutes = () => config.audioSold && config.audioDiscoverable
+    ? [...new Set(availableAudioPrices(config, catalogue).map(m => m.route))] : [];
   app.get("/.well-known/x402", open, (req, res) => {
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
-                         `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`,
+                         ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, ...audioRoutes().map(path => `${origin(req)}${path}`),
                          ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
                          ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
-      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`
-        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
+      resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
+        ...(!audioRoutes().includes(path) && path !== VIDEO_ROUTE ? routeCopy(path) : {}), ...(EXTRA_PAID.includes(path) ? { outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT } : {}) })),
+      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
   // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
   // list below and llms.txt can never list a route this instance did not add.
-  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE,
+  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), ...EXTRA_PAID, IMAGE_ROUTE, SPEECH_ROUTE, ...audioRoutes(),
     ...(config.videoSold && config.videoDiscoverable ? [VIDEO_ROUTE] : []),
     ...modelRoutePaths(catalogue)] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
+  // Free: canonical legal pages, with fixed destinations and no query forwarding.
+  for (const [path, url] of [["/terms", "https://singitai.app/terms/"], ["/privacy", "https://singitai.app/privacy/"]]) {
+    app.get([path, `${path}/`], open, (_req, res) => {
+      res.set("Cache-Control", "public, max-age=3600").redirect(308, url);
+    });
+  }
   // Free: a human or agent landing on the bare origin gets a small service index instead of Express's 404.
   // Express answers HEAD the same way automatically. Open CORS, like the other public documents.
   app.get("/", open, (req, res) => {
     const base = origin(req);
     res.json({ name: SERVICE_NAME, description: DISCOVERY_DESCRIPTION, icon: ICON_URL,
       links: { openapi: `${base}/openapi.json`, x402: `${base}/.well-known/x402`, llmsTxt: `${base}/llms.txt`,
-        models: `${base}/v1/models`, docs: "https://singitai.app/developers/" } });
+        models: `${base}/v1/models`, docs: "https://singitai.app/developers/",
+        terms: "https://singitai.app/terms/", privacy: "https://singitai.app/privacy/" } });
   });
   // Free: llmstxt.org format, generated from the same route list as discovery so it cannot drift from it.
   app.get("/llms.txt", open, (req, res) => {
@@ -1058,6 +1198,17 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + `${base}/openapi.json and ${base}/v1/models. For Claude Opus, sign \`upto\`: its \`exact\` price carries room `
         + "for thinking tokens and is usually dearer than the answer used (recommendedScheme in "
         + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC}`, "",
+      "## Agent chat and streams", "",
+      "Paid /v1/chat/completions: up to 200 messages, 100000 estimated characters including tools and 8000 per image, 64 tools/calls, four images and 8192 output tokens (default 800; 128 kB JSON body). Tools/images depend on model capabilities. Messages and Responses support tools and up to 32000 output tokens.", "",
+      "Chat, Messages and Responses accept stream:true as complete buffered SSE after settlement, not token by token. Billing and PAYMENT-RESPONSE are retained; errors remain JSON. Chat stream_options accepts only include_usage:boolean and requires stream:true. Free and per-model chat retain their existing text-only limits and also support buffered SSE.", "",
+      "numbers.json agent_traffic reports served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels for total/last_24h/last_7d. No raw headers or prompts are stored.", "",
+
+      "## Spending limits", "",
+      "- The 402 quotes the most you can be charged before you sign. Nothing is charged without an answer.",
+      "- To cap an agent's spend, use @singitai/sdk (npm) or singit (PyPI): maxPerCallUsd and maxPerDayUsd "
+        + "(max_per_call_usd and max_per_day_usd in Python) are required, and they are checked in your own process "
+        + "before anything is signed. These are client-side ceilings.",
+      `- Through the MCP server (${MCP_URL}) or a SingIt API key, the owner sets the key's limits at https://app.singitai.app/app/; SingIt's server enforces them.`, "",
       "## Model selection", "", AUTO_GUIDE, "", FALLBACK_GUIDE, "",
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `
@@ -1065,11 +1216,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           + `tokens and ${freeOffer.maxChars} characters each, resetting at midnight UTC. `
           + (freeOffer.budgetUsdPerDay > 0 ? `Shared daily cost cap: $${freeOffer.budgetUsdPerDay}; free answers may run out for the day (free_budget_exhausted). ` : "")
           + "Each free answer reports billing.remainingToday; when used up, drop the free/ prefix to pay, or come back tomorrow.", ""] : []),
-      "## Paid routes", "", ...discoverableRoutes().map((route) => `- POST ${base}${route}`), "",
+      "## Paid routes", "", ...discoverableRoutes().map((route) => `- POST ${base}${route}${!audioRoutes().includes(route) && route !== VIDEO_ROUTE ? ` — ${routeCopy(route).description}` : ""}`), "",
       "## Free", "",
       `- GET ${base}/v1/models — models and their prices`,
       ...(catalogue ? [`- GET ${base}/v1/images/models — image models and their prices`,
-        `- GET ${base}/v1/audio/models — speech and transcription models and their prices`] : []),
+        `- GET ${base}/v1/audio/models — speech models and prices; transcription is API-key only`] : []),
       ...(priceBook ? [`- GET ${base}/v1/prices — crypto, metal and fx prices, no payment`] : []),
       `- GET ${base}/health — service, model and payment-rail status`,
       `- GET ${base}/numbers.json — measured usage numbers with definitions`, "",
@@ -1083,6 +1234,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       `- Full documentation: ${base}/llms-full.txt`,
       `- Models: ${base}/v1/models`,
       "- Docs: https://singitai.app/developers/",
+      "- Terms: https://singitai.app/terms/",
+      "- Privacy policy: https://singitai.app/privacy/",
       `- First paid x402 call: ${FIRST_PAID_CALL_DOC}`,
       `- MCP server (API key, not x402): ${MCP_URL}. Free tools work without a key; paid tools need a SingIt API key created in the app at https://app.singitai.app/app/.`,
     ];
@@ -1128,23 +1281,29 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }).catch(() => {});
     return answer;
   };
-  const route = { facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };
+  const publicClient = priceBook?.publicClient;
+  const route = { publicClient, facilitatorClient, catalogue, config, readRequest: body => readRequest(body, { agent: true }), choose: chooseChat, upstream: learning, fetchImpl, log };
   // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
   addCreditRoute(app, config, { facilitatorClient });
   // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
-  if (exaKey) addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl: exaFetch, log });
+  if (exaKey) addSearchRoutes(app, config, { publicClient, facilitatorClient, exaKey, fetchImpl: exaFetch, log });
   // Images from Surplus's image models, with this service's own Surplus key.
-  if (catalogue) addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) {
+    addEditRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
+    addEmbeddingRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
+  }
+  if (catalogue) addImageRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
-  if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addAudioGenerationRoutes(app, config, { publicClient, facilitatorClient, fetchImpl, log, open, catalogue });
+  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, resolveHostname, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
-  if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
+  if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
-  if (catalogue) addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
+  if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
     inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Video from Surplus's text-to-video models, as jobs.
-  if (catalogue) addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addVideoRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
   if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
@@ -1162,7 +1321,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     description: DISCOVERY_DESCRIPTION,
     serviceName: SERVICE_NAMES[ROUTE],
     iconUrl: ICON_URL,
-    tags: discoveryTags("llm", "chat-completions", "inference", "openai-compatible", "chat", "claude", "gpt", "gemini",
+    tags: discoveryTags(...routeCopy(ROUTE).tags, "llm", "chat-completions", "inference", "openai-compatible", "chat", "claude", "gpt", "gemini",
                         "deepseek", "singit"),
     extensions: {
       ...declareEip2612GasSponsoringExtension(),
@@ -1170,7 +1329,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         bodyType: "json",
         input: EXAMPLE.input,
         inputSchema,
-        output: { example: EXAMPLE.output, schema: OUTPUT_SCHEMA },
+        output: { example: EXAMPLE.output, schema: AGENT_OUTPUT_SCHEMA },
       }),
     },
   }, { ...route, offerEmptyProbe: true, probeBody: EXAMPLE.input });

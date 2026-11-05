@@ -1,0 +1,351 @@
+{
+  "status": "draft; not approved for merge or publication",
+  "resources": [
+    {
+      "url": "https://ask.singitai.app/v1/audio/speech",
+      "method": "POST",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "examples": [
+              "venice-kokoro-tts"
+            ],
+            "description": "A speech model id from GET /v1/audio/models, including elevenlabs/multilingual-v2, elevenlabs/v3, bytedance/seed-audio-1.0 (fixed per-job pricing; provider audio format; no speed/response_format)."
+          },
+          "input": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "description": "The text to read aloud."
+          },
+          "voice": {
+            "type": "string",
+            "maxLength": 60,
+            "examples": [
+              "af_heart"
+            ],
+            "description": "A voice of the model; they are listed at GET /v1/audio/models."
+          },
+          "response_format": {
+            "type": "string",
+            "enum": [
+              "mp3",
+              "opus",
+              "aac",
+              "flac",
+              "wav",
+              "pcm"
+            ],
+            "default": "mp3",
+            "description": "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type."
+          },
+          "speed": {
+            "type": "number",
+            "minimum": 0.25,
+            "maximum": 4,
+            "description": "Speaking speed."
+          }
+        },
+        "required": [
+          "model",
+          "input"
+        ]
+      }
+    }
+  ],
+  "wellKnown": {
+    "resources": [
+      "https://ask.singitai.app/v1/audio/speech"
+    ]
+  },
+  "openapi": {
+    "/v1/audio/speech": {
+      "post": {
+        "operationId": "createSpeech",
+        "summary": "Generate speech with any listed voice model",
+        "description": "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: the model's list price for the text + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models: GET /v1/audio/models. Async speech: elevenlabs/multilingual-v2 and elevenlabs/v3 cost 0.157 USDC Base / 0.158 Solana per job; bytedance/seed-audio-1.0 costs 0.004738 / 0.005738. Max 4096 characters, provider audio format, no response_format or speed. A 110-second deadline includes artifact validation; failures never settle. Nothing is charged without audio.",
+        "x-payment-info": {
+          "price": {
+            "mode": "dynamic",
+            "currency": "USD",
+            "min": "0.001",
+            "max": "0.336"
+          },
+          "protocols": [
+            {
+              "x402": {}
+            }
+          ]
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "examples": [
+                      "venice-kokoro-tts"
+                    ],
+                    "description": "A speech model id from GET /v1/audio/models, including elevenlabs/multilingual-v2, elevenlabs/v3, bytedance/seed-audio-1.0 (fixed per-job pricing; provider audio format; no speed/response_format)."
+                  },
+                  "input": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "description": "The text to read aloud."
+                  },
+                  "voice": {
+                    "type": "string",
+                    "maxLength": 60,
+                    "examples": [
+                      "af_heart"
+                    ],
+                    "description": "A voice of the model; they are listed at GET /v1/audio/models."
+                  },
+                  "response_format": {
+                    "type": "string",
+                    "enum": [
+                      "mp3",
+                      "opus",
+                      "aac",
+                      "flac",
+                      "wav",
+                      "pcm"
+                    ],
+                    "default": "mp3",
+                    "description": "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type."
+                  },
+                  "speed": {
+                    "type": "number",
+                    "minimum": 0.25,
+                    "maximum": 4,
+                    "description": "Speaking speed."
+                  }
+                },
+                "required": [
+                  "model",
+                  "input"
+                ]
+              },
+              "example": {
+                "model": "venice-kokoro-tts",
+                "input": "Hello from SingIt.",
+                "voice": "af_heart",
+                "response_format": "mp3"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type.",
+            "content": {
+              "audio/mpeg": {},
+              "audio/wav": {},
+              "audio/flac": {},
+              "audio/ogg": {},
+              "audio/aac": {},
+              "audio/pcm": {},
+              "audio/mp4": {}
+            }
+          },
+          "400": {
+            "description": "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "Send valid JSON.",
+                    "code": "invalid_json"
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment Required: the x402 v2 challenge is in the PAYMENT-REQUIRED response header (base64 JSON: x402Version, resource, accepts); the body contains matching x402Version and accepts only for a payment challenge. Sign one of the accepts and retry with PAYMENT-SIGNATURE. If a payment was submitted but could not be settled, the 402 has no PAYMENT-REQUIRED header and the body contains error, a refusal code, action and message.",
+            "headers": {
+              "X-SingIt-Error": {
+                "description": "Machine-readable payment refusal code",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "PAYMENT-REQUIRED": {
+                "description": "Base64-encoded JSON x402 payment requirements",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequired402"
+                },
+                "examples": {
+                  "challenge": {
+                    "value": {
+                      "x402Version": 2,
+                      "accepts": [
+                        {
+                          "scheme": "exact",
+                          "network": "eip155:8453",
+                          "amount": "<amount in USDC micro-units>",
+                          "asset": "<USDC contract on Base>",
+                          "payTo": "<pay-to address>",
+                          "maxTimeoutSeconds": 120,
+                          "extra": {
+                            "name": "USD Coin",
+                            "version": "2"
+                          }
+                        },
+                        {
+                          "scheme": "exact",
+                          "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                          "amount": "<amount in USDC micro-units>",
+                          "asset": "<USDC mint on Solana>",
+                          "payTo": "<pay-to address>",
+                          "maxTimeoutSeconds": 120
+                        }
+                      ],
+                      "error": "payment_required",
+                      "code": "payment_required"
+                    }
+                  },
+                  "unfunded": {
+                    "value": {
+                      "error": "payment_required",
+                      "code": "payment_unfunded",
+                      "action": "fund_wallet",
+                      "message": "Fund the wallet and its token account. Nothing was charged for this request."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such voice model; nothing was charged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "This payment signature was already used; nothing was charged again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The JSON body is over 128 kB; nothing was charged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "type": "invalid_request_error",
+                    "message": "The request body is too large.",
+                    "code": "payload_too_large"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The model list or a seller could not be reached; try again shortly. Nothing was charged. Also: No audio; nothing charged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "error": {
+                    "type": "upstream_error",
+                    "message": "No audio was made. You were not charged.",
+                    "code": "no_billable_answer"
+                  }
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before trying again",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "x402": []
+          }
+        ]
+      }
+    },
+    "/v1/audio/models": {
+      "get": {
+        "operationId": "listAudioModels",
+        "summary": "List speech and transcription models with prices",
+        "responses": {
+          "200": {
+            "description": "Model list"
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "terms": {
+    "markupBps": 3000,
+    "maxChars": 4096,
+    "timeoutMs": 110000,
+    "pollMs": 1000,
+    "maxBytes": 20971520
+  },
+  "models": [
+    {
+      "id": "elevenlabs/multilingual-v2",
+      "upstreamId": "venice-elevenlabs-tts-multilingual-v2",
+      "modality": "speech",
+      "pricingSource": "Live catalogue pricing.image with pricing.media_unit=job; finite USD price greater than 0 and below 2 required."
+    },
+    {
+      "id": "elevenlabs/v3",
+      "upstreamId": "venice-elevenlabs-tts-v3",
+      "modality": "speech",
+      "pricingSource": "Live catalogue pricing.image with pricing.media_unit=job; finite USD price greater than 0 and below 2 required."
+    },
+    {
+      "id": "bytedance/seed-audio-1.0",
+      "upstreamId": "seed-audio-1-0",
+      "modality": "speech",
+      "pricingSource": "Live catalogue pricing.image with pricing.media_unit=job; finite USD price greater than 0 and below 2 required."
+    }
+  ],
+  "openQuestions": [
+    "Verify music-generation TTS request fields prompt + voice with one explicitly approved paid call.",
+    "Verify provider text limits and returned audio containers for all three models before merge."
+  ]
+}

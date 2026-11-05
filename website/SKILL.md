@@ -103,7 +103,10 @@ Set framework retries to zero so a retry does not sign a second payment.
 | --- | --- |
 | 400 / 413 / 422 | Fix the request; reduce size for 413. Do not retry on another model. |
 | 402 with PAYMENT-REQUIRED | Check budget and sign one offer, then retry. Re-sign only after checking the fresh challenge. |
-| 402 without a challenge | Reconcile the submitted payment before signing again. |
+| 402 payment_unfunded | fund_wallet: Fund the wallet and its token account. Nothing was charged for this request. |
+| 402 payment_blockhash_stale | sign_again: On Solana, sign again with a fresh blockhash. Nothing was charged for this request. |
+| 402 payment_replay | check_previous_result: Check the previous result before paying again. Nothing was charged for this request. |
+| 402 payment_invalid | fix_payment: Fix the payment before retrying. Nothing was charged for this request. |
 | 409 payment_duplicate | Check the original result; do not reuse the signature. |
 | 429 free_budget_exhausted | Wait Retry-After; the daily free budget resets at midnight UTC. |
 | 503 | Wait Retry-After where supplied, then retry. No billable answer means no charge. |
@@ -128,3 +131,17 @@ is no on-chain emergency stop. A paused Solana account is unpaused only by a
 new grant signed after the pause.
 
 Claude Code + SingIt MCP in 60 seconds: https://singitai.app/docs/claude-code/
+
+## x402 agent chat
+
+Paid POST https://ask.singitai.app/v1/chat/completions supports function tools, tool replies, developer instructions and text/image blocks within 200 messages, 100000 estimated characters, 64 tools/calls, four images and 8192 output tokens (default 800; JSON body limit 128 kB). Capabilities depend on the chosen model.
+Messages and Responses support tools and up to 32000 output tokens.
+
+Chat, Messages and Responses accept stream:true as buffered SSE, released as a
+complete body after settlement rather than token by token. Chat stream_options
+accepts only {include_usage:boolean}, only with stream:true. Errors remain JSON.
+Free and per-model chat also support buffered SSE with their existing text-only
+limits; free models refuse tools/images. Billing and payment receipts are retained.
+Legacy plain text requests with stream:false and max_tokens<=1200 keep their behavior.
+
+Clients should treat payment_duplicate and payment_replay as the same condition.

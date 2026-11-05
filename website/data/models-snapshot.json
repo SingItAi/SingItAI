@@ -6629,6 +6629,44 @@
       }
     },
     {
+      "id": "nemotron-3.5-lightning",
+      "name": "NVIDIA Nemotron 3.5 Lightning",
+      "owned_by": "NVIDIA",
+      "contextLength": 1000000,
+      "tags": [
+        "code",
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.07,
+        "output": 0.19999999999999998
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.091,
+        "output": 0.26
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "priceAtomic": "2279",
+          "usd": 0.002279
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "ceilingAtomic": "2116",
+          "usd": 0.002116
+        }
+      }
+    },
+    {
       "id": "nemotron-3.5-super-vl",
       "name": "NVIDIA: Nemotron 3.5 Super VL",
       "owned_by": "NVIDIA",
@@ -8491,5 +8529,12 @@
     ],
     "perVisitorPerDay": 20,
     "budgetUsdPerDay": 0.25
+  },
+  "draftAdditions": {
+    "nemotron-3.5-lightning": {
+      "metadataCapturedAt": "2026-11-05T06:55:00",
+      "source": "singit-ask/test/fixtures/surplus-nemotron-3-5-lightning.json",
+      "pricing": "Draft: Surplus list rates plus 30% markup; no live seller quote. Owner confirmation pending."
+    }
   }
 }

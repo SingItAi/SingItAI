@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt video: a clip from any of Surplus's text-to-video models, sold over x402 at the model's list price per job +
 // 30% + the network's settlement fee, made on Surplus with this service's own key.
 //
@@ -6,11 +7,10 @@
 import crypto from "node:crypto";
 import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
-import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const VIDEO_ROUTE = "/v1/video/generations";
 export const VIDEO_MODELS_ROUTE = "/v1/video/models";
@@ -134,10 +134,10 @@ const OUTPUT_SCHEMA = { type: "object", required: ["id", "status", "job_token", 
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } },
 } };
 
-export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
+export function addVideoRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
-    .register(BASE, new ExactEvmScheme())
-    .register(SOLANA, new ExactSvmScheme());
+    .register(BASE, new ExactEvmScheme());
+  attachPaymentFailureCodes(server);
   const priced = new WeakMap();
   const used = new Map();
   const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");
@@ -155,7 +155,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     const models = await catalogue.videoModels().catch(() => new Map());
     const served = await catalogue.videoServed?.();
     res.json({ object: "list", endpoint: VIDEO_ROUTE, fees: { markupPct: VIDEO_TERMS.markupBps / 100,
-      perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
+      perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6 } },
       data: [...models.values()].filter((m) => !served || !served.size || served.get(m.id) > 0)
         .map((m) => ({ ...(served ? { healthySellers: served.get(m.id) ?? null } : {}), id: m.id, object: "model", name: m.name, owned_by: m.provider || "surplus",
         durations: m.durations, resolutions: m.resolutions, aspect_ratios: m.aspectRatios, audio: m.audio,
@@ -213,7 +213,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
   const price = (network) => (ctx) => {
     const quote = priced.get(ctx.adapter.getBody());
     const amount = videoPrice(quote?.listAtomic ?? VIDEO_TERMS.maxListAtomic, network).totalAtomic;
-    return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
+    return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } };
   };
   app.post(VIDEO_ROUTE, async (req, res, next) => {
     // Listed for discovery only when config.videoDiscoverable is set: then x402scan's empty, unpaid probe gets the
@@ -243,29 +243,30 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     }
   });
   addPaymentRoute(app, { [`POST ${VIDEO_ROUTE}`]: {
-    // The offer allows Base hold + verification + settlement; Solana's blockhash still requires a shorter hold.
-    // exact on Base first: the simplest offer for a buyer that only inspects accepts[0].
+    // Base only: a Solana recent blockhash (~60–90 s) can expire during the 85 s hold + settle.
+    // Future Solana needs settle-before-submit plus durable refund/recovery. exact on Base first.
     accepts: [
       { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 150, price: price(BASE) },
-      { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 150, price: price(SOLANA) },
     ],
     mimeType: "application/json", description: DESCRIPTION, serviceName: SERVICE_NAMES[VIDEO_ROUTE], iconUrl: ICON_URL,
-    tags: discoveryTags("video-generation", "text-to-video", "video", "pay-per-use", "solana", "base", "singit"),
+    tags: discoveryTags("video-generation", "text-to-video", "video", "pay-per-use", "base", "singit"),
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: { model: "wan-2-2-a14b-text-to-video", prompt: "a small green robot waves hello", duration_seconds: 5 },
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
-  } }, server, { discoverable: Boolean(config.videoDiscoverable), log });  // undefined would mean the default, true
+  } }, server, { discoverable: Boolean(config.videoDiscoverable), log, publicClient });  // undefined would mean the default, true
   const now = config.videoNow ?? Date.now;
   const sleep = config.videoSleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   app.post(VIDEO_ROUTE, async (req, res) => {
     const started = now();
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;
+    // Defense in depth: never hold a signed Solana transaction across an async video job.
+    if (network !== BASE) return res.status(402).json({ error: { code: "unsupported_network", message: "Video generation accepts Base only." } });
     const seen = digest(header);
     if (used.has(seen)) return res.status(409).json({ error: { type: "invalid_request_error", message: "This payment was already used." } });
     used.set(seen, Date.now());
     for (const [k, at] of used) if (Date.now() - at > 3_600_000) used.delete(k);
-    const deadline = started + (network === SOLANA ? config.videoHoldSolanaMs ?? 35_000 : config.videoHoldMs ?? 85_000);
+    const deadline = started + (config.videoHoldMs ?? 85_000);
     const remaining = () => deadline - now();
     const failed = (code) => res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code,
       message: code === "video_timeout" ? "The video was not ready in time. You were not charged; try again."

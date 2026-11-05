@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt credit: a top-up of an account's API balance at app.singitai.app, bought over x402 `exact` by the
 // account's own agent from the owner's limits. The payer names the amount (whole cents, within bounds) and pays it
 // plus the network's settlement fee, once per top-up instead of once per answer.
@@ -32,6 +33,7 @@ export function addCreditRoute(app, config, { facilitatorClient }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
+  attachPaymentFailureCodes(server);
   // The middleware prices the request again when the payment arrives; a body checked below always has a credit.
   const credit = ctx => readCredit(ctx.adapter.getBody()) ?? String(CREDIT_LIMITS.minAtomic);
   const offers = [

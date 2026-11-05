@@ -1,3 +1,8 @@
+import { routeCopy } from "./listing-snapshot.mjs";
+import { validateStream } from './agent-stream.mjs';
+import { upstreamModelId } from "./model-aliases.mjs";
+
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
@@ -6,7 +11,7 @@ import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // request, and is charged what the answer actually cost + 30% + the network's settlement fee, only once it came back.
 //
 // The request goes to Surplus as it came, with this service's key, apart from the model's name (Anthropic's dated
-// names become Surplus's) and a bounded answer length. Streaming is not offered here: an answer is paid for whole.
+// names become Surplus's) and a bounded answer length. Buffered SSE is serialized only after a whole answer is ready.
 import { x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
@@ -91,16 +96,16 @@ export const surplusModel = (name) => {
 // Both formats use priceGuard, just like chat. The audit's Messages quotes (18270/8106/8811)
 // reproduce exactly at share=1 and max_tokens=400, not at the guarded shares in its books.
 // That snapshot had no effective guard; this tree already guards real format POSTs. Messages
-// additionally counts serialized envelopes/tools, and formats allow 32000 tokens, versus chat's 1200.
+// additionally counts serialized envelopes/tools, and formats allow 32000 tokens, versus agent chat's 8192.
 // The request sent on, its model, its size in characters and the longest answer it can get.
 export function readFormatRequest(route, body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new FormatError(400, "Send a JSON body.");
-  if (body.stream) throw new FormatError(400, "Streaming is not offered over x402: an answer is paid for whole. Send stream: false.");
+  validateStream(body, FormatError);
   const modelOmitted = body.model === undefined || body.model === null;
   if (typeof body.model !== "string" || !body.model.trim() || body.model.length > 120) {
     throw new FormatError(400, "Name a model from GET /v1/models.");
   }
-  const request = { ...body, model: surplusModel(body.model.trim()) };
+  const request = { ...body, stream: false, stream_options: undefined, model: surplusModel(body.model.trim()) };
   let maxTokens, sized, messageCount;
   if (route === "/v1/messages") {
     if (!Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > 200) {
@@ -143,11 +148,8 @@ const refusal = (route, status, message, code) => (route === "/v1/messages"
   ? { type: "error", error: { type: status === 400 || status === 422 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message, code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request") } }
   : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request"), message } });
 
-// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
-const DESCRIPTIONS = {
-  "/v1/messages": "Anthropic Messages API format for any listed model (Claude, GPT, Gemini, DeepSeek). Pay per call in USDC on Base or Solana, no key; you sign a price cap.",
-  "/v1/responses": "OpenAI Responses API for any listed model (GPT, Claude, Gemini, DeepSeek). Pay per call in USDC on Base or Solana, no key; you sign a price cap.",
-};
+// Keep discovery descriptions within 500 characters, capability first (see app.mjs).
+const DESCRIPTIONS = Object.fromEntries(['/v1/messages', '/v1/responses'].map(path => [path, routeCopy(path).description]));
 const EXAMPLES = {
   "/v1/messages": { model: "claude-sonnet-5.5", max_tokens: 300, messages: [{ role: "user", content: "What is x402?" }] },
   "/v1/responses": { model: "deepseek-v4.1-flash", input: "What is x402?", max_output_tokens: 300 },
@@ -155,7 +157,7 @@ const EXAMPLES = {
 // What each field is, for the Bazaar listing: the fields readFormatRequest() checks, nothing it would refuse.
 const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "deepseek-v4.1-flash", "gemini-3.8-flash"],
   description: "Any model id from GET /v1/models; Anthropic's dashed names (claude-sonnet-5-5) work too." };
-const STREAM_FIELD = { type: "boolean", enum: [false], description: "Streaming is not offered: an answer is paid for whole." };
+const STREAM_FIELD = { type: "boolean", enum: [false, true], description: "Buffered SSE: a complete answer released after settlement, not token by token." };
 const INPUT_SCHEMAS = {
   "/v1/messages": { properties: {
     model: MODEL_FIELD,
@@ -206,7 +208,7 @@ const TAGS = {
                                  "gemini", "deepseek", "singit"),
 };
 
-export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, record = () => {} }) {
+export function addFormatRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, record = () => {} }) {
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const bufferPp = config.priceBufferPp ?? 1;
   const answerLog = answerLogFor(config, log);
@@ -217,6 +219,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       .register(BASE, new ExactEvmScheme())
       .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
       .register(SOLANA, new ExactSvmScheme());
+    attachPaymentFailureCodes(server);
     // Discovery prices the example at list share by default; real POSTs below retain priceGuard.
     // The same probeInput policy drives chat and formats, including optional discovery output budgets.
     const probeCeilings = perRequest(async () => {
@@ -262,11 +265,11 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       accepts: [baseOffer(config, quotes, probe("upto", BASE)), solanaOffer(config, quotes, probe("upto", SOLANA)),
         exactBaseOffer(config, quotes, probe("exact", BASE)), exactSolanaOffer(config, quotes, probe("exact", SOLANA))],
       mimeType: "application/json",
-      description: DESCRIPTIONS[route], serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
+      description: DESCRIPTIONS[route], serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: discoveryTags(...routeCopy(route).tags, ...TAGS[route]),
       extensions: { ...declareEip2612GasSponsoringExtension(),
         ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: { ...INPUT_SCHEMAS[route], description: probeNote(300, config, true) },
           output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }) },
-    } }, server, { log });
+    } }, server, { log, publicClient });
     app.post(route, async (req, res) => {
       const started = Date.now();
       let retried = false, recorded = false;
@@ -289,7 +292,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                      ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify(body), signal: AbortSignal.timeout(Math.max(1, started + FORMAT_LIMITS.timeoutMs - Date.now())) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
+          body: JSON.stringify({ ...body, model: upstreamModelId(body.model) }), signal: AbortSignal.timeout(Math.max(1, started + FORMAT_LIMITS.timeoutMs - Date.now())) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
         let response = await send();
         // Read for every status: a long request can come back HTTP 200 with an error body.
         let data = await response.json().catch(() => null);

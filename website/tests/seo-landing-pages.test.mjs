@@ -1,3 +1,6 @@
+import { breakdown } from '../../scripts/generate-catalog-page.mjs';
+import { readFileSync } from 'node:fs';
+const catalogBreakdown = breakdown(JSON.parse(readFileSync(new URL('../data/catalog-snapshot.json', import.meta.url), 'utf8')));
 // The SEO landing pages (/x402-gift-cards-esims, /agent-spending-limits,
 // /x402-llm-api) must ship exactly what their briefs say: title, meta
 // description, self-referencing canonical, a FAQPage JSON-LD that matches the
@@ -40,7 +43,7 @@ const PAGES = [
     dir: "x402-llm-api",
     canonical: "https://singitai.app/x402-llm-api/",
     title: "Pay-per-Answer LLM API over x402 | SingIt",
-    description: "200+ models, Claude, GPT, Gemini and DeepSeek among them, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.",
+    description: `${catalogBreakdown}, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.`,
     jsonLdTypes: ["WebPage", "WebAPI", "FAQPage", "BreadcrumbList"],
     ctas: [
       "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=hero",

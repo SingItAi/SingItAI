@@ -1,3 +1,5 @@
+import { ASYNC_SPEECH_MODELS } from "./speech-models.mjs";
+import { publicModelId, upstreamModelId } from "./model-aliases.mjs";
 import { NEVER_HIDE, MAX_PROVIDERS, validId, readSuspensions, writeSuspensions } from "./suspensions.mjs";
 export { NEVER_HIDE } from "./suspensions.mjs";
 import { bookPrices, derivedPrice, matchesBook } from "./reference-prices.mjs";
@@ -36,7 +38,7 @@ export function capabilities(entry, inputs) {
 export function parseModels(data) {
   const models = new Map();
   for (const entry of Array.isArray(data?.data) ? data.data : []) {
-    const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+    const id = typeof entry?.id === "string" ? publicModelId(entry.id.trim()) : "";
     const prompt = Number(entry?.pricing?.prompt);
     const completion = Number(entry?.pricing?.completion);
     const arch = entry?.architecture;
@@ -47,11 +49,13 @@ export function parseModels(data) {
     const outputs = arch?.output_modalities ?? to?.split("+") ?? [];
     if (!id || !Number.isFinite(prompt) || !Number.isFinite(completion) || !(prompt >= 0) || !(completion >= 0)) continue;
     if (!inputs.includes("text") || outputs.length !== 1 || outputs[0] !== "text") continue;
-    if (!entry.supported_parameters?.includes("max_tokens")) continue;
-    models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""),
+    // M3: this one reviewed Surplus entry omits max_tokens (05 Nov offline metadata).
+    // Still send a cap: refusal is a non-settling error, never an unbounded paid request.
+    if (!entry.supported_parameters?.includes("max_tokens") && id !== "nemotron-3.5-lightning") continue;
+    models.set(id, { id, name: id === "nemotron-3.5-lightning" ? "NVIDIA Nemotron 3.5 Lightning" : String(entry.name || id), provider: String(entry.provider || ""),
       contextLength: Number(entry.context_length) || 0, promptUsdPerToken: prompt, completionUsdPerToken: completion,
       ...(prompt <= 0 || completion <= 0 ? { listZero: true } : {}),
-      tags: capabilities(entry, inputs), params: entry.supported_parameters.map(String) });
+      features: entry.supported_features, inputs, tags: capabilities(entry, inputs), params: (entry.supported_parameters ?? []).map(String) });
   }
   return models;
 }
@@ -81,6 +85,23 @@ export function parseImageModels(data) {
   return models;
 }
 
+// E1 and E5: only explicitly priced catalogue entries are offered.
+export function parseEditModels(data) {
+  const entries = (data?.data ?? []).filter(e => typeof e.id === "string" && e.id.endsWith("-edit") && e.metering === "per_image");
+  const models = new Map();
+  for (const e of entries) {
+    const price = Number(e.pricing?.image);
+    if (Number.isFinite(price) && price > 0) models.set(e.id, { id: e.id, name: e.name || e.id, provider: e.provider,
+      metering: "per_image", imageUsd: price, sizes: e.sizes?.length ? e.sizes : null, params: e.supported_parameters ?? [] });
+  }
+  return models;
+}
+export function parseEmbeddingModels(data) {
+  return new Map((data?.data ?? []).filter(e => typeof e.id === "string" && e.architecture?.modality === "embedding"
+    && (e.media_unit ?? e.pricing?.media_unit) === "1M tokens" && Number.isFinite(Number(e.pricing?.image)) && Number(e.pricing.image) > 0)
+    .map(e => [e.id, { id: e.id, name: e.name || e.id, provider: e.provider, embedding: true, usdPerMillionTokens: Number(e.pricing.image) }]));
+}
+
 // Voice models, from the same list: text to speech priced per 1000 characters, speech to text per minute of audio.
 export function parseVoiceModels(data) {
   const speech = new Map(), transcription = new Map();
@@ -91,6 +112,11 @@ export function parseVoiceModels(data) {
     if (!id || OTHER_SERVICE.test(id) || !(price > 0)) continue;
     const model = { id, name: String(entry.name || id), provider: String(entry.provider || ""), usdPerUnit: price,
       voices: Array.isArray(entry.voices) && entry.voices.length ? entry.voices.map(String) : null };
+    const asyncModel = ASYNC_SPEECH_MODELS.find(m => m.upstreamId === id);
+    if (asyncModel && modality === "music" && unit === "job") {
+      if (["number", "string"].includes(typeof entry.pricing.image) && Number.isFinite(price) && price < 2) speech.set(asyncModel.id, { ...model, ...asyncModel, usdPerJob: price });
+      continue;
+    }
     if (modality === "text->audio" && unit === "1K characters") speech.set(id, model);
     if (modality === "audio->text" && unit === "minute") transcription.set(id, model);
   }
@@ -121,7 +147,7 @@ function parseMarket(data) {
   for (const entry of Array.isArray(data?.data?.markets) ? data.data.markets : []) {
     const discount = entry?.best_trusted_offer_discount_pct;
     if (typeof entry?.model === "string" && typeof discount === "number" && discount >= 0 && discount <= 100)
-      market.set(entry.model, { trustedShare: (100 - discount) / 100 });
+      market.set(publicModelId(entry.model), { trustedShare: (100 - discount) / 100 });
   }
   return market;
 }
@@ -131,7 +157,7 @@ function parseMarket(data) {
 // choosing it would only end in an error. Measured on 12 October: 39 of 227 listed models had no such offer.
 function qualifies(offer, blocked, id) {
   const model = offer?.model ?? offer?.model_id;
-  if (model != null && String(model).toLowerCase() !== String(id).toLowerCase()) return false;
+  if (model != null && String(model).toLowerCase() !== String(upstreamModelId(id)).toLowerCase()) return false;
   return offer?.trusted === true && offer?.healthy === true && offer?.available === true
     && !(typeof offer.cap_remaining === "number" && offer.cap_remaining <= 0)
     && !blocked.has(String(offer.provider_id ?? "").toLowerCase());
@@ -205,6 +231,8 @@ export class ModelCatalogue {
     this.models = null;
     this.rawModels = null;
     this.bookPrices = new Map();
+    this.audioCatalogue = null; // raw music/SFX pricing and async submission capabilities
+    this.audioCatalogueAt = null;
     this.images = null;   // image models, from the same list
     this.voice = null;    // { speech, transcription } models, from the same list
     this.videos = null;   // text-to-video models, from the same list
@@ -229,6 +257,11 @@ export class ModelCatalogue {
         const models = parseModels(body), images = parseImageModels(body);
         if (models.size) { this.rawModels = models; this.decorate(); this.loadedAt = this.now(); }
         if (images.size) this.images = images;
+        if (response.ok && Array.isArray(body?.data)) {
+          this.audioCatalogue = new Map(body.data.map(entry => [entry.id, entry]));
+          this.audioCatalogueAt = this.now();
+          this.edits = parseEditModels(body); this.embeddings = parseEmbeddingModels(body);
+        }
         const voice = parseVoiceModels(body);
         if (voice.speech.size) this.voice = voice;
         const videos = parseVideoModels(body);
@@ -283,7 +316,7 @@ export class ModelCatalogue {
             const id = ids[next++];
             const seenSeq = this.rejectionSeq;
             try {
-              const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`,
+              const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(upstreamModelId(id))}`,
                                                     { signal: AbortSignal.timeout(10_000) });
               const book = response.ok ? await response.json() : null;
               if (this.rawModels?.get(id)?.listZero && book && matchesBook(book, id)) {
@@ -345,7 +378,7 @@ export class ModelCatalogue {
       const pending = (async () => {
         let count = cached?.count ?? null;
         try {
-          const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`,
+          const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(upstreamModelId(id))}`,
                                                 { signal: AbortSignal.timeout(10_000) });
           const book = response.ok ? await response.json() : null;
           const offers = book?.data?.offers ?? book?.offers;
@@ -480,7 +513,7 @@ export class ModelCatalogue {
     const task = (async () => {
       let share = null;
       try {
-        const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(3000) });
+        const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(upstreamModelId(id))}`, { signal: AbortSignal.timeout(3000) });
         if (response.ok) share = cheapestShare(await response.json(), this.blocked, id);
       } catch { /* An unreadable book must not prevent a quote. */ }
       this.liveBooks.delete(id);
@@ -572,6 +605,19 @@ export class ModelCatalogue {
     return [...(await this.all()).values()].filter(m => m.unpriced !== true && !this.isSuspended(m.id)).sort((a, b) => a.completionUsdPerToken - b.completionUsdPerToken);
   }
 
+  async editModels() { await this.all().catch(() => null); return this.edits ?? new Map(); }
+  async embeddingModels() { await this.all().catch(() => null); return this.embeddings ?? new Map(); }
+  async resolveEdit(id) {
+    const model = (await this.editModels()).get(id);
+    if (!model) throw new UnknownModel("That edit model is not available.");
+    return model;
+  }
+  async resolveEmbedding(id) {
+    const model = (await this.embeddingModels()).get(id);
+    if (!model) throw new UnknownModel("That embedding model is not available.");
+    return model;
+  }
+
   async imageModels() {
     await this.all().catch(() => null);
     if (!this.images) throw new UnknownModel("The image model list is unavailable. Try again.");
@@ -598,6 +644,11 @@ export class ModelCatalogue {
 
   async resolveSpeech(id) {
     const model = (await this.voiceModels()).speech.get(String(id ?? "").trim());
+    if (!model && ASYNC_SPEECH_MODELS.some(m => m.id === String(id ?? "").trim())) {
+      const error = new Error("That speech model has no usable live job price.");
+      error.status = 503;
+      throw error;
+    }
     if (!model) throw new UnknownModel("That speech model is not available. See GET /v1/audio/models.");
     return model;
   }
