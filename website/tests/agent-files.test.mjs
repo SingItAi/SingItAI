@@ -5,6 +5,9 @@ import { addAgentFiles } from '../../singit-ask/src/agent-files.mjs';
 
 test('Ask document allowlist exists in website and matches Pages content types', async () => {
   const headers = await readFile(new URL('../_headers', import.meta.url), 'utf8');
+  const card = JSON.parse(await readFile(new URL('../.well-known/agent-card.json', import.meta.url), 'utf8'));
+  assert.equal(card.links.terms, 'https://singitai.app/terms/');
+  assert.equal(card.links.privacy, 'https://singitai.app/privacy/');
   const handler = [];
   addAgentFiles({ use(fn) { handler.push(fn); } });
   for (const [path, type] of [

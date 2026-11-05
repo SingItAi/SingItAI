@@ -61,6 +61,7 @@ export function renderModelList(s, format) {
 export function renderModelLinks() {
   const links = [
     ['Privacy policy', 'https://singitai.app/privacy/'],
+    ['Terms of service', 'https://singitai.app/terms/'],
     ['Data deletion', 'https://singitai.app/data-deletion/'],
     ['Model pages with prices', 'https://ask.singitai.app/llms-models.txt'],
     ['All model pages', 'https://singitai.app/models/all/'],
