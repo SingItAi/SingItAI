@@ -213,6 +213,16 @@
       }
     },
     {
+      "path": "/v1/embeddings",
+      "method": "POST",
+      "summary": "Create embeddings for input text",
+      "price": {
+        "min": "0.001",
+        "max": "0.023125",
+        "currency": "USD"
+      }
+    },
+    {
       "path": "/v1/exa/answer",
       "method": "POST",
       "summary": "Generate a cited answer with Exa",
@@ -243,12 +253,32 @@
       }
     },
     {
+      "path": "/v1/images/edits",
+      "method": "POST",
+      "summary": "Create edited images from input images",
+      "price": {
+        "min": "0.001",
+        "max": "0.47",
+        "currency": "USD"
+      }
+    },
+    {
       "path": "/v1/images/generations",
       "method": "POST",
       "summary": "Generate images with any listed image model",
       "price": {
         "min": "0.014",
         "max": "2.602",
+        "currency": "USD"
+      }
+    },
+    {
+      "path": "/v1/images/image2image",
+      "method": "POST",
+      "summary": "Create edited images from input images",
+      "price": {
+        "min": "0.001",
+        "max": "0.47",
         "currency": "USD"
       }
     },

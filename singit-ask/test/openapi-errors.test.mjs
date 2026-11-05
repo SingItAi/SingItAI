@@ -33,7 +33,7 @@ const facilitator = { async getSupported() {
   async verify() { never(); }, async settle() { never(); } };
 
 async function serve(t) {
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue, exaKey: "exa_test_key", fetchImpl: never,
+  const app = createApp({ ...CONFIG, maxEditImageBytes: 1024 }, { facilitatorClient: facilitator, catalogue, exaKey: "exa_test_key", fetchImpl: never,
     exaFetch: never, log: () => {}, upstream: never });
   const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
   t.after(() => listener.close());
@@ -44,6 +44,7 @@ async function serve(t) {
 // search.mjs, video.mjs, metered.mjs). 413/400 also cover the body parser.
 const COMMON = [400, 402, 413, 503];
 const EXPECTED = {
+  ...Object.fromEntries(["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings"].map(path => [path, [...COMMON, 404, 409, 422]])),
   [ROUTE]: [...COMMON, 422, 429],
   "/v1/messages": [...COMMON, 404, 422],
   "/v1/responses": [...COMMON, 404, 422],
