@@ -51,7 +51,8 @@ export function renderLlms(text, s, routes, format) {
   text = replaceBlock(text, 'model-pages', renderModelLinks());
   const models = renderModelList(s, format);
   const body = text.replace(/^<!-- generated:[^\n]+ -->\n/gm, '');
-  return new Map([['llms.txt', text], ['llms-models.txt', models], ['llms-full.txt', body.trimEnd() + '\n\n' + models.replace(/^# SingIt model pages/, '## Model pages with prices')]]);
+  const audioDraft = 'Draft Ask audio: POST /v1/audio/sound-effects and /v1/audio/generations return audio bytes after bounded server-side generation; Base-only exact USDC (Solana refused; disabled until credit, route and pricing readiness are confirmed), model capabilities and flat prices at GET /v1/audio/generation-models. Not yet published.';
+  return new Map([['llms.txt', text], ['llms-models.txt', models], ['llms-full.txt', body.trimEnd() + '\n\n' + models.replace(/^# SingIt model pages/, '## Model pages with prices').trimEnd() + '\n\n' + audioDraft + '\n']]);
 }
 
 export function renderModelList(s, format) {
