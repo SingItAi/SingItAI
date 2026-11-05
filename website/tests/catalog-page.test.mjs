@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { renderCatalog, accessMethod, availability } from '../../scripts/generate-catalog-page.mjs';
+import { renderCatalog, accessMethod, availability, breakdown } from '../../scripts/generate-catalog-page.mjs';
+import { catalogResponse } from '../../singit-ask/src/catalog-shape.mjs';
 const read = name => readFile(new URL(`../${name}`, import.meta.url), 'utf8');
 const snapshot = JSON.parse(await read('data/catalog-snapshot.json'));
 const html = await read('models/index.html');
@@ -20,7 +21,10 @@ test('static catalog renders every snapshot entry with unique encoded anchors an
     assert.ok(body.includes(`<td>${availability(m)}</td>`));
   }
   assert.ok(body.includes(snapshot.coverage));
-  assert.match(body, /image.*speech.*transcription.*fresh catalog capture/);
+  assert.ok(body.includes(breakdown(snapshot)));
+  for (const [modality, count] of Object.entries(snapshot.counts)) {
+    assert.ok(body.includes(`<dd data-modality="${modality}">${count}</dd>`));
+  }
 });
 
 test('JSON-LD matches the complete HTML list without fabricated offers or ratings', () => {
@@ -52,7 +56,7 @@ test('sitemap includes the canonical catalog once and excludes fragments and gat
 
 test('encoding, availability and access support fresh D3 entries safely', () => {
   const m = { id: "free/a b?#é", name: '</script><b>', modality: 'chat', access: 'api_key', available: false, router: true, kind: 'router', networks: [], price: {} };
-  const page = renderCatalog({ fetchedAt: 'offline', counts: { chat: 1, image: 0, image_edit: 0, embeddings: 0, speech: 0, transcription: 0, search: 0 }, data: [m] });
+  const page = renderCatalog({ fetchedAt: 'offline', ...catalogResponse([m]) });
   assert.ok(page.includes(`id="${encodeURIComponent(m.id)}"`));
   assert.ok(page.includes('router / api_key'));
   assert.ok(page.includes('Unavailable at capture'));
@@ -64,12 +68,29 @@ test('encoding, availability and access support fresh D3 entries safely', () => 
 });
 
 test('generator refuses gated entries and ambiguous anchors', () => {
-  const gated = structuredClone(snapshot);
-  gated.data.push({ ...gated.data[0], modality: 'video' });
-  gated.counts.video = 1;
-  assert.throws(() => renderCatalog(gated), /Gated modality/);
+  for (const modality of ['video', 'music', 'sound_effects']) {
+    const gated = structuredClone(snapshot);
+    gated.data.push({ ...gated.data[0], modality });
+    gated.counts = catalogResponse(gated.data).counts;
+    assert.throws(() => renderCatalog(gated), /Gated modality/);
+    assert.ok(!snapshot.data.some(m => m.modality === modality));
+  }
   const duplicate = structuredClone(snapshot);
   duplicate.data.push({ ...duplicate.data[0], modality: 'image' });
-  duplicate.counts.image++;
+  duplicate.counts = Object.fromEntries(Object.keys(snapshot.counts).map(modality => [modality, duplicate.data.filter(m => m.modality === modality).length]));
   assert.throws(() => renderCatalog(duplicate), /Duplicate catalog anchor/);
+});
+
+test('catalog content follows a changed snapshot without pinned totals or model names', () => {
+  const changed = structuredClone(snapshot);
+  changed.data = changed.data.slice().reverse().filter((_, i) => i % 2 === 0);
+  changed.data[0].id = 'fixture/catalog-entry';
+  changed.data[0].name = 'Snapshot fixture';
+  changed.counts = catalogResponse(changed.data).counts;
+  const page = renderCatalog(changed);
+  assert.ok(page.includes(breakdown(changed)));
+  const structured = JSON.parse(page.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
+  assert.equal(structured.numberOfItems, changed.data.length);
+  assert.deepEqual(structured.itemListElement.map(m => m.name), changed.data.map(m => m.name ?? m.id));
+  assert.deepEqual([...page.matchAll(/<tr id="([^"]+)"/g)].map(m => m[1]), changed.data.map(m => encodeURIComponent(m.id)));
 });
