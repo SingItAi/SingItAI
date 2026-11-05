@@ -15,6 +15,7 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 | `payment_blockhash_stale` | On Solana, sign again with a fresh blockhash. Nothing was charged for this request. |
 | `payment_replay` | Check the previous result before paying again. Nothing was charged for this request. |
 | `payment_invalid` | Fix the payment before retrying. Nothing was charged for this request. |
+| `permit2_allowance_required` | An `upto` payment on Base carried no EIP-2612 permit and the payer's USDC allowance to Permit2 is below the signed ceiling. Nothing was charged and no model ran: add a permit (or approve Permit2 for at least the ceiling) and retry. |
 | `payment_duplicate` | Payment signature was already used. |
 | `rate_limited` | Request allowance exhausted. |
 | `free_tier_exhausted` | Visitor allowance or shared daily answer allowance exhausted. |

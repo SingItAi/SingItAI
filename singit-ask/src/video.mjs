@@ -135,7 +135,7 @@ const OUTPUT_SCHEMA = { type: "object", required: ["id", "status", "job_token", 
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } },
 } };
 
-export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
+export function addVideoRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
@@ -256,7 +256,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: { model: "wan-2-2-a14b-text-to-video", prompt: "a small green robot waves hello", duration_seconds: 5 },
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
-  } }, server, { discoverable: Boolean(config.videoDiscoverable), log });  // undefined would mean the default, true
+  } }, server, { discoverable: Boolean(config.videoDiscoverable), log, publicClient });  // undefined would mean the default, true
   const now = config.videoNow ?? Date.now;
   const sleep = config.videoSleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   app.post(VIDEO_ROUTE, async (req, res) => {

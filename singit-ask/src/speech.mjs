@@ -97,7 +97,7 @@ const EXAMPLE = Object.freeze({ model: "venice-kokoro-tts", input: "Hello from S
 export const SPEECH_REQUEST_BODY = () => ({ required: true, content: { "application/json": {
   schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
 
-export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
+export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
@@ -167,7 +167,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
       inputSchema: INPUT_SCHEMA }),
-  } }, server, { log });
+  } }, server, { log, publicClient });
   app.post(SPEECH_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;

@@ -716,6 +716,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.json({
       openapi: "3.1.0",
       info: { title: "SingIt Ask", version: "1.0.0",
+              termsOfService: "https://singitai.app/terms/",
               description: "Language-model answers paid per answer over x402 in USDC on Base or Solana. No accounts or API keys."
                 + (freeOffer ? ` Free to try: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day, no payment.` : ""),
               "x-guidance": "POST JSON in OpenAI chat-completions format to the paths below. A first request without "
@@ -1031,13 +1032,20 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     ...(config.videoSold && config.videoDiscoverable ? [VIDEO_ROUTE] : []),
     ...modelRoutePaths(catalogue)] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
+  // Free: canonical legal pages, with fixed destinations and no query forwarding.
+  for (const [path, url] of [["/terms", "https://singitai.app/terms/"], ["/privacy", "https://singitai.app/privacy/"]]) {
+    app.get([path, `${path}/`], open, (_req, res) => {
+      res.set("Cache-Control", "public, max-age=3600").redirect(308, url);
+    });
+  }
   // Free: a human or agent landing on the bare origin gets a small service index instead of Express's 404.
   // Express answers HEAD the same way automatically. Open CORS, like the other public documents.
   app.get("/", open, (req, res) => {
     const base = origin(req);
     res.json({ name: SERVICE_NAME, description: DISCOVERY_DESCRIPTION, icon: ICON_URL,
       links: { openapi: `${base}/openapi.json`, x402: `${base}/.well-known/x402`, llmsTxt: `${base}/llms.txt`,
-        models: `${base}/v1/models`, docs: "https://singitai.app/developers/" } });
+        models: `${base}/v1/models`, docs: "https://singitai.app/developers/",
+        terms: "https://singitai.app/terms/", privacy: "https://singitai.app/privacy/" } });
   });
   // Free: llmstxt.org format, generated from the same route list as discovery so it cannot drift from it.
   app.get("/llms.txt", open, (req, res) => {
@@ -1087,6 +1095,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       `- Full documentation: ${base}/llms-full.txt`,
       `- Models: ${base}/v1/models`,
       "- Docs: https://singitai.app/developers/",
+      "- Terms: https://singitai.app/terms/",
+      "- Privacy policy: https://singitai.app/privacy/",
       `- First paid x402 call: ${FIRST_PAID_CALL_DOC}`,
       `- MCP server (API key, not x402): ${MCP_URL}. Free tools work without a key; paid tools need a SingIt API key created in the app at https://app.singitai.app/app/.`,
     ];
@@ -1132,23 +1142,24 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }).catch(() => {});
     return answer;
   };
-  const route = { facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };
+  const publicClient = priceBook?.publicClient;
+  const route = { publicClient, facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };
   // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
   addCreditRoute(app, config, { facilitatorClient });
   // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
-  if (exaKey) addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl: exaFetch, log });
+  if (exaKey) addSearchRoutes(app, config, { publicClient, facilitatorClient, exaKey, fetchImpl: exaFetch, log });
   // Images from Surplus's image models, with this service's own Surplus key.
-  if (catalogue) addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addImageRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
-  if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
-  if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
+  if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
-  if (catalogue) addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
+  if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
     inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Video from Surplus's text-to-video models, as jobs.
-  if (catalogue) addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addVideoRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
   if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.

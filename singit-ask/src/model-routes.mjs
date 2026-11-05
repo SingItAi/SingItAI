@@ -132,7 +132,7 @@ const modelInputSchema = (schema, config = {}) => ({ ...schema, description: pro
         + "The price cap you sign grows with it (the 402 states the exact amount for your request); the charge follows what was used." }])),
 });
 
-export function addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest, upstream, fetchImpl, log,
+export function addModelRoutes(app, config, { facilitatorClient, publicClient, catalogue, readRequest, upstream, fetchImpl, log,
                                               inputSchema, outputSchema, exampleOutput }) {
   const bufferPp = config.priceBufferPp ?? 1;
   inputSchema = modelInputSchema(inputSchema, config);
@@ -157,7 +157,7 @@ export function addModelRoutes(app, config, { facilitatorClient, catalogue, read
     }, {
       facilitatorClient, catalogue, config, readRequest,
       choose: (input) => chooseModelRoute(catalogue, model.id, bufferPp, input),
-      upstream, fetchImpl, log,
+      upstream, fetchImpl, log, publicClient,
       offerEmptyProbe: true,
       probeBody: modelExample(model),
     });
