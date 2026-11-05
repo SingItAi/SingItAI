@@ -51,6 +51,7 @@ Chat/Messages/Responses stream:true returns buffered SSE after settlement with b
 /numbers.json agent_traffic: total/last_24h/last_7d served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels. No raw client headers, prompts or addresses; distinct from settled paid_calls.
 
 Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Per-model reference prices are in the full models list, with upto before exact.
+
 ## What it is
 
 Connect your wallet, sign daily and per-purchase limits, and let your agent buy gift cards, eSIMs, top-ups and answers on Base or Solana. Revoke with one signature.
