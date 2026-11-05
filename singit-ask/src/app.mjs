@@ -1066,6 +1066,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + `${base}/openapi.json and ${base}/v1/models. For Claude Opus, sign \`upto\`: its \`exact\` price carries room `
         + "for thinking tokens and is usually dearer than the answer used (recommendedScheme in "
         + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC}`, "",
+      "## Spending limits", "",
+      "- The 402 quotes the most you can be charged before you sign. Nothing is charged without an answer.",
+      "- To cap an agent's spend, use @singitai/sdk (npm) or singit (PyPI): maxPerCallUsd and maxPerDayUsd "
+        + "(max_per_call_usd and max_per_day_usd in Python) are required, and they are checked in your own process "
+        + "before anything is signed. These are client-side ceilings.",
+      `- Through the MCP server (${MCP_URL}) or a SingIt API key, the owner sets the key's limits at https://app.singitai.app/app/; SingIt's server enforces them.`, "",
       "## Model selection", "", AUTO_GUIDE, "", FALLBACK_GUIDE, "",
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `
