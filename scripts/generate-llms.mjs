@@ -57,7 +57,8 @@ export function renderLlms(text, s, routes, format) {
   const models = renderModelList(s, format);
   const body = text.replace(/^<!-- generated:[^\n]+ -->\n/gm, '');
 
-  return new Map([['llms.txt', text], ['llms-models.txt', models], ['llms-full.txt', body.trimEnd() + '\n\n' + models.replace(/^# SingIt model pages/, '## Model pages with prices').trimEnd() + '\n']]);
+  const audioDraft = 'Draft Ask audio: POST /v1/audio/sound-effects and /v1/audio/generations return audio bytes after bounded server-side generation; Base-only exact USDC (Solana refused; disabled until credit, route and pricing readiness are confirmed), model capabilities and flat prices at GET /v1/audio/generation-models. Not yet published.';
+  return new Map([['llms.txt', text], ['llms-models.txt', models], ['llms-full.txt', body.trimEnd() + '\n\n' + models.replace(/^# SingIt model pages/, '## Model pages with prices').trimEnd() + '\n\n' + audioDraft + '\n']]);
 }
 
 export function renderModelList(s, format) {
@@ -80,8 +81,13 @@ export function renderModelLinks() {
   // One shared blurb per modality keeps the compact guide below its 14 KB budget.
   const listingPaths = ['/v1/chat/completions', '/v1/images/edits', '/v1/embeddings',
     '/v1/images/generations', '/v1/audio/speech', '/v1/exa/search'];
+  // Compact sync with D2: modality counts + key names only (full DESCRIPTION lives on Ask discovery).
   const listings = tasks.filter(([, , paths, free]) => !free && listingPaths.includes(paths[0]))
-    .map(([task, , paths]) => `- ${task}: ${routeCopy(paths[0]).description}`).join('\n');
+    .map(([task, , paths]) => {
+      const d = routeCopy(paths[0]).description;
+      const snap = (d.match(/Snapshot: [^.]+\./) || d.match(/listed at GET \/v1\/catalog\./) || [''])[0];
+      return `- ${task}: ${snap}`.trimEnd();
+    }).join('\n');
   return '## Models\n\nSnapshot: ' + breakdown(catalog)
     + (catalog.coverage ? ' (partial offline snapshot).' : '.') + '\n\n' + listings + '\n\n'
     + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');
