@@ -87,7 +87,7 @@ function crc32(bytes) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-// Require a complete image container, rather than accepting a file signature as an answer.
+// Validation is structural, not a full image decoder: require container headers and payload.
 function completeImage(b) {
   if (b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) {
     let at = 8, header = false, end = false, width, height, depth, color, interlace;
@@ -122,13 +122,15 @@ function completeImage(b) {
     } catch { return false; }
   }
   if (b[0] === 255 && b[1] === 216) {
-    let frame = false, scan = false, at = 2;
+    let frame = false, scan = false, entropyBytes = 0, at = 2;
     while (at < b.length) {
-      if (b[at++] !== 255) { if (scan) continue; return false; }
+      if (b[at++] !== 255) { if (scan) { entropyBytes++; continue; } return false; }
       while (b[at] === 255) at++;
       const marker = b[at++];
-      if (scan && (marker === 0 || marker >= 0xd0 && marker <= 0xd7)) continue;
-      if (marker === 0xd9) return frame && scan && at === b.length;
+      if (scan && marker === 0) { entropyBytes++; continue; }
+      if (scan && marker >= 0xd0 && marker <= 0xd7) continue;
+      if (marker === 0xd9) return frame && scan && entropyBytes >= 16 && at === b.length;
+      scan = false;
       if (at + 2 > b.length) return false;
       const size = b.readUInt16BE(at);
       if (size < 2 || at + size > b.length) return false;
@@ -147,8 +149,15 @@ function completeImage(b) {
     while (at + 8 <= b.length) {
       const type = b.toString('ascii', at, at + 4), size = b.readUInt32LE(at + 4);
       if (size > b.length - at - 8) return false;
-      if (type === 'VP8 ') image ||= size > 10 && b.subarray(at + 11, at + 14).equals(Buffer.from([0x9d,0x01,0x2a]));
-      if (type === 'VP8L') image ||= size > 5 && b[at + 8] === 0x2f;
+      if (type === 'VP8 ') image ||= size > 10
+        && b.subarray(at + 11, at + 14).equals(Buffer.from([0x9d,0x01,0x2a]))
+        && (b.readUInt16LE(at + 14) & 0x3fff) > 0 && (b.readUInt16LE(at + 16) & 0x3fff) > 0;
+      if (type === 'VP8L' && size >= 16 && b[at + 8] === 0x2f) {
+        // VP8L stores each dimension minus one, so even zero bits mean one pixel.
+        const bits = b.readUInt32LE(at + 9);
+        const width = (bits & 0x3fff) + 1, height = ((bits >>> 14) & 0x3fff) + 1;
+        image ||= width > 0 && height > 0;
+      }
       at += 8 + size + (size % 2);
     }
     return image && at === b.length;

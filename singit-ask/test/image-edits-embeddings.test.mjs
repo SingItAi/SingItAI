@@ -36,6 +36,19 @@ function fakeFacilitator() {
 
 
 const OUTPUT_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+// Real fixtures generated offline with ffmpeg: 16x16 testsrc JPEG, 2x2 white VP8,
+// and 2x2 testsrc lossless VP8L. PNG above is a real 1x1 image.
+const OUTPUT_JPEG = '/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYxLjE5LjEwMQD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xAByAAEBAAAAAAAAAAAAAAAAAAAFBgEBAAMBAAAAAAAAAAAAAAAABgIDAQQQAAICAQQABQUBAAAAAAAAAAMEAgUBEQcSBiIhFAATFiQjMUEVEQABBAEEAQUBAAAAAAAAAAACBQQDAQYHERMSABQhIhYyFf/AABEIABAAEAMBEgACEgADEgD/2gAMAwEAAhEDEQA/AJmVRa7e7V0TSdgdOxskl7SbVe0cM4Beku0oKBIRASEoKucWIx1xksiY5zhiOfdDbq9e7htp1sX1LVowRq6uqMX5ljxhlJZNaJSfdiwP5pKS0HLPhzLMeUuPmp02wTEV176xYR2CxJKJhYKUEb1sI7FWwtnAm333gAqkKO5BvtQnVXt4c071cX07JRQ2uCqakY9iuWGdz24tzopuIEqW6AOYOxd+tb1vfv5qWsT5E1zRu+hbF9JaoLbHpQjsZ2n992bpTn5LK7udzxwwd660DeLpHQ8k1yc+Ws3umX3A01q4y2DLRSJInDOI4Ym0KDKMEswFCL4XMZTOIYpCEoxhkkAbsrKq8V7z3FfZrtiNjVV6alWFpf8A0EEkVoRImT0o2PTiHJaMWIiZORf8ox5PmOS8o64yJu3V9j3Gv7GoBQ2yuRcOBRKNO5NpgEvCOIA/uIOXlKXlLX+exmm+ZZYuxXGrrqqrDN+7UXk78/hc9j1kdnLIH5HfoQ9qEaLeqrxJhelWMoSASqm5+kL5wB2kas42tkFnctAJlCrObGysiodw97C9vL0NFYLb/UF8oU4cy4n9b+uATx5TVI/sgYKPpmYTi0r1YiNy9oS+Vd62L38npQqpSu4zNmsqDLGH+Uigl6BQcQxu2NpAFJY8Lk2ss/NGXf8AEXGNb/KvP//Z';
+const OUTPUT_WEBP = 'UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoCAAIAAgA0JaQAA3AA/vuUAAA=';
+const OUTPUT_WEBP_LOSSLESS = 'UklGRioAAABXRUJQVlA4TB4AAAAvAUAAABcw/wKCIv9Hm//5DzQLCtu2QWFxENH/yAM=';
+function webpChunk(type, payload) {
+  const bytes = Buffer.alloc(20 + payload.length + payload.length % 2);
+  bytes.write('RIFF'); bytes.writeUInt32LE(bytes.length - 8, 4); bytes.write('WEBP', 8);
+  bytes.write(type, 12); bytes.writeUInt32LE(payload.length, 16); payload.copy(bytes, 20);
+  return bytes;
+}
+const EMPTY_SCAN_JPEG = Buffer.from('ffd8ffc00008080001000100ffda000600000000ffd9', 'hex');
+const SHORT_VP8L = webpChunk('VP8L', Buffer.from('2f0000000000', 'hex'));
 const image = 'data:image/png;base64,iVBORw0KGgo=';
 const edit = { model: EDIT.id, prompt: 'Change background', image };
 const embedding = { model: EMBED.id, input: 'Hello' };
@@ -237,7 +250,8 @@ test('new media Bazaar fields all describe their input', async () => {
 });
 
 for (const result of [{ b64_json: true }, { b64_json: '' }, { b64_json: 'garbage!' },
-  { b64_json: 'YWJjZA==' }, { url: true }, { url: '/relative' }, { url: 'http://example.test/a.png' }]) {
+  { b64_json: 'YWJjZA==' }, { b64_json: EMPTY_SCAN_JPEG.toString('base64') },
+  { b64_json: SHORT_VP8L.toString('base64') }, { url: true }, { url: '/relative' }, { url: 'http://example.test/a.png' }]) {
   test(`invalid edit output never settles: ${JSON.stringify(result)}`, async t => {
     const { url, facilitator } = await serve(t, { output: [result] });
     const required = decode((await post(url + '/v1/images/edits', edit)).headers.get('payment-required'));
@@ -310,7 +324,9 @@ test('media pricing entries match reference-request offers', async t => {
 test('valid image formats, HTTPS URLs and finite float32 embeddings pass validation', async () => {
   const { validImage, validEmbedding, readBoundedJson } = await import('../src/media-response.mjs');
   for (const bytes of [Buffer.from([137,80,78,71,13,10,26,10]), Buffer.from([255,216,255]), Buffer.from('RIFF0000WEBP')]) assert.equal(validImage({ b64_json: bytes.toString('base64') }), false);
-  assert.ok(validImage({ b64_json: OUTPUT_PNG }));
+  for (const b64_json of [OUTPUT_PNG, OUTPUT_JPEG, OUTPUT_WEBP, OUTPUT_WEBP_LOSSLESS]) {
+    assert.ok(validImage({ b64_json }));
+  }
   const corrupt = Buffer.from(OUTPUT_PNG, 'base64'); corrupt[corrupt.length - 1] ^= 1;
   assert.equal(validImage({ b64_json: corrupt.toString('base64') }), false);
   assert.ok(validImage({ url: 'https://example.test/image.png' }));
@@ -319,12 +335,37 @@ test('valid image formats, HTTPS URLs and finite float32 embeddings pass validat
   assert.deepEqual(await readBoundedJson(Response.json({ a: 1 }), 7), { a: 1 });
 });
 
+test('JPEG requires dimensions and at least 16 entropy bytes; WebP requires image headers and payload', async () => {
+  const { validImage } = await import('../src/media-response.mjs');
+  const rejects = bytes => assert.equal(validImage({ b64_json: bytes.toString('base64') }), false);
+  rejects(EMPTY_SCAN_JPEG);
+  rejects(SHORT_VP8L);
+  // Keep EOI intact while varying only the entropy-coded scan length.
+  for (const length of [1, 15]) {
+    rejects(Buffer.concat([EMPTY_SCAN_JPEG.subarray(0, -2), Buffer.alloc(length, 1), Buffer.from([255, 217])]));
+  }
+  for (const offset of [7, 9]) {
+    const jpeg = Buffer.from(EMPTY_SCAN_JPEG); jpeg.writeUInt16BE(0, offset);
+    rejects(Buffer.concat([jpeg.subarray(0, -2), Buffer.alloc(16, 1), jpeg.subarray(-2)]));
+  }
+  for (const offset of [23, 26, 28]) {
+    const webp = Buffer.from(OUTPUT_WEBP, 'base64');
+    // Missing start code, or a zero 14-bit dimension despite nonzero scale bits.
+    if (offset === 23) webp[offset] = 0;
+    else webp.writeUInt16LE(0xc000, offset);
+    rejects(webp);
+  }
+  const lossless = Buffer.from(OUTPUT_WEBP_LOSSLESS, 'base64'); lossless[20] = 0;
+  rejects(lossless);
+});
+
 test('paid media handlers validate responses and stream caps in process without sockets', async () => {
   let responseFactory;
   const app = createApp(CONFIG, { facilitatorClient: fakeFacilitator(), catalogue, log: () => {},
     fetchImpl: async () => responseFactory() });
   for (const [path, body, outputs] of [
-    ['/v1/images/edits', edit, [[{ b64_json: 'iVBORw0KGgo=' }], [{ b64_json: true }], [{ b64_json: 'YWJjZA==' }], [{ url: 'http://invalid.test' }], [{ b64_json: OUTPUT_PNG }], [{ url: 'https://example.test/a' }]]],
+    ['/v1/images/edits', edit, [[{ b64_json: 'iVBORw0KGgo=' }], [{ b64_json: true }], [{ b64_json: 'YWJjZA==' }], [{ url: 'http://invalid.test' }], [{ b64_json: EMPTY_SCAN_JPEG.toString('base64') }], [{ b64_json: SHORT_VP8L.toString('base64') }],
+      ...[OUTPUT_PNG, OUTPUT_JPEG, OUTPUT_WEBP, OUTPUT_WEBP_LOSSLESS].map(b64_json => [{ b64_json }]), [{ url: 'https://example.test/a' }]]],
     ['/v1/embeddings', { ...embedding, encoding_format: 'base64' }, [[{ index: 0, embedding: 'AQ==' }], [{ index: 0, embedding: 'AACAfw==' }], [{ index: 0, embedding: 'AAAAPw==' }]]],
   ]) {
     const layers = app.router.stack.filter(layer => layer.route && [].concat(layer.route.path).includes(path) && layer.route.methods.post);
@@ -337,7 +378,7 @@ test('paid media handlers validate responses and stream caps in process without 
       await validate(req, res, () => {});
       responseFactory = () => Response.json({ data });
       await handler(req, res);
-      const good = data[0].b64_json === OUTPUT_PNG || data[0].url?.startsWith('https:') || data[0].embedding === 'AAAAPw==';
+      const good = [OUTPUT_PNG, OUTPUT_JPEG, OUTPUT_WEBP, OUTPUT_WEBP_LOSSLESS].includes(data[0].b64_json) || data[0].url?.startsWith('https:') || data[0].embedding === 'AAAAPw==';
       assert.equal(status, good ? 200 : 503);
       assert.ok(good ? result.billing : result.error);
     }
