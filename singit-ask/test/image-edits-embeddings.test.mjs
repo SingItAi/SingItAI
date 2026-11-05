@@ -35,6 +35,7 @@ function fakeFacilitator() {
 }
 
 
+const OUTPUT_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const image = 'data:image/png;base64,iVBORw0KGgo=';
 const edit = { model: EDIT.id, prompt: 'Change background', image };
 const embedding = { model: EMBED.id, input: 'Hello' };
@@ -46,7 +47,7 @@ async function serve(t, { status = 200, config = {}, invalid = false, unreachabl
       const body = JSON.parse(init.body); calls.push({ url, body });
       if (unreachable) throw new Error('private upstream details');
       assert.equal(facilitator.calls.settle.length, 0, 'upstream precedes settlement');
-      const data = url.endsWith('/embeddings') ? [].concat(body.input).map((_, index) => ({ object: 'embedding', index, embedding: [0.1, 0.2] })) : [{ b64_json: 'iVBORw0KGgo=' }];
+      const data = url.endsWith('/embeddings') ? [].concat(body.input).map((_, index) => ({ object: 'embedding', index, embedding: [0.1, 0.2] })) : [{ b64_json: OUTPUT_PNG }];
       return Response.json({ data: output ?? (invalid ? [] : data) }, { status });
     } });
   const listener = await new Promise(resolve => { const l = app.listen(0, '127.0.0.1', () => resolve(l)); });
@@ -308,7 +309,10 @@ test('media pricing entries match reference-request offers', async t => {
 });
 test('valid image formats, HTTPS URLs and finite float32 embeddings pass validation', async () => {
   const { validImage, validEmbedding, readBoundedJson } = await import('../src/media-response.mjs');
-  for (const bytes of [Buffer.from([137,80,78,71,13,10,26,10]), Buffer.from([255,216,255]), Buffer.from('RIFF0000WEBP')]) assert.ok(validImage({ b64_json: bytes.toString('base64') }));
+  for (const bytes of [Buffer.from([137,80,78,71,13,10,26,10]), Buffer.from([255,216,255]), Buffer.from('RIFF0000WEBP')]) assert.equal(validImage({ b64_json: bytes.toString('base64') }), false);
+  assert.ok(validImage({ b64_json: OUTPUT_PNG }));
+  const corrupt = Buffer.from(OUTPUT_PNG, 'base64'); corrupt[corrupt.length - 1] ^= 1;
+  assert.equal(validImage({ b64_json: corrupt.toString('base64') }), false);
   assert.ok(validImage({ url: 'https://example.test/image.png' }));
   const bytes = Buffer.alloc(8); bytes.writeFloatLE(0.5); bytes.writeFloatLE(-1, 4);
   assert.ok(validEmbedding(bytes.toString('base64'), 'base64'));
@@ -320,7 +324,7 @@ test('paid media handlers validate responses and stream caps in process without 
   const app = createApp(CONFIG, { facilitatorClient: fakeFacilitator(), catalogue, log: () => {},
     fetchImpl: async () => responseFactory() });
   for (const [path, body, outputs] of [
-    ['/v1/images/edits', edit, [[{ b64_json: true }], [{ b64_json: 'YWJjZA==' }], [{ url: 'http://invalid.test' }], [{ b64_json: 'iVBORw0KGgo=' }], [{ url: 'https://example.test/a' }]]],
+    ['/v1/images/edits', edit, [[{ b64_json: 'iVBORw0KGgo=' }], [{ b64_json: true }], [{ b64_json: 'YWJjZA==' }], [{ url: 'http://invalid.test' }], [{ b64_json: OUTPUT_PNG }], [{ url: 'https://example.test/a' }]]],
     ['/v1/embeddings', { ...embedding, encoding_format: 'base64' }, [[{ index: 0, embedding: 'AQ==' }], [{ index: 0, embedding: 'AACAfw==' }], [{ index: 0, embedding: 'AAAAPw==' }]]],
   ]) {
     const layers = app.router.stack.filter(layer => layer.route && [].concat(layer.route.path).includes(path) && layer.route.methods.post);
@@ -333,7 +337,7 @@ test('paid media handlers validate responses and stream caps in process without 
       await validate(req, res, () => {});
       responseFactory = () => Response.json({ data });
       await handler(req, res);
-      const good = data[0].b64_json === 'iVBORw0KGgo=' || data[0].url?.startsWith('https:') || data[0].embedding === 'AAAAPw==';
+      const good = data[0].b64_json === OUTPUT_PNG || data[0].url?.startsWith('https:') || data[0].embedding === 'AAAAPw==';
       assert.equal(status, good ? 200 : 503);
       assert.ok(good ? result.billing : result.error);
     }
@@ -367,7 +371,7 @@ test('batch limit and shared replay store work without sockets', async () => {
   const payload = { authorization: { from: '0xABcd', nonce: `shared-${++paymentSequence}` } };
   const invoke = async (path, body) => {
     const app = createApp({ ...CONFIG, maxEditResponseBytes: 10, maxEmbeddingResponseBytes: 10 }, {
-      facilitatorClient: fakeFacilitator(), catalogue, log: () => {}, fetchImpl: async () => { calls++; return Response.json({ data: [{ b64_json: 'iVBORw0KGgo=' }] }); },
+      facilitatorClient: fakeFacilitator(), catalogue, log: () => {}, fetchImpl: async () => { calls++; return Response.json({ data: [{ b64_json: OUTPUT_PNG }] }); },
     });
     const layers = app.router.stack.filter(layer => layer.route && [].concat(layer.route.path).includes(path) && layer.route.methods.post);
     const req = { body, get: () => encode({ accepted: { network: BASE, asset: 'USDC' }, payload }) };
@@ -401,4 +405,17 @@ test('diagnostic logging respects media stream caps before cloning error bodies'
       assert.ok(pulls < 5, `read ${pulls} chunks for ${path} status ${status}`);
     }
   }
+});
+
+test('payment reservations fail closed at capacity and retain live replay identities', async () => {
+  const { reservePayment } = await import('../src/media-payment-replay.mjs');
+  const store = new Map();
+  const reserve = (key, now = 0) => reservePayment(key, { store, now, maxEntries: 2 });
+  assert.equal(reserve('a'), 'reserved');
+  assert.equal(reserve('b'), 'reserved');
+  for (let i = 0; i < 100; i++) assert.equal(reserve(`overflow-${i}`), 'full');
+  assert.equal(store.size, 2);
+  assert.equal(reserve('a'), 'duplicate');
+  assert.equal(reserve('new', 3_600_001), 'reserved');
+  assert.equal(store.size, 1);
 });

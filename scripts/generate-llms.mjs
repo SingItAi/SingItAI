@@ -78,15 +78,37 @@ export function renderMoney(s, format) {
   const fees = ['base', 'solana'].map(n => format(s.fees.perAnswerUsd[s.networks[n].chain]));
   return `## Money rules for agents
 
-Call without payment: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). Decode that header, sign one offer, and retry the same request with PAYMENT-SIGNATURE. Success is HTTP 200 with PAYMENT-RESPONSE.
+Unpaid calls: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). Decode it, sign one offer, retry the same request with PAYMENT-SIGNATURE. Success: HTTP 200 with PAYMENT-RESPONSE.
 
-\`upto\` is listed first: pay the actual cost up to the signed ceiling. \`exact\` is a flat price for a typical-length answer (about 30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Do not sign above your budget.
+\`upto\` is listed first: pay the actual cost up to the signed ceiling. \`exact\` is priced for a typical answer (~30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Never sign above budget.
 
-LLM, image and speech charges are model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup, plus a flat settlement fee of $0.001 on both Base and Solana. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
+LLM/image/speech: model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Base and Solana share API URLs. Exa: own price, no markup, plus settlement fee of $0.001 on both Base and Solana. Route ranges are USDC; the request's 402 offer is authoritative.
 
-Charged only when a billable answer came back: an upstream 503 never charges. Do not retry a 400/413/422 on another model; fix the request. A 409 means this payment signature was already used. For 503, wait for Retry-After where supplied. A 429 on the free tier means wait for Retry-After.
+Only billable answers charge; upstream 503s never charge. For 400/413/422, fix the request; do not switch models. 409: payment signature already used. For 503, wait Retry-After if supplied; for free-tier 429, wait Retry-After.
 
-Free tier: ${DEFAULT_FREE_MODELS.length} free models, up to ${FREE_DEFAULTS.perVisitorPerDay} answers a day per network, with a shared daily cost cap of $${FREE_DEFAULTS.budgetUsdPerDay}. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
+Free tier: ${DEFAULT_FREE_MODELS.length} free models, ${FREE_DEFAULTS.perVisitorPerDay} answers/day/network, shared daily cost cap $${FREE_DEFAULTS.budgetUsdPerDay}. The shared cap may run out (free_budget_exhausted); resets at midnight UTC. No wallet or key required. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
 
-Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Per-model reference prices are in the full models list, with upto before exact.`;
+Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Full model list: per-model reference prices, upto before exact.`;
+}
+
+// Standalone offline regeneration of the three agent guides only.
+if (process.argv[1] && import.meta.url === (await import('node:url')).pathToFileURL(process.argv[1]).href) {
+  (async () => { try {
+    if (process.argv.slice(2).some(arg => arg !== '--check')) throw new Error('Usage: generate-llms.mjs [--check]');
+    const { readFile, writeFile } = await import('node:fs/promises');
+    const { price, visibleSnapshot } = await import('./generate-model-pages.mjs');
+    const read = name => readFile(new URL(`../website/${name}`, import.meta.url), 'utf8');
+    const snapshot = JSON.parse(await read('data/models-snapshot.json'));
+    const hidden = JSON.parse(await readFile(new URL('./hidden-models.json', import.meta.url), 'utf8'));
+    const routes = JSON.parse(await read('data/ask-routes.json'));
+    const files = renderLlms(await read('llms.txt'), visibleSnapshot(snapshot, hidden), routes, price);
+    let changed = 0;
+    for (const [name, content] of files) {
+      if (await read(name) === content) continue;
+      if (process.argv.includes('--check')) throw new Error(`Generated file differs: ${name}`);
+      await writeFile(new URL(`../website/${name}`, import.meta.url), content);
+      changed++;
+    }
+    console.log(`${files.size} llms files; ${changed} updated`);
+  } catch (error) { console.error(error.message); process.exitCode = 1; } })();
 }

@@ -32,4 +32,4 @@ export const INPUT_SCHEMA = { required: ['model', 'prompt', 'image'], properties
   mask: { type: 'string', description: 'Mask data URI; only with one image.' }, size: { type: 'string', description: 'Output size supported by the edit model, for example 1024x1024.' }, n: { type: 'integer', const: 1, description: 'Number of output images; only one is supported.' },
 } };
 export const OUTPUT_SCHEMA = { type: 'object', required: ['data', 'billing'], properties: { data: { type: 'array', items: { type: 'object', properties: { b64_json: { type: 'string' }, url: { type: 'string' } } } }, billing: { type: 'object' } } };
-export const OUTPUT_EXAMPLE = { data: [{ b64_json: 'iVBORw0KGgo=' }], billing: { currency: 'USDC' } };
+export const OUTPUT_EXAMPLE = { data: [{ b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }], billing: { currency: 'USDC' } };

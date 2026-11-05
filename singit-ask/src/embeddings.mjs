@@ -1,6 +1,6 @@
-import { readBoundedJson, validImage, validEmbedding } from "./media-response.mjs";
+import { readBoundedJson, validEmbedding } from "./media-response.mjs";
 // E5: embeddings; exact price on a conservative input estimate, settled after upstream success.
-import { paymentDigest, reservations as used } from "./media-payment-replay.mjs";
+import { paymentDigest, reservePayment } from "./media-payment-replay.mjs";
 import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
@@ -81,9 +81,9 @@ export function addRoutes(app, config, { facilitatorClient, publicClient, catalo
     const payment = JSON.parse(Buffer.from(header, "base64").toString());
     const network = payment.accepted?.network;
     const seen = paymentDigest(payment);
-    if (used.has(seen)) return res.status(409).json({ error: { type: "invalid_request_error", code: "payment_duplicate", message: "This payment was already used." } });
-    used.set(seen, Date.now());
-    for (const [k, at] of used) if (Date.now() - at > 3_600_000) used.delete(k);
+    const reservation = reservePayment(seen);
+    if (reservation === 'full') return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "upstream_unavailable", message: "Payment capacity is busy. You were not charged." } });
+    if (reservation === 'duplicate') return res.status(409).json({ error: { type: "invalid_request_error", code: "payment_duplicate", message: "This payment was already used." } });
     const { request, listAtomic } = priced.get(req.body);
     const started = Date.now();
     let response;
