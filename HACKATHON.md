@@ -430,3 +430,7 @@ loopback server) and the existing script tests pass. Not verified: the live API,
 on GitHub, the server's paid-proxy setting (only the owner can read it) and the paid tools
 scenario, which is opt-in and was never run. A full probe needs eight requests (nine with paid
 tools), because balance and usage are read before and after.
+
+### Post-competition draft: M2 async speech (5 November 2026)
+
+Local branch `feat/models-m2`, based on `08f53bc`; no commit or PR created (the task prohibits commits and network access). This extends the imported SingIt Ask speech gateway for three Surplus async speech models on its existing Base and Solana payment routes; it is post-competition work, not a new competition-period Solana contribution. See [M2 draft details](docs/m2-speech.md) and [generated draft resources](docs/m2-speech-draft.json) for mappings, prices, verification and limitations. Offline async/OpenAPI/llms checks passed. Listener-based HTTP settlement checks are blocked by sandbox EPERM. The provisional upstream text/voice adapter and provider limits require an explicitly approved paid verification before merge. Draft only; not approved for merge or deployment.

@@ -80,11 +80,13 @@ Call without payment: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Versi
 
 \`upto\` is listed first: pay the actual cost up to the signed ceiling. \`exact\` is a flat price for a typical-length answer (about 30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Do not sign above your budget.
 
-LLM, image and speech charges are model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup, plus a flat settlement fee of $0.001 on both Base and Solana. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
+LLM, image and speech: model cost + ${format(s.fees.markupPct)}% markup + $${fees[0]} on Base or $${fees[1]} on Solana settlement. Exa: no markup, $0.001 settlement on either network. Route ranges are USDC; the request's 402 offer is authoritative.
+
+Speech jobs: elevenlabs/multilingual-v2 and elevenlabs/v3 $0.157 Base / $0.158 Solana; bytedance/seed-audio-1.0 $0.004738 / $0.005738. 4096 chars; provider format; no speed/response_format. 110s deadline; validate audio before settlement. Voices: GET /v1/audio/models. Transcription: API-key only.
 
 Charged only when a billable answer came back: an upstream 503 never charges. Do not retry a 400/413/422 on another model; fix the request. A 409 means this payment signature was already used. For 503, wait for Retry-After where supplied. A 429 on the free tier means wait for Retry-After.
 
-Free tier: ${DEFAULT_FREE_MODELS.length} free models, up to ${FREE_DEFAULTS.perVisitorPerDay} answers a day per network, with a shared daily cost cap of $${FREE_DEFAULTS.budgetUsdPerDay}. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
+Free tier: ${DEFAULT_FREE_MODELS.length} free models, ${FREE_DEFAULTS.perVisitorPerDay} answers/day/network, shared daily budget $${FREE_DEFAULTS.budgetUsdPerDay}, reset midnight UTC. No wallet/key. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
 
 Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Per-model reference prices are in the full models list, with upto before exact.`;
 }

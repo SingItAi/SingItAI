@@ -58,7 +58,7 @@ async function serve(t, { surplus = fakeSurplus() } = {}) {
   const logs = [];
   const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue, fetchImpl: surplus.fetchImpl,
     log: (line) => logs.push(line), upstream: async () => { throw new Error("no answer is asked"); } });
-  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
+  const listener = await new Promise((resolve, reject) => { const l = app.listen(0, "127.0.0.1", error => error ? reject(error) : resolve(l)); l.once("error", reject); });
   t.after(() => listener.close());
   return { url: `http://127.0.0.1:${listener.address().port}`, facilitator, surplus, logs };
 }
@@ -253,3 +253,38 @@ test("an MP4-packaged aac answer is served as audio/mp4 and settled once", async
   assert.equal(paid.headers.get("content-type"), "audio/mp4");
   assert.equal(facilitator.calls.settle.length, 1);
 });
+
+for (const scenario of ['success', 'failed', 'timeout', 'no-credit', 'invalid', 'empty', 'oversize']) {
+  test(`async speech HTTP ${scenario}: settlement requires validated audio`, async t => {
+    const model = { id: 'elevenlabs/v3', upstreamId: 'venice-elevenlabs-tts-v3', usdPerJob: 0.12, voices: ['Aria'] };
+    VOICE.speech.set(model.id, model);
+    t.after(() => VOICE.speech.delete(model.id));
+    let calls = 0;
+    const surplus = { fetchImpl: async (url, init) => {
+      calls++;
+      assert.equal(init.headers.Authorization, 'Bearer inf_test');
+      if (url.endsWith('/v1/music/generations')) {
+        assert.deepEqual(JSON.parse(init.body), { model: model.upstreamId, prompt: 'Hello', voice: 'Aria' });
+        if (scenario === 'no-credit') return new Response('{}', { status: 402 });
+        if (scenario === 'timeout') throw new DOMException('Deadline exceeded', 'TimeoutError');
+        return Response.json({ id: 'job_123', status: scenario === 'failed' ? 'failed' : 'succeeded', results: [{}] });
+      }
+      assert.ok(url.endsWith('/v1/media/artifacts/job_123/0'));
+      return new Response(scenario === 'invalid' ? '{}' : scenario === 'empty' ? '' : AUDIO,
+        { headers: scenario === 'oversize' ? { 'content-length': '999999999' } : {} });
+    } };
+    const { url, facilitator } = await serve(t, { surplus });
+    const body = { model: model.id, input: 'Hello', voice: 'Aria' };
+    const models = await (await fetch(`${url}/v1/audio/models`)).json();
+    const listed = models.data.find(m => m.id === model.id);
+    assert.equal(listed.modality, 'speech');
+    assert.equal(listed.upstream_id, model.upstreamId);
+    assert.equal(listed.listUsdPerJob, 0.12);
+    const required = decode((await post(`${url}${SPEECH_ROUTE}`, body)).headers.get('payment-required'));
+    assert.equal(calls, 0);
+    const result = await post(`${url}${SPEECH_ROUTE}`, body, pay(required, BASE));
+    assert.equal(result.status, scenario === 'success' ? 200 : 503);
+    assert.equal(facilitator.calls.settle.length, scenario === 'success' ? 1 : 0);
+    if (scenario === 'success') assert.deepEqual(Buffer.from(await result.arrayBuffer()), AUDIO);
+  });
+}

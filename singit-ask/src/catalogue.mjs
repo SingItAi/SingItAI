@@ -1,3 +1,4 @@
+import { ASYNC_SPEECH_MODELS } from "./speech-models.mjs";
 import { NEVER_HIDE, MAX_PROVIDERS, validId, readSuspensions, writeSuspensions } from "./suspensions.mjs";
 export { NEVER_HIDE } from "./suspensions.mjs";
 import { bookPrices, derivedPrice, matchesBook } from "./reference-prices.mjs";
@@ -91,6 +92,11 @@ export function parseVoiceModels(data) {
     if (!id || OTHER_SERVICE.test(id) || !(price > 0)) continue;
     const model = { id, name: String(entry.name || id), provider: String(entry.provider || ""), usdPerUnit: price,
       voices: Array.isArray(entry.voices) && entry.voices.length ? entry.voices.map(String) : null };
+    const asyncModel = ASYNC_SPEECH_MODELS.find(m => m.upstreamId === id);
+    if (asyncModel && modality === "music" && unit === "job") {
+      speech.set(asyncModel.id, { ...model, ...asyncModel });
+      continue;
+    }
     if (modality === "text->audio" && unit === "1K characters") speech.set(id, model);
     if (modality === "audio->text" && unit === "minute") transcription.set(id, model);
   }
