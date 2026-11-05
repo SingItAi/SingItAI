@@ -2,7 +2,7 @@
 
 > SingIt: pay for AI with USDC and keep spending limits. Your agent pays per call, only within the daily and per-purchase limits you sign: set them once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits. Limits protect only SingIt's own agent: on Base they are enforced by an on-chain contract, on a SingIt API key the server checks them. On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated.
 
-Machine-readable discovery: https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt). This host serves the human site.
+Machine-readable discovery: https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt).
 
 Agents with no wallet of their own: use an MCP key with limits your owner sets: https://singitai.app/docs/mcp-key/
 Caps apply only to calls made with the key to SingIt's MCP and /v1 endpoint; they do not limit spending elsewhere or protect an agent's own wallet.
@@ -48,7 +48,7 @@ Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools incl
 
 Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
 
-/numbers.json agent_traffic: total/last_24h/last_7d served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels. No raw client headers, prompts or addresses; distinct from settled paid_calls.
+/numbers.json agent_traffic: 24h/7d paid/free with_tools/stream/images; fixed by_source. No raw headers/prompts/addresses.
 
 Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Per-model reference prices are in the full models list, with upto before exact.
 
@@ -132,7 +132,7 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 - App: https://app.singitai.app/app/
 ## Models
 
-Snapshot: 216 chat, 3 search (partial offline snapshot).
+Snapshot: 217 chat, 3 search (partial offline snapshot).
 
 - [Privacy policy](https://singitai.app/privacy/)
 - [Terms of service](https://singitai.app/terms/)

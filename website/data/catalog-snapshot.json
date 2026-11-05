@@ -1,10 +1,9 @@
 {
   "fetchedAt": "2026-10-30T19:50:05.166Z",
   "source": "offline migration from models-snapshot.json and existing search routes",
-  "coverage": "Partial offline snapshot: chat and search only; image, image_edit, embeddings, speech and transcription inventories require a fresh catalog capture",
   "object": "list",
   "counts": {
-    "chat": 216,
+    "chat": 217,
     "image": 0,
     "image_edit": 0,
     "embeddings": 0,
@@ -1552,6 +1551,54 @@
         }
       },
       "fallback": "Request fallback_models or configured default fallback may select another model"
+    },
+    {
+      "id": "exa/answer",
+      "name": "exa/answer",
+      "modality": "search",
+      "route": "/v1/exa/answer",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "min": "0.002",
+        "max": "0.051"
+      }
+    },
+    {
+      "id": "exa/contents",
+      "name": "exa/contents",
+      "modality": "search",
+      "route": "/v1/exa/contents",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "min": "0.002",
+        "max": "0.051"
+      }
+    },
+    {
+      "id": "exa/search",
+      "name": "exa/search",
+      "modality": "search",
+      "route": "/v1/exa/search",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "min": "0.002",
+        "max": "0.051"
+      }
     },
     {
       "id": "free/deepseek-v4.1-flash",
@@ -5751,6 +5798,45 @@
       "fallback": "Request fallback_models or configured default fallback may select another model"
     },
     {
+      "id": "nemotron-3.5-lightning",
+      "name": "NVIDIA Nemotron 3.5 Lightning",
+      "modality": "chat",
+      "route": "/v1/chat/nemotron-3.5-lightning",
+      "payment": "x402",
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2279",
+            "usd": 0.002279
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2116",
+            "usd": 0.002116
+          }
+        }
+      },
+      "fallback": "Request fallback_models or configured default fallback may select another model",
+      "access": "x402",
+      "available": true,
+      "router": false,
+      "free": false
+    },
+    {
       "id": "nemotron-3.5-super-vl",
       "name": "NVIDIA: Nemotron 3.5 Super VL",
       "modality": "chat",
@@ -7425,54 +7511,7 @@
         }
       },
       "fallback": "Request fallback_models or configured default fallback may select another model"
-    },
-    {
-      "id": "exa/answer",
-      "name": "exa/answer",
-      "modality": "search",
-      "route": "/v1/exa/answer",
-      "payment": "x402",
-      "networks": [
-        "eip155:8453",
-        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
-      ],
-      "kind": "model",
-      "price": {
-        "min": "0.002",
-        "max": "0.051"
-      }
-    },
-    {
-      "id": "exa/contents",
-      "name": "exa/contents",
-      "modality": "search",
-      "route": "/v1/exa/contents",
-      "payment": "x402",
-      "networks": [
-        "eip155:8453",
-        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
-      ],
-      "kind": "model",
-      "price": {
-        "min": "0.002",
-        "max": "0.051"
-      }
-    },
-    {
-      "id": "exa/search",
-      "name": "exa/search",
-      "modality": "search",
-      "route": "/v1/exa/search",
-      "payment": "x402",
-      "networks": [
-        "eip155:8453",
-        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
-      ],
-      "kind": "model",
-      "price": {
-        "min": "0.002",
-        "max": "0.051"
-      }
     }
-  ]
+  ],
+  "coverage": "Partial offline snapshot: chat and search only; image, image_edit, embeddings, speech and transcription inventories require a fresh catalog capture"
 }

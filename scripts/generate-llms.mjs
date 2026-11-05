@@ -97,7 +97,7 @@ Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools incl
 
 Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
 
-/numbers.json agent_traffic: total/last_24h/last_7d served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels. No raw client headers, prompts or addresses; distinct from settled paid_calls.
+/numbers.json agent_traffic: 24h/7d paid/free with_tools/stream/images; fixed by_source. No raw headers/prompts/addresses.
 
 Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Per-model reference prices are in the full models list, with upto before exact.`;
 }
