@@ -9,7 +9,7 @@ let sequence = 0;
 const encode = p => Buffer.from(JSON.stringify(p)).toString('base64');
 const decode = p => JSON.parse(Buffer.from(p, 'base64'));
 function fixture(mode = 'success') {
-  const calls = [], settled = [];
+  const calls = [], settled = [], logs = [];
   const facilitatorClient = {
     async getSupported() { return { kinds: [ { x402Version: 2, scheme: 'upto', network: BASE, extra: { facilitatorAddress: '0x' + '3'.repeat(40) } }, { x402Version: 2, scheme: 'upto', network: SOLANA, extra: { feePayer: '1'.repeat(32), receiverAuthorizer: '1'.repeat(32) } }, { x402Version: 2, scheme: 'exact', network: BASE }, { x402Version: 2, scheme: 'exact', network: SOLANA, extra: { feePayer: '1'.repeat(32) } } ], extensions: ['bazaar'], signers: {} }; },
     async verify() { return { isValid: true, payer: '0x' + '2'.repeat(40) }; },
@@ -20,6 +20,8 @@ function fixture(mode = 'success') {
     if (init.method === 'POST') {
       assert.equal(init.headers.Authorization, 'Bearer our-key');
       if (mode === 'credit') return Response.json({ error: { code: 'insufficient_credit' } }, { status: 402 });
+      if (mode === 'unavailable') return Response.json({ error: { code: 'no_healthy_sellers', message: 'secret Surplus error message our-key' } }, { status: 503 });
+      if (mode === 'failed') return Response.json({ id: 'job123', status: 'failed', job_token: 'secret-job-token' });
       if (mode === 'timeout') return new Promise(() => {});
       return Response.json({ id: 'job123', status: 'succeeded' });
     }
@@ -27,8 +29,8 @@ function fixture(mode = 'success') {
     return new Response(mode === 'invalid' ? '{}' : mode === 'oversize' ? Buffer.alloc(101) : 'ID3audio');
   };
   const app = express(); app.locals.paidRoutes = new Set(); app.use(express.json());
-  addAudioGenerationRoutes(app, { ...config, mediaJobOptions: { resolve, artifactFetch: fetchImpl, timeoutMs: mode === 'timeout' ? 10 : 1000, maxBytes: 100, sleep: async () => {} } }, { facilitatorClient, fetchImpl, log: () => {}, open: (_q, _s, next) => next() });
-  return { app, calls, settled, facilitatorClient };
+  addAudioGenerationRoutes(app, { ...config, mediaJobOptions: { resolve, artifactFetch: fetchImpl, timeoutMs: mode === 'timeout' ? 10 : 1000, maxBytes: 100, sleep: async () => {} } }, { facilitatorClient, fetchImpl, log: line => logs.push(line), open: (_q, _s, next) => next() });
+  return { app, calls, settled, facilitatorClient, logs };
 }
 // Direct handler checks supplement actual x402 settlement tests below when the sandbox denies listeners.
 for (const route of AUDIO_ROUTES) test(`${route} validation and paid result handler without sockets`, async () => {
@@ -183,4 +185,26 @@ test('sold and discovery switches are independent of ready models', async () => 
       }
     }
   }
+});
+
+
+for (const route of AUDIO_ROUTES) for (const mode of ['failed', 'unavailable']) test(`${route} ${mode} logs safe diagnostics and keeps the buyer response unchanged`, async () => {
+  const { app, logs } = fixture(mode);
+  const kind = route.endsWith('sound-effects') ? 'sound-effects' : 'music';
+  const model = kind === 'music' ? 'minimax/music-2' : 'sonilo/sound-effects-1.0';
+  const layers = app.router.stack.filter(l => l.route?.path === route && l.route.methods.post);
+  const header = encode({ accepted: { network: BASE }, payload: { signature: `secret-payment-${++sequence}` } });
+  const req = { body: { ...audioExample(kind), model, text: 'secret prompt', prompt: 'secret prompt' }, get: () => header };
+  let status, body;
+  const res = { set() { return this; }, status(n) { status = n; return this; }, json(v) { body = v; return this; } };
+  layers[0].route.stack[0].handle(req, res, () => {});
+  await layers.at(-1).route.stack[0].handle(req, res);
+  assert.equal(status, 503);
+  assert.equal(body.error.code, 'no_billable_answer');
+  assert.equal(logs.length, 1);
+  assert.ok(logs[0].startsWith(`audio job fail ${kind} ${model} `));
+  assert.match(logs[0], mode === 'unavailable'
+    ? /code=submit_failed job=unknown last=unknown http=503 upstream=no_healthy_sellers ms=\d+$/
+    : /code=job_failed job=job123 last=failed http=unknown upstream=unknown ms=\d+$/);
+  for (const secret of ['secret Surplus error message', 'our-key', 'secret-job-token', 'secret-payment', header, config.payToBase, 'secret prompt']) assert.ok(!logs[0].includes(secret));
 });

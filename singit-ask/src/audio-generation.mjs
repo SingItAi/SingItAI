@@ -141,6 +141,7 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
       if (reservation === 'full') return fail();
       const { model, request } = priced.get(req.body);
       if (!availableAudioPrices(config, catalogue).some(m => m.id === model.id)) return fail();
+      const started = Date.now();
       try {
         const { audio, contentType } = await runMediaJob({ baseUrl: config.surplusUrl, key: config.surplusKey,
           request: surplusAudioRequest(request), idempotencyKey: `singit-${digest}`, timeoutMs: i ? 180000 : 60000,
@@ -148,7 +149,12 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
         const billing = imagePrice(model.listAtomic, payment.accepted.network);
         res.set({ 'Content-Type': contentType, 'Cache-Control': 'no-store', 'X-SingIt-Charged-Atomic': billing.totalAtomic, 'X-SingIt-List-Atomic': billing.listAtomic });
         res.send(audio);
-      } catch { return fail(); }
+      } catch (error) {
+        // Log only bounded diagnostic fields, never upstream messages or credentials.
+        const safe = value => String(value ?? 'unknown').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 100);
+        log(`audio job fail ${kind} ${model.id} code=${safe(error.code)} job=${safe(error.jobId)} last=${safe(error.lastStatus)} http=${safe(error.upstreamStatus)} upstream=${safe(error.upstreamCode)} ms=${Date.now() - started}`);
+        return fail();
+      }
     });
   }
 }

@@ -104,3 +104,107 @@ test('stream cap cancels oversized artifacts and refuses an oversized Content-Le
     assert.equal(cancelled, true);
   }
 });
+
+test('queued timeout cancels once with independent signal and job auth', async () => {
+  for (const token of [undefined, 'private-token']) {
+    let clock = 0;
+    const calls = [];
+    await assert.rejects(runMediaJob({ ...options, now: () => clock,
+      sleep: async ms => { clock += ms; },
+      fetchImpl: async (_url, init) => {
+        calls.push(init);
+        if (init.method === 'DELETE') { assert.equal(init.signal.aborted, false); throw new Error('cancel unavailable'); }
+        return Response.json({ id: 'job123', status: 'queued', job_token: token });
+      },
+    }), { code: 'timeout', jobId: 'job123', lastStatus: 'queued' });
+    const deletes = calls.filter(c => c.method === 'DELETE');
+    assert.equal(deletes.length, 1);
+    assert.deepEqual(deletes[0].headers, token ? { 'X-Job-Token': token } : { Authorization: 'Bearer our-key' });
+  }
+});
+
+test('terminal failures need no cancellation and carry diagnostic fields', async () => {
+  for (const status of ['failed', 'canceled', 'cancelled', 'expired']) {
+    const calls = [];
+    await assert.rejects(runMediaJob({ ...options, fetchImpl: async (_url, init) => {
+      calls.push(init); return Response.json({ id: 'job123', status });
+    } }), { code: 'job_failed', jobId: 'job123', lastStatus: status });
+    assert.equal(calls.length, 1);
+  }
+});
+
+test('poll delays back off from two seconds, cap at ten and stop at deadline', async () => {
+  let clock = 0, polls = 0;
+  const delays = [], deletes = [];
+  await assert.rejects(runMediaJob({ ...options, timeoutMs: 41000, now: () => clock,
+    sleep: async ms => { delays.push(ms); clock += ms; },
+    fetchImpl: async (_url, init) => {
+      if (init.method === 'DELETE') { deletes.push(init); return new Response(null, { status: 204 }); }
+      if (init.method !== 'POST') { assert.ok(clock < 41000); polls++; }
+      return Response.json({ id: 'job123', status: ['queued', 'running', 'processing', 'pending'][polls % 4] });
+    },
+  }), { code: 'timeout' });
+  assert.deepEqual(delays, [2000, 3000, 5000, 8000, 10000, 10000, 3000]);
+  assert.equal(polls, 6);
+  assert.equal(deletes.length, 1);
+});
+
+test('success and artifact failure after succeeded never cancel', async () => {
+  for (const mode of ['success', 'invalid']) {
+    const s = scenario(mode);
+    if (mode === 'success') await runMediaJob({ ...options, ...s });
+    else await assert.rejects(runMediaJob({ ...options, ...s }), { code: 'artifact_failed', jobId: 'job_123', lastStatus: 'succeeded' });
+    assert.ok(s.calls.every(([, init]) => init.method !== 'DELETE'));
+  }
+});
+
+test('poll and submit failures have reason codes; poll failure cancels', async () => {
+  for (const submit of [true, false]) {
+    let deletes = 0;
+    await assert.rejects(runMediaJob({ ...options, fetchImpl: async (_url, init) => {
+      if (init.method === 'DELETE') { deletes++; return new Response(null, { status: 204 }); }
+      if (submit || init.method !== 'POST') throw new Error('upstream secret');
+      return Response.json({ id: 'job123', status: 'queued' });
+    } }), { code: submit ? 'submit_failed' : 'poll_failed' });
+    assert.equal(deletes, submit ? 0 : 1);
+  }
+});
+
+test('real deadline cancels a stalled poll without masking timeout', async () => {
+  let cancelSignal;
+  await assert.rejects(runMediaJob({ ...options, timeoutMs: 10,
+    fetchImpl: async (_url, init) => {
+      if (init.method === 'POST') return Response.json({ id: 'job123', status: 'queued' });
+      if (init.method === 'DELETE') { cancelSignal = init.signal; assert.equal(cancelSignal.aborted, false); return new Response(null, { status: 204 }); }
+      return new Promise(() => {});
+    },
+  }), { code: 'timeout', jobId: 'job123', lastStatus: 'queued' });
+  assert.ok(cancelSignal);
+});
+
+
+test('submit HTTP failure preserves upstream status and code', async () => {
+  await assert.rejects(runMediaJob({ ...options,
+    fetchImpl: async () => Response.json({ error: { code: 'no_healthy_sellers' } }, { status: 503 }),
+  }), { code: 'submit_failed', upstreamStatus: 503, upstreamCode: 'no_healthy_sellers' });
+});
+
+test('poll HTTP failure preserves diagnostics and cancels the job', async () => {
+  const calls = [];
+  await assert.rejects(runMediaJob({ ...options, fetchImpl: async (url, init) => {
+    calls.push([String(url), init]);
+    if (init.method === 'POST') return Response.json({ id: 'job123', status: 'queued' });
+    if (init.method === 'DELETE') return new Response(null, { status: 204 });
+    return Response.json({ error: { type: 'rate_limit_error' } }, { status: 429 });
+  } }), { code: 'poll_failed', upstreamStatus: 429, upstreamCode: 'rate_limit_error' });
+  const deletes = calls.filter(([, init]) => init.method === 'DELETE');
+  assert.equal(deletes.length, 1);
+  assert.equal(deletes[0][0], calls[1][0]);
+  assert.ok(deletes[0][0].endsWith('/job123'));
+});
+
+test('terminal failed job preserves upstream error type', async () => {
+  await assert.rejects(runMediaJob({ ...options,
+    fetchImpl: async () => Response.json({ id: 'job123', status: 'failed', error: { type: 'provider_error' } }),
+  }), { code: 'job_failed', upstreamCode: 'provider_error' });
+});
