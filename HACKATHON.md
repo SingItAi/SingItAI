@@ -418,3 +418,15 @@ Limitations: no live facilitator, network requests or real payments were used;
 normal listener-based OpenAPI checks remain blocked by the sandbox. All five
 OpenAPI schema/example/lint tests pass in a temporary copy using the existing
 socket-free request harness in place of the generator's listener.
+
+### API-key readiness follow-up (5 November 2026, post-competition)
+
+Draft PR from `feat/key-path-readiness` in SingItAI: adds a standard-library zero-spend
+key-path checker with an opt-in daily workflow (skipped until the owner sets
+`KEY_CHECK_ENABLED`), and shares actionable tools-refusal guidance between the free and
+fallback gateway routes. This is maintenance of the imported gateway, not new Solana work.
+Verification: full gateway suite (2,251 tests), the 12 checker tests (ten scenarios against a
+loopback server) and the existing script tests pass. Not verified: the live API, the workflow
+on GitHub, the server's paid-proxy setting (only the owner can read it) and the paid tools
+scenario, which is opt-in and was never run. A full probe needs eight requests (nine with paid
+tools), because balance and usage are read before and after.

@@ -189,6 +189,10 @@ class PublicApiTests(Fixture):
             with self.subTest(name), self.assertRaises(ApiError) as caught:
                 attempt()
             self.assertEqual(caught.exception.status, status)
+            if name == "tools":
+                self.assertEqual(caught.exception.code, "tools_unsupported")
+                self.assertIn("x402", caught.exception.message)
+                self.assertIn("/v1/messages", caught.exception.message)
         self.assertEqual(self.shop.calls, [])
 
     def test_streaming_clients_get_the_whole_answer_as_openai_chunks(self):
