@@ -9,6 +9,7 @@ const VERBS = /^(Generate|Search|Fetch|Create|List|Get)\b/;
 
 test("every operation summary is verb-first and 24 to 63 characters", async () => {
   const doc = await generateOpenapi();
+  assert.equal(doc.info.termsOfService, "https://singitai.app/terms/");
   for (const [path, item] of Object.entries(doc.paths)) {
     for (const [method, op] of Object.entries(item)) {
       if (!op || typeof op !== "object" || Array.isArray(op)) continue;   // `servers` on a path item

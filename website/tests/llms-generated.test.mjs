@@ -37,6 +37,7 @@ test('llms files derive route prices, fees, reference prices and all visible mod
   const full = await read('llms-full.txt');
   const rendered = renderLlms(text, visible, routes, price);
   for (const [name, content] of rendered) assert.equal(await read(name), content, name);
+  assert.ok(text.includes('[Terms of service](https://singitai.app/terms/)'));
   assert.match(text, /^# SingIt\n\n> /);
   assert.ok(Buffer.byteLength(text) < 14000);
   const top = text.indexOf('## I need to... -> Call -> Price');

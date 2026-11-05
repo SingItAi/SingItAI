@@ -120,6 +120,8 @@
     "skill": "https://ask.singitai.app/SKILL.md",
     "models": "https://ask.singitai.app/v1/models",
     "pricing": "https://ask.singitai.app/pricing.json",
-    "mcpKeyDocs": "https://singitai.app/docs/mcp-key/"
+    "mcpKeyDocs": "https://singitai.app/docs/mcp-key/",
+    "terms": "https://singitai.app/terms/",
+    "privacy": "https://singitai.app/privacy/"
   }
 }
