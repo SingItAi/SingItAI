@@ -1,4 +1,5 @@
 import { validateStream, agentResponses } from './agent-stream.mjs';
+import { upstreamModelId } from "./model-aliases.mjs";
 import { imagePrice } from "./images.mjs";
 import { addRoutes as addEditRoutes, REQUEST_BODY as EDIT_BODY } from "./image-edits.mjs";
 import { addRoutes as addEmbeddingRoutes, REQUEST_BODY as EMBEDDING_BODY } from "./embeddings.mjs";
@@ -236,7 +237,7 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                  ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
-      body: JSON.stringify({ model, messages,
+      body: JSON.stringify({ model: upstreamModelId(model), messages,
         ...(agent?.tools !== undefined ? { tools: agent.tools } : {}),
         ...(agent?.toolChoice !== undefined ? { tool_choice: agent.toolChoice } : {}),
         ...(agent?.parallelToolCalls !== undefined ? { parallel_tool_calls: agent.parallelToolCalls } : {}), max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),

@@ -1,3 +1,4 @@
+import { upstreamModelId } from "./model-aliases.mjs";
 // Reviewed allowlist and fallback floors. Public prices alone are insufficient: sellers can offer above list.
 // Each static side is max(public reference, dearest trusted offer checked 2026-11-01).
 // LIMITS.chars caps prompts at 24000 characters (about 24k tokens conservatively), inside every lowest context tier.
@@ -30,7 +31,7 @@ export const REFERENCE_PRICES = Object.freeze({
 export const BOOK_PRICE_MARGIN = 1.10;
 export function matchesBook(book, id) {
   const model = book?.model ?? book?.data?.model;
-  return typeof model !== "string" || model.toLowerCase() === String(id).toLowerCase();
+  return typeof model !== "string" || model.toLowerCase() === String(upstreamModelId(id)).toLowerCase();
 }
 // Health, availability and capacity deliberately do not limit the bound: dear sellers can return.
 export function bookPrices(book, blockedSet = new Set()) {

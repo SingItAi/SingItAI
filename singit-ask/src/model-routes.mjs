@@ -14,7 +14,8 @@ import { unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { LIMITS } from "./limits.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, ICON_URL, ceilingAtomic, discoveryTags, modelServiceName, usd } from "./pricing.mjs";
 
-// The id is Surplus's own model id (catalogue.mjs's ModelCatalogue.resolve), and must be URL-safe: it becomes
+// Public ids resolve through the catalogue; model-aliases.mjs maps any upstream difference.
+// Each id must be URL-safe: it becomes
 // `/v1/chat/<id>` verbatim (see test/model-routes.test.mjs's id-shape assertion). None of these may ever be
 // "completions": that id would collide with /v1/chat/completions itself.
 export const MODEL_ROUTES = [
@@ -46,6 +47,8 @@ export const MODEL_ROUTES = [
     blurb: "Alibaba's largest Qwen 3.8 model: coding and reasoning tasks" },
   { id: "glm-5.3", name: "GLM 5.3", provider: "Zhipu AI", family: ["glm"],
     blurb: "Zhipu AI's GLM 5.3 model: general-purpose chat and reasoning" },
+  { id: "nemotron-3.5-lightning", name: "NVIDIA Nemotron 3.5 Lightning", provider: "NVIDIA", family: ["nemotron"],
+    blurb: "NVIDIA's fast 30B mixture-of-experts model: long-context coding and agentic tasks" },
 ];
 
 const ID_SHAPE = /^[a-z0-9.-]+$/;
