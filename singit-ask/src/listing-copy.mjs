@@ -6,13 +6,13 @@ export function listingCopy(catalog, modality, capability, { audioSold = false, 
   const paid = entries.filter(e => e.available !== false && (e.payment === 'x402' || e.access === 'x402'));
   if (modality === 'transcription') return { description: 'Transcription is API-key only; see GET /v1/catalog.', tags: ['transcription', 'api-key'] };
   const count = catalog.counts?.[modality] ?? entries.length;
-  // Sample one real ID from each provider/family before filling remaining slots.
+  // Sample up to four families in ID order, independent of catalog entry order.
   const samples = [];
   const families = new Set();
-  const preferred = /^(claude-opus-5\.5$|gpt-5\.5$|gemini-3\.8-flash$)/;
-  for (const e of paid.filter(e => !e.router && !e.free && !['router', 'free'].includes(e.kind)).sort((a, b) => Number(preferred.test(b.id)) - Number(preferred.test(a.id)))) {
+  for (const e of paid.filter(e => !e.router && !e.free && !['router', 'free'].includes(e.kind)).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) {
     const family = e.id.split(/[-/]/)[0];
     if (!families.has(family)) { samples.push(e); families.add(family); }
+    if (samples.length === 4) break;
   }
   const names = samples.slice(0, 4).map(e => e.id.slice(0, 60));
   const noun = modality === 'search' ? 'search tools' : `${modality.replaceAll('_', ' ')} models`;
