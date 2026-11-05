@@ -502,3 +502,16 @@ M5 hidden draft (2026-11-05), branch `feat/video-m5-hidden`: video stays off by 
 (`SINGIT_ASK_VIDEO_SOLD` / discoverable untouched). Solana offers removed; a Solana payment
 header is refused before a job starts (same blockhash rule as M4 music/SFX). Base hold-and-poll,
 health gate and fallback unchanged. No paid call, no deploy, no announcement.
+
+M4 audio readiness follow-up (2026-11-05), branch `feat/audio-readiness`: adds opt-in audio sales and separate
+x402 discovery, a synchronous readiness adapter backed by a free prepaid balance
+snapshot (60-second TTL, refresh every 30 seconds), and catalogue async/job/price
+checks (six-minute TTL). Chat seller membership no longer gates music/SFX.
+The supplied free API reference and offline catalogue resolve the shared SFX/music
+endpoint, official prompt/lyrics_prompt/force_instrumental fields, and flat job
+billing through the public music duration cap. README records sources and remaining
+format/model-parameter assumptions. This is post-competition SingIt API work;
+no Solana enablement, paid call, deployment or environment edit.
+Verification: focused audio tests 14/14; full singit-ask 755/756 (known solana-direct
+@solana/kit env miss on this worktree, same as main here). Production remains off
+pending operator OK, merge/deploy and SINGIT_ASK_AUDIO_SOLD=1.

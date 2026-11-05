@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { addAudioGenerationRoutes, AUDIO_ROUTES, audioExample, audioPrices, availableAudioPrices } from '../src/audio-generation.mjs';
+import { addAudioGenerationRoutes, AUDIO_ROUTES, audioExample, audioPrices, availableAudioPrices, surplusAudioRequest, readAudioGeneration } from '../src/audio-generation.mjs';
 import { BASE, SOLANA } from '../src/pricing.mjs';
-const config = { payToBase: '0x' + '1'.repeat(40), payToSolana: '1'.repeat(32), surplusUrl: 'https://surplus.test', surplusKey: 'our-key', audioGenerationReady: () => true };
+const config = { audioSold: true, audioDiscoverable: true, payToBase: '0x' + '1'.repeat(40), payToSolana: '1'.repeat(32), surplusUrl: 'https://surplus.test', surplusKey: 'our-key', audioGenerationReady: () => true };
 const resolve = async () => [{ address: '93.184.216.34', family: 4 }];
 let sequence = 0;
 const encode = p => Buffer.from(JSON.stringify(p)).toString('base64');
@@ -150,6 +150,37 @@ test('unknown credit/readiness, missing credentials and idle seller snapshots fa
   assert.deepEqual(availableAudioPrices({ ...config, audioGenerationReady: undefined }), []);
   assert.deepEqual(availableAudioPrices({ ...config, surplusKey: '' }), []);
   assert.deepEqual(availableAudioPrices({ ...config, audioGenerationReady() { throw new Error('stale'); } }), []);
-  assert.deepEqual(availableAudioPrices(config, { served: new Set() }), []);
+  assert.equal(availableAudioPrices(config, { served: new Set(['chat-only']) }).length, 5);
+  assert.deepEqual(availableAudioPrices({ ...config, audioSold: undefined }), []);
   assert.deepEqual(availableAudioPrices(config, { isSuspended: () => true }), []);
+});
+
+test('official Surplus fields and limits', () => {
+  assert.deepEqual(surplusAudioRequest({ model: 'elevenlabs/sound-effects-v2', text: 'Rain', response_format: 'wav' }), { model: 'venice-elevenlabs-sound-effects-v2', prompt: 'Rain' });
+  assert.deepEqual(surplusAudioRequest({ model: 'minimax/music-2.6', prompt: 'Jazz', lyrics: '', instrumental: true, duration_seconds: 60 }), { model: 'venice-minimax-music-v26', prompt: 'Jazz', lyrics_prompt: '', force_instrumental: true, duration_seconds: 60 });
+  assert.throws(() => readAudioGeneration({ prompt: 'x'.repeat(2001), lyrics: 'Song' }, 'music'), { status: 422 });
+  assert.throws(() => readAudioGeneration({ prompt: 'Song', lyrics: 'x'.repeat(5001) }, 'music'), { status: 422 });
+});
+
+test('sold and discovery switches are independent of ready models', async () => {
+  const { createApp } = await import('../src/app.mjs');
+  for (const sold of [undefined, true]) for (const discoverable of [undefined, true]) {
+    const app = createApp({ ...config, audioSold: sold, audioDiscoverable: discoverable }, {
+      catalogue: { async list() { return []; }, served: new Set(['chat-only']) },
+      facilitatorClient: fixture().facilitatorClient, log: () => {}, fetchImpl: () => { throw new Error('no network'); },
+    });
+    let result;
+    const layer = app.router.stack.find(l => l.route?.path === '/.well-known/x402');
+    await layer.route.stack.at(-1).handle({ protocol: 'https', get: () => 'ask.singitai.app' }, { json(v) { result = v; } });
+    assert.equal(result.resources.some(r => AUDIO_ROUTES.some(p => r.endsWith(p))), sold === true && discoverable === true);
+    assert.equal(availableAudioPrices({ ...config, audioSold: sold }).length, sold ? 5 : 0);
+    if (!sold) {
+      for (const route of AUDIO_ROUTES) {
+        const gate = app.router.stack.find(l => !l.route && l.handle.toString().includes('availableAudioPrices')).handle;
+        let status;
+        gate({ body: audioExample(route.endsWith('sound-effects') ? 'sound-effects' : 'music') }, { status(n) { status = n; return this; }, json() {} }, () => assert.fail('payment must not start'));
+        assert.equal(status, 503);
+      }
+    }
+  }
 });

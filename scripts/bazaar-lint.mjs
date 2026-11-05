@@ -176,7 +176,7 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
     resolveImage: never, voiceModels: async () => ({ speech: new Map(), transcription: new Map() }), resolveSpeech: never,
     videoModels: async () => new Map(), resolveVideo: never };
   const config = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", payToBase: "0x1111111111111111111111111111111111111111",
-    audioGenerationReady: () => true, surplusKey: "inf_lint", surplusUrl: "https://surplus.invalid", model: "deepseek-v4.1-flash" };
+    audioSold: true, audioDiscoverable: true, audioGenerationReady: () => true, surplusKey: "inf_lint", surplusUrl: "https://surplus.invalid", model: "deepseek-v4.1-flash" };
   const app = createApp(config, { facilitatorClient, catalogue, exaKey: "lint", fetchImpl: never, exaFetch: never, log: () => {}, upstream: never });
   const server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
 
