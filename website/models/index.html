@@ -1,147 +1,228 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Models and prices - SingIt</title>
-<meta name="description" content="Every model you can ask SingIt for, with our price against the list price, live. One API key for all of them, or pay per answer in USDC over x402.">
-<meta property="og:title" content="SingIt: every model and its price, live">
-<meta property="og:description" content="Below list price, with one API key or over x402. Try it free, no wallet.">
-<meta property="og:url" content="https://singitai.app/models/">
-<meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
-<meta property="og:type" content="website">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:site" content="@SingItAgent">
-<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/style.css?v=bb7061fc">
-<link rel="stylesheet" href="/dev.css?v=1">
-<!-- Umami, self-hosted and cookieless (docs/analytics.md) -->
-<script defer src="https://stats.singitai.app/s.js" data-website-id="6eab5805-b9b8-4f04-aa73-df64a8ce096e" data-domains="singitai.app,app.singitai.app"></script>
-</head>
-<body>
-
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="singit-mark" viewBox="0 0 240 240" fill="none">
-    <path d="M192 108 V152 Q192 176 168 176 H112 Q88 176 88 152 V88 Q88 64 112 64 H168 Q192 64 192 78"
-          stroke="currentColor" stroke-width="12.5" stroke-linecap="round"/>
-    <path d="M116 118 L139 143 L188 86 H206" stroke="currentColor" stroke-width="11.5"
-          stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="216" cy="86" r="8" stroke="currentColor" stroke-width="8.5"/>
-    <g stroke="currentColor" stroke-width="9" stroke-linecap="round">
-      <line x1="58" y1="94"  x2="88" y2="94"/>
-      <line x1="58" y1="121" x2="88" y2="121"/>
-      <line x1="58" y1="148" x2="88" y2="148"/>
-    </g>
-    <g fill="currentColor">
-      <circle cx="49" cy="94"  r="9"/>
-      <circle cx="49" cy="121" r="9"/>
-      <circle cx="49" cy="148" r="9"/>
-    </g>
-  </symbol>
-  <symbol id="ic-copy" viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" stroke="currentColor" stroke-width="1.4"/></symbol>
-  <symbol id="ic-check" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
-</svg>
-
-<header class="nav-wrap">
-  <div class="nav-bar">
-    <a class="brand" href="/" aria-label="SingIt home">
-      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
-      <span>SingIt</span>
-    </a>
-    <nav class="nav-links" aria-label="Primary">
-      <a href="/developers/">Developers</a>
-      <a href="/models/" aria-current="page">Models &amp; prices</a>
-      <a href="/pricing/">Pricing</a>
-      <a href="/developers/#quickstart">Quickstart</a>
-      <a href="https://github.com/SingItAi/SingItAI" target="_blank" rel="noopener">GitHub</a>
-    </nav>
-    <a class="btn btn-primary btn-sm" href="https://app.singitai.app/app/">
-      Open SingIt
-      <span class="btn-arrow" aria-hidden="true">&#8599;</span>
-    </a>
-  </div>
-</header>
-
-<main id="top">
-
-  <section class="hero dev-hero">
-    <div class="shell">
-      <div class="hero-copy" data-hero-reveal>
-        <p class="eyebrow">Models &amp; prices</p>
-        <h1>Every model. <em>Live prices.</em></h1>
-        <p class="hero-sub">What you can ask SingIt for right now, with our expected price against the model's list price. Read straight from <a href="https://ask.singitai.app/v1/models">ask.singitai.app/v1/models</a>.</p>
-        <p><a href="/models/all/">A static page for every model</a></p>
-      </div>
-    </div>
-  </section>
-
-  <section class="models-page" data-models-page>
-    <div class="shell">
-      <dl class="fees" data-batch>
-        <div><dt>Markup on the model's cost</dt><dd data-markup>30%</dd></div>
-        <div><dt>Fee per request with an API key</dt><dd>None</dd></div>
-        <div><dt>x402 fee per answer, Base</dt><dd data-fee-base>$0.001</dd></div>
-        <div><dt>x402 fee per answer, Solana</dt><dd data-fee-solana>$0.002</dd></div>
-      </dl>
-
-      <div class="controls">
-        <label class="visually-hidden" for="model-search">Search models</label>
-        <input id="model-search" class="search" type="search" placeholder="Search by name, id or provider" autocomplete="off" data-models-search>
-        <span class="count" data-models-count aria-live="polite"></span>
-      </div>
-      <div class="chips" data-models-tags aria-label="Filter by capability"></div>
-
-      <div class="table-wrap">
-        <table class="mtable">
-          <caption>Per million tokens. Ours is the expected price: what answers from the model cost us, plus the markup. List price crossed out. <b>est.</b>: from sellers' quotes, not yet confirmed by answers we paid for, so the real price can be higher. You pay what each answer actually used, and nothing without an answer.</caption>
-          <thead>
-            <tr>
-              <th scope="col" data-sort-col="name" aria-sort="none"><button type="button" class="sort-btn" data-sort="name">Model</button></th>
-              <th scope="col" class="hide-sm">Provider</th>
-              <th scope="col" class="num hide-sm">Input</th>
-              <th scope="col" class="num" data-sort-col="price" aria-sort="none"><button type="button" class="sort-btn" data-sort="price">Output</button></th>
-              <th scope="col" class="num" data-sort-col="saving" aria-sort="none"><button type="button" class="sort-btn" data-sort="saving">Saving</button></th>
-            </tr>
-          </thead>
-          <tbody data-models-rows>
-            <tr><td colspan="5" class="table-state">Loading live prices&hellip;</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="fine" data-live-fallback hidden>Live prices did not load. The list is at <a href="https://ask.singitai.app/v1/models">ask.singitai.app/v1/models</a>.</p>
-      <p class="fine">Put a model's id in the <span class="mono">model</span> field. With a SingIt API key, at <span class="mono">https://app.singitai.app/v1</span> (OpenAI and Anthropic formats); over x402 with no key, at <span class="mono">https://ask.singitai.app/v1/chat/completions</span>. Models marked free to try answer there with the <span class="mono">free/</span> prefix and no payment. <a href="/developers/#quickstart">Quickstart</a></p>
-    </div>
-  </section>
-
-</main>
-
-<footer class="footer">
-  <div class="shell footer-inner">
-    <a class="brand brand-footer" href="/">
-      <svg class="mark" aria-hidden="true"><use href="#singit-mark"/></svg>
-      <span>SingIt</span>
-    </a>
-    <nav class="footer-links" aria-label="Footer">
-      <a href="/">For everyone</a>
-      <a href="/models/">Models &amp; prices</a>
-      <a href="https://app.singitai.app/app/">Open SingIt</a>
-      <a href="https://x.com/SingItAgent" target="_blank" rel="noopener">X</a>
-      <a href="https://github.com/SingItAi/SingItAI" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://singitai.app/privacy/" target="_blank" rel="noopener">Privacy policy</a>
-      <a href="https://singitai.app/terms/" target="_blank" rel="noopener">Terms</a>
-      <a href="mailto:contact@singitai.app">Contact</a>
-    </nav>
-    <p class="footer-fine">&copy; 2026 SingIt</p>
-  </div>
-</footer>
-
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
-<script src="/app.js?v=bb7061fc"></script>
-<script type="module" src="/dev.mjs?v=1"></script>
-
-</body>
-</html>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>SingIt catalog</title><meta name="description" content="Snapshot catalog of SingIt models and services, with modality counts, payment access and prices."><link rel="canonical" href="https://singitai.app/models/"><link rel="stylesheet" href="/style.css"></head><body><main>
+<h1>Models and services</h1><p>217 chat, 3 search</p>
+<p>Snapshot: 2026-10-30T19:50:05.166Z. Partial offline snapshot: chat and search only; image, image_edit, embeddings, speech and transcription inventories require a fresh catalog capture. Zero counts mean no entries captured in this snapshot. Live availability and quotes: <a href="https://ask.singitai.app/v1/catalog">/v1/catalog</a>.</p>
+<dl><dt>chat</dt><dd data-modality="chat">217</dd><dt>image</dt><dd data-modality="image">0</dd><dt>image_edit</dt><dd data-modality="image_edit">0</dd><dt>embeddings</dt><dd data-modality="embeddings">0</dd><dt>speech</dt><dd data-modality="speech">0</dd><dt>transcription</dt><dd data-modality="transcription">0</dd><dt>search</dt><dd data-modality="search">3</dd></dl>
+<p>Chat includes routers and free aliases. Transcription requires an API key at the gateway. x402 entries accept USDC on Base and Solana. Prices follow the reference request or stated unit; the live quote is authoritative.</p>
+<table><thead><tr><th>Name / ID</th><th>Modality</th><th>Kind</th><th>Payment</th><th>Route</th><th>Networks</th><th>Price summary</th></tr></thead><tbody>
+<tr><td>Aion 3.0<br>aion-labs-aion-3-0</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003613; solana upto: $0.004613; base exact: $0.001788; solana exact: $0.002788</td></tr>
+<tr><td>Aion 3.0 Mini<br>aion-labs-aion-3-0-mini</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00161; solana upto: $0.00261; base exact: $0.0015; solana exact: $0.002185</td></tr>
+<tr><td>Aion 2.0<br>aion-labs.aion-2-0</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001697; solana upto: $0.002697; base exact: $0.0015; solana exact: $0.002211</td></tr>
+<tr><td>Reflection: Beam 1.0 501B A23B<br>beam-1.0-501b-a23b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002327; base exact: $0.0015; solana exact: $0.002099</td></tr>
+<tr><td>Claude Fable 5<br>claude-fable-5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.008867; solana upto: $0.009867; base exact: $0.003364; solana exact: $0.004364</td></tr>
+<tr><td>Claude Fable 5.1<br>claude-fable-5.1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.027221; solana upto: $0.028221; base exact: $0.008878; solana exact: $0.009878</td></tr>
+<tr><td>Claude Haiku 4.5<br>claude-haiku-4.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001631; solana upto: $0.002631; base exact: $0.0015; solana exact: $0.00219</td></tr>
+<tr><td>Claude Haiku 5.5<br>claude-haiku-5.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/claude-haiku-5.5</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00208; base exact: $0.0015; solana exact: $0.002025</td></tr>
+<tr><td>Claude Opus 4.8 Fast<br>claude-opus-4-8-fast</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.041906; solana upto: $0.042906; base exact: $0.013291; solana exact: $0.014291</td></tr>
+<tr><td>Claude Opus 4.5<br>claude-opus-4.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003624; solana upto: $0.004624; base exact: $0.00179; solana exact: $0.00279</td></tr>
+<tr><td>Claude Opus 4.6<br>claude-opus-4.6</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001526; solana upto: $0.002526; base exact: $0.0015; solana exact: $0.002159</td></tr>
+<tr><td>Claude Opus 4.7<br>claude-opus-4.7</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002312; solana upto: $0.003312; base exact: $0.0015; solana exact: $0.002396</td></tr>
+<tr><td>Claude Opus 4.8<br>claude-opus-4.8</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003099; solana upto: $0.004099; base exact: $0.001631; solana exact: $0.002631</td></tr>
+<tr><td>Claude Opus 5<br>claude-opus-5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002312; solana upto: $0.003312; base exact: $0.0015; solana exact: $0.002396</td></tr>
+<tr><td>Claude Opus 5 (Fast)<br>claude-opus-5-fast</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.028271; solana upto: $0.029271; base exact: $0.009194; solana exact: $0.010194</td></tr>
+<tr><td>Claude Opus 5.5<br>claude-opus-5.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/claude-opus-5.5</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.005422; solana upto: $0.006422; base exact: $0.002841; solana exact: $0.003841</td></tr>
+<tr><td>Claude Sonnet 4.5<br>claude-sonnet-4.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003519; solana upto: $0.004519; base exact: $0.001757; solana exact: $0.002757</td></tr>
+<tr><td>Claude Sonnet 4.6<br>claude-sonnet-4.6</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002316; base exact: $0.0015; solana exact: $0.002095</td></tr>
+<tr><td>Claude Sonnet 5<br>claude-sonnet-5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001735; solana upto: $0.002735; base exact: $0.0015; solana exact: $0.002221</td></tr>
+<tr><td>Claude Sonnet 5.5<br>claude-sonnet-5.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/claude-sonnet-5.5</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003728; solana upto: $0.004728; base exact: $0.001821; solana exact: $0.002821</td></tr>
+<tr><td>Cohere: Command A+<br>command-a-plus</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002489; base exact: $0.0015; solana exact: $0.002147</td></tr>
+<tr><td>DeepSeek R1<br>deepseek-r1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002; base exact: $0.0015; solana exact: $0.002</td></tr>
+<tr><td>DeepSeek V3.1<br>deepseek-v3.1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002021; base exact: $0.0015; solana exact: $0.002007</td></tr>
+<tr><td>DeepSeek V3.2<br>deepseek-v3.2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00201; base exact: $0.0015; solana exact: $0.002004</td></tr>
+<tr><td>DeepSeek V4 Flash<br>deepseek-v4-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002032; base exact: $0.0015; solana exact: $0.002011</td></tr>
+<tr><td>DeepSeek V4 Flash 0731<br>deepseek-v4-flash-0731</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002006; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>DeepSeek V4 Flash 0731 Fast<br>deepseek-v4-flash-0731-fast</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00153; solana upto: $0.00253; base exact: $0.0015; solana exact: $0.00216</td></tr>
+<tr><td>DeepSeek: DeepSeek V4 Flash Vision Exp<br>deepseek-v4-flash-vision-exp</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002281; base exact: $0.0015; solana exact: $0.002085</td></tr>
+<tr><td>DeepSeek V4 Pro<br>deepseek-v4-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/deepseek-v4-pro</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002036; base exact: $0.0015; solana exact: $0.002012</td></tr>
+<tr><td>DeepSeek V4 Pro 0813<br>deepseek-v4-pro-0813</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002168; base exact: $0.0015; solana exact: $0.002051</td></tr>
+<tr><td>DeepSeek V4.1 Flash<br>deepseek-v4.1-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/deepseek-v4.1-flash</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002012; base exact: $0.0015; solana exact: $0.002004</td></tr>
+<tr><td>DeepSeek V4.1 Flash 1017<br>deepseek-v4.1-flash-1017</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002051; base exact: $0.0015; solana exact: $0.002016</td></tr>
+<tr><td>DeepSeek V4.1 Flash Uncensored<br>deepseek-v4.1-flash-uncensored</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001523; solana upto: $0.002523; base exact: $0.0015; solana exact: $0.002158</td></tr>
+<tr><td>Devstral 2 123B<br>devstral-2-123b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002064; base exact: $0.0015; solana exact: $0.00202</td></tr>
+<tr><td>DeepSeek V4 Flash E2EE<br>e2ee-deepseek-v4-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002283; base exact: $0.0015; solana exact: $0.002086</td></tr>
+<tr><td>Gemma 4 26B A4B Uncensored (E2EE)<br>e2ee-gemma-4-26b-a4b-uncensored-p</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001805; solana upto: $0.002805; base exact: $0.0015; solana exact: $0.002242</td></tr>
+<tr><td>GLM 5.2 E2EE<br>e2ee-glm-5-2-p</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.005302; solana upto: $0.006302; base exact: $0.002294; solana exact: $0.003294</td></tr>
+<tr><td>GLM 5.1 E2EE<br>e2ee-glm-5.1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002; base exact: $0.0015; solana exact: $0.002</td></tr>
+<tr><td>GPT OSS 120B<br>e2ee-gpt-oss-120b-p</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001595; solana upto: $0.002595; base exact: $0.0015; solana exact: $0.00218</td></tr>
+<tr><td>GPT OSS 20B<br>e2ee-gpt-oss-20b-p</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002; base exact: $0.0015; solana exact: $0.002</td></tr>
+<tr><td>Qwen 2.5 7B<br>e2ee-qwen-2-5-7b-p</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002127; base exact: $0.0015; solana exact: $0.002038</td></tr>
+<tr><td>Qwen 3.6 35B A3B (E2EE)<br>e2ee-qwen3-6-35b-a3b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001878; solana upto: $0.002878; base exact: $0.0015; solana exact: $0.002264</td></tr>
+<tr><td>Qwen 3.6 35B A3B Uncensored (E2EE)<br>e2ee-qwen3-6-35b-a3b-uncensored-p</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002; base exact: $0.0015; solana exact: $0.002</td></tr>
+<tr><td>Fireworks: Ember-1<br>ember-1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.005878; solana upto: $0.006878; base exact: $0.002467; solana exact: $0.003467</td></tr>
+<tr><td>exa/answer<br>exa/answer</td><td>search</td><td>model</td><td>x402</td><td>/v1/exa/answer</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>$0.002–$0.051 per call</td></tr>
+<tr><td>exa/contents<br>exa/contents</td><td>search</td><td>model</td><td>x402</td><td>/v1/exa/contents</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>$0.002–$0.051 per call</td></tr>
+<tr><td>exa/search<br>exa/search</td><td>search</td><td>model</td><td>x402</td><td>/v1/exa/search</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>$0.002–$0.051 per call</td></tr>
+<tr><td>free/deepseek-v4.1-flash<br>free/deepseek-v4.1-flash</td><td>chat</td><td>free</td><td>free</td><td>/v1/chat/completions</td><td></td><td>Free, subject to daily limits</td></tr>
+<tr><td>free/gemma-3-27b-it<br>free/gemma-3-27b-it</td><td>chat</td><td>free</td><td>free</td><td>/v1/chat/completions</td><td></td><td>Free, subject to daily limits</td></tr>
+<tr><td>free/gemma-4-e2b<br>free/gemma-4-e2b</td><td>chat</td><td>free</td><td>free</td><td>/v1/chat/completions</td><td></td><td>Free, subject to daily limits</td></tr>
+<tr><td>free/mistral-small-3.2-24b-instruct<br>free/mistral-small-3.2-24b-instruct</td><td>chat</td><td>free</td><td>free</td><td>/v1/chat/completions</td><td></td><td>Free, subject to daily limits</td></tr>
+<tr><td>free/openai-gpt-oss-20b<br>free/openai-gpt-oss-20b</td><td>chat</td><td>free</td><td>free</td><td>/v1/chat/completions</td><td></td><td>Free, subject to daily limits</td></tr>
+<tr><td>free/qwen3-coder-30b-a3b-instruct<br>free/qwen3-coder-30b-a3b-instruct</td><td>chat</td><td>free</td><td>free</td><td>/v1/chat/completions</td><td></td><td>Free, subject to daily limits</td></tr>
+<tr><td>Gemini 2.5 Flash<br>gemini-2.5-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002054; base exact: $0.0015; solana exact: $0.002017</td></tr>
+<tr><td>Gemini 2.5 Pro<br>gemini-2.5-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003615; solana upto: $0.004615; base exact: $0.001786; solana exact: $0.002786</td></tr>
+<tr><td>Gemini 3.5 Flash<br>gemini-3-5-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00219; base exact: $0.0015; solana exact: $0.002058</td></tr>
+<tr><td>Gemini 3.5 Flash Lite<br>gemini-3-5-flash-lite</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001812; solana upto: $0.002812; base exact: $0.0015; solana exact: $0.002245</td></tr>
+<tr><td>Gemini 3.6 Flash<br>gemini-3-6-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00222; solana upto: $0.00322; base exact: $0.0015; solana exact: $0.002367</td></tr>
+<tr><td>Gemini 3 Flash Preview<br>gemini-3-flash-preview</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002064; base exact: $0.0015; solana exact: $0.00202</td></tr>
+<tr><td>Gemini 3.1 Flash Lite<br>gemini-3.1-flash-lite</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002033; base exact: $0.0015; solana exact: $0.002011</td></tr>
+<tr><td>Gemini 3.1 Pro Preview<br>gemini-3.1-pro-preview</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/gemini-3.1-pro-preview</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003285; solana upto: $0.004285; base exact: $0.002581; solana exact: $0.003581</td></tr>
+<tr><td>Gemini 3.7 Flash<br>gemini-3.7-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00208; base exact: $0.0015; solana exact: $0.002025</td></tr>
+<tr><td>Gemini 3.8 Flash<br>gemini-3.8-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/gemini-3.8-flash</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002088; base exact: $0.0015; solana exact: $0.002026</td></tr>
+<tr><td>Google: Gemini 4 Argon<br>gemini-4-argon</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002889; solana upto: $0.003889; base exact: $0.001569; solana exact: $0.002569</td></tr>
+<tr><td>Gemma 3 12B IT<br>gemma-3-12b-it</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002004; base exact: $0.0015; solana exact: $0.002002</td></tr>
+<tr><td>Gemma 3 27B<br>gemma-3-27b-it</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002006; base exact: $0.0015; solana exact: $0.002002</td></tr>
+<tr><td>Gemma 3 4B IT<br>gemma-3-4b-it</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002003; base exact: $0.0015; solana exact: $0.002002</td></tr>
+<tr><td>Gemma 4 26B A4B IT<br>gemma-4-26b-a4b-it</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002007; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Gemma 4 31B<br>gemma-4-31b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002008; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Gemma 4 31B IT<br>gemma-4-31b-it</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002008; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Gemma 4 E2B<br>gemma-4-e2b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002006; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Gemma 4 Uncensored<br>gemma-4-uncensored</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002481; base exact: $0.0015; solana exact: $0.002145</td></tr>
+<tr><td>Elorian: Glimpse<br>glimpse</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001977; solana upto: $0.002977; base exact: $0.0015; solana exact: $0.002294</td></tr>
+<tr><td>GLM 4.5<br>glm-4.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002047; base exact: $0.0015; solana exact: $0.002015</td></tr>
+<tr><td>GLM 4.5 Air<br>glm-4.5-air</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002019; base exact: $0.0015; solana exact: $0.002007</td></tr>
+<tr><td>GLM 4.6<br>glm-4.6</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002038; base exact: $0.0015; solana exact: $0.002012</td></tr>
+<tr><td>GLM 4.7<br>glm-4.7</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002043; base exact: $0.0015; solana exact: $0.002013</td></tr>
+<tr><td>GLM 4.7 Flash<br>glm-4.7-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00201; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>GLM 4.7 Flash Heretic<br>glm-4.7-flash-heretic</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002298; base exact: $0.0015; solana exact: $0.00209</td></tr>
+<tr><td>GLM 5<br>glm-5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002068; base exact: $0.0015; solana exact: $0.002021</td></tr>
+<tr><td>GLM-5 Turbo<br>glm-5-turbo</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002085; base exact: $0.0015; solana exact: $0.002026</td></tr>
+<tr><td>GLM 5.1<br>glm-5.1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002094; base exact: $0.0015; solana exact: $0.002029</td></tr>
+<tr><td>GLM 5.2<br>glm-5.2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002093; base exact: $0.0015; solana exact: $0.002029</td></tr>
+<tr><td>GLM 5.3<br>glm-5.3</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/glm-5.3</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002076; base exact: $0.0015; solana exact: $0.002024</td></tr>
+<tr><td>GLM 5.3 Flash<br>glm-5.3-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002012; base exact: $0.0015; solana exact: $0.002004</td></tr>
+<tr><td>Z.ai: GLM 5.3 FlashX<br>glm-5.3-flashx</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002409; base exact: $0.0015; solana exact: $0.002124</td></tr>
+<tr><td>Z.ai: GLM 5.3 Prime<br>glm-5.3-prime</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00228; base exact: $0.0015; solana exact: $0.002085</td></tr>
+<tr><td>GLM 5V Turbo<br>glm-5v-turbo</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.004751; solana upto: $0.005751; base exact: $0.002129; solana exact: $0.003129</td></tr>
+<tr><td>GPT-4o<br>gpt-4o</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002422; base exact: $0.0015; solana exact: $0.002128</td></tr>
+<tr><td>GPT-4o Mini<br>gpt-4o-mini</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002026; base exact: $0.0015; solana exact: $0.002008</td></tr>
+<tr><td>GPT 5 Mini<br>gpt-5-mini</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001545; solana upto: $0.002545; base exact: $0.0015; solana exact: $0.002164</td></tr>
+<tr><td>GPT 5 Nano<br>gpt-5-nano</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002055; base exact: $0.0015; solana exact: $0.002017</td></tr>
+<tr><td>GPT-5.2<br>gpt-5.2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002294; base exact: $0.0015; solana exact: $0.002089</td></tr>
+<tr><td>GPT-5.2 Codex<br>gpt-5.2-codex</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.004807; solana upto: $0.005807; base exact: $0.002144; solana exact: $0.003144</td></tr>
+<tr><td>GPT-5.3 Codex<br>gpt-5.3-codex</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00466; solana upto: $0.00566; base exact: $0.0021; solana exact: $0.0031</td></tr>
+<tr><td>GPT-5.4<br>gpt-5.4</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002472; base exact: $0.0015; solana exact: $0.002142</td></tr>
+<tr><td>GPT-5.4 Mini<br>gpt-5.4-mini</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001519; solana upto: $0.002519; base exact: $0.0015; solana exact: $0.002156</td></tr>
+<tr><td>GPT 5.4 Nano<br>gpt-5.4-nano</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002276; base exact: $0.0015; solana exact: $0.002084</td></tr>
+<tr><td>GPT-5.4 Pro<br>gpt-5.4-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.029279; solana upto: $0.030279; base exact: $0.009495; solana exact: $0.010495</td></tr>
+<tr><td>GPT-5.5<br>gpt-5.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/gpt-5.5</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00163; solana upto: $0.00263; base exact: $0.0015; solana exact: $0.00219</td></tr>
+<tr><td>GPT-5.5 Pro<br>gpt-5.5-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.057558; solana upto: $0.058558; base exact: $0.017989; solana exact: $0.018989</td></tr>
+<tr><td>GPT-5.6 Luna<br>gpt-5.6-luna</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002039; base exact: $0.0015; solana exact: $0.002012</td></tr>
+<tr><td>GPT-5.6 Luna Pro<br>gpt-5.6-luna-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002266; base exact: $0.0015; solana exact: $0.00208</td></tr>
+<tr><td>GPT-5.6 Sol<br>gpt-5.6-sol</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/gpt-5.6-sol</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001631; solana upto: $0.002631; base exact: $0.0015; solana exact: $0.00219</td></tr>
+<tr><td>GPT-5.6 Sol Pro<br>gpt-5.6-sol-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.005406; solana upto: $0.006406; base exact: $0.002325; solana exact: $0.003325</td></tr>
+<tr><td>GPT-5.6 Terra<br>gpt-5.6-terra</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/gpt-5.6-terra</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001756; solana upto: $0.002756; base exact: $0.0015; solana exact: $0.002228</td></tr>
+<tr><td>GPT-5.6 Terra Pro<br>gpt-5.6-terra-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.004898; solana upto: $0.005898; base exact: $0.002172; solana exact: $0.003172</td></tr>
+<tr><td>GPT-6 Astra<br>gpt-6-astra</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.005721; solana upto: $0.006721; base exact: $0.002419; solana exact: $0.003419</td></tr>
+<tr><td>GPT-6 Luna<br>gpt-6-luna</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002023; base exact: $0.0015; solana exact: $0.002007</td></tr>
+<tr><td>GPT-6 Luna Pro<br>gpt-6-luna-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002164; base exact: $0.0015; solana exact: $0.00205</td></tr>
+<tr><td>GPT-6 Sol<br>gpt-6-sol</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003099; solana upto: $0.004099; base exact: $0.001631; solana exact: $0.002631</td></tr>
+<tr><td>GPT-6 Sol Pro<br>gpt-6-sol-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.004253; solana upto: $0.005253; base exact: $0.001978; solana exact: $0.002978</td></tr>
+<tr><td>GPT-6.1 Sol<br>gpt-6.1-sol</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002469; solana upto: $0.003469; base exact: $0.0015; solana exact: $0.002442</td></tr>
+<tr><td>OpenAI: GPT-6.1 Sol Pro<br>gpt-6.1-sol-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003728; solana upto: $0.004728; base exact: $0.001821; solana exact: $0.002821</td></tr>
+<tr><td>OpenAI: GPT-6.1 Terra<br>gpt-6.1-terra</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001735; solana upto: $0.002735; base exact: $0.0015; solana exact: $0.002221</td></tr>
+<tr><td>OpenAI: GPT-6.1 Terra Pro<br>gpt-6.1-terra-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002627; solana upto: $0.003627; base exact: $0.0015; solana exact: $0.002489</td></tr>
+<tr><td>Grok 4.20 Beta<br>grok-4.20-beta</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002426; base exact: $0.0015; solana exact: $0.002129</td></tr>
+<tr><td>Grok 4.20 Multi-Agent Beta<br>grok-4.20-multi-agent-beta</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002426; base exact: $0.0015; solana exact: $0.002129</td></tr>
+<tr><td>Grok 4.3<br>grok-4.3</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002054; base exact: $0.0015; solana exact: $0.002017</td></tr>
+<tr><td>Grok 4.5<br>grok-4.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002013; solana upto: $0.003013; base exact: $0.0015; solana exact: $0.002306</td></tr>
+<tr><td>Grok 4.6<br>grok-4.6</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002203; solana upto: $0.003203; base exact: $0.0015; solana exact: $0.002363</td></tr>
+<tr><td>Grok 4.7<br>grok-4.7</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/grok-4.7</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002124; solana upto: $0.003124; base exact: $0.001637; solana exact: $0.002637</td></tr>
+<tr><td>Grok Build 0.1<br>grok-build-0-1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002785; solana upto: $0.003785; base exact: $0.001539; solana exact: $0.002539</td></tr>
+<tr><td>Hermes 3 Llama 3.1 405b<br>hermes-3-llama-3.1-405b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001869; solana upto: $0.002869; base exact: $0.0015; solana exact: $0.002263</td></tr>
+<tr><td>Tencent HY3<br>hy3</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002112; base exact: $0.0015; solana exact: $0.002034</td></tr>
+<tr><td>Kimi K2<br>kimi-k2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001751; solana upto: $0.002751; base exact: $0.0015; solana exact: $0.002227</td></tr>
+<tr><td>Kimi K2 Thinking<br>kimi-k2-thinking</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002054; base exact: $0.0015; solana exact: $0.002017</td></tr>
+<tr><td>Kimi K2.5<br>kimi-k2.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002054; base exact: $0.0015; solana exact: $0.002017</td></tr>
+<tr><td>Kimi K2.6<br>kimi-k2.6</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00218; base exact: $0.0015; solana exact: $0.002055</td></tr>
+<tr><td>Kimi K2.7 Code<br>kimi-k2.7-code</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00213; base exact: $0.0015; solana exact: $0.002041</td></tr>
+<tr><td>Kimi K3<br>kimi-k3</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/kimi-k3</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002314; base exact: $0.0015; solana exact: $0.002095</td></tr>
+<tr><td>Kimi K3 Fast<br>kimi-k3-fast-api</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.015397; solana upto: $0.016397; base exact: $0.005326; solana exact: $0.006326</td></tr>
+<tr><td>Kimi K3.1 Pro<br>kimi-k3.1-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002679; solana upto: $0.003679; base exact: $0.001505; solana exact: $0.002505</td></tr>
+<tr><td>LiquidAI: LFM2.5-24B-A2B<br>lfm-2.5-24b-a2b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002228; base exact: $0.0015; solana exact: $0.002069</td></tr>
+<tr><td>inclusionAI: Ling 3.1 Flash<br>ling-3.1-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002075; base exact: $0.0015; solana exact: $0.002024</td></tr>
+<tr><td>Llama 3.2 3B<br>llama-3.2-3b-instruct</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002091; base exact: $0.0015; solana exact: $0.002028</td></tr>
+<tr><td>Llama 3.3 70B<br>llama-3.3-70b-instruct</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002034; base exact: $0.0015; solana exact: $0.002011</td></tr>
+<tr><td>Magistral Small 2509<br>magistral-small-2509</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002049; base exact: $0.0015; solana exact: $0.002015</td></tr>
+<tr><td>Mercury 2<br>mercury-2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001705; solana upto: $0.002705; base exact: $0.0015; solana exact: $0.002212</td></tr>
+<tr><td>Inception: Mercury 2.5<br>mercury-2.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00205; base exact: $0.0015; solana exact: $0.002016</td></tr>
+<tr><td>Mercury 3<br>mercury-3</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002115; base exact: $0.0015; solana exact: $0.002036</td></tr>
+<tr><td>MiMo-V2.5-Pro<br>mimo-v2.5-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002342; base exact: $0.0015; solana exact: $0.002103</td></tr>
+<tr><td>MiMo-V2.6-Flash<br>mimo-v2.6-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002093; base exact: $0.0015; solana exact: $0.002029</td></tr>
+<tr><td>MiMo-V2.6-Pro<br>mimo-v2.6-pro</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002288; base exact: $0.0015; solana exact: $0.002088</td></tr>
+<tr><td>MiMo-V2.6-Pro-UltraSpeed<br>mimo-v2.6-pro-ultraspeed</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00479; solana upto: $0.00579; base exact: $0.002142; solana exact: $0.003142</td></tr>
+<tr><td>MiniMax M2<br>minimax-m2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002023; base exact: $0.0015; solana exact: $0.002007</td></tr>
+<tr><td>MiniMax M2.1<br>minimax-m2.1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002026; base exact: $0.0015; solana exact: $0.002008</td></tr>
+<tr><td>MiniMax M2.5<br>minimax-m2.5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002021; base exact: $0.0015; solana exact: $0.002007</td></tr>
+<tr><td>MiniMax M2.7<br>minimax-m2.7</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002316; base exact: $0.0015; solana exact: $0.002095</td></tr>
+<tr><td>MiniMax M2.7 Highspeed<br>minimax-m2.7-highspeed</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002; base exact: $0.0015; solana exact: $0.002</td></tr>
+<tr><td>MiniMax M3<br>minimax-m3</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002148; solana upto: $0.003148; base exact: $0.0015; solana exact: $0.002346</td></tr>
+<tr><td>MiniMax M3 Preview<br>minimax-m3-preview</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001896; solana upto: $0.002896; base exact: $0.0015; solana exact: $0.002271</td></tr>
+<tr><td>Ministral 14B 3.0<br>ministral-3-14b-instruct</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002006; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Ministral 3B<br>ministral-3-3b-instruct</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002003; base exact: $0.0015; solana exact: $0.002002</td></tr>
+<tr><td>Ministral 3 8B<br>ministral-3-8b-instruct</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002006; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Venice Medium<br>mistral-large</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002381; base exact: $0.0015; solana exact: $0.002115</td></tr>
+<tr><td>Mistral Large 3<br>mistral-large-3</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002097; base exact: $0.0015; solana exact: $0.002029</td></tr>
+<tr><td>Mistral: Mistral Large 4<br>mistral-large-4-0</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001688; solana upto: $0.002688; base exact: $0.0015; solana exact: $0.002207</td></tr>
+<tr><td>Mistral Small 3.2 24B Instruct<br>mistral-small-3.2-24b-instruct</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002019; base exact: $0.0015; solana exact: $0.002006</td></tr>
+<tr><td>Mistral Small 4<br>mistral-small-4</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00221; base exact: $0.0015; solana exact: $0.002064</td></tr>
+<tr><td>Moondream: Moondream 3 Preview<br>moondream3-preview</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001812; solana upto: $0.002812; base exact: $0.0015; solana exact: $0.002245</td></tr>
+<tr><td>Moondream: Moondream 3.1<br>moondream3.1-9b-a2b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001812; solana upto: $0.002812; base exact: $0.0015; solana exact: $0.002245</td></tr>
+<tr><td>Meta: Muse Glimmer 30B<br>muse-glimmer-30b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002392; base exact: $0.0015; solana exact: $0.002119</td></tr>
+<tr><td>Meta: Muse Spark 1.1<br>muse-spark-1.1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002136; base exact: $0.0015; solana exact: $0.002042</td></tr>
+<tr><td>Meta: Muse Spark 1.2<br>muse-spark-1.2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002136; base exact: $0.0015; solana exact: $0.002042</td></tr>
+<tr><td>Meta: Muse Spark 1.2 Contributor<br>muse-spark-1.2-contributor</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002088; base exact: $0.0015; solana exact: $0.002028</td></tr>
+<tr><td>Meta: Muse Spark 1.3<br>muse-spark-1.3</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00209; base exact: $0.0015; solana exact: $0.002028</td></tr>
+<tr><td>Meta: Muse Spark 1.3 Contributor<br>muse-spark-1.3-contributor</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002006; base exact: $0.0015; solana exact: $0.002002</td></tr>
+<tr><td>Meta: Muse Spark Open<br>muse-spark-open</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002389; solana upto: $0.003389; base exact: $0.0015; solana exact: $0.002418</td></tr>
+<tr><td>Meta: Muse Wonder<br>muse-wonder</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00242; base exact: $0.0015; solana exact: $0.002127</td></tr>
+<tr><td>NVIDIA Nemotron 3.5 Lightning<br>nemotron-3.5-lightning</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/nemotron-3.5-lightning</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002279; base exact: $0.0015; solana exact: $0.002116</td></tr>
+<tr><td>NVIDIA: Nemotron 3.5 Super VL<br>nemotron-3.5-super-vl</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002164; base exact: $0.0015; solana exact: $0.00205</td></tr>
+<tr><td>NVIDIA Nemotron 3 Nano 30B<br>nvidia-nemotron-3-nano-30b-a3b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002007; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>NVIDIA Nemotron 3 Super 120B<br>nvidia-nemotron-3-super-120b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002051; base exact: $0.0015; solana exact: $0.002016</td></tr>
+<tr><td>NVIDIA Nemotron 3 Ultra 550B<br>nvidia-nemotron-3-ultra-550b-a55b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.003329; solana upto: $0.004329; base exact: $0.0017; solana exact: $0.0027</td></tr>
+<tr><td>NVIDIA Nemotron Nano 12B v2 VL BF16<br>nvidia-nemotron-nano-12b-v2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00202; base exact: $0.0015; solana exact: $0.002007</td></tr>
+<tr><td>NVIDIA Nemotron Nano 9B v2<br>nvidia-nemotron-nano-9b-v2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002008; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>OpenAI GPT OSS 120B<br>openai-gpt-oss-120b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002007; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>gpt-oss-20b<br>openai-gpt-oss-20b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002003; base exact: $0.0015; solana exact: $0.002002</td></tr>
+<tr><td>GPT OSS Safeguard 120B<br>openai-gpt-oss-safeguard-120b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00202; base exact: $0.0015; solana exact: $0.002007</td></tr>
+<tr><td>GPT OSS Safeguard 20B<br>openai-gpt-oss-safeguard-20b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002007; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Palmyra Vision 7B<br>palmyra-vision-7b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002026; base exact: $0.0015; solana exact: $0.002008</td></tr>
+<tr><td>Pareto 26.9<br>pareto-26.9</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.004244; solana upto: $0.005244; base exact: $0.001977; solana exact: $0.002977</td></tr>
+<tr><td>Particle AI: Particle-1<br>particle-1</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002432; base exact: $0.0015; solana exact: $0.00213</td></tr>
+<tr><td>Qwen 3.7 Max<br>qwen-3-7-max</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00771; solana upto: $0.00871; base exact: $0.003018; solana exact: $0.004018</td></tr>
+<tr><td>Qwen 3.7 Plus<br>qwen-3-7-plus</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002703; solana upto: $0.003703; base exact: $0.001513; solana exact: $0.002513</td></tr>
+<tr><td>Qwen 3.8 27B<br>qwen-3-8-27b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002041; base exact: $0.0015; solana exact: $0.002013</td></tr>
+<tr><td>Qwen 3 235B A22B Instruct 2507<br>qwen3-235b-a22b-2507</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002012; base exact: $0.0015; solana exact: $0.002004</td></tr>
+<tr><td>Qwen 3 235B A22B Thinking 2507<br>qwen3-235b-a22b-thinking-2507</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002147; base exact: $0.0015; solana exact: $0.002045</td></tr>
+<tr><td>Qwen3 30B A3B<br>qwen3-30b-a3b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002164; base exact: $0.0015; solana exact: $0.00205</td></tr>
+<tr><td>Qwen3 32B<br>qwen3-32b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002007; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Qwen 3.5 35B A3B<br>qwen3-5-35b-a3b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001744; solana upto: $0.002744; base exact: $0.0015; solana exact: $0.002224</td></tr>
+<tr><td>Qwen 3.5 9B<br>qwen3-5-9b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002; base exact: $0.0015; solana exact: $0.002</td></tr>
+<tr><td>Qwen 3.6 35B A3B<br>qwen3-6-35b-a3b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002064; base exact: $0.0015; solana exact: $0.00202</td></tr>
+<tr><td>Qwen 3 Coder 480b<br>qwen3-coder</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002023; base exact: $0.0015; solana exact: $0.002007</td></tr>
+<tr><td>Qwen3 Coder 30B A3B Instruct<br>qwen3-coder-30b-a3b-instruct</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002007; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Qwen3 Coder Next<br>qwen3-coder-next</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002017; base exact: $0.0015; solana exact: $0.002006</td></tr>
+<tr><td>Qwen 3 Coder 480B Turbo<br>qwen3-coder-turbo</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00212; solana upto: $0.00312; base exact: $0.0015; solana exact: $0.002337</td></tr>
+<tr><td>Qwen 3 Next 80b<br>qwen3-next-80b-a3b-instruct</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002024; base exact: $0.0015; solana exact: $0.002008</td></tr>
+<tr><td>Qwen3 VL 235B A22B<br>qwen3-vl-235b-a22b-instruct</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002041; base exact: $0.0015; solana exact: $0.002013</td></tr>
+<tr><td>Qwen3 VL 235B<br>qwen3-vl-235b-a22b-thinking</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.002411; solana upto: $0.003411; base exact: $0.0015; solana exact: $0.002424</td></tr>
+<tr><td>Qwen3 VL 30B A3B<br>qwen3-vl-30b-a3b-thinking</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002294; base exact: $0.0015; solana exact: $0.002089</td></tr>
+<tr><td>Qwen 3.5 397B<br>qwen3.5-397b-a17b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002189; base exact: $0.0015; solana exact: $0.002058</td></tr>
+<tr><td>Qwen3.5 Flash<br>qwen3.5-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002; base exact: $0.0015; solana exact: $0.002</td></tr>
+<tr><td>Qwen3.5 Plus<br>qwen3.5-plus</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002; base exact: $0.0015; solana exact: $0.002</td></tr>
+<tr><td>Qwen 3.6 27B<br>qwen3.6-27b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002202; base exact: $0.0015; solana exact: $0.002062</td></tr>
+<tr><td>Qwen 3.6 Plus Uncensored<br>qwen3.6-plus-uncensored</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.004575; solana upto: $0.005575; base exact: $0.002074; solana exact: $0.003074</td></tr>
+<tr><td>Qwen: Qwen3.7 Flash<br>qwen3.7-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.00201; base exact: $0.0015; solana exact: $0.002003</td></tr>
+<tr><td>Qwen3.8 2.4T A95B<br>qwen3.8-2.4t-a95b</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002128; base exact: $0.0015; solana exact: $0.002039</td></tr>
+<tr><td>Qwen3.8 Flash<br>qwen3.8-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002011; base exact: $0.0015; solana exact: $0.002004</td></tr>
+<tr><td>Qwen: Qwen3.8 Max (0902)<br>qwen3.8-max-0902</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/qwen3.8-max-0902</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002381; base exact: $0.0015; solana exact: $0.002115</td></tr>
+<tr><td>Qwen: Qwen3.8 Max Prime<br>qwen3.8-max-prime</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00619; solana upto: $0.00719; base exact: $0.002562; solana exact: $0.003562</td></tr>
+<tr><td>Qwen: Qwen3.8 Omni Flash<br>qwen3.8-omni-flash</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.0015; solana upto: $0.002011; base exact: $0.0015; solana exact: $0.002004</td></tr>
+<tr><td>Seed 2.1 Turbo<br>seed-2-1-turbo</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001814; solana upto: $0.002814; base exact: $0.0015; solana exact: $0.002245</td></tr>
+<tr><td>ByteDance Seed: Seed-2.0-Code<br>seed-2.0-code</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001975; solana upto: $0.002975; base exact: $0.0015; solana exact: $0.002294</td></tr>
+<tr><td>SingIt Ask default / fallback<br>singit-ask</td><td>chat</td><td>router</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>Depends on the selected model; see live quote</td></tr>
+<tr><td>SingIt Auto<br>singit/auto</td><td>chat</td><td>router</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>Depends on the selected model; see live quote</td></tr>
+<tr><td>Venice Uncensored 1.2<br>venice-uncensored-1.2</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001823; solana upto: $0.002823; base exact: $0.0015; solana exact: $0.002249</td></tr>
+<tr><td>Venice Role Play Uncensored<br>venice-uncensored-role-play</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.00283; solana upto: $0.00383; base exact: $0.00155; solana exact: $0.00255</td></tr>
+<tr><td>MiMo-V2.5<br>xiaomi-mimo-v2-5</td><td>chat</td><td>model</td><td>x402</td><td>/v1/chat/completions</td><td>eip155:8453, solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp</td><td>base upto: $0.001652; solana upto: $0.002652; base exact: $0.0015; solana exact: $0.002197</td></tr>
+</tbody></table><a href="/models/all/">Chat model detail pages</a></main></body></html>

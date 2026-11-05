@@ -29,7 +29,8 @@ test("the site has the pages the tracker must cover", () => {
   }
 });
 
-for (const page of pages) {
+// The catalog is explicitly required to work as static HTML with no JavaScript.
+for (const page of pages.filter(p => path.relative(root, p) !== 'models/index.html')) {
   test(`${path.relative(root, page)} loads the Umami tracker once, in <head>`, () => {
     const html = readFileSync(page, "utf8");
     assert.equal(html.split("stats.singitai.app/s.js").length - 1, 1);

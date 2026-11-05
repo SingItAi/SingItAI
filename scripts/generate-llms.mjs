@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { breakdown } from './generate-catalog-page.mjs';
+const catalog = JSON.parse(readFileSync(new URL('../website/data/catalog-snapshot.json', import.meta.url), 'utf8'));
 // Dependency-free: website CI runs on a clean Node checkout without npm install.
 import { limits } from './templates/spending-limits.mjs';
 import { DEFAULT_FREE_MODELS, FREE_DEFAULTS } from '../singit-ask/src/free.mjs';
@@ -49,6 +52,7 @@ export function renderLlms(text, s, routes, format) {
   const money = renderMoney(s, format);
   text = replaceBlock(text, 'ask-guide', table + '\n\n' + money);
   text = replaceBlock(text, 'model-pages', renderModelLinks());
+  if (Buffer.byteLength(text) > 14000) throw new Error('llms.txt exceeds 14000 bytes');
   const models = renderModelList(s, format);
   const body = text.replace(/^<!-- generated:[^\n]+ -->\n/gm, '');
   const audioDraft = 'Draft Ask audio: POST /v1/audio/sound-effects and /v1/audio/generations return audio bytes after bounded server-side generation; Base-only exact USDC (Solana refused; disabled until credit, route and pricing readiness are confirmed), model capabilities and flat prices at GET /v1/audio/generation-models. Not yet published.';
@@ -68,11 +72,11 @@ export function renderModelLinks() {
     ['Data deletion', 'https://singitai.app/data-deletion/'],
     ['Model pages with prices', 'https://ask.singitai.app/llms-models.txt'],
     ['All model pages', 'https://singitai.app/models/all/'],
-    ['Live models', 'https://ask.singitai.app/v1/models'],
+    ['Live catalog (all modalities)', 'https://ask.singitai.app/v1/catalog'],
     ['Live reference prices', 'https://ask.singitai.app/pricing.json'],
     ...limits.map(p => [p.title.replace(' | SingIt', ''), `https://singitai.app/${p.slug}/`]),
   ];
-  return '## Models\n\n' + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');
+  return '## Models\n\nSnapshot: ' + breakdown(catalog) + (catalog.coverage ? ' (partial offline snapshot).' : '.') + '\n\n' + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');
 }
 
 export function renderMoney(s, format) {
@@ -93,7 +97,7 @@ Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools incl
 
 Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
 
-/numbers.json agent_traffic: total/last_24h/last_7d served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels. No raw client headers, prompts or addresses; distinct from settled paid_calls.
+/numbers.json agent_traffic: 24h/7d paid/free with_tools/stream/images; fixed by_source. No raw headers/prompts/addresses.
 
 Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Per-model reference prices are in the full models list, with upto before exact.`;
 }

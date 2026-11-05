@@ -48,7 +48,7 @@ Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools incl
 
 Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
 
-/numbers.json agent_traffic: total/last_24h/last_7d served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels. No raw client headers, prompts or addresses; distinct from settled paid_calls.
+/numbers.json agent_traffic: 24h/7d paid/free with_tools/stream/images; fixed by_source. No raw headers/prompts/addresses.
 
 Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Per-model reference prices are in the full models list, with upto before exact.
 
@@ -132,12 +132,14 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 - App: https://app.singitai.app/app/
 ## Models
 
+Snapshot: 217 chat, 3 search (partial offline snapshot).
+
 - [Privacy policy](https://singitai.app/privacy/)
 - [Terms of service](https://singitai.app/terms/)
 - [Data deletion](https://singitai.app/data-deletion/)
 - [Model pages with prices](https://ask.singitai.app/llms-models.txt)
 - [All model pages](https://singitai.app/models/all/)
-- [Live models](https://ask.singitai.app/v1/models)
+- [Live catalog (all modalities)](https://ask.singitai.app/v1/catalog)
 - [Live reference prices](https://ask.singitai.app/pricing.json)
 - [Agent spending limits for USDC on Base](https://singitai.app/agent-spending-limits/)
 - [How to limit what an AI agent can spend](https://singitai.app/limit-ai-agent-spending/)
