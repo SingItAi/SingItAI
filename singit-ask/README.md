@@ -471,3 +471,68 @@ Transcription entries carry `x402: false`, `route: null` and `access: "api-key"`
 they are priced here for API-key use, not payable on `/v1/audio/speech` over x402.
 The top-level note explains this distinction; existing model IDs, kinds and price
 fields remain available to the key gateway and MCP consumers.
+
+### Music and sound effects (M4 draft)
+
+`POST /v1/audio/sound-effects` accepts `{model?, text, duration_seconds?, response_format?}`.
+Text is required (1–1000 characters); duration is 0.5–22 seconds. Formats: mp3, wav,
+ogg, flac, aac, m4a. Default model: `elevenlabs/sound-effects-v2`.
+
+`POST /v1/audio/generations` accepts `{model?, prompt, lyrics?, instrumental?, duration_seconds?}`.
+Prompt is required (1–10000 characters); duration is 5–240 seconds (default 60).
+Default `minimax/music-2` requires nonempty lyrics and does not accept `instrumental`.
+Music 2.5 and 2.6 accept instrumental mode; instrumental requests cannot include lyrics.
+Lyrics are capped at 20000 characters. Invalid requests return 422 before payment.
+
+Both routes offer **exact only on Base**. Solana is refused for both routes: a recent
+blockhash lasts roughly 150 blocks (about 60–90 seconds), shorter than the 180-second
+music job plus download/settlement. `maxTimeoutSeconds` does not extend blockhash
+validity. No signed Solana transaction is held across generation. Supporting Solana
+requires settlement **before** job submission and a durable refund/recovery design;
+that flow is not implemented here.
+
+The draft is disabled by default. `createApp` integrations must supply a synchronous
+`config.audioGenerationReady(upstreamModelId, { listAtomic })` snapshot returning exactly `true`
+only while Surplus credit, the model's route/seller, submission support and the pinned
+flat price are confirmed. Missing, throwing, stale or unknown readiness must fail closed.
+The standard server supplies no readiness adapter, so cannot sell this draft yet.
+Catalogue rejected/suspended models and models absent from its known seller snapshot
+also stay hidden. This gate applies to models,
+pricing, discovery and pre-payment requests. No readiness check calls the network.
+
+| Public model | Surplus model | Draft Base USDC |
+| --- | --- | ---: |
+| elevenlabs/sound-effects-v2 | venice-elevenlabs-sound-effects-v2 | 0.027 |
+| sonilo/sound-effects-1.0 | sonilo-sound-effects-v1-0 | 0.003691 |
+| minimax/music-2 | venice-minimax-music-v2 | 0.053 |
+| minimax/music-2.5 | venice-minimax-music-v25 | 0.313 |
+| minimax/music-2.6 | venice-minimax-music-v26 | 0.313 |
+
+These are offline reference list costs + 30% (rounded upward to micro-USDC) +
+0.001 Base settlement fee, not a live price feed. OpenAPI bounds are derived from
+the same calculation. Do not enable a model when its price or duration billing is
+unconfirmed or changed. `GET /v1/audio/generation-models`, `/v1/models` and
+`/pricing.json` expose only ready models, with Base prices only. Bazaar entries and
+OpenAPI remain draft API definitions, not a promise of current availability.
+
+Like `/v1/audio/speech`, successful responses contain **audio bytes**, with detected
+`Content-Type`, `Cache-Control: no-store`, `X-SingIt-Charged-Atomic` and
+`X-SingIt-List-Atomic`. The server submits using its own prepaid Surplus key, polls
+and downloads within one deadline (60 seconds for effects, 180 for music), and enforces
+5 MiB / 25 MiB streaming caps. HTTPS artifact redirects are checked at every hop;
+private/loopback addresses are refused and DNS addresses are pinned for TLS downloads.
+Container magic is checked for MP3/WAV/OGG/FLAC/AAC/M4A; this is not full audio decoding.
+No credit, failed jobs, timeout, invalid audio and oversized artifacts return 503;
+x402 does not settle. No retries submit a second job. Payment replay reservations
+are process-local and shared with edits/embeddings.
+
+**OPEN QUESTIONS (offline implementation):** the supplied docs describe music job polling
+and artifact downloads, but omit the submission schema. `surplusAudioRequest` isolates
+our assumed fields: `model,prompt,lyrics,instrumental,duration_seconds` for music,
+`model,text,duration_seconds,response_format` for effects, both submitted to
+`POST /v1/music/generations`. Confirm the sound-effects submission endpoint and format
+support, the duration field and flat per-job billing at the 240-second cap before a
+live rollout. No live request was made. A production readiness/price adapter remains a rollout blocker.
+There is no prepayment or refund on these Base routes: failed generation/download
+returns an error before settlement; the x402 middleware buffers successful bytes
+until settlement succeeds. A settlement failure must not release the artifact.

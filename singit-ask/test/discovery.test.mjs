@@ -17,7 +17,7 @@ import { METERED_ROUTE } from "../src/pricing.mjs";
 import { MODEL_ROUTES, modelRoutePaths, routePath } from "../src/model-routes.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
-  payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
+  payToBase: "0x1111111111111111111111111111111111111111", audioGenerationReady: () => true, surplusKey: "inf_test", surplusUrl: "https://surplus.test",
   model: "deepseek-v4.1-flash", videoSold: true };
 const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64");
 const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("utf8"));
@@ -25,7 +25,7 @@ const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("ut
 // Every discoverable paid route: chat/completions, Anthropic/OpenAI's own formats, images, speech, Exa's three,
 // and one per popular model (SI-62). `/v1/chat/completions/metered` and `/v1/video/generations` (unless
 // SINGIT_ASK_VIDEO_DISCOVERABLE=1) are paid but not listed; `/v1/credit` is paid and deliberately hidden.
-const DISCOVERABLE = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings", ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, ...Object.keys(SEARCH_ROUTES),
+const DISCOVERABLE = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings", ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, "/v1/audio/sound-effects", "/v1/audio/generations", ...Object.keys(SEARCH_ROUTES),
   ...modelRoutePaths()];
 
 function fakeFacilitator() {
@@ -199,6 +199,8 @@ test("every discoverable route's resource carries a PNG icon and a service name"
 // Bazaar keeps only the first 5 tags, so the category tag has to be among them. Video is checked too, with its
 // discovery switched on.
 const EXPECTED = {
+  "/v1/audio/sound-effects": { serviceName: "SingIt Sound Effects", category: "sound-effects", opens: /^Sound effects/ },
+  "/v1/audio/generations": { serviceName: "SingIt Music", category: "music", opens: /^Music generation/ },
   "/v1/images/edits": { serviceName: "SingIt Image Editing", category: "image-editing", opens: /^Image editing/ },
   "/v1/images/image2image": { serviceName: "SingIt Image Editing", category: "image-editing", opens: /^Image editing/ },
   "/v1/embeddings": { serviceName: "SingIt Embeddings", category: "embeddings", opens: /^Text embeddings/ },
