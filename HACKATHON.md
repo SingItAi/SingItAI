@@ -447,3 +447,77 @@ PR SingItAI #218 (`feat/images-edits-embeddings`), review fixes after merging ma
 Uncommitted local draft on `feat/models-m1` (no commit or PR created; publishing is not approved). This is post-competition discovery work on the merged SingIt service: `/v1/catalog` groups the existing chat, images, edits, embeddings, speech, transcription and search sources, preserving `/v1/models`. It adds static catalog generation and tests for modality filters, payment/kind flags, reference-price agreement and disabled-video discovery. Remote MCP remains unchanged; the proposed parameter is documented in the local draft PR description.
 
 Verification: five new catalog tests pass without payments or upstream calls; catalog, llms and existing model-page generation checks pass. The full service suite was attempted: loopback listeners are denied (`EPERM`) and `@solana/kit` is absent. Website build-based checks also fail in this sandbox; no shared helpers or listener-dependent generators were rewritten. Limitation: the offline catalog snapshot captures chat and search only; a full media capture is required before publication. See `docs/catalog.md` for counts, semantics and regeneration. No network, installs, commits, deployment or publishing.
+
+## M4 music and sound effects — 5 November 2026
+
+Uncommitted work on `feat/music-sfx-m4` (no commit or PR, as requested), after the
+competition period: new SingIt Ask routes `/v1/audio/sound-effects` and
+`/v1/audio/generations`, offering exact USDC on Base and Solana. This extends the
+imported gateway; it is not part of the original competition implementation.
+Five pinned public model aliases map to the supplied offline Surplus catalogue.
+The shared media-job runner submits with SingIt's prepaid key, polls, downloads
+within 60/180 seconds and 5/25 MiB, checks audio container magic, and returns bytes
+before settlement. Artifact redirects require HTTPS and public DNS addresses;
+TLS downloads pin the checked address. Failures return 503 without settlement.
+OpenAPI, discovery, flat network prices and the sibling generation-model list are
+updated; the 27-route Bazaar metadata remains draft, not published. Video visibility
+is unchanged. `website/llms.txt` is unchanged at 13,982 bytes.
+
+Verification offline: 13 shared job tests, three direct-handler/discovery tests,
+three OpenAPI lint tests, two schema/example tests and 11 validator unit tests pass.
+Additionally, 14 Bazaar unit checks and one pricing unit check pass. Listener-based
+checks cannot run in this sandbox (confirmed `EPERM` on loopback): four new x402
+settlement cases, 11 discovery checks, five OpenAPI error checks, 11 pricing checks
+and the app-wide Bazaar lint. Existing shared test helpers and generators were not
+rewritten. No network calls, installs, payments, publication, deployment or commits.
+
+Limitations / OPEN QUESTIONS: supplied docs omit the music/effects submission
+schema. `surplusAudioRequest` isolates assumed music fields
+`model,prompt,lyrics,instrumental,duration_seconds` and effects fields
+`model,text,duration_seconds,response_format`, both sent to `/v1/music/generations`.
+Confirm the effects endpoint, format support, duration field and flat billing through
+240 seconds before rollout. Container checks are not full audio decoding; replay
+reservations remain process-local. Solana transaction validity must last through
+completion and settlement; the 180-second music deadline may outlast a recent blockhash.
+
+
+M4 safety follow-up (2026-11-05), commit `M4: fix tests, Solana settle-before-job`
+on `feat/music-sfx-m4` (following f2fa755): the new music/effects routes now refuse
+Solana rather than retaining a signed transaction across generation. A recent
+blockhash lasts about 150 blocks / 60–90 seconds; a 180-second job cannot safely
+precede settlement. Future Solana support requires settling before submission and
+durable refund/recovery handling. The earlier draft's long-validity requirement
+above is superseded, not a supported workaround.
+
+Audio availability now fails closed without an integration readiness snapshot
+confirming Surplus credit, routes and pinned prices; standard production startup
+has no adapter and leaves this draft unavailable. Unservable models stay hidden.
+Base still generates and validates bounded audio before settlement; middleware
+buffers delivery until settlement succeeds. OpenAPI bounds share the price helper.
+Artifact DNS pinning, HTTPS redirects and credential stripping were reviewed;
+reserved address filtering was tightened. Video was not changed.
+
+Verification: full singit-ask suite outside the sandbox after the readiness stub
+in openapi-errors: pass except the known solana-direct env failure (@solana/kit
+not installed). Listener-based audio settlement tests pass. No external requests,
+payments, deployment or secrets. Open rollout questions remain: Surplus submission
+schema/effects endpoint, flat billing through 240 s, live readiness integration,
+and durable replay protection across processes.
+
+M5 hidden draft (2026-11-05), branch `feat/video-m5-hidden`: video stays off by default
+(`SINGIT_ASK_VIDEO_SOLD` / discoverable untouched). Solana offers removed; a Solana payment
+header is refused before a job starts (same blockhash rule as M4 music/SFX). Base hold-and-poll,
+health gate and fallback unchanged. No paid call, no deploy, no announcement.
+
+M4 audio readiness follow-up (2026-11-05), branch `feat/audio-readiness`: adds opt-in audio sales and separate
+x402 discovery, a synchronous readiness adapter backed by a free prepaid balance
+snapshot (60-second TTL, refresh every 30 seconds), and catalogue async/job/price
+checks (six-minute TTL). Chat seller membership no longer gates music/SFX.
+The supplied free API reference and offline catalogue resolve the shared SFX/music
+endpoint, official prompt/lyrics_prompt/force_instrumental fields, and flat job
+billing through the public music duration cap. README records sources and remaining
+format/model-parameter assumptions. This is post-competition SingIt API work;
+no Solana enablement, paid call, deployment or environment edit.
+Verification: focused audio tests 14/14; full singit-ask 755/756 (known solana-direct
+@solana/kit env miss on this worktree, same as main here). Production remains off
+pending operator OK, merge/deploy and SINGIT_ASK_AUDIO_SOLD=1.

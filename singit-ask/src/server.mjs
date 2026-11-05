@@ -52,6 +52,7 @@ import { withFacilitatorHints } from './facilitator-hints.mjs';
 import { createPublicClient, http } from "viem";
 import { base } from "viem/chains";
 import { createApp, parseReasoningEffort } from "./app.mjs";
+import { createAudioReadiness } from "./audio-readiness.mjs";
 import { PriceBook } from "./prices.mjs";
 import { DEFAULT_FREE_MODELS, FREE_DEFAULTS } from "./free.mjs";
 import { DEFAULT_EXACT_OUTPUT_FRACTION, parseReasoningHeadroom, setReasoningHeadroomOverrides, parseExactReserve, setExactReserve } from "./pricing.mjs";
@@ -77,6 +78,9 @@ const config = {
   // SINGIT_ASK_VIDEO_DISCOVERABLE=1 also lists it for x402 discovery.
   videoSold: process.env.SINGIT_ASK_VIDEO_SOLD === "1",
   videoDiscoverable: process.env.SINGIT_ASK_VIDEO_DISCOVERABLE === "1",
+  audioSold: process.env.SINGIT_ASK_AUDIO_SOLD === "1",
+  audioDiscoverable: process.env.SINGIT_ASK_AUDIO_DISCOVERABLE === "1",
+  audioModels: process.env.SINGIT_ASK_AUDIO_MODELS?.split(",").map(m => m.trim()).filter(Boolean),
   quoteToken: process.env.SINGIT_ASK_QUOTE_TOKEN,
   quoteDb: process.env.SINGIT_ASK_QUOTE_DB,
   payToSolana: required("SINGIT_ASK_PAY_TO_SOLANA"),
@@ -151,10 +155,13 @@ const priceBook = new PriceBook({ publicClient: createPublicClient({ chain: base
   batch: { multicall: true } }) });
 
 const app = createApp(config, { facilitatorClient, priceBook });
+const audioReadiness = createAudioReadiness(config, { catalogue: app.locals.catalogue });
+config.audioGenerationReady = audioReadiness.ready;
+audioReadiness.start();
 // The model list and its live prices are read now and kept fresh, so no visitor waits for Surplus.
 app.locals.catalogue?.warm().catch(() => { /* the first read retries */ });
 app.listen(port, "127.0.0.1", () => {
   console.error(`singit-ask: ${config.model}, actual usage over Coinbase CDP on Solana and Base, on http://127.0.0.1:${port}`);
 });
 
-for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { app.locals.healthStats.flush(); process.exit(0); });
+for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => { audioReadiness.stop(); app.locals.healthStats.flush(); process.exit(0); });
