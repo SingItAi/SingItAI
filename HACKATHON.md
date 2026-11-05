@@ -441,3 +441,8 @@ Round 6 review (uncommitted, no PR): the cross-route reservation regression now 
 
 
 PR SingItAI #218 (`feat/images-edits-embeddings`), review fixes after merging main (5 November 2026): billable base64 images now require complete PNG/JPEG/WEBP containers (PNG also checks chunk CRCs and bounded decompression); embeddings must decode to whole finite float32 vectors; replay reservations are normalized (network, asset, signer, nonce), shared by both routes and capped at 10,000 entries without evicting live identities; upstream bodies are read with byte limits; /pricing.json lists embeddings. Verification: singit-ask 723 tests pass (solana-direct needs @solana/kit, not installed locally), website 470/470, scripts 46/46, llms check ok (llms.txt 13,982 bytes). No payment or live upstream call. Limitations: no full JPEG/WEBP pixel decoding or HTTPS URL check; reservations are process-local.
+
+M5 hidden draft (2026-11-05), branch `feat/video-m5-hidden`: video stays off by default
+(`SINGIT_ASK_VIDEO_SOLD` / discoverable untouched). Solana offers removed; a Solana payment
+header is refused before a job starts (same blockhash rule as M4 music/SFX). Base hold-and-poll,
+health gate and fallback unchanged. No paid call, no deploy, no announcement.
