@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
-import { UnknownModel, parseVoiceModels } from "../src/catalogue.mjs";
+import { ModelCatalogue, UnknownModel, parseVoiceModels } from "../src/catalogue.mjs";
 import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, speechContentType, matchesSpeechFormat, readSpeechRequest, speechListAtomic, speechPrice } from "../src/speech.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
@@ -53,10 +53,10 @@ function fakeSurplus({ status = 200, type = "audio/mpeg", body = AUDIO, cost = "
   return { calls, fetchImpl };
 }
 
-async function serve(t, { surplus = fakeSurplus() } = {}) {
+async function serve(t, { surplus = fakeSurplus(), modelCatalogue = catalogue } = {}) {
   const facilitator = fakeFacilitator();
   const logs = [];
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue, fetchImpl: surplus.fetchImpl,
+  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue: modelCatalogue, fetchImpl: surplus.fetchImpl, resolveHostname: async () => [{ address: "93.184.216.34", family: 4 }],
     log: (line) => logs.push(line), upstream: async () => { throw new Error("no answer is asked"); } });
   const listener = await new Promise((resolve, reject) => { const l = app.listen(0, "127.0.0.1", error => error ? reject(error) : resolve(l)); l.once("error", reject); });
   t.after(() => listener.close());
@@ -254,7 +254,7 @@ test("an MP4-packaged aac answer is served as audio/mp4 and settled once", async
   assert.equal(facilitator.calls.settle.length, 1);
 });
 
-for (const scenario of ['success', 'failed', 'timeout', 'no-credit', 'invalid', 'empty', 'oversize']) {
+for (const scenario of ['success', 'failed', 'timeout', 'no-credit', 'invalid', 'empty', 'oversize', 'loopback', 'private', 'metadata', 'http', 'redirect-limit']) {
   test(`async speech HTTP ${scenario}: settlement requires validated audio`, async t => {
     const model = { id: 'elevenlabs/v3', upstreamId: 'venice-elevenlabs-tts-v3', usdPerJob: 0.12, voices: ['Aria'] };
     VOICE.speech.set(model.id, model);
@@ -270,6 +270,8 @@ for (const scenario of ['success', 'failed', 'timeout', 'no-credit', 'invalid', 
         return Response.json({ id: 'job_123', status: scenario === 'failed' ? 'failed' : 'succeeded', results: [{}] });
       }
       assert.ok(url.endsWith('/v1/media/artifacts/job_123/0'));
+      const redirects = { loopback: 'https://127.0.0.1/a', private: 'https://10.1.2.3/a', metadata: 'https://169.254.169.254/a', http: 'http://cdn.test/a', 'redirect-limit': '/v1/media/artifacts/job_123/0' };
+      if (redirects[scenario]) return new Response(null, { status: 302, headers: { location: redirects[scenario] } });
       return new Response(scenario === 'invalid' ? '{}' : scenario === 'empty' ? '' : AUDIO,
         { headers: scenario === 'oversize' ? { 'content-length': '999999999' } : {} });
     } };
@@ -286,5 +288,22 @@ for (const scenario of ['success', 'failed', 'timeout', 'no-credit', 'invalid', 
     assert.equal(result.status, scenario === 'success' ? 200 : 503);
     assert.equal(facilitator.calls.settle.length, scenario === 'success' ? 1 : 0);
     if (scenario === 'success') assert.deepEqual(Buffer.from(await result.arrayBuffer()), AUDIO);
+  });
+}
+
+for (const price of [undefined, 'not-a-price', 'Infinity', '0', '-1', '2']) {
+  test(`async invalid live price ${price}: 503 before payment`, async t => {
+    const modelCatalogue = new ModelCatalogue({ url: CONFIG.surplusUrl });
+    const voice = parseVoiceModels({ data: [{ id: 'venice-elevenlabs-tts-v3', architecture: { modality: 'music' },
+      pricing: { image: price, media_unit: 'job' } }] });
+    modelCatalogue.voiceModels = async () => voice;
+    const { url, facilitator, surplus } = await serve(t, { modelCatalogue });
+    const listed = await (await fetch(`${url}/v1/audio/models`)).json();
+    assert.ok(!listed.data.some(m => m.id === 'elevenlabs/v3'));
+    const result = await post(`${url}${SPEECH_ROUTE}`, { model: 'elevenlabs/v3', input: 'Hello' });
+    assert.equal(result.status, 503);
+    assert.equal(result.headers.get('payment-required'), null);
+    assert.deepEqual(surplus.calls, []);
+    assert.deepEqual(facilitator.calls.settle, []);
   });
 }

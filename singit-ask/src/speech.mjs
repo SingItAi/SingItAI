@@ -6,6 +6,8 @@ import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // payment is verified, Surplus makes the audio, and only then is the payment settled: no audio, no charge. The audio
 // is checked against the requested format (mp3 by default), with what was charged in the X-SingIt-* headers.
 import crypto from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { BlockList, isIP } from "node:net";
 import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
@@ -101,7 +103,7 @@ const EXAMPLE = Object.freeze({ model: "venice-kokoro-tts", input: "Hello from S
 export const SPEECH_REQUEST_BODY = () => ({ required: true, content: { "application/json": {
   schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
 
-export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
+export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, resolveHostname = lookup, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
@@ -187,7 +189,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
     let response, audio, actualFormat;
     try {
       if (model.usdPerJob) {
-        ({ response, audio, format: actualFormat } = await generateAsyncSpeech(config, model, request, { fetchImpl }));
+        ({ response, audio, format: actualFormat } = await generateAsyncSpeech(config, model, request, { fetchImpl, resolveHostname }));
       } else {
         response = await fetchImpl(`${config.surplusUrl}${SPEECH_ROUTE}`, { method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}` },
@@ -222,7 +224,7 @@ export function asyncSpeechBody(model, request) {
 }
 
 export async function generateAsyncSpeech(config, model, request, {
-  fetchImpl = fetch, timeoutMs = ASYNC_SPEECH_TERMS.timeoutMs,
+  fetchImpl = fetch, resolveHostname = lookup, timeoutMs = ASYNC_SPEECH_TERMS.timeoutMs,
   pollMs = ASYNC_SPEECH_TERMS.pollMs, maxBytes = ASYNC_SPEECH_TERMS.maxBytes,
 } = {}) {
   const signal = AbortSignal.timeout(timeoutMs);
@@ -249,7 +251,21 @@ export async function generateAsyncSpeech(config, model, request, {
     job = await (await get(`/v1/music/generations/${id}`)).json();
   }
   if (!Array.isArray(job.results) || !job.results.length) throw new SpeechError(503, 'Missing speech artifact.');
-  const response = await get(`/v1/media/artifacts/${id}/0`, { redirect: 'follow' });
+  const origin = new URL(config.surplusUrl).origin;
+  let url = new URL(`/v1/media/artifacts/${id}/0`, origin);
+  let response;
+  for (let redirects = 0; ; redirects++) {
+    signal.throwIfAborted();
+    await validateArtifactUrl(url, resolveHostname);
+    response = await fetchImpl(url.href, { redirect: 'manual', signal,
+      headers: url.origin === origin ? headers : {} });
+    if (![301, 302, 303, 307, 308].includes(response.status)) break;
+    const location = response.headers.get('location');
+    await response.body?.cancel();
+    if (!location || redirects >= 3) throw new SpeechError(503, 'Invalid speech artifact redirect.');
+    url = new URL(location, url);
+  }
+  if (!response.ok) throw new SpeechError(503, 'Speech artifact unavailable.');
   if (Number(response.headers.get('content-length')) > maxBytes) {
     await response.body?.cancel();
     throw new SpeechError(503, 'Speech artifact too large.');
@@ -267,4 +283,27 @@ export async function generateAsyncSpeech(config, model, request, {
   const format = ['mp3', 'wav', 'opus', 'flac', 'aac'].find(f => matchesSpeechFormat(audio, f));
   if (!audio.length || !format) throw new SpeechError(503, 'Invalid speech artifact.');
   return { response, audio, format };
+}
+
+// Reject non-public destinations, including IPv4-mapped IPv6 addresses. Resolve every
+// hop (including Surplus); a hostname with any unsafe answer fails closed.
+const artifactBlocked = new BlockList();
+for (const [address, prefix] of [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+  ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16],
+  ['168.63.129.16', 32], ['192.0.0.0', 24], ['198.18.0.0', 15], ['224.0.0.0', 3],
+]) artifactBlocked.addSubnet(address, prefix, 'ipv4');
+for (const [address, prefix] of [
+  ['::', 96], ['::1', 128], ['fc00::', 7], ['fec0::', 10], ['fe80::', 10], ['ff00::', 8],
+  ['64:ff9b::', 96], ['64:ff9b:1::', 48], ['2002::', 16],
+]) artifactBlocked.addSubnet(address, prefix, 'ipv6');
+async function validateArtifactUrl(url, resolveHostname) {
+  if (url.protocol !== 'https:' || url.username || url.password) throw new SpeechError(503, 'Unsafe speech artifact URL.');
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+  const addresses = isIP(hostname) ? [{ address: hostname }]
+    : await resolveHostname(hostname, { all: true, verbatim: true });
+  if (!Array.isArray(addresses) || !addresses.length || addresses.some(({ address }) => {
+    const family = isIP(address);
+    return !family || artifactBlocked.check(address, family === 4 ? 'ipv4' : 'ipv6');
+  })) throw new SpeechError(503, 'Unsafe speech artifact address.');
 }

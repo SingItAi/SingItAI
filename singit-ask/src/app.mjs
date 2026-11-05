@@ -483,7 +483,7 @@ const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, sch
     errorExample(schema === ANTHROPIC_ERROR_SCHEMA ? "api_error" : "upstream_error", exampleMessage, exampleCode, schema)), headers: RETRY_AFTER },
 });
 
-export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
+export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, resolveHostname, log = console.error,
                                     agentFilesDir, exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({
                                       url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
@@ -1208,7 +1208,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   }
   if (catalogue) addImageRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
-  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, resolveHostname, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
   if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing

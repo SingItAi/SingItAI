@@ -328,62 +328,20 @@
     {
       "id": "elevenlabs/multilingual-v2",
       "upstreamId": "venice-elevenlabs-tts-multilingual-v2",
-      "usdPerJob": 0.12,
       "modality": "speech",
-      "prices": {
-        "eip155:8453": {
-          "listAtomic": "120000",
-          "markupAtomic": "36000",
-          "feeAtomic": "1000",
-          "totalAtomic": "157000"
-        },
-        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": {
-          "listAtomic": "120000",
-          "markupAtomic": "36000",
-          "feeAtomic": "2000",
-          "totalAtomic": "158000"
-        }
-      }
+      "pricingSource": "Live catalogue pricing.image with pricing.media_unit=job; finite USD price greater than 0 and below 2 required."
     },
     {
       "id": "elevenlabs/v3",
       "upstreamId": "venice-elevenlabs-tts-v3",
-      "usdPerJob": 0.12,
       "modality": "speech",
-      "prices": {
-        "eip155:8453": {
-          "listAtomic": "120000",
-          "markupAtomic": "36000",
-          "feeAtomic": "1000",
-          "totalAtomic": "157000"
-        },
-        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": {
-          "listAtomic": "120000",
-          "markupAtomic": "36000",
-          "feeAtomic": "2000",
-          "totalAtomic": "158000"
-        }
-      }
+      "pricingSource": "Live catalogue pricing.image with pricing.media_unit=job; finite USD price greater than 0 and below 2 required."
     },
     {
       "id": "bytedance/seed-audio-1.0",
       "upstreamId": "seed-audio-1-0",
-      "usdPerJob": 0.002875,
       "modality": "speech",
-      "prices": {
-        "eip155:8453": {
-          "listAtomic": "2875",
-          "markupAtomic": "863",
-          "feeAtomic": "1000",
-          "totalAtomic": "4738"
-        },
-        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": {
-          "listAtomic": "2875",
-          "markupAtomic": "863",
-          "feeAtomic": "2000",
-          "totalAtomic": "5738"
-        }
-      }
+      "pricingSource": "Live catalogue pricing.image with pricing.media_unit=job; finite USD price greater than 0 and below 2 required."
     }
   ],
   "openQuestions": [
