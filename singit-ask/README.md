@@ -451,7 +451,7 @@ Discovery probes (GET, HEAD, and empty unpaid POST) for chat, Messages and Respo
 
 `SINGIT_ASK_PROBE_SHARE=list` is the default; `live` restores the previous seller snapshot for discovery only, which can become stale. `SINGIT_ASK_PROBE_MAX_TOKENS` is an optional positive integer: unset uses the example's own output budget; set quotes discovery as if it requested `min(value, 1200)` tokens. It changes neither the published example body nor real requests. Invalid values leave the example budget unchanged.
 
-A larger output budget or longer prompt can exceed the listed example price. Chat counts `max_tokens` above 1200 as 1200. Set the probe budget to 1200 when listing the chat clamp for verifiers. Messages and Responses allow up to 32000 output tokens; Responses defaults to 4096 when `max_output_tokens` is omitted.
+A larger output budget or longer prompt can exceed the listed example price. Paid `/v1/chat/completions` clamps `max_tokens` at 8192. Per-model routes retain their 1200 token clamp. Set the probe budget to 1200 when listing the chat clamp for verifiers. Messages and Responses allow up to 32000 output tokens; Responses defaults to 4096 when `max_output_tokens` is omitted.
 
 Reviewed against the local 2026-11-02 audit, q400/q2000 quotes (micro-USDC):
 Haiku 4.5 → 5.5 has Solana upto 2236/2704 → 2077/2228 and exact
@@ -471,3 +471,47 @@ Transcription entries carry `x402: false`, `route: null` and `access: "api-key"`
 they are priced here for API-key use, not payable on `/v1/audio/speech` over x402.
 The top-level note explains this distinction; existing model IDs, kinds and price
 fields remain available to the key gateway and MCP consumers.
+
+## Agent conversations and buffered SSE
+
+Paid `/v1/chat/completions` accepts system/developer/user/assistant/tool roles,
+function tools and text/image blocks: 200 messages, 100000 estimated characters
+(including tools and 8000 per image), 64 tools/calls, four images, 8192 output
+tokens (default 800), within the 128 kB JSON body limit. Model capabilities may
+refuse tools or images. Legacy plain text, stream:false, max_tokens<=1200 requests
+keep their behavior. Messages and Responses already supported tools and 32000
+output tokens before this change.
+
+Chat (including free and per-model routes), Messages and Responses accept
+`stream:true`. This is buffered SSE: the seller answer is produced as for JSON,
+then the complete SSE body is sent together after successful settlement. It is
+not token-by-token streaming. The pricing, ceilings, billing object, model/tier/
+fallback headers and PAYMENT-RESPONSE are unchanged. Errors remain JSON and do
+not expose SSE answers. Chat ends with `[DONE]`, Messages with `message_stop`,
+and Responses with `response.completed`. Chat `stream_options` accepts only
+`{include_usage: boolean}`, only with `stream:true`. Free/per-model routes keep
+their existing text-only limits and free routes still refuse tools/images.
+
+`numbers.json` adds `agent_traffic`: total, last_24h and last_7d each contain
+calls, with_tools, with_stream, with_images, and by_source. Calls count served
+paid and free answers; failed settlements are excluded. Sources are fixed product
+labels (openai-python, openai-node, langchain, litellm, vercel-ai, cursor,
+claude-code, continue, openclaw, curl, browser, other), derived from User-Agent
+product tokens or a lowercase `X-SingIt-Client` matching `[a-z0-9._-]{1,32}`.
+Unknown/invalid labels become other. These counters store no raw headers,
+addresses or prompts, persist with health stats, and use UTC hourly windows.
+
+For a local fake-only official Python SDK session, in an environment permitting
+loopback listeners, run from the repository root:
+
+```sh
+PORT=8787 node singit-ask/scripts/agent-session-server.mjs
+# In another terminal, after READY:
+BASE_URL=http://127.0.0.1:8787/v1 /workspace/venv-oai/bin/python singit-ask/scripts/openai_sdk_session.py
+```
+
+The session performs 20 steps with a free model and prints a PASS/FAIL table.
+No upstream or payment network is used. A paid-path version cannot use the
+OpenAI SDK alone: it needs an x402 payment client and a payment authorization.
+The server provides deterministic fake tool calls for paid-handler exercises;
+free models continue to refuse tools.

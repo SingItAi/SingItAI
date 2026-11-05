@@ -460,7 +460,7 @@ test("readRequest keeps the question within what one answer pays for", () => {
   assert.equal(readRequest({ ...QUESTION, max_tokens: -5 }).maxTokens, LIMITS.defaultTokens);
   assert.throws(() => readRequest(null), RequestError);
   assert.throws(() => readRequest({ messages: [] }), RequestError);
-  assert.throws(() => readRequest({ ...QUESTION, stream: true }), RequestError);
+  assert.throws(() => readRequest({ ...QUESTION, stream: "invalid" }), RequestError);
   assert.throws(() => readRequest({ messages: [{ role: "user", content: 5 }] }), RequestError);
   assert.throws(() => readRequest({ messages: [{ role: "user", content: "x".repeat(LIMITS.chars + 1) }] }), RequestError);
   assert.throws(() => readRequest({ messages: Array(LIMITS.messages + 1).fill({ role: "user", content: "x" }) }), RequestError);

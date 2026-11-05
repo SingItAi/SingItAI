@@ -1,3 +1,4 @@
+import { validateStream, agentResponses } from './agent-stream.mjs';
 // SingIt Ask: one answer from a language model, paid over x402 in USDC on Solana or Base for what it
 // actually cost: model tokens + 30% + the network's settlement fee, up to a ceiling that follows the model's
 // price (0.003 USDC for the default and cheap ones). Coinbase CDP settles.
@@ -57,7 +58,7 @@ export class RequestError extends Error {
 // The messages and size of an answer, or a RequestError: checked before the model is asked.
 export function readRequest(body, { allowFallback = true, agent = false } = {}) {
   if (!body || typeof body !== "object") throw new RequestError(400, "Send a JSON body with messages.");
-  if (body.stream) throw new RequestError(400, "Streaming is not offered; send stream: false.");
+  validateStream(body, RequestError);
   const limits = agent ? AGENT_LIMITS : LIMITS;
   if (!agent) {
     if (['tools','tool_choice','functions','function_call','parallel_tool_calls'].some(k => body[k] != null) || (Array.isArray(body.messages) && body.messages.some(m => m?.role === 'tool')))
@@ -296,7 +297,8 @@ const INPUT_SCHEMA = {
       description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
     fallback_models: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string" },
       description: "Optional on paid /v1/chat/completions only: 1–3 trimmed unique model ids, excluding the pinned model and singit/auto. Before payment, an unavailable pinned model may use the first healthy priced candidate whose Base upto ceiling is no higher than the pinned ceiling, and in the same auto tier if the pinned model has one. The chosen model determines the quote and usage charge." },
-    stream: { type: "boolean", enum: [false], description: "Streaming is not offered." },
+    stream_options: { type: "object", additionalProperties: false, properties: { include_usage: { type: "boolean" } }, description: "Only with stream:true." },
+    stream: { type: "boolean", enum: [false, true], description: "Buffered SSE: the complete answer is released after settlement, not token by token." },
   },
   required: ["messages"],
 };
@@ -590,6 +592,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     };
     next();
   });
+  // Keep the challenge observer and exposed-header wrapper ahead of response adapters.
+  // The adapter still wraps every route, before payment middleware buffers responses.
+  app.use(agentResponses(app.locals.healthStats));
   if (config.statsToken && config.statsToken.length < 32) log("singit-ask: SINGIT_ASK_STATS_TOKEN must be at least 32 characters; internal stats disabled");
   if (config.statsToken?.length >= 32) {
     const digest = value => createHash("sha256").update(value).digest();
@@ -790,7 +795,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               model: { ...inputSchema.properties.model, description: inputSchema.properties.model.description + " " + AUTO_DESCRIPTION + defaultFallbackNote(config) } } }, example: EXAMPLE.input } } },
           responses: {
             200: { description: "The answer, with what it was charged", headers: { ...autoHeaders, "X-SingIt-Free-Remaining": { description: "Free answers left today for this network; the shared cost budget may end free answers sooner", schema: { type: "integer", minimum: 0 } } },
-                   content: { "application/json": { schema: AGENT_OUTPUT_SCHEMA, example: EXAMPLE.output } } },
+                   content: { "application/json": { schema: AGENT_OUTPUT_SCHEMA, example: EXAMPLE.output }, "text/event-stream": { schema: { type: "string" }, description: "Complete buffered SSE answer after settlement; billing in the final choice chunk; optional usage chunk; ends with [DONE]." } } },
             ...Object.fromEntries(Object.entries(paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }))
               .map(([status, response]) => [status, { ...response, headers: { ...response.headers, ...autoHeaders } }])),
             429: {
@@ -835,12 +840,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         ...(catalogue ? Object.fromEntries(Object.keys(FORMAT_ROUTES).map((route) => [route, { post: {
           operationId: route === "/v1/messages" ? "createMessage" : "createResponse",
           summary: route === "/v1/messages" ? "Create a message in Anthropic's format, any listed model" : "Create a response in OpenAI's format, any listed model",
-          description: "The request in that API's own format, without streaming. Pays actual token cost + 30% + a settlement "
+          description: "The request in that API's own format, with optional buffered SSE. Pays actual token cost + 30% + a settlement "
             + "fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's price and the request's "
             + "size; nothing is charged without an answer. Models: GET /v1/models.",
           "x-payment-info": { notes: probeNote(300, config, true), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: formatRequestBody(route),
-          responses: { 200: { description: "The answer in that API's format, with billing" },
+          responses: { 200: { description: "The answer in that API's format, with billing; stream:true returns complete buffered SSE after settlement.", content: { "application/json": { schema: { type: "object" } }, "text/event-stream": { schema: { type: "string" } } } },
                        ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged", reasoning: true,
                                        schema: route === "/v1/messages" ? ANTHROPIC_ERROR_SCHEMA : ERROR_SCHEMA }) },
           security: [{ x402: [] }],
@@ -1046,7 +1051,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                 networks: { type: "object" } } }
             } } } } } } } },
         "/numbers.json": { get: { operationId: "getNumbers", security: [], summary: "Get measured usage numbers with definitions",
-          responses: { 200: { description: "Calls, USDC volume and unique payer counts since counters began", content: { "application/json": { schema: { type: "object", required: ["own_payers_configured"], properties: { own_payers_configured: { type: "boolean" }, counts_basis: { type: "string", enum: ["including_own_payments", "excluding_configured_own_payers"] }, counts_label: { type: "string" } } } } } } } } },
+          responses: { 200: { description: "Calls, USDC volume, unique payer counts and agent_traffic since counters began. agent_traffic has total/last_24h/last_7d calls, with_tools, with_stream, with_images and fixed by_source product labels for served paid and free answers.", content: { "application/json": { schema: { type: "object", required: ["own_payers_configured"], properties: { agent_traffic: { type: "object", description: "Served paid and free answers; total, last_24h and last_7d contain calls, with_tools, with_stream, with_images and fixed by_source counters. No raw client headers or prompt data." }, own_payers_configured: { type: "boolean" }, counts_basis: { type: "string", enum: ["including_own_payments", "excluding_configured_own_payers"] }, counts_label: { type: "string" } } } } } } } } },
         "/pricing.json": { get: {
           operationId: "listPricing", summary: "Get per-model upto/exact prices for one reference question",
           description: "What GET/HEAD discovery and a real paid request would be offered for each model that can be "
@@ -1120,6 +1125,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + `${base}/openapi.json and ${base}/v1/models. For Claude Opus, sign \`upto\`: its \`exact\` price carries room `
         + "for thinking tokens and is usually dearer than the answer used (recommendedScheme in "
         + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC}`, "",
+      "## Agent chat and streams", "",
+      "Paid /v1/chat/completions: up to 200 messages, 100000 estimated characters including tools and 8000 per image, 64 tools/calls, four images and 8192 output tokens (default 800; 128 kB JSON body). Tools/images depend on model capabilities. Messages and Responses support tools and up to 32000 output tokens.", "",
+      "Chat, Messages and Responses accept stream:true as complete buffered SSE after settlement, not token by token. Billing and PAYMENT-RESPONSE are retained; errors remain JSON. Chat stream_options accepts only include_usage:boolean and requires stream:true. Free and per-model chat retain their existing text-only limits and also support buffered SSE.", "",
+      "numbers.json agent_traffic reports served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels for total/last_24h/last_7d. No raw headers or prompts are stored.", "",
       "## Model selection", "", AUTO_GUIDE, "", FALLBACK_GUIDE, "",
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `

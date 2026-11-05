@@ -1,3 +1,4 @@
+import { validateStream } from './agent-stream.mjs';
 import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
@@ -6,7 +7,7 @@ import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // request, and is charged what the answer actually cost + 30% + the network's settlement fee, only once it came back.
 //
 // The request goes to Surplus as it came, with this service's key, apart from the model's name (Anthropic's dated
-// names become Surplus's) and a bounded answer length. Streaming is not offered here: an answer is paid for whole.
+// names become Surplus's) and a bounded answer length. Buffered SSE is serialized only after a whole answer is ready.
 import { x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { UptoSvmScheme } from "@x402/svm/upto/server";
@@ -91,16 +92,16 @@ export const surplusModel = (name) => {
 // Both formats use priceGuard, just like chat. The audit's Messages quotes (18270/8106/8811)
 // reproduce exactly at share=1 and max_tokens=400, not at the guarded shares in its books.
 // That snapshot had no effective guard; this tree already guards real format POSTs. Messages
-// additionally counts serialized envelopes/tools, and formats allow 32000 tokens, versus chat's 1200.
+// additionally counts serialized envelopes/tools, and formats allow 32000 tokens, versus agent chat's 8192.
 // The request sent on, its model, its size in characters and the longest answer it can get.
 export function readFormatRequest(route, body) {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new FormatError(400, "Send a JSON body.");
-  if (body.stream) throw new FormatError(400, "Streaming is not offered over x402: an answer is paid for whole. Send stream: false.");
+  validateStream(body, FormatError);
   const modelOmitted = body.model === undefined || body.model === null;
   if (typeof body.model !== "string" || !body.model.trim() || body.model.length > 120) {
     throw new FormatError(400, "Name a model from GET /v1/models.");
   }
-  const request = { ...body, model: surplusModel(body.model.trim()) };
+  const request = { ...body, stream: false, stream_options: undefined, model: surplusModel(body.model.trim()) };
   let maxTokens, sized, messageCount;
   if (route === "/v1/messages") {
     if (!Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > 200) {
@@ -155,7 +156,7 @@ const EXAMPLES = {
 // What each field is, for the Bazaar listing: the fields readFormatRequest() checks, nothing it would refuse.
 const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "deepseek-v4.1-flash", "gemini-3.8-flash"],
   description: "Any model id from GET /v1/models; Anthropic's dashed names (claude-sonnet-5-5) work too." };
-const STREAM_FIELD = { type: "boolean", enum: [false], description: "Streaming is not offered: an answer is paid for whole." };
+const STREAM_FIELD = { type: "boolean", enum: [false, true], description: "Buffered SSE: a complete answer released after settlement, not token by token." };
 const INPUT_SCHEMAS = {
   "/v1/messages": { properties: {
     model: MODEL_FIELD,

@@ -41,6 +41,12 @@ Charged only when a billable answer came back: an upstream 503 never charges. Do
 
 Free tier: 6 free models, up to 20 answers a day per network, with a shared daily cost cap of $0.25. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required. Each free answer reports `billing.remainingToday`; when used up, drop the `free/` prefix to pay.
 
+Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools included; 8000 per image), 64 tools/calls, four images, max_tokens 8192 (default 800), 128 kB JSON body. Model capabilities constrain tools/images. Legacy plain text with stream:false and max_tokens<=1200 is unchanged. Messages/Responses already support tools and 32000 output tokens.
+
+Chat/Messages/Responses stream:true returns complete buffered SSE after settlement, not token by token; pricing, billing and PAYMENT-RESPONSE stay the same. Chat ends with [DONE]; Responses with response.completed. Chat stream_options allows only {include_usage:boolean}, only with stream:true. Free/per-model chat also supports buffered SSE with existing text-only limits; free models refuse tools/images.
+
+/numbers.json agent_traffic: total/last_24h/last_7d served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels. No raw client headers, prompts or addresses; distinct from settled paid_calls.
+
 Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Per-model reference prices are in the full models list, with upto before exact.
 
 ## What it is

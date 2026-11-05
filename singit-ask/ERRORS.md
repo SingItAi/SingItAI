@@ -1,6 +1,6 @@
 # Ask API errors
 
-JSON errors retain their existing status, message, type and envelope. OpenAI-compatible routes add `error.code`; Anthropic Messages also puts the code inside `error`. Errors with a string `error` retain that string and add a top-level `code`. Clients should handle unknown codes for forward compatibility.
+JSON errors retain their existing status, message, type and envelope. OpenAI-compatible routes add `error.code`; Anthropic Messages also puts the code inside `error`. Errors with a string `error` retain that string and add a top-level `code`. Clients should handle unknown codes for forward compatibility. With stream:true, errors remain JSON (never partial SSE). Invalid stream values or stream_options return 400 invalid_request before payment; stream_options accepts only include_usage:boolean and requires stream:true.
 
 | Code | Meaning |
 | --- | --- |

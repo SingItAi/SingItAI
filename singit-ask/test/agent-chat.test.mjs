@@ -1,5 +1,3 @@
-import { IncomingMessage, ServerResponse } from 'node:http';
-import { Duplex } from 'node:stream';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,112 +12,7 @@ import { AGENT_LIMITS } from '../src/limits.mjs';
 import { ceilings } from '../src/metered.mjs';
 import { ceilingAtomic, TERMS, SOLANA_TERMS, exactReserveTokens } from '../src/pricing.mjs';
 import { unsupportedCapability } from '../src/agent-chat.mjs';
-const SOLANA_PAY_TO = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
-const BASE_PAY_TO = "0x1111111111111111111111111111111111111111";
-const PAYER = "0x2222222222222222222222222222222222222222";
-const CONFIG = {
-  payToSolana: SOLANA_PAY_TO, payToBase: BASE_PAY_TO, surplusKey: "inf_test", surplusUrl: "https://surplus.test",
-  model: "deepseek-v4.1-flash",
-};
-
-function fakeFacilitator() {
-  const calls = { verify: 0, settle: [] };
-  return {
-    calls,
-    async getSupported() {
-      return {
-        kinds: [
-          { x402Version: 2, scheme: "upto", network: BASE, extra: { facilitatorAddress: "0x" + "3".repeat(40) } },
-          { x402Version: 2, scheme: "exact", network: BASE },
-          { x402Version: 2, scheme: "exact", network: SOLANA, extra: { feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88" } },
-          { x402Version: 2, scheme: "upto", network: SOLANA, extra: {
-            feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88", receiverAuthorizer: "9dpHxn3XFZMZv59vE5MKxhfwGUCCgkcCUzYZLpdEm7ox" } },
-        ],
-        extensions: ["bazaar", "eip2612GasSponsoring"],
-        signers: {},
-      };
-    },
-    async verify() {
-      calls.verify += 1;
-      return { isValid: true, payer: PAYER };
-    },
-    async settle(_payload, requirements) {
-      calls.settle.push(requirements.amount);
-      return { success: true, transaction: "0x" + "a".repeat(64), network: requirements.network, payer: PAYER };
-    },
-  };
-}
-
-const PRICEY = { id: "pro-model", name: "Pro", provider: "X", contextLength: 1e6, promptUsdPerToken: 30e-6, completionUsdPerToken: 180e-6 };
-const CHEAP = { id: "cheap-model", name: "Cheap", provider: "X", contextLength: 1e5, promptUsdPerToken: 0.1e-6, completionUsdPerToken: 0.3e-6 };
-const IDLE = { id: "idle-model", name: "Idle", provider: "X", contextLength: 1, promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 };
-const fakeCatalogue = { async market() { return new Map([["pro-model", { trustedShare: 0.25 }]]); }, async resolve(id) { const m = [PRICEY, CHEAP, IDLE].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
-  async list() { return [CHEAP, PRICEY]; }, async canAnswer(id) { return id !== "idle-model"; } };
-
-async function serve(t, { upstream, config = CONFIG, catalogue = fakeCatalogue, fetchImpl } = {}) {
-  const facilitator = fakeFacilitator();
-  const asked = [];
-  const answer = upstream ?? (async (_config, messages, maxTokens) => {
-    asked.push({ messages, maxTokens });
-    return { content: "Try Caffè Propaganda.", finishReason: "stop", usage: { total_tokens: 42, buyer_cost_micro: 100 } };
-  });
-  const app = createApp(config, { facilitatorClient: facilitator, upstream: answer, log: () => {}, catalogue, fetchImpl });
-  // Exercise the actual Express and x402 middleware without binding a network socket.
-  const url = async (body, headers = {}, path = ROUTE) => {
-    const chunks = [];
-    const socket = new Duplex({ read() {}, write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback(); } });
-    socket.remoteAddress = '127.0.0.1';
-    const req = new IncomingMessage(socket);
-    req.method = path === '/openapi.json' ? 'GET' : 'POST'; req.url = path; req.httpVersionMajor = 1; req.httpVersionMinor = 1; req.httpVersion = '1.1';
-    const json = JSON.stringify(body);
-    req.headers = { host: 'ask.test', 'content-type': 'application/json', 'content-length': String(Buffer.byteLength(json)), ...headers };
-    req.complete = true; req.push(json); req.push(null);
-    const res = new ServerResponse(req); res.assignSocket(socket);
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`In-process request stalled: status=${res.statusCode} bytes=${chunks.reduce((n,c)=>n+c.length,0)} ended=${res.writableEnded} readable=${req.readableEnded}`)), 3000);
-      res.on('error', reject);
-      res.on('finish', () => {
-        clearTimeout(timer);
-        const raw = Buffer.concat(chunks).toString();
-        const split = raw.indexOf('\r\n\r\n');
-        const head = raw.slice(0, split).split('\r\n');
-        const responseHeaders = new Headers(head.slice(1).map(line => { const i = line.indexOf(':'); return [line.slice(0,i), line.slice(i+1).trim()]; }));
-        let data = raw.slice(split + 4);
-        if (responseHeaders.get('transfer-encoding') === 'chunked') {
-          let decoded = '';
-          while (data) { const i = data.indexOf('\r\n'), n = parseInt(data.slice(0,i),16); if (!n) break; decoded += data.slice(i+2,i+2+n); data = data.slice(i+2+n+2); }
-          data = decoded;
-        }
-        resolve(new Response(data || null, { status: res.statusCode, headers: responseHeaders }));
-      });
-      app.handle(req, res, error => reject(error ?? new Error('Unhandled request')));
-    });
-  };
-  return { url, facilitator, asked, app };
-}
-
-const QUESTION = { messages: [{ role: "user", content: "Coffee near the Colosseum?" }], max_tokens: 300 };
-
-function post(url, body, headers = {}) { return url(body, headers); }
-
-function decode(header) {
-  return JSON.parse(Buffer.from(header, "base64").toString("utf8"));
-}
-
-// A Base payment the fake facilitator accepts, echoing the merchant's extensions as a real buyer does.
-function baseSignature(required) {
-  const accepted = required.accepts.find((a) => a.network === BASE && a.scheme === "upto");
-  return Buffer.from(JSON.stringify({ x402Version: 2, resource: required.resource, accepted,
-    payload: { signature: "0xsigned" }, extensions: required.extensions })).toString("base64");
-}
-
-// A buyer that only ever signs `exact`, like vet402: picks the exact offer instead of the upto one.
-function exactSignature(required, network = BASE) {
-  const accepted = required.accepts.find((a) => a.network === network && a.scheme === "exact");
-  return Buffer.from(JSON.stringify({ x402Version: 2, resource: required.resource, accepted,
-    payload: { signature: "0xsigned" }, extensions: required.extensions })).toString("base64");
-}
-
+import { post, serve, CONFIG, fakeCatalogue, QUESTION, decode, baseSignature, exactSignature, SOLANA_PAY_TO, BASE_PAY_TO, PAYER, PRICEY, CHEAP, IDLE } from './helpers/agent-app.mjs';
 
 const tools = [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object' } } }];
 const calls = [{ id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{"secret":"argument"}' } }];
@@ -158,7 +51,7 @@ test('agent rejection matrix and legacy route refusals', () => {
     { messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'http://a.test/i' } }] }] },
     { tool_choice: { type: 'function', function: { name: 'unknown' } } },
     { tools: null, tool_choice: 'auto' }, { tools: null, parallel_tool_calls: true },
-    { functions: [] }, { function_call: 'auto' }, { stream: true },
+    { functions: [] }, { function_call: 'auto' }, { stream: 'true' },
     { messages: [{ role: 'assistant', content: null, tool_calls: [{ ...calls[0], id: '' }] }] }
   ];
   for (const change of invalid) assert.throws(() => agent({ ...body, ...change }), e => e.status === 400);
@@ -301,7 +194,7 @@ test('chat schema advertises agent envelope without changing model routes', asyn
   assert.equal(schema.properties.messages.maxItems, 200);
   const pinned = doc.paths[modelRoutePaths()[0]].post.requestBody.content['application/json'].schema;
   assert.equal(pinned.properties.max_tokens.maximum, 1200); assert.equal(pinned.properties.tools, undefined);
-  assert.ok(schema.properties.tools); assert.deepEqual(schema.properties.stream.enum, [false]);
+  assert.ok(schema.properties.tools); assert.deepEqual(schema.properties.stream.enum, [false, true]);
 });
 
 test('larger default request cannot be quoted without model prices', async t => {

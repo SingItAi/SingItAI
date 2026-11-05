@@ -128,3 +128,18 @@ is no on-chain emergency stop. A paused Solana account is unpaused only by a
 new grant signed after the pause.
 
 Claude Code + SingIt MCP in 60 seconds: https://singitai.app/docs/claude-code/
+
+## x402 agent chat
+
+Paid POST https://ask.singitai.app/v1/chat/completions supports function tools,
+tool replies, developer instructions and text/image blocks within 200 messages,
+100000 estimated characters, 64 tools/calls, four images and 8192 output tokens
+(default 800; JSON body limit 128 kB). Capabilities depend on the chosen model.
+Messages and Responses support tools and up to 32000 output tokens.
+
+Chat, Messages and Responses accept stream:true as buffered SSE, released as a
+complete body after settlement rather than token by token. Chat stream_options
+accepts only {include_usage:boolean}, only with stream:true. Errors remain JSON.
+Free and per-model chat also support buffered SSE with their existing text-only
+limits; free models refuse tools/images. Billing and payment receipts are retained.
+Legacy plain text requests with stream:false and max_tokens<=1200 keep their behavior.
