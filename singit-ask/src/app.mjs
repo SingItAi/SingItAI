@@ -1,3 +1,4 @@
+import { buildCatalog, catalogResponse, MODALITIES } from './catalog.mjs';
 import { imagePrice } from "./images.mjs";
 import { addRoutes as addEditRoutes, REQUEST_BODY as EDIT_BODY } from "./image-edits.mjs";
 import { addRoutes as addEmbeddingRoutes, REQUEST_BODY as EMBEDDING_BODY } from "./embeddings.mjs";
@@ -633,6 +634,28 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.get("/numbers.json", open, (_req, res) => {
     res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
   });
+  app.get("/v1/catalog", open, async (req, res) => {
+    if (req.query.modality !== undefined && !MODALITIES.includes(req.query.modality))
+      return res.status(400).json({ error: { message: "Unknown modality", code: "invalid_request" } });
+    try {
+      const data = await buildCatalog({ catalogue, config, free, searchEnabled: !!exaKey,
+        chatPrice: m => pricingFor(config, catalogue, m.id),
+        extraPrice: async (model, modality) => {
+          const embedding = modality === 'embeddings';
+          const reference = { ...(embedding ? EMBEDDING_REFERENCE : EDIT_REFERENCE), model: model.id };
+          const amount = (embedding ? embeddingListAtomic : editListAtomic)(model,
+            (embedding ? readEmbeddingRequest : readEditRequest)(reference, model, config));
+          return { referenceRequest: reference, exact: Object.fromEntries([['base', BASE], ['solana', SOLANA]].map(([name, chain]) => {
+            const p = imagePrice(amount, chain);
+            return [name, { ceilingAtomic: p.totalAtomic, usd: Number(usd(p.totalAtomic)) }];
+          })) };
+        } });
+      res.json(catalogResponse(data, req.query.modality));
+    } catch {
+      res.set('Retry-After', '5').status(503).json({ error: { message: 'Catalog unavailable; retry shortly', code: 'upstream_unavailable' } });
+    }
+  });
+
   // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
   app.get("/v1/models", open, async (_req, res) => {
     // Only models that can be answered now, including the default after a routing rejection.
@@ -937,6 +960,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               400: { description: "Not an address, or days out of range" },
               429: { description: "Too many requests; see Retry-After" } },
           } },
+        "/v1/catalog": { get: {
+          operationId: "listCatalog", summary: "List all currently sold modalities, payment access and prices",
+          parameters: [{ name: "modality", in: "query", schema: { type: "string", enum: MODALITIES } }],
+          responses: { 200: { description: "Catalog entries and global per-modality counts" }, 400: { description: "Unknown modality" }, 503: { description: "Catalog unavailable" } },
+        } },
         "/v1/models": { get: {
           operationId: "listModels", summary: "List models that can be asked for now, with prices",
           responses: { 200: { description: "Model list" } }, security: [],

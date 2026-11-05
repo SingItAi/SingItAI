@@ -2,7 +2,7 @@
 
 > SingIt: pay for AI with USDC and keep spending limits. Your agent pays per call, only within the daily and per-purchase limits you sign: set them once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits. Limits protect only SingIt's own agent: on Base they are enforced by an on-chain contract, on a SingIt API key the server checks them. On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated.
 
-Agents and scripts: fetch machine-readable files from https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt); this host serves the human site.
+Machine-readable discovery and guides: https://ask.singitai.app; this host serves the human site.
 
 Agents with no wallet of their own: use an MCP key with limits your owner sets: https://singitai.app/docs/mcp-key/
 Caps apply only to calls made with the key to SingIt's MCP and /v1 endpoint; they do not limit spending elsewhere or protect an agent's own wallet.
@@ -129,12 +129,14 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 <!-- generated:model-pages:start -->
 ## Models
 
+Snapshot: 216 chat, 3 search (partial offline snapshot).
+
 - [Privacy policy](https://singitai.app/privacy/)
 - [Terms of service](https://singitai.app/terms/)
 - [Data deletion](https://singitai.app/data-deletion/)
 - [Model pages with prices](https://ask.singitai.app/llms-models.txt)
 - [All model pages](https://singitai.app/models/all/)
-- [Live models](https://ask.singitai.app/v1/models)
+- [Live catalog (all modalities)](https://ask.singitai.app/v1/catalog)
 - [Live reference prices](https://ask.singitai.app/pricing.json)
 - [Agent spending limits for USDC on Base](https://singitai.app/agent-spending-limits/)
 - [How to limit what an AI agent can spend](https://singitai.app/limit-ai-agent-spending/)

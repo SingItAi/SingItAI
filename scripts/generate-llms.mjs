@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { breakdown } from './generate-catalog-page.mjs';
+const catalog = JSON.parse(readFileSync(new URL('../website/data/catalog-snapshot.json', import.meta.url), 'utf8'));
 // Dependency-free: website CI runs on a clean Node checkout without npm install.
 import { limits } from './templates/spending-limits.mjs';
 import { DEFAULT_FREE_MODELS, FREE_DEFAULTS } from '../singit-ask/src/free.mjs';
@@ -49,6 +52,7 @@ export function renderLlms(text, s, routes, format) {
   const money = renderMoney(s, format);
   text = replaceBlock(text, 'ask-guide', table + '\n\n' + money);
   text = replaceBlock(text, 'model-pages', renderModelLinks());
+  if (Buffer.byteLength(text) > 14000) throw new Error('llms.txt exceeds 14000 bytes');
   const models = renderModelList(s, format);
   const body = text.replace(/^<!-- generated:[^\n]+ -->\n/gm, '');
   return new Map([['llms.txt', text], ['llms-models.txt', models], ['llms-full.txt', body.trimEnd() + '\n\n' + models.replace(/^# SingIt model pages/, '## Model pages with prices')]]);
@@ -67,11 +71,11 @@ export function renderModelLinks() {
     ['Data deletion', 'https://singitai.app/data-deletion/'],
     ['Model pages with prices', 'https://ask.singitai.app/llms-models.txt'],
     ['All model pages', 'https://singitai.app/models/all/'],
-    ['Live models', 'https://ask.singitai.app/v1/models'],
+    ['Live catalog (all modalities)', 'https://ask.singitai.app/v1/catalog'],
     ['Live reference prices', 'https://ask.singitai.app/pricing.json'],
     ...limits.map(p => [p.title.replace(' | SingIt', ''), `https://singitai.app/${p.slug}/`]),
   ];
-  return '## Models\n\n' + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');
+  return '## Models\n\nSnapshot: ' + breakdown(catalog) + (catalog.coverage ? ' (partial offline snapshot).' : '.') + '\n\n' + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');
 }
 
 export function renderMoney(s, format) {
