@@ -484,20 +484,36 @@ Default `minimax/music-2` requires nonempty lyrics and does not accept `instrume
 Music 2.5 and 2.6 accept instrumental mode; instrumental requests cannot include lyrics.
 Lyrics are capped at 20000 characters. Invalid requests return 422 before payment.
 
-Both routes offer **exact only**, Base first, then Solana. Prices are flat USDC per job:
+Both routes offer **exact only on Base**. Solana is refused for both routes: a recent
+blockhash lasts roughly 150 blocks (about 60–90 seconds), shorter than the 180-second
+music job plus download/settlement. `maxTimeoutSeconds` does not extend blockhash
+validity. No signed Solana transaction is held across generation. Supporting Solana
+requires settlement **before** job submission and a durable refund/recovery design;
+that flow is not implemented here.
 
-| Public model | Surplus model | Base | Solana |
-| --- | --- | ---: | ---: |
-| elevenlabs/sound-effects-v2 | venice-elevenlabs-sound-effects-v2 | 0.027 | 0.028 |
-| sonilo/sound-effects-1.0 | sonilo-sound-effects-v1-0 | 0.003691 | 0.004691 |
-| minimax/music-2 | venice-minimax-music-v2 | 0.053 | 0.054 |
-| minimax/music-2.5 | venice-minimax-music-v25 | 0.313 | 0.314 |
-| minimax/music-2.6 | venice-minimax-music-v26 | 0.313 | 0.314 |
+The draft is disabled by default. `createApp` integrations must supply a synchronous
+`config.audioGenerationReady(upstreamModelId, { listAtomic })` snapshot returning exactly `true`
+only while Surplus credit, the model's route/seller, submission support and the pinned
+flat price are confirmed. Missing, throwing, stale or unknown readiness must fail closed.
+The standard server supplies no readiness adapter, so cannot sell this draft yet.
+Catalogue rejected/suspended models and models absent from its known seller snapshot
+also stay hidden. This gate applies to models,
+pricing, discovery and pre-payment requests. No readiness check calls the network.
 
-Prices are list cost + 30% (rounded upward to micro-USDC) + 0.001 Base / 0.002 Solana.
-`GET /v1/audio/generation-models` lists mappings, capabilities and both network prices;
-OpenAPI, x402 discovery and `/pricing.json` include these services. Bazaar entries are
-local draft metadata, not a publication.
+| Public model | Surplus model | Draft Base USDC |
+| --- | --- | ---: |
+| elevenlabs/sound-effects-v2 | venice-elevenlabs-sound-effects-v2 | 0.027 |
+| sonilo/sound-effects-1.0 | sonilo-sound-effects-v1-0 | 0.003691 |
+| minimax/music-2 | venice-minimax-music-v2 | 0.053 |
+| minimax/music-2.5 | venice-minimax-music-v25 | 0.313 |
+| minimax/music-2.6 | venice-minimax-music-v26 | 0.313 |
+
+These are offline reference list costs + 30% (rounded upward to micro-USDC) +
+0.001 Base settlement fee, not a live price feed. OpenAPI bounds are derived from
+the same calculation. Do not enable a model when its price or duration billing is
+unconfirmed or changed. `GET /v1/audio/generation-models`, `/v1/models` and
+`/pricing.json` expose only ready models, with Base prices only. Bazaar entries and
+OpenAPI remain draft API definitions, not a promise of current availability.
 
 Like `/v1/audio/speech`, successful responses contain **audio bytes**, with detected
 `Content-Type`, `Cache-Control: no-store`, `X-SingIt-Charged-Atomic` and
@@ -516,6 +532,7 @@ our assumed fields: `model,prompt,lyrics,instrumental,duration_seconds` for musi
 `model,text,duration_seconds,response_format` for effects, both submitted to
 `POST /v1/music/generations`. Confirm the sound-effects submission endpoint and format
 support, the duration field and flat per-job billing at the 240-second cap before a
-live rollout. No live request was made. Solana buyers must supply an authorization
-whose transaction validity lasts through generation and settlement; a blockhash that
-expires during the 180-second window cannot settle even after successful generation.
+live rollout. No live request was made. A production readiness/price adapter remains a rollout blocker.
+There is no prepayment or refund on these Base routes: failed generation/download
+returns an error before settlement; the x402 middleware buffers successful bytes
+until settlement succeeds. A settlement failure must not release the artifact.

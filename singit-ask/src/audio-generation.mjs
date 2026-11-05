@@ -1,10 +1,9 @@
 import { x402ResourceServer } from '@x402/express';
 import { ExactEvmScheme } from '@x402/evm/exact/server';
-import { ExactSvmScheme } from '@x402/svm/exact/server';
 import { declareDiscoveryExtension } from '@x402/extensions/bazaar';
 import { attachPaymentFailureCodes } from './payment-failure-hooks.mjs';
 import { addPaymentRoute, isDiscoveryProbe } from './metered.mjs';
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, ICON_URL, discoveryTags } from './pricing.mjs';
+import { ASSET, BASE, ICON_URL, discoveryTags } from './pricing.mjs';
 import { imagePrice } from './images.mjs';
 import { paymentDigest, reservePayment } from './media-payment-replay.mjs';
 import { runMediaJob } from './media-jobs.mjs';
@@ -22,10 +21,22 @@ export const AUDIO_MODELS = Object.freeze([
   { id: 'minimax/music-2.6', upstream: 'venice-minimax-music-v26', kind: 'music', listAtomic: 240000, lyrics_required: false, instrumental: true },
 ].map(Object.freeze));
 export const audioPrices = () => AUDIO_MODELS.map(m => ({ ...m, route: m.kind === 'music' ? MUSIC_ROUTE : SFX_ROUTE,
-  exact: Object.fromEntries([['base', BASE], ['solana', SOLANA]].map(([name, network]) => {
+  exact: Object.fromEntries([['base', BASE]].map(([name, network]) => {
     const p = imagePrice(m.listAtomic, network);
     return [name, { ceilingAtomic: p.totalAtomic, usd: Number(p.totalAtomic) / 1e6 }];
   })) }));
+// Fail closed: an operator-supplied synchronous readiness snapshot must confirm credit,
+// submission support, current flat pricing and a healthy route for each upstream model.
+// No live probe is made by discovery. Missing/unknown readiness is unavailable.
+export function availableAudioPrices(config, catalogue) {
+  if (!config.surplusKey || !config.surplusUrl || !config.payToBase) return [];
+  return audioPrices().filter(m => {
+    try { return config.audioGenerationReady?.(m.upstream, { listAtomic: m.listAtomic }) === true
+      && !catalogue?.isUnservable?.(m.upstream)
+      && !catalogue?.isSuspended?.(m.upstream)
+      && (!catalogue?.served || catalogue.served.has(m.upstream)); } catch { return false; }
+  });
+}
 const invalid = message => { throw Object.assign(new Error(message), { status: 422 }); };
 export function readAudioGeneration(body, kind) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) invalid('Send a JSON object.');
@@ -74,46 +85,64 @@ export const audioSchema = kind => ({ type: 'object', required: [kind === 'music
 export const audioExample = kind => kind === 'music' ? { prompt: 'A gentle folk song', lyrics: 'Morning light across the sea', duration_seconds: 60 } : { text: 'Gentle rain on a tin roof', duration_seconds: 3 };
 export const audioOpenapi = (paidErrors, invalidResponse) => Object.fromEntries(AUDIO_ROUTES.map((route, i) => {
   const kind = i ? 'music' : 'sound-effects';
+  const prices = audioPrices().filter(m => m.kind === kind).map(m => m.exact.base.usd);
   return [route, { post: { operationId: i ? 'createMusic' : 'createSoundEffects', summary: i ? 'Generate music from a text prompt' : 'Generate sound effects from text',
-    description: `Exact per job on Base or Solana: list price + 30% + network fee. Audio bytes, as with speech. Server polls up to ${i ? 180 : 60} seconds, then downloads at most ${i ? 25 : 5} MiB; any failure returns 503 without settlement. See ${MEDIA_MODELS_ROUTE} for prices and capabilities.`,
+    description: `Exact per job on Base only (Solana is refused): list price + 30% + network fee. Audio bytes, as with speech. Server polls up to ${i ? 180 : 60} seconds, then downloads at most ${i ? 25 : 5} MiB; any failure returns 503 without settlement. See ${MEDIA_MODELS_ROUTE} for prices and capabilities.`,
     security: [{ x402: [] }],
-    'x-payment-info': { price: { mode: 'dynamic', currency: 'USD', min: i ? '0.053' : '0.003691', max: i ? '0.314' : '0.028' }, protocols: [{ x402: {} }] },
+    'x-payment-info': { price: { mode: 'dynamic', currency: 'USD', min: String(Math.min(...prices)), max: String(Math.max(...prices)) }, protocols: [{ x402: {} }] },
     requestBody: { required: true, content: { 'application/json': { schema: audioSchema(kind), example: audioExample(kind) } } },
     responses: { 200: { description: 'Validated audio bytes; Content-Type follows detected audio format.', content: Object.fromEntries(['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/flac', 'audio/aac', 'audio/mp4'].map(t => [t, { schema: { type: 'string', format: 'binary' } }])) },
       ...paidErrors({ exactTimeout: i ? 240 : 120, duplicate: true, noAnswer: 'No audio; no settlement', exampleMessage: 'No audio was delivered. You were not charged.', exampleCode: 'no_billable_answer' }), 422: invalidResponse } } }];
 }));
 
-export function addAudioGenerationRoutes(app, config, { facilitatorClient, publicClient, fetchImpl = fetch, log = console.error, open }) {
-  app.get(MEDIA_MODELS_ROUTE, open, (_req, res) => res.json({ object: 'list', data: audioPrices(), defaults: { music: 'minimax/music-2', 'sound-effects': 'elevenlabs/sound-effects-v2' } }));
+export function addAudioGenerationRoutes(app, config, { facilitatorClient, publicClient, fetchImpl = fetch, log = console.error, open, catalogue }) {
+  app.get(MEDIA_MODELS_ROUTE, open, (_req, res) => res.json({ object: 'list', data: availableAudioPrices(config, catalogue), defaults: { music: 'minimax/music-2', 'sound-effects': 'elevenlabs/sound-effects-v2' } }));
   for (const [i, route] of AUDIO_ROUTES.entries()) {
     const kind = i ? 'music' : 'sound-effects';
-    const server = new x402ResourceServer(facilitatorClient).register(BASE, new ExactEvmScheme()).register(SOLANA, new ExactSvmScheme());
+    const server = new x402ResourceServer(facilitatorClient).register(BASE, new ExactEvmScheme());
     attachPaymentFailureCodes(server);
     const priced = new WeakMap();
+    // Runs before payment verification, including discovery GET/HEAD requests.
+    app.use(route, (req, res, next) => {
+      const models = availableAudioPrices(config, catalogue).filter(m => m.route === route);
+      if (!models.length) {
+        return res.status(503).json({ error: { type: 'upstream_error', code: 'no_billable_answer', message: 'Audio generation is unavailable. You were not charged.' } });
+      }
+      next();
+    });
     app.post(route, (req, res, next) => {
       if (isDiscoveryProbe(req)) return next();
-      try { priced.set(req.body, readAudioGeneration(req.body, kind)); next(); }
+      try {
+        const parsed = readAudioGeneration(req.body, kind);
+        if (!availableAudioPrices(config, catalogue).some(m => m.id === parsed.model.id)) {
+          return res.status(503).json({ error: { type: 'upstream_error', code: 'no_billable_answer', message: 'Audio generation is unavailable. You were not charged.' } });
+        }
+        priced.set(req.body, parsed); next();
+      }
       catch (error) { res.status(422).json({ error: { type: 'invalid_request_error', code: 'invalid_request', message: error.message } }); }
     });
     const price = network => ctx => {
       const model = priced.get(ctx.adapter.getBody())?.model ?? AUDIO_MODELS[i ? 2 : 0];
       const amount = imagePrice(model.listAtomic, network).totalAtomic;
-      return network === BASE ? { asset: ASSET, amount, extra: { name: 'USD Coin', version: '2' } } : { asset: SOLANA_ASSET, amount };
+      return { asset: ASSET, amount, extra: { name: 'USD Coin', version: '2' } };
     };
     addPaymentRoute(app, { [`POST ${route}`]: {
-      accepts: [BASE, SOLANA].map(network => ({ scheme: 'exact', network, payTo: network === BASE ? config.payToBase : config.payToSolana, maxTimeoutSeconds: i ? 240 : 120, price: price(network) })),
-      mimeType: 'audio/mpeg', description: i ? 'Music generation API: MiniMax songs or instrumental audio. USDC on Base or Solana, no key.' : 'Sound effects API: ElevenLabs or Sonilo audio from text. USDC on Base or Solana, no key.',
-      serviceName: i ? 'SingIt Music' : 'SingIt Sound Effects', iconUrl: ICON_URL, tags: discoveryTags(kind, 'audio', 'base', 'solana'),
+      accepts: [BASE].map(network => ({ scheme: 'exact', network, payTo: config.payToBase, maxTimeoutSeconds: i ? 240 : 120, price: price(network) })),
+      mimeType: 'audio/mpeg', description: i ? 'Music generation API: MiniMax songs or instrumental audio. USDC on Base only, no key.' : 'Sound effects API: ElevenLabs or Sonilo audio from text. USDC on Base only, no key.',
+      serviceName: i ? 'SingIt Music' : 'SingIt Sound Effects', iconUrl: ICON_URL, tags: discoveryTags(kind, 'audio', 'base'),
       extensions: declareDiscoveryExtension({ bodyType: 'json', input: audioExample(kind), inputSchema: audioSchema(kind) }),
     } }, server, { log, publicClient });
     app.post(route, async (req, res) => {
       const payment = JSON.parse(Buffer.from(req.get('payment-signature') ?? req.get('x-payment'), 'base64').toString());
+      // Defense in depth: never hold a signed Solana transaction across an async job.
+      if (payment.accepted.network !== BASE) return res.status(402).json({ error: { code: 'unsupported_network', message: 'Audio generation accepts Base only.' } });
       const digest = paymentDigest(payment);
       const reservation = reservePayment(digest);
       if (reservation === 'duplicate') return res.status(409).json({ error: { type: 'invalid_request_error', code: 'payment_duplicate', message: 'This payment was already used.' } });
       const fail = () => res.set('Retry-After', '30').status(503).json({ error: { type: 'upstream_error', code: 'no_billable_answer', message: 'No audio was delivered. You were not charged.' } });
       if (reservation === 'full') return fail();
       const { model, request } = priced.get(req.body);
+      if (!availableAudioPrices(config, catalogue).some(m => m.id === model.id)) return fail();
       try {
         const { audio, contentType } = await runMediaJob({ baseUrl: config.surplusUrl, key: config.surplusKey,
           request: surplusAudioRequest(request), idempotencyKey: `singit-${digest}`, timeoutMs: i ? 180000 : 60000,

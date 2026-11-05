@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { addAudioGenerationRoutes, AUDIO_ROUTES, audioExample, audioPrices } from '../src/audio-generation.mjs';
+import { addAudioGenerationRoutes, AUDIO_ROUTES, audioExample, audioPrices, availableAudioPrices } from '../src/audio-generation.mjs';
 import { BASE, SOLANA } from '../src/pricing.mjs';
-const config = { payToBase: '0x' + '1'.repeat(40), payToSolana: '1'.repeat(32), surplusUrl: 'https://surplus.test', surplusKey: 'our-key' };
+const config = { payToBase: '0x' + '1'.repeat(40), payToSolana: '1'.repeat(32), surplusUrl: 'https://surplus.test', surplusKey: 'our-key', audioGenerationReady: () => true };
 const resolve = async () => [{ address: '93.184.216.34', family: 4 }];
 let sequence = 0;
 const encode = p => Buffer.from(JSON.stringify(p)).toString('base64');
@@ -52,7 +52,7 @@ for (const route of AUDIO_ROUTES) test(`${route} validation and paid result hand
     assert.ok(!calls.some(u => u.includes('127.0.0.1')));
   }
 });
-for (const route of AUDIO_ROUTES) for (const network of [BASE, SOLANA]) test(`${route} x402 settlement on ${network}`, async t => {
+for (const route of AUDIO_ROUTES) for (const network of [BASE]) test(`${route} x402 settlement on ${network}`, async t => {
   for (const mode of ['success', 'credit', 'timeout', 'invalid', 'oversize', 'private']) {
     const { app, settled, calls } = fixture(mode);
     const listener = await new Promise((resolve, reject) => { const l = app.listen(0, '127.0.0.1', () => resolve(l)); l.once('error', reject); });
@@ -97,4 +97,59 @@ test('audio discovery, OpenAPI and flat pricing agree without sockets; video sta
     assert.ok(resources.resources.some(r => r.url.endsWith(route)));
     assert.deepEqual(Object.keys(doc.paths[route].post.responses).map(Number), [200, 400, 402, 409, 413, 422, 503]);
   }
+});
+
+test('readiness hides audio from all lists and refuses requests before payment', async () => {
+  const { createApp } = await import('../src/app.mjs');
+  let ready = false;
+  const f = fixture();
+  const app = createApp({ ...config, model: 'default', audioGenerationReady: () => ready }, {
+    facilitatorClient: f.facilitatorClient,
+    catalogue: { async list() { return []; }, async resolve() { throw new Error('unavailable'); },
+      isUnservable(id) { return id === 'venice-minimax-music-v26'; } },
+    fetchImpl: () => { throw new Error('no upstream expected'); }, log: () => {},
+  });
+  const invoke = async path => {
+    const layer = app.router.stack.find(l => l.route?.path === path);
+    let result;
+    await layer.route.stack.at(-1).handle({ protocol: 'https', get: () => 'ask.singitai.app' }, { json(v) { result = v; } });
+    return result;
+  };
+  const ids = doc => (doc.data ?? doc.models).map(m => m.id);
+  for (const path of ['/v1/models', '/pricing.json', '/v1/audio/generation-models']) {
+    assert.ok(!ids(await invoke(path)).some(id => id.includes('music') || id.includes('sound-effects')));
+  }
+  assert.ok(!(await invoke('/.well-known/x402')).resources.some(r => AUDIO_ROUTES.some(p => r.endsWith(p))));
+  const gate = app.router.stack.find(l => l.name === '<anonymous>' && !l.route && l.handle.toString().includes('availableAudioPrices')).handle;
+  let status, passed = false;
+  gate({ body: audioExample('music') }, { status(n) { status = n; return this; }, json() {} }, () => { passed = true; });
+  assert.equal(status, 503); assert.equal(passed, false);
+  ready = true;
+  for (const path of ['/v1/models', '/pricing.json', '/v1/audio/generation-models']) {
+    const listed = ids(await invoke(path));
+    assert.ok(listed.includes('minimax/music-2'));
+    assert.ok(!listed.includes('minimax/music-2.6'), 'unservable model stays hidden');
+  }
+  assert.ok((await invoke('/.well-known/x402')).resources.includes('https://ask.singitai.app/v1/audio/generations'));
+});
+
+for (const route of AUDIO_ROUTES) test(`${route} refuses Solana before starting a job`, async () => {
+  const { app, calls, settled } = fixture();
+  const layers = app.router.stack.filter(l => l.route?.path === route && l.route.methods.post);
+  const header = encode({ accepted: { network: SOLANA }, payload: { signature: 'unused' } });
+  let status;
+  await layers.at(-1).route.stack[0].handle({ get: () => header }, {
+    status(n) { status = n; return this; }, json() {},
+  });
+  assert.equal(status, 402); assert.deepEqual(calls, []); assert.deepEqual(settled, []);
+  assert.ok(audioPrices().every(m => !Object.hasOwn(m.exact, 'solana')));
+});
+
+
+test('unknown credit/readiness, missing credentials and idle seller snapshots fail closed', () => {
+  assert.deepEqual(availableAudioPrices({ ...config, audioGenerationReady: undefined }), []);
+  assert.deepEqual(availableAudioPrices({ ...config, surplusKey: '' }), []);
+  assert.deepEqual(availableAudioPrices({ ...config, audioGenerationReady() { throw new Error('stale'); } }), []);
+  assert.deepEqual(availableAudioPrices(config, { served: new Set() }), []);
+  assert.deepEqual(availableAudioPrices(config, { isSuspended: () => true }), []);
 });

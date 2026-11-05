@@ -176,7 +176,7 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
     resolveImage: never, voiceModels: async () => ({ speech: new Map(), transcription: new Map() }), resolveSpeech: never,
     videoModels: async () => new Map(), resolveVideo: never };
   const config = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", payToBase: "0x1111111111111111111111111111111111111111",
-    surplusKey: "inf_lint", surplusUrl: "https://surplus.invalid", model: "deepseek-v4.1-flash" };
+    audioGenerationReady: () => true, surplusKey: "inf_lint", surplusUrl: "https://surplus.invalid", model: "deepseek-v4.1-flash" };
   const app = createApp(config, { facilitatorClient, catalogue, exaKey: "lint", fetchImpl: never, exaFetch: never, log: () => {}, upstream: never });
   const server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
 
@@ -203,7 +203,10 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
         for (const [method, challenge] of Object.entries(challenges)) {
           if (JSON.stringify(challenge) !== JSON.stringify(reference)) findings.push({ level: "FAIL", check: "probe", message: `${method} challenge differs from the POST one` });
         }
-        findings.push(...lintChallenge(reference, { route, networks: [BASE, SOLANA], payTo: { [BASE]: config.payToBase, [SOLANA]: config.payToSolana } }));
+        const baseOnly = route === "/v1/audio/sound-effects" || route === "/v1/audio/generations";
+        // Music/SFX refuse Solana: a recent blockhash (~60–90 s) can expire before a ≤180 s music job settles.
+        findings.push(...lintChallenge(reference, { route, networks: baseOnly ? [BASE] : [BASE, SOLANA],
+          payTo: baseOnly ? { [BASE]: config.payToBase } : { [BASE]: config.payToBase, [SOLANA]: config.payToSolana } }));
       }
       results.push({ route, probes, findings });
     }

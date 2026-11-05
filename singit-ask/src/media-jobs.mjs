@@ -9,11 +9,12 @@ export function publicAddress(address) {
   if (isIP(address) === 4) {
     const [a, b] = address.split('.').map(Number);
     return !(a === 0 || a === 10 || a === 127 || a >= 224 || (a === 169 && b === 254)
-      || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+      || (a === 172 && b >= 16 && b <= 31) || (a === 192 && (b === 168 || b === 0 || b === 88))
+      || (a === 198 && b === 51) || (a === 203 && b === 0)
       || (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)));
   }
   // Only global unicast IPv6; excludes mapped IPv4, loopback, ULA, link-local and multicast.
-  return isIP(address) === 6 && /^[23][0-9a-f]{3}:/i.test(address) && !/^2001:(?:0:|db8:)/i.test(address);
+  return isIP(address) === 6 && /^[23][0-9a-f]{3}:/i.test(address) && !/^(?:2001:|2002:|3fff:)/i.test(address);
 }
 export async function artifactTarget(value, resolve = lookup) {
   const url = new URL(value);

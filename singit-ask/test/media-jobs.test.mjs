@@ -46,14 +46,14 @@ test('https redirect strips credentials, public DNS only', async () => {
   assert.equal(result.contentType, 'audio/mpeg');
   for (const url of ['http://example.com/a', 'https://localhost/a', 'https://[::1]/a', 'https://u:p@example.com/a', 'https://2130706433/a', 'https://[::ffff:127.0.0.1]/a']) await assert.rejects(artifactTarget(url, resolve));
   await assert.rejects(artifactTarget('https://example.com', async () => [{ address: '10.0.0.1', family: 4 }]));
-  for (const ip of ['0.0.0.0', '127.1.2.3', '10.0.0.1', '172.16.0.1', '192.168.0.1', '169.254.169.254', '100.64.0.1', '::1', 'fc00::1', 'fe80::1']) assert.equal(publicAddress(ip), false, ip);
+  for (const ip of ['0.0.0.0', '127.1.2.3', '10.0.0.1', '172.16.0.1', '192.168.0.1', '169.254.169.254', '100.64.0.1', '::1', 'fc00::1', 'fe80::1', '192.0.0.1', '192.0.2.1', '198.51.100.1', '203.0.113.1', '2002:7f00:1::1', '2001:db8::1']) assert.equal(publicAddress(ip), false, ip);
 });
 test('recognized audio container signatures', () => {
   for (const [bytes, type] of [['ID3a', 'audio/mpeg'], ['RIFF0000WAVE', 'audio/wav'], ['OggS', 'audio/ogg'], ['fLaC', 'audio/flac'], ['ADIF', 'audio/aac'], ['0000ftypM4A ', 'audio/mp4']]) assert.equal(audioContentType(Buffer.from(bytes)), type);
   assert.throws(() => audioContentType(Buffer.from('0000ftypisom')));
 });
-test('model mapping and integer-rounded flat prices on both networks', () => {
-  assert.deepEqual(audioPrices().map(m => [m.exact.base.usd, m.exact.solana.usd]), [[.027, .028], [.003691, .004691], [.053, .054], [.313, .314], [.313, .314]]);
+test('model mapping and integer-rounded flat prices on Base', () => {
+  assert.deepEqual(audioPrices().map(m => m.exact.base.usd), [.027, .003691, .053, .313, .313]);
   for (const m of AUDIO_MODELS) {
     const body = m.kind === 'music' ? { prompt: 'song', lyrics: 'words', model: m.id } : { text: 'rain', model: m.id };
     const { request } = readAudioGeneration(body, m.kind);

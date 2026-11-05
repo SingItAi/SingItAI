@@ -473,3 +473,27 @@ Confirm the effects endpoint, format support, duration field and flat billing th
 240 seconds before rollout. Container checks are not full audio decoding; replay
 reservations remain process-local. Solana transaction validity must last through
 completion and settlement; the 180-second music deadline may outlast a recent blockhash.
+
+
+M4 safety follow-up (2026-11-05), commit `M4: fix tests, Solana settle-before-job`
+on `feat/music-sfx-m4` (following f2fa755): the new music/effects routes now refuse
+Solana rather than retaining a signed transaction across generation. A recent
+blockhash lasts about 150 blocks / 60–90 seconds; a 180-second job cannot safely
+precede settlement. Future Solana support requires settling before submission and
+durable refund/recovery handling. The earlier draft's long-validity requirement
+above is superseded, not a supported workaround.
+
+Audio availability now fails closed without an integration readiness snapshot
+confirming Surplus credit, routes and pinned prices; standard production startup
+has no adapter and leaves this draft unavailable. Unservable models stay hidden.
+Base still generates and validates bounded audio before settlement; middleware
+buffers delivery until settlement succeeds. OpenAPI bounds share the price helper.
+Artifact DNS pinning, HTTPS redirects and credential stripping were reviewed;
+reserved address filtering was tightened. Video was not changed.
+
+Verification: full singit-ask suite outside the sandbox after the readiness stub
+in openapi-errors: pass except the known solana-direct env failure (@solana/kit
+not installed). Listener-based audio settlement tests pass. No external requests,
+payments, deployment or secrets. Open rollout questions remain: Surplus submission
+schema/effects endpoint, flat billing through 240 s, live readiness integration,
+and durable replay protection across processes.

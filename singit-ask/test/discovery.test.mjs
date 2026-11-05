@@ -17,7 +17,7 @@ import { METERED_ROUTE } from "../src/pricing.mjs";
 import { MODEL_ROUTES, modelRoutePaths, routePath } from "../src/model-routes.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
-  payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
+  payToBase: "0x1111111111111111111111111111111111111111", audioGenerationReady: () => true, surplusKey: "inf_test", surplusUrl: "https://surplus.test",
   model: "deepseek-v4.1-flash", videoSold: true };
 const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64");
 const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("utf8"));
