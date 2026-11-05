@@ -80,8 +80,7 @@ export function renderModelLinks() {
   // Compact: snapshot counts here; full route DESCRIPTION lives on Ask discovery (D2).
   return '## Models\n\nSnapshot: ' + breakdown(catalog)
     + (catalog.coverage ? ' (partial offline snapshot).' : '.') + '\n\n'
-    + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');
-}
+    + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');}
 
 export function renderMoney(s, format) {
   const fees = ['base', 'solana'].map(n => format(s.fees.perAnswerUsd[s.networks[n].chain]));

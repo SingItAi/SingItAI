@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pay-per-Answer LLM API over x402 | SingIt</title>
-<meta name="description" content="217 chat, 3 search, Claude, GPT, Gemini and DeepSeek among them, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
+<meta name="description" content="217 chat, 3 search, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
 <link rel="canonical" href="https://singitai.app/x402-llm-api/">
 <meta property="og:title" content="Pay-per-Answer LLM API over x402 | SingIt">
-<meta property="og:description" content="217 chat, 3 search, Claude, GPT, Gemini and DeepSeek among them, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
+<meta property="og:description" content="217 chat, 3 search, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
 <meta property="og:url" content="https://singitai.app/x402-llm-api/">
 <meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
 <meta property="og:type" content="website">
@@ -42,7 +42,7 @@
       "@id": "https://singitai.app/x402-llm-api/#webpage",
       "url": "https://singitai.app/x402-llm-api/",
       "name": "Pay-per-Answer LLM API over x402 | SingIt",
-      "description": "217 chat, 3 search, Claude, GPT, Gemini and DeepSeek among them, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.",
+      "description": "217 chat, 3 search, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.",
       "isPartOf": { "@id": "https://singitai.app/#website" },
       "about": { "@id": "https://singitai.app/x402-llm-api/#api" },
       "breadcrumb": { "@id": "https://singitai.app/x402-llm-api/#breadcrumb" },
@@ -151,7 +151,7 @@
       <div class="hero-copy" data-hero-reveal>
         <p class="eyebrow">Pay per answer over x402</p>
         <h1>A pay-per-answer LLM API <em>over x402</em></h1>
-        <p class="hero-sub"><a href="https://ask.singitai.app/v1/models">217 chat, 3 search</a>, Claude, GPT, Gemini and DeepSeek among them. Your agent pays per answer in USDC from its own wallet: no account and no key. You pay only what the answer used.</p>
+        <p class="hero-sub"><a href="https://ask.singitai.app/v1/models">217 chat, 3 search</a>. Your agent pays per answer in USDC from its own wallet: no account and no key. You pay only what the answer used.</p>
         <div class="hero-cta">
           <a class="btn btn-primary" href="#quickstart">
             Try it free
@@ -187,7 +187,7 @@
       <div data-reveal>
         <div class="term" data-term role="img" aria-label="An agent asks a model to review a pull request, signs an upto payment for the 402 ceiling, and is charged only what the answer used.">
           <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i></div>
-          <div class="term-line cmd">ask claude-opus-5.5 "Review this pull request"</div>
+          <div class="term-line cmd">ask aion-labs-aion-3-0 "Review this pull request"</div>
           <div class="term-line out">&larr; 402 Payment Required &middot; ceiling 0.054 USDC</div>
           <div class="term-line out">&rarr; signed upto 0.054 USDC on Base</div>
           <div class="term-line ok">&#10003; 200 &middot; answered &middot; charged 0.0071 USDC, what it used</div>
@@ -242,7 +242,7 @@ const pay = wrapFetchWithPayment(fetch, client);
 const res = await pay("https://ask.singitai.app/v1/chat/completions", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ model: "claude-opus-5.5",
+  body: JSON.stringify({ model: "aion-labs-aion-3-0",
                          messages: [{ role: "user", content: "Hello!" }] }),
 });
 const answer = await res.json();

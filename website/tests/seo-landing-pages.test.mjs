@@ -43,7 +43,7 @@ const PAGES = [
     dir: "x402-llm-api",
     canonical: "https://singitai.app/x402-llm-api/",
     title: "Pay-per-Answer LLM API over x402 | SingIt",
-    description: `${catalogBreakdown}, Claude, GPT, Gemini and DeepSeek among them, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.`,
+    description: `${catalogBreakdown}, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.`,
     jsonLdTypes: ["WebPage", "WebAPI", "FAQPage", "BreadcrumbList"],
     ctas: [
       "https://app.singitai.app/app/?utm_source=singitai&utm_medium=landing&utm_campaign=x402-llm-api&utm_content=hero",
