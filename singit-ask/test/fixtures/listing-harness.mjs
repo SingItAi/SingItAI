@@ -3,7 +3,7 @@ import { UnknownModel, parseImageModels, parseVoiceModels } from "../../src/cata
 import { MODEL_ROUTES } from "../../src/model-routes.mjs";
 
 export const CONFIG = { payToSolana: "1".repeat(32),
-  payToBase: "0x" + "1".repeat(40), surplusKey: "fixture", surplusUrl: "https://surplus.test",
+  payToBase: "0x" + "1".repeat(40), audioSold: true, audioDiscoverable: true, audioGenerationReady: () => true, surplusKey: "fixture", surplusUrl: "https://surplus.test",
   model: "deepseek-v4.1-flash", probeShare: "live" };
 const chatModel = (id) => ({ id, name: id, provider: "test", contextLength: 1e6, promptUsdPerToken: 3e-6, completionUsdPerToken: 12e-6 });
 const CHAT_IDS = new Set([CONFIG.model, "claude-sonnet-5.5", "gpt-5.5", ...MODEL_ROUTES.map((m) => m.id)]);
