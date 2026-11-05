@@ -471,3 +471,51 @@ Transcription entries carry `x402: false`, `route: null` and `access: "api-key"`
 they are priced here for API-key use, not payable on `/v1/audio/speech` over x402.
 The top-level note explains this distinction; existing model IDs, kinds and price
 fields remain available to the key gateway and MCP consumers.
+
+### Music and sound effects (M4 draft)
+
+`POST /v1/audio/sound-effects` accepts `{model?, text, duration_seconds?, response_format?}`.
+Text is required (1–1000 characters); duration is 0.5–22 seconds. Formats: mp3, wav,
+ogg, flac, aac, m4a. Default model: `elevenlabs/sound-effects-v2`.
+
+`POST /v1/audio/generations` accepts `{model?, prompt, lyrics?, instrumental?, duration_seconds?}`.
+Prompt is required (1–10000 characters); duration is 5–240 seconds (default 60).
+Default `minimax/music-2` requires nonempty lyrics and does not accept `instrumental`.
+Music 2.5 and 2.6 accept instrumental mode; instrumental requests cannot include lyrics.
+Lyrics are capped at 20000 characters. Invalid requests return 422 before payment.
+
+Both routes offer **exact only**, Base first, then Solana. Prices are flat USDC per job:
+
+| Public model | Surplus model | Base | Solana |
+| --- | --- | ---: | ---: |
+| elevenlabs/sound-effects-v2 | venice-elevenlabs-sound-effects-v2 | 0.027 | 0.028 |
+| sonilo/sound-effects-1.0 | sonilo-sound-effects-v1-0 | 0.003691 | 0.004691 |
+| minimax/music-2 | venice-minimax-music-v2 | 0.053 | 0.054 |
+| minimax/music-2.5 | venice-minimax-music-v25 | 0.313 | 0.314 |
+| minimax/music-2.6 | venice-minimax-music-v26 | 0.313 | 0.314 |
+
+Prices are list cost + 30% (rounded upward to micro-USDC) + 0.001 Base / 0.002 Solana.
+`GET /v1/audio/generation-models` lists mappings, capabilities and both network prices;
+OpenAPI, x402 discovery and `/pricing.json` include these services. Bazaar entries are
+local draft metadata, not a publication.
+
+Like `/v1/audio/speech`, successful responses contain **audio bytes**, with detected
+`Content-Type`, `Cache-Control: no-store`, `X-SingIt-Charged-Atomic` and
+`X-SingIt-List-Atomic`. The server submits using its own prepaid Surplus key, polls
+and downloads within one deadline (60 seconds for effects, 180 for music), and enforces
+5 MiB / 25 MiB streaming caps. HTTPS artifact redirects are checked at every hop;
+private/loopback addresses are refused and DNS addresses are pinned for TLS downloads.
+Container magic is checked for MP3/WAV/OGG/FLAC/AAC/M4A; this is not full audio decoding.
+No credit, failed jobs, timeout, invalid audio and oversized artifacts return 503;
+x402 does not settle. No retries submit a second job. Payment replay reservations
+are process-local and shared with edits/embeddings.
+
+**OPEN QUESTIONS (offline implementation):** the supplied docs describe music job polling
+and artifact downloads, but omit the submission schema. `surplusAudioRequest` isolates
+our assumed fields: `model,prompt,lyrics,instrumental,duration_seconds` for music,
+`model,text,duration_seconds,response_format` for effects, both submitted to
+`POST /v1/music/generations`. Confirm the sound-effects submission endpoint and format
+support, the duration field and flat per-job billing at the 240-second cap before a
+live rollout. No live request was made. Solana buyers must supply an authorization
+whose transaction validity lasts through generation and settlement; a blockhash that
+expires during the 180-second window cannot settle even after successful generation.

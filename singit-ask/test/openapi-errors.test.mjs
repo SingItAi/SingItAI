@@ -44,6 +44,7 @@ async function serve(t) {
 // search.mjs, video.mjs, metered.mjs). 413/400 also cover the body parser.
 const COMMON = [400, 402, 413, 503];
 const EXPECTED = {
+  ...Object.fromEntries(["/v1/audio/sound-effects", "/v1/audio/generations"].map(path => [path, [...COMMON, 409, 422]])),
   ...Object.fromEntries(["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings"].map(path => [path, [...COMMON, 404, 409, 422]])),
   [ROUTE]: [...COMMON, 422, 429],
   "/v1/messages": [...COMMON, 404, 422],

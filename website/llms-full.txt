@@ -362,3 +362,5 @@ singit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rule
 | [Venice Uncensored 1.2](https://singitai.app/models/venice-uncensored-1.2/) | $0.025012 | $0.112554 | 0.001823 | 0.0015 | 0.002823 | 0.002249 |
 | [Venice Role Play Uncensored](https://singitai.app/models/venice-uncensored-role-play/) | $0.559 | $2.236 | 0.00283 | 0.00155 | 0.00383 | 0.00255 |
 | [MiMo-V2.5](https://singitai.app/models/xiaomi-mimo-v2-5/) | $0.156 | $0.78 | 0.001652 | 0.0015 | 0.002652 | 0.002197 |
+
+Draft Ask audio: POST /v1/audio/sound-effects and /v1/audio/generations return audio bytes after bounded server-side generation; exact USDC on Base/Solana, model capabilities and flat prices at GET /v1/audio/generation-models. Not yet published.

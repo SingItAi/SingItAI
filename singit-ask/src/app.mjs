@@ -34,6 +34,7 @@ import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { CREDIT_ROUTE, addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody, exaPriceRange } from "./search.mjs";
 import { IMAGE_ROUTE, IMAGE_REQUEST_BODY, addImageRoutes } from "./images.mjs";
+import { AUDIO_ROUTES, MEDIA_MODELS_ROUTE, audioPrices, audioOpenapi, addAudioGenerationRoutes } from "./audio-generation.mjs";
 import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
@@ -492,6 +493,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                                     spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
   fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log, responseLimits: {
+    [`${config.surplusUrl}/v1/music/generations`]: 256 * 1024,
     [`${config.surplusUrl}/v1/images/edits`]: config.maxEditResponseBytes ?? 40 * 1024 * 1024,
     [`${config.surplusUrl}/v1/embeddings`]: config.maxEmbeddingResponseBytes ?? 8 * 1024 * 1024,
   } });
@@ -735,7 +737,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + `${Math.round((config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION) * 100)}% of max_tokens), `
         + "and the whole answer is still returned. A model with recommendedScheme upto (Claude Opus) is best paid with "
         + "upto: its exact price carries room for thinking tokens, so it is usually dearer than the answer used.",
-      models: priced,
+      models: [...priced, ...(catalogue ? audioPrices() : [])],
     });
   });
 
@@ -852,6 +854,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
+          ...audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))),
+          [MEDIA_MODELS_ROUTE]: { get: { operationId: "listGenerationAudioModels", summary: "List music and sound effect models with exact prices", responses: { 200: { description: "Pinned per-job prices and model metadata" } } } },
           [SPEECH_ROUTE]: { post: {
             operationId: "createSpeech", summary: "Generate speech with any listed voice model",
             description: "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: the "
@@ -1063,7 +1067,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.get("/.well-known/x402", open, (req, res) => {
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
-                         ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`,
+                         ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, ...AUDIO_ROUTES.map(path => `${origin(req)}${path}`),
                          ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
                          ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
@@ -1075,7 +1079,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
   // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
   // list below and llms.txt can never list a route this instance did not add.
-  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), ...EXTRA_PAID, IMAGE_ROUTE, SPEECH_ROUTE,
+  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), ...EXTRA_PAID, IMAGE_ROUTE, SPEECH_ROUTE, ...AUDIO_ROUTES,
     ...(config.videoSold && config.videoDiscoverable ? [VIDEO_ROUTE] : []),
     ...modelRoutePaths(catalogue)] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
@@ -1208,6 +1212,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   }
   if (catalogue) addImageRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
+  if (catalogue) addAudioGenerationRoutes(app, config, { publicClient, facilitatorClient, fetchImpl, log, open });
   if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
   if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
