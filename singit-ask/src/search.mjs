@@ -1,3 +1,4 @@
+import { routeCopy } from "./listing-snapshot.mjs";
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt search: Exa's web search, page contents and cited answers, sold over x402 at Exa's list price plus a flat $0.001 settlement fee
 // on both Base and Solana, and bought from Exa with SingIt's own Exa API key, as BlockRun does
@@ -106,11 +107,7 @@ export function searchPrice(exaAtomic, network) {
 
 // <=300 characters, opening with the category words and naming the brand once, later (see app.mjs's
 // DISCOVERY_DESCRIPTION for why): each route does something different, so each gets its own text, and its own tags.
-const DESCRIPTIONS = {
-  "/v1/exa/search": "Web search API (Exa): up to 25 ranked results, optional page contents. Pay per call in USDC on Base or Solana, no key. Exa list price plus $0.001.",
-  "/v1/exa/contents": "Page contents API (Exa): text, highlights or a summary from up to 10 URLs. Pay per call in USDC on Base or Solana, no key. Exa list price plus $0.001.",
-  "/v1/exa/answer": "Cited web answer API (Exa): a sourced answer, not raw results. Pay per call in USDC on Base or Solana, no key. Exa list price plus $0.001.",
-};
+const DESCRIPTIONS = Object.fromEntries(['/v1/exa/search', '/v1/exa/contents', '/v1/exa/answer'].map(path => [path, routeCopy(path).description]));
 const TAGS = {
   "/v1/exa/search": discoveryTags("web-search", "search", "exa", "web-results", "page-contents", "pay-per-use",
                                   "solana", "base", "singit"),
@@ -213,7 +210,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, publicClient, 
   }
   addPaymentRoute(app, Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [`POST ${route}`, {
     accepts: offers(route), mimeType: "application/json", description: DESCRIPTIONS[route],
-    serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
+    serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: discoveryTags(...routeCopy(route).tags, ...TAGS[route]),
     extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
       output: { example: outputExamples()[route], schema: OUTPUT_SCHEMA } }),
   }])), server, { log, publicClient });

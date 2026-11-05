@@ -43,8 +43,7 @@ export function renderCatalog(s) {
 <dl>${Object.entries(s.counts).map(([m,n]) => `<dt>${e(m)}</dt><dd data-modality="${e(m)}">${e(n)}</dd>`).join('')}</dl>
 <p>Access methods, networks and prices below reflect the captured entries. Prices follow the reference request or stated unit; the live quote is authoritative.</p>
 <table><thead><tr><th>Name / ID</th><th>Modality</th><th>Kind</th><th>Access method</th><th>Availability</th><th>Route</th><th>Networks</th><th>Price summary</th></tr></thead><tbody>
-${s.data.map(m => `<tr id="${e(anchor(m))}"><td><a href="/models#${e(anchor(m))}">${e(m.name ?? m.id)}</a><br>${e(m.id)}</td><td>${e(m.modality)}</td><td>${e(m.kind)}</td><td>${e(accessMethod(m))}</td><td>${e(availability(m))}</td><td>${e(m.route)}</td><td>${e(m.networks.join(', '))}</td><td>${e(priceSummary(m.price))}</td></tr>`).join('\n')}
-</tbody></table><a href="/models/all/">Chat model detail pages</a></main></body></html>\n`;
+${s.data.map(m => `<tr id="${e(anchor(m))}"><td><a href="/models#${e(anchor(m))}">${e(m.name ?? m.id)}</a><br>${e(m.id)}</td><td>${e(m.modality)}</td><td>${e(m.kind)}</td><td>${e(accessMethod(m))}</td><td>${e(availability(m))}</td><td>${e(m.route)}</td><td>${e(m.networks.join(', '))}</td><td>${e(priceSummary(m.price))}</td></tr>`).join('\n')}</tbody></table><a href="/models/all/">Chat model detail pages</a></main></body></html>\n`;
 }
 export async function generate(check = false) {
   const s = JSON.parse(await read('data/catalog-snapshot.json'));
@@ -68,8 +67,7 @@ export async function generate(check = false) {
     }
     files.set(name, text);
   }
-  if (Buffer.byteLength(files.get('llms.txt')) > 14000) throw new Error('llms.txt exceeds 14000 bytes');
-  for (const [name, content] of files) {
+  if (Buffer.byteLength(files.get('llms.txt')) > 14000) throw new Error('llms.txt exceeds 14000 bytes');  for (const [name, content] of files) {
     if (await read(name) === content) continue;
     if (check) throw new Error(`Generated file differs: ${name}`);
     await writeFile(new URL(name, root), content);

@@ -1,3 +1,4 @@
+import { routeCopy } from "./listing-snapshot.mjs";
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt images: an image from any of Surplus's image models, sold over x402 at the model's list price + 30% + the
 // network's settlement fee, and bought on Surplus with this service's own key, like the answers.
@@ -77,7 +78,7 @@ export function imagePrice(listAtomic, network) {
 }
 
 // Keep discovery descriptions within 160 characters, capability first (see app.mjs).
-const DESCRIPTION = "Text-to-image API (Nano Banana, GPT Image, Flux, Seedream and more), OpenAI images format. Pay per image in USDC on Base or Solana, no key.";
+const DESCRIPTION = routeCopy("/v1/images/generations").description;
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["venice-seedream-v5-lite"], description: "An image model id from GET /v1/images/models." },
@@ -171,7 +172,7 @@ export function addImageRoutes(app, config, { facilitatorClient, publicClient, c
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 180, price: price(SOLANA) },
     ],
     mimeType: "application/json", description: DESCRIPTION, serviceName: SERVICE_NAMES[IMAGE_ROUTE], iconUrl: ICON_URL,
-    tags: discoveryTags("image-generation", "text-to-image", "image", "openai-compatible", "flux", "pay-per-use", "solana",
+    tags: discoveryTags(...routeCopy("/v1/images/generations").tags, "image-generation", "text-to-image", "image", "openai-compatible", "flux", "pay-per-use", "solana",
                         "base", "singit"),
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,

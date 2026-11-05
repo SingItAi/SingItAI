@@ -1,6 +1,6 @@
 {
   "name": "SingIt",
-  "description": "SingIt: x402 USDC payments for AI agents, with spending limits. MCP server (free tools without a key; paid tools within owner-set key limits) and an OpenAI-compatible x402 API: 216 chat, 3 search, web search, images and speech on Base and Solana. This is a discovery card, not an A2A task endpoint. The interface protocolVersion is the MCP version, 2025-06-18.",
+  "description": "SingIt: x402 USDC payments for AI agents, with spending limits. MCP server (free tools without a key; paid tools within owner-set key limits) and an OpenAI-compatible x402 API: 217 chat, 3 search, web search, images and speech on Base and Solana. This is a discovery card, not an A2A task endpoint. The interface protocolVersion is the MCP version, 2025-06-18.",
   "version": "1.0.0",
   "supportedInterfaces": [
     {

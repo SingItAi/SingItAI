@@ -202,7 +202,7 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
     const asked = req.body?.model;
     if (typeof asked !== "string" || !asked.startsWith(FREE_PREFIX)) return next();
     const model = asked.slice(FREE_PREFIX.length);
-    const refuse = (status, message) => res.status(status).json({ error: { message, type: "invalid_request_error", code: status >= 500 ? "upstream_unavailable" : "invalid_request" } });
+    const refuse = (status, message, code) => res.status(status).json({ error: { message, type: "invalid_request_error", code: code ?? (status >= 500 ? "upstream_unavailable" : "invalid_request") } });
     if (!terms.models.includes(model)) {
       return refuse(400, terms.models.length
         ? `Free answers come from ${terms.models.map((m) => FREE_PREFIX + m).join(", ")}.`
@@ -212,7 +212,7 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
     try {
       input = readRequest({ ...req.body, model: undefined });
     } catch (error) {
-      if (error instanceof RequestError) return refuse(error.status, error.message);
+      if (error instanceof RequestError) return refuse(error.status, error.message, error.code);
       throw error;
     }
     if (input.chars > terms.chars) return refuse(400, `Keep a free question under ${terms.chars} characters.`);
