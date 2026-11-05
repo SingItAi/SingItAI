@@ -178,20 +178,21 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
   const config = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", payToBase: "0x1111111111111111111111111111111111111111",
     audioSold: true, audioDiscoverable: true, audioGenerationReady: () => true, surplusKey: "inf_lint", surplusUrl: "https://surplus.invalid", model: "deepseek-v4.1-flash" };
   const app = createApp(config, { facilitatorClient, catalogue, exaKey: "lint", fetchImpl: never, exaFetch: never, log: () => {}, upstream: never });
-  const server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
+  const { registerApp, request } = await import("../singit-ask/test/fixtures/listing-harness.mjs");
+  const server = registerApp(app);
 
   const routes = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings", ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, "/v1/audio/sound-effects", "/v1/audio/generations", ...Object.keys(SEARCH_ROUTES), ...MODEL_ROUTES.map(m => routePath(m.id))];
   const global = [];
   const results = [];
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const base = server.url;
     const headers = { host: PUBLIC_HOST, "x-forwarded-proto": "https" };
     for (const route of routes) {
       const findings = [];
       const probes = {};
       const challenges = {};
       for (const method of ["GET", "HEAD", "POST"]) {
-        const response = await fetch(base + route, { method, headers, redirect: "manual" });
+        const response = await request(base + route, { method, headers, redirect: "manual" });
         probes[method] = response.status;
         if (response.status !== 402) { findings.push({ level: "FAIL", check: "probe", message: `${method} answered ${response.status}, expected 402` }); continue; }
         const header = response.headers.get("payment-required");
@@ -212,7 +213,7 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
     }
     // Not listed while Surplus's video sellers are flaky (SINGIT_ASK_VIDEO_DISCOVERABLE unset): a 402 here would let a
     // directory index a route that often cannot complete. Set the flag in production and add video back here together.
-    const hidden = await fetch(base + VIDEO_ROUTE, { method: "GET", headers });
+    const hidden = await request(base + VIDEO_ROUTE, { method: "GET", headers });
     if (hidden.status === 402) global.push({ level: "FAIL", check: "hidden", message: `${VIDEO_ROUTE} is advertising a 402 but is meant to stay unlisted` });
   } finally {
     server.close();

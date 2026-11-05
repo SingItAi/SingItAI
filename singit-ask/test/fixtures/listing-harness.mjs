@@ -54,6 +54,12 @@ export async function serve(t, cat, options = {}) {
   return { url, facilitator };
 }
 
+export function registerApp(app) {
+  const url = `http://fixture-${apps.size}.test`;
+  apps.set(url, app);
+  return { url, close: () => apps.delete(url) };
+}
+
 // Dispatch HTTP-shaped requests in memory: no listening socket, DNS, or outbound traffic.
 export async function request(url, options = {}) {
   const { Duplex } = await import('node:stream');

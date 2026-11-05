@@ -1,3 +1,4 @@
+import { routeCopy } from "./listing-snapshot.mjs";
 import { validateStream } from './agent-stream.mjs';
 import { upstreamModelId } from "./model-aliases.mjs";
 
@@ -147,11 +148,8 @@ const refusal = (route, status, message, code) => (route === "/v1/messages"
   ? { type: "error", error: { type: status === 400 || status === 422 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message, code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request") } }
   : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request"), message } });
 
-// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
-const DESCRIPTIONS = {
-  "/v1/messages": "Anthropic Messages API format for any listed model (Claude, GPT, Gemini, DeepSeek). Pay per call in USDC on Base or Solana, no key; you sign a price cap.",
-  "/v1/responses": "OpenAI Responses API for any listed model (GPT, Claude, Gemini, DeepSeek). Pay per call in USDC on Base or Solana, no key; you sign a price cap.",
-};
+// Keep discovery descriptions within 500 characters, capability first (see app.mjs).
+const DESCRIPTIONS = Object.fromEntries(['/v1/messages', '/v1/responses'].map(path => [path, routeCopy(path).description]));
 const EXAMPLES = {
   "/v1/messages": { model: "claude-sonnet-5.5", max_tokens: 300, messages: [{ role: "user", content: "What is x402?" }] },
   "/v1/responses": { model: "deepseek-v4.1-flash", input: "What is x402?", max_output_tokens: 300 },
@@ -267,7 +265,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
       accepts: [baseOffer(config, quotes, probe("upto", BASE)), solanaOffer(config, quotes, probe("upto", SOLANA)),
         exactBaseOffer(config, quotes, probe("exact", BASE)), exactSolanaOffer(config, quotes, probe("exact", SOLANA))],
       mimeType: "application/json",
-      description: DESCRIPTIONS[route], serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
+      description: DESCRIPTIONS[route], serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: discoveryTags(...routeCopy(route).tags, ...TAGS[route]),
       extensions: { ...declareEip2612GasSponsoringExtension(),
         ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: { ...INPUT_SCHEMAS[route], description: probeNote(300, config, true) },
           output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }) },

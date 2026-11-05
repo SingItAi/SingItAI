@@ -1,3 +1,4 @@
+import { routeCopy } from "./listing-snapshot.mjs";
 import { buildCatalog, catalogResponse, MODALITIES } from './catalog.mjs';
 import { validateStream, agentResponses } from './agent-stream.mjs';
 import { upstreamModelId } from "./model-aliases.mjs";
@@ -666,17 +667,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Public, read-only documents: the website reads them straight from the browser.
   const open = (_req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); next(); };
   // At most 500 characters: Coinbase's facilitator rejects longer descriptions.
-  const DESCRIPTION = "Ask a language model without an API key: any model listed at GET /v1/models (Claude, GPT, Gemini, "
-    + `Grok, DeepSeek, Qwen and more; default ${config.model}). OpenAI chat-completions request. Pays actual token `
-    + "cost + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's "
-    + "price; nothing is charged without an answer. Exact payers instead pay a flat price for a typical-length answer.";
-  // Keep every route within 160 characters so directories show the capability first.
-  // CDP's hard limit is 500 (enforced by the lint); billing stays in DESCRIPTION.
-  const DISCOVERY_DESCRIPTION = "OpenAI-compatible chat API: 200+ models, or singit/auto to pick by tier. "
-    + `Pay per call in USDC on Base or Solana${freeOffer ? `; ${FREE_PREFIX} models need no payment` : ""}.`;
-  const LLMS_INTRO = "OpenAI-compatible chat API: 200+ models (Claude, GPT, Gemini, Grok, DeepSeek, Qwen), "
-    + "or singit/auto to pick one by tier. One endpoint, pay per call in USDC on Base or Solana, no account."
-    + (freeOffer ? ` Free first call, no wallet: model ${freeOffer.models[0]}.` : "");
+  const DESCRIPTION = routeCopy(ROUTE).description;
+  const DISCOVERY_DESCRIPTION = DESCRIPTION;
+  const LLMS_INTRO = DESCRIPTION;
   const AUTO_GUIDE = "\"model\":\"singit/auto\" on POST /v1/chat/completions picks an eco, standard or premium model for "
     + "text prompts by simple rules; optional \"min_tier\" (eco, standard or premium) sets the minimum "
     + "tier. X-SingIt-Model and X-SingIt-Tier identify the model and tier that answered. If the chosen "
@@ -836,7 +829,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       openapi: "3.1.0",
       info: { title: "SingIt Ask", version: "1.0.0",
               termsOfService: "https://singitai.app/terms/",
-              description: "Language-model answers paid per answer over x402 in USDC on Base or Solana. No accounts or API keys."
+              description: DESCRIPTION
                 + (freeOffer ? ` Free to try: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day, no payment.` : ""),
               "x-guidance": "POST JSON in OpenAI chat-completions format to the paths below. A first request without "
                 + "payment returns 402 with the challenge in the PAYMENT-REQUIRED header; sign an x402 v2 \"exact\" or "
@@ -886,8 +879,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           summary: { "/v1/exa/search": "Search the web with Exa and return ranked results",
                      "/v1/exa/contents": "Fetch page contents from Exa for up to 10 URLs",
                      "/v1/exa/answer": "Generate a cited answer with Exa" }[route],
-          description: "Exa's own request and answer, paid per request over x402: Exa's list price plus a flat 0.001 USDC settlement fee, the same on Base and Solana. "
-            + "Nothing is charged without an answer.",
+          description: routeCopy(route).description,
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", ...exaPriceRange() }, protocols: [{ x402: {} }] },
           requestBody: exaRequestBody(route),
           responses: { 200: { description: "Exa's answer, with billing" },
@@ -904,9 +896,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         ...(catalogue ? Object.fromEntries(Object.keys(FORMAT_ROUTES).map((route) => [route, { post: {
           operationId: route === "/v1/messages" ? "createMessage" : "createResponse",
           summary: route === "/v1/messages" ? "Create a message in Anthropic's format, any listed model" : "Create a response in OpenAI's format, any listed model",
-          description: "The request in that API's own format, with optional buffered SSE. Pays actual token cost + 30% + a settlement "
-            + "fee (0.001 USDC on Base, 0.002 on Solana), up to a ceiling that follows the model's price and the request's "
-            + "size; nothing is charged without an answer. Models: GET /v1/models.",
+          description: routeCopy(route).description,
           "x-payment-info": { notes: probeNote(300, config, true), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: formatRequestBody(route),
           responses: { 200: { description: "The answer in that API's format, with billing; stream:true returns complete buffered SSE after settlement.", content: { "application/json": { schema: { type: "object" } }, "text/event-stream": { schema: { type: "string" } } } },
@@ -917,8 +907,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         ...(catalogue ? Object.fromEntries(EXTRA_PAID.map((path, i) => [path, { post: {
           operationId: ["createImageEdit", "createImageEditAlias", "createEmbeddings"][i],
           summary: i === 2 ? "Create embeddings for input text" : "Create edited images from input images",
-          description: i === 2 ? "Exact price uses one token per UTF-8 input byte plus per-item overhead, markup and settlement fee. Charged after upstream success."
-            : "Edit PNG, JPEG or WEBP data URIs, up to four images or one image with a mask. Charged after upstream success.",
+          description: routeCopy(path).description,
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: i === 2 ? embeddingMax : editMax }, protocols: [{ x402: {} }] },
           requestBody: i === 2 ? EMBEDDING_BODY() : EDIT_BODY(),
           responses: { 200: { description: "Result with billing", content: { "application/json": { schema: i === 2 ? EMBEDDING_OUTPUT : EDIT_OUTPUT, example: i === 2 ? EMBEDDING_EXAMPLE : EDIT_EXAMPLE } } },
@@ -930,9 +919,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } }])) : {}),
         ...(catalogue ? { [IMAGE_ROUTE]: { post: {
           operationId: "createImage", summary: "Generate images with any listed image model",
-          description: "OpenAI images request (model, prompt, n, size). Paid per request over x402: the model's list price "
-            + "+ 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models and prices: GET /v1/images/models. "
-            + "Nothing is charged without an image.",
+          description: routeCopy(IMAGE_ROUTE).description,
           "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.014", max: "2.602" }, protocols: [{ x402: {} }] },
           requestBody: IMAGE_REQUEST_BODY(),
           responses: { 200: { description: "The images, with billing" },
@@ -940,13 +927,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
-          ...audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))),
-          [MEDIA_MODELS_ROUTE]: { get: { operationId: "listGenerationAudioModels", summary: "List music and sound effect models with exact prices", responses: { 200: { description: "Pinned per-job prices and model metadata" } } } },
+          ...(config.audioSold ? { ...audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))),
+          [MEDIA_MODELS_ROUTE]: { get: { operationId: "listGenerationAudioModels", summary: "List music and sound effect models with exact prices", responses: { 200: { description: "Pinned per-job prices and model metadata" } } } } } : {}),
           [SPEECH_ROUTE]: { post: {
             operationId: "createSpeech", summary: "Generate speech with any listed voice model",
-            description: "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: the "
-              + "model's list price for the text + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models: "
-              + "GET /v1/audio/models. Async speech: elevenlabs/multilingual-v2 and elevenlabs/v3 cost 0.157 USDC Base / 0.158 Solana per job; bytedance/seed-audio-1.0 costs 0.004738 / 0.005738. Max 4096 characters, provider audio format, no response_format or speed. A 110-second deadline includes artifact validation; failures never settle. Nothing is charged without audio.",
+            description: routeCopy(SPEECH_ROUTE).description,
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
             requestBody: SPEECH_REQUEST_BODY(),
             responses: { 200: { description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type.", content: Object.fromEntries([...Object.values(SPEECH_CONTENT_TYPES), "audio/mp4"].map((type) => [type, {}])) },
@@ -1164,10 +1149,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                          ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
                          ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
-      resourceDetails: catalogue ? EXTRA_PAID.map(path => ({ resource: `${origin(req)}${path}`, networks: [BASE, SOLANA],
-        outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT })) : [],
-      instructions: `${DESCRIPTION} Speech models/prices: GET ${origin(req)}/v1/audio/models (including async ElevenLabs multilingual-v2, v3 and ByteDance Seed Audio 1.0). Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`
-        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
+      resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
+        ...(!audioRoutes().includes(path) && path !== VIDEO_ROUTE ? routeCopy(path) : {}), ...(EXTRA_PAID.includes(path) ? { outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT } : {}) })),
+      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
   // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
@@ -1232,11 +1216,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           + `tokens and ${freeOffer.maxChars} characters each, resetting at midnight UTC. `
           + (freeOffer.budgetUsdPerDay > 0 ? `Shared daily cost cap: $${freeOffer.budgetUsdPerDay}; free answers may run out for the day (free_budget_exhausted). ` : "")
           + "Each free answer reports billing.remainingToday; when used up, drop the free/ prefix to pay, or come back tomorrow.", ""] : []),
-      "## Paid routes", "", ...discoverableRoutes().map((route) => `- POST ${base}${route}`), "",
+      "## Paid routes", "", ...discoverableRoutes().map((route) => `- POST ${base}${route}${!audioRoutes().includes(route) && route !== VIDEO_ROUTE ? ` — ${routeCopy(route).description}` : ""}`), "",
       "## Free", "",
       `- GET ${base}/v1/models — models and their prices`,
       ...(catalogue ? [`- GET ${base}/v1/images/models — image models and their prices`,
-        `- GET ${base}/v1/audio/models — speech and transcription models and their prices; async speech: elevenlabs/multilingual-v2, elevenlabs/v3, bytedance/seed-audio-1.0 (4096 characters, provider format, fixed per-job price)`] : []),
+        `- GET ${base}/v1/audio/models — speech models and prices; transcription is API-key only`] : []),
       ...(priceBook ? [`- GET ${base}/v1/prices — crypto, metal and fx prices, no payment`] : []),
       `- GET ${base}/health — service, model and payment-rail status`,
       `- GET ${base}/numbers.json — measured usage numbers with definitions`, "",
@@ -1337,7 +1321,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     description: DISCOVERY_DESCRIPTION,
     serviceName: SERVICE_NAMES[ROUTE],
     iconUrl: ICON_URL,
-    tags: discoveryTags("llm", "chat-completions", "inference", "openai-compatible", "chat", "claude", "gpt", "gemini",
+    tags: discoveryTags(...routeCopy(ROUTE).tags, "llm", "chat-completions", "inference", "openai-compatible", "chat", "claude", "gpt", "gemini",
                         "deepseek", "singit"),
     extensions: {
       ...declareEip2612GasSponsoringExtension(),

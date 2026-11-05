@@ -1,3 +1,4 @@
+import { routeCopy } from "./listing-snapshot.mjs";
 import { errorRef } from "./errors.mjs";
 // SI-62: one x402 resource per popular model, `/v1/chat/<model>`, so a Bazaar search for a model name ("claude
 // opus 5.5") finds a dedicated SingIt Ask listing with that model's own description and price, instead of only
@@ -84,10 +85,9 @@ export async function chooseModelRoute(catalogue, id, bufferPp, input) {
   return { ...input, model: id, info, isDefault: false, ...priceGuard(catalogue, info.id, bufferPp) };
 }
 
-// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
+// Keep discovery descriptions within 500 characters, capability first (see app.mjs).
 export function discoveryDescription(model) {
-  return `Chat completions API for ${model.name} (${model.provider}), OpenAI-compatible. `
-    + "Pay per call in USDC on Base or Solana, no key; you sign a price cap.";
+  return routeCopy(routePath(model.id)).description;
 }
 
 const providerTag = (provider) => provider.toLowerCase().replace(/\s+/g, "");
