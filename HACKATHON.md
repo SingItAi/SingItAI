@@ -405,6 +405,8 @@ Operational follow-up in the merged SingItAI tree (branch `feat/daily-model-audi
 
 ### Post-competition maintenance — 2026-11-05
 
+Shared Ask stages 1a/1b on `feat/x402-agent-chat` (draft PR work; stage 1a committed as [88908f1](https://github.com/SingItAi/SingItAI/commit/88908f1), stage 1b in the same draft PR): paid chat supports tools, tool replies, text/image blocks and larger agent envelopes. Stage 1b adds buffered SSE for chat/Messages/Responses, privacy-bounded client counters and a fake-only SDK session script. This is shared Ask maintenance. Verification uses fake upstreams/facilitators and socket-free HTTP; no live payment or seller acceptance is claimed.
+
 Shared Ask maintenance on `feat/payment-error-codes` (draft PR):
 paid routes now expose safe refusal codes, recovery actions and `X-SingIt-Error`,
 with optional persisted counters by code. This covers Base and Solana and is not a
@@ -431,6 +433,15 @@ on GitHub, the server's paid-proxy setting (only the owner can read it) and the 
 scenario, which is opt-in and was never run. A full probe needs eight requests (nine with paid
 tools), because balance and usage are read before and after.
 
+Merge verification on `feat/x402-agent-chat` (uncommitted merge of `origin/main`,
+5 November 2026): preserves stages 1a/1b alongside payment refusal codes,
+key-path readiness and metadata. Five focused persistence checks pass, including
+agent traffic and payment refusal counters round-tripping in one state file.
+The socket-free Bazaar harness reports no findings across advertised routes;
+error vocabulary and generated LLM references are consistent. The LLM generator
+now has an offline CLI and a working `--check`. Limitations: full suites were run,
+but this sandbox blocks loopback listeners and some child-process output;
+no live upstream, network request or real payment was used.
 ## Media API review hardening — 5 November 2026
 
 Uncommitted worktree follow-up (no commit or PR yet, as requested), after the competition period: image edits and embeddings validate billable output, bound streamed upstream responses and embedding batches, and share process-wide payment reservations. EVM replay identity uses normalized network, asset, signer and nonce; Solana uses the signed transaction or signature. `/pricing.json` includes both services with reference requests and network prices. This hardens the new media routes; existing image generation has not yet adopted the shared reservation store.

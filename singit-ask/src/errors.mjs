@@ -3,6 +3,7 @@ export const MAX_TOKENS_TOO_SMALL = "This model spent the whole max_tokens budge
 
 // Additive error metadata shared by all Ask routes. Never replace a supplied code.
 export const ERROR_CODES = Object.freeze([
+  "tools_unsupported", "content_blocks_unsupported", "tools_unsupported_for_model", "images_unsupported_for_model", "upstream_rejected_request",
   "invalid_json", "invalid_request", "payload_too_large", "model_not_found", "not_found",
   "rate_limited", "free_tier_exhausted", "free_budget_exhausted", "free_tier_busy", "payment_required",
   ...PAYMENT_ERROR_CODES, "payment_duplicate", "stale_payment_permit", "permit2_allowance_required", "no_billable_answer", "no_healthy_sellers", "max_tokens_too_small",

@@ -81,7 +81,7 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
       return res.status(400).json({error:'invalid_identity',code:'invalid_identity'});
     let input;
     let chosen;
-    try{input=readRequest(req.body);}catch{return res.status(400).json({error:'invalid_request',code:'invalid_request'});}
+    try{input=readRequest(req.body);}catch(error){return res.status(400).json(['tools_unsupported','content_blocks_unsupported'].includes(error.code)?{error:error.code,code:error.code,message:error.message}:{error:'invalid_request',code:'invalid_request'});}
     // Refuse auto before preparing or quoting an answer; selection headers belong to the chat routes.
     if(input.model==='singit/auto')return res.status(400).json({error:'invalid_request',code:'invalid_request',
       message:'singit/auto is only offered on /v1/chat/completions'});

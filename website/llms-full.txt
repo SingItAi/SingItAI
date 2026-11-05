@@ -2,7 +2,7 @@
 
 > SingIt: pay for AI with USDC and keep spending limits. Your agent pays per call, only within the daily and per-purchase limits you sign: set them once, and your AI agent buys gift cards, eSIMs, top-ups and live answers inside those limits. Limits protect only SingIt's own agent: on Base they are enforced by an on-chain contract, on a SingIt API key the server checks them. On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated.
 
-Agents and scripts: fetch machine-readable files from https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt); this host serves the human site.
+Machine-readable discovery: https://ask.singitai.app (llms.txt, openapi.json, pricing.json, .well-known/x402, SKILL.md, .well-known/agent-card.json, llms-models.txt, llms-full.txt).
 
 Agents with no wallet of their own: use an MCP key with limits your owner sets: https://singitai.app/docs/mcp-key/
 Caps apply only to calls made with the key to SingIt's MCP and /v1 endpoint; they do not limit spending elsewhere or protect an agent's own wallet.
@@ -44,23 +44,29 @@ Only billable answers charge; upstream 503s never charge. For 400/413/422, fix t
 
 Free tier: 6 free models, 20 answers/day/network, shared daily cost cap $0.25. The shared cap may run out (free_budget_exhausted); resets at midnight UTC. No wallet or key required. Each free answer reports `billing.remainingToday`; when used up, drop the `free/` prefix to pay.
 
-Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Full model list: per-model reference prices, upto before exact.
+Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools included; 8000 per image), 64 tools/calls, four images, max_tokens 8192 (default 800), 128 kB JSON body. Model capabilities constrain tools/images. Messages/Responses support tools and 32000 output tokens.
+
+Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
+
+/numbers.json agent_traffic: total/last_24h/last_7d served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels. No raw client headers, prompts or addresses; distinct from settled paid_calls.
+
+Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Per-model reference prices are in the full models list, with upto before exact.
 
 ## What it is
 
-SingIt lets you connect the wallet you already use, set a daily and a per-purchase limit, and approve once. Your AI agent then buys gift cards, eSIMs, mobile top-ups and live model answers inside those limits, on Base or Solana. One signature takes the allowance back.
+Connect your wallet, sign daily and per-purchase limits, and let your agent buy gift cards, eSIMs, top-ups and answers on Base or Solana. Revoke with one signature.
 
 ## Products
 
 - Web app at https://app.singitai.app/app/ — connect a wallet, set limits, let an agent spend inside them.
-- SingIt Ask, an x402 API at https://ask.singitai.app — language-model chat completions, Anthropic's Messages and OpenAI's Responses formats, images, speech and web search, each paid per call in USDC on Base or Solana, no account or API key. Its own llms.txt: https://ask.singitai.app/llms.txt
+- SingIt Ask: https://ask.singitai.app — chat, Messages, Responses, images, speech and search; USDC per call on Base or Solana without an account. Guide: https://ask.singitai.app/llms.txt
 - A remote MCP server at https://app.singitai.app/mcp (free tools without a key; a SingIt API key for paid tools).
 
 ## Start here: free, then a key, then MCP
 
-"model":"singit/auto" on POST /v1/chat/completions picks an eco, standard or premium model for text prompts by simple rules; optional "min_tier" (eco, standard or premium) sets the minimum tier. X-SingIt-Model and X-SingIt-Tier identify the model and tier that answered. If the chosen model's seller refuses before payment, the router tries the next model of the tier or the next tier up, never below min_tier. Only POST /v1/chat/completions.
+"model":"singit/auto" on POST /v1/chat/completions picks eco/standard/premium for text prompts; min_tier sets the minimum. Before payment, seller refusal tries the next model in the tier or above. X-SingIt-Model and X-SingIt-Tier identify the answer.
 
-fallback_models is optional on paid POST /v1/chat/completions with a pinned model: 1 to 3 unique model ids (not the pinned model, not singit/auto). If the pinned model is unavailable before payment, the first healthy priced candidate whose Base upto ceiling is no higher than the pinned one answers (same auto tier if the pinned model has one). X-SingIt-Model and X-SingIt-Fallback-From identify which model answered and which was replaced.
+fallback_models: paid pinned chat accepts 1–3 unique model ids excluding the pinned model and singit/auto. Before payment, an unavailable model can use the first healthy priced candidate with no higher Base upto ceiling, in the same auto tier where applicable. X-SingIt-Model and X-SingIt-Fallback-From identify the replacement.
 
 1. Free: POST https://ask.singitai.app/v1/chat/completions with model "free/deepseek-v4.1-flash". One of 6 free models; up to 20 answers a day per network, shared $0.25/day cost cap. May run out for the day (free_budget_exhausted); resets at midnight UTC. No wallet or key.
 2. API key: in the SingIt app (https://app.singitai.app/app/), Settings → API keys. The wallet signs the key's limits (per day, per request, how many days); top up $1 to $50 at a time in USDC. With a key, OpenAI SDK, Anthropic SDK and Claude Code work at https://app.singitai.app/v1 (cost + 30%, no per-call fee).
@@ -74,13 +80,13 @@ fallback_models is optional on paid POST /v1/chat/completions with a pinned mode
    - Install guide: https://github.com/SingItAi/SingItAI/blob/main/llms-install.md
    - Tool reference (all 18 tools, parameters, scopes): https://singitai.app/docs/mcp-tools/
 
-Agents with their own wallet can skip the key: pay per answer over x402 at https://ask.singitai.app (USDC on Base or Solana).
+Own wallet: pay per answer over x402 at https://ask.singitai.app.
 
 ## First paid x402 call
 
-1. POST https://ask.singitai.app/v1/chat/completions with no payment, e.g. {"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Hello"}]}. The answer is HTTP 402 with a PAYMENT-REQUIRED header: base64 JSON, x402Version 2.
-2. Its accepts list `upto` first (Base, then Solana): you sign a ceiling and pay the answer's actual cost + 30% + a 0.001 USDC fee on Base (0.002 on Solana). `exact` follows on both networks: a flat price for a typical-length answer (about 30% of max_tokens), for wallets that sign only exact. For Claude Opus, sign `upto`: its `exact` price carries room for thinking tokens and is usually dearer than the answer used (recommendedScheme in https://ask.singitai.app/pricing.json). USDC on Base needs no ETH (gas is sponsored).
-3. Sign one offer and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200: choices[0].message.content, billing.totalAtomic (what was settled, in USDC micro-units) and a PAYMENT-RESPONSE header.
+1. POST https://ask.singitai.app/v1/chat/completions with no payment, e.g. {"model":"deepseek-v4.1-flash","max_tokens":200,"messages":[{"role":"user","content":"Hello"}]}. HTTP 402 supplies PAYMENT-REQUIRED.
+2. accepts lists `upto` then `exact` on Base and Solana. `exact` is a flat price for a typical-length answer (about 30% of max_tokens). For Claude Opus, sign `upto`: its `exact` price carries room for thinking tokens and is usually dearer than the answer used (recommendedScheme in https://ask.singitai.app/pricing.json). USDC on Base needs no ETH (gas is sponsored).
+3. Sign one offer and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200 returns the answer, billing.totalAtomic in micro-USDC and PAYMENT-RESPONSE.
 - Walkthrough with code (x402 fetch, Coinbase Bazaar MCP, Coinbase agentic wallet): https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md
 
 ## Errors
