@@ -402,3 +402,15 @@ Ask: every reasoning-tagged model now gets a priced 256-token thinking floor, on
 ## Daily model audit — 2 November 2026
 
 Operational follow-up in the merged SingItAI tree (branch `feat/daily-model-audit`, draft PR #211): `scripts/singit-model-audit.py` checks the paid-route inventory, unpaid listing prices against max_tokens 400 and 2000 quotes, the `/health` outcome windows, the Surplus order books and one free canary per free model. It sends no payment header and alerts only on changes through the existing health-alert delivery. This is shared service monitoring, not a new Solana payment feature. Verification: 19 audit tests and the existing health-alert tests, plus a read-only dry run against the live service. The systemd units are uninstalled templates; no paid answers were made.
+
+### API-key readiness follow-up (5 November 2026, post-competition)
+
+Draft PR from `feat/key-path-readiness` in SingItAI: adds a standard-library zero-spend
+key-path checker with an opt-in daily workflow (skipped until the owner sets
+`KEY_CHECK_ENABLED`), and shares actionable tools-refusal guidance between the free and
+fallback gateway routes. This is maintenance of the imported gateway, not new Solana work.
+Verification: full gateway suite (2,251 tests), the 12 checker tests (ten scenarios against a
+loopback server) and the existing script tests pass. Not verified: the live API, the workflow
+on GitHub, the server's paid-proxy setting (only the owner can read it) and the paid tools
+scenario, which is opt-in and was never run. A full probe needs eight requests (nine with paid
+tools), because balance and usage are read before and after.
