@@ -355,6 +355,12 @@ test("agent intro and model selection guidance follow the free offer configurati
     assert.ok(limitsLine.includes("On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated."));
     assert.doesNotMatch(limitsLine, new RegExp('cheap' + '(er|est)', 'i'));
     for (const [count] of text.matchAll(/\b\d+\+? models\b/g)) assert.equal(count, '200+ models');
+    const section = text.split("## Spending limits\n")[1]?.split("\n## ")[0];
+    assert.ok(section, "llms.txt has a Spending limits section");
+    assert.match(section, /nothing is charged without an answer/i);
+    assert.match(section, /maxPerCallUsd and maxPerDayUsd .*required.*your own process.*client-side/s);
+    assert.match(section, /API key, the owner sets the key's limits.*server enforces them/s);
+    assert.doesNotMatch(section, /on-?chain/i);
     assert.match(text, /Start here: POST http:\/\/ask.test\/v1\/chat\/completions/);
     assert.equal(text.includes("Free first call, no wallet: model free/deepseek-v4.1-flash."), freeModels.length > 0);
     assert.equal(text.includes("Each free answer reports billing.remainingToday; when used up, drop the free/ prefix to pay, or come back tomorrow."), freeModels.length > 0);

@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt search: Exa's web search, page contents and cited answers, sold over x402 at Exa's list price plus a flat $0.001 settlement fee
 // on both Base and Solana, and bought from Exa with SingIt's own Exa API key, as BlockRun does
 // (docs/singit-gateway-spec.md, 4.2).
@@ -175,10 +176,11 @@ const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
     exaAtomic: { type: "string" }, markupAtomic: { type: "string" }, feeAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } } } };
 
-export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl = fetch, log = console.error }) {
+export function addSearchRoutes(app, config, { facilitatorClient, publicClient, exaKey, fetchImpl = fetch, log = console.error }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
+  attachPaymentFailureCodes(server);
   const prices = new WeakMap();        // parsed body -> Exa's list price, for the middleware's price functions
   const used = new Map();              // payment signature digest -> when: one payment, one request to Exa
   const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");
@@ -214,7 +216,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
     serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
     extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
       output: { example: outputExamples()[route], schema: OUTPUT_SCHEMA } }),
-  }])), server, { log });
+  }])), server, { log, publicClient });
   for (const [route, exaPath] of Object.entries(SEARCH_ROUTES)) {
     app.post(route, async (req, res) => {
       const header = req.get("payment-signature") ?? req.get("x-payment");

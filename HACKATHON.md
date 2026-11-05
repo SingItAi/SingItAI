@@ -403,6 +403,22 @@ Ask: every reasoning-tagged model now gets a priced 256-token thinking floor, on
 
 Operational follow-up in the merged SingItAI tree (branch `feat/daily-model-audit`, draft PR #211): `scripts/singit-model-audit.py` checks the paid-route inventory, unpaid listing prices against max_tokens 400 and 2000 quotes, the `/health` outcome windows, the Surplus order books and one free canary per free model. It sends no payment header and alerts only on changes through the existing health-alert delivery. This is shared service monitoring, not a new Solana payment feature. Verification: 19 audit tests and the existing health-alert tests, plus a read-only dry run against the live service. The systemd units are uninstalled templates; no paid answers were made.
 
+### Post-competition maintenance — 2026-11-05
+
+Shared Ask maintenance on `feat/payment-error-codes` (draft PR):
+paid routes now expose safe refusal codes, recovery actions and `X-SingIt-Error`,
+with optional persisted counters by code. This covers Base and Solana and is not a
+new Solana competition contribution. Legacy local 409 bodies remain unchanged.
+Verification: 59 focused socket-free payment/error/health tests pass; generated
+LLM documentation is current. Full Ask and website/script suites were compared
+against unchanged `origin/main` c5d442d using the installed dependencies: the same
+31 Ask test files and six website/script tests fail in this sandbox, including
+unavailable local listeners, child-process output and missing Solana dependencies.
+Limitations: no live facilitator, network requests or real payments were used;
+normal listener-based OpenAPI checks remain blocked by the sandbox. All five
+OpenAPI schema/example/lint tests pass in a temporary copy using the existing
+socket-free request harness in place of the generator's listener.
+
 ### API-key readiness follow-up (5 November 2026, post-competition)
 
 Draft PR from `feat/key-path-readiness` in SingItAI: adds a standard-library zero-spend

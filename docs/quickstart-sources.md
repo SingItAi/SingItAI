@@ -19,6 +19,7 @@ The page is static documentation. No wallets, signatures or payments were used t
 | X-SingIt-Receipt JSON fields | `singit-ask/src/spend-limit.mjs:7-8`; `singit-ask/test/spend-limit.test.mjs` |
 | Missing signature/retry, network/asset, ceiling troubleshooting | `docs/first-paid-call.md:74,175`; `singit-ask/src/metered-buyer.mjs:16-25,55-65`; `singit-ask/test/metered.test.mjs:34`; task's required troubleshooting guidance |
 | Balance must cover ceiling | Task's required troubleshooting guidance; `docs/first-paid-call.md:26-27` (funded Base wallet). Advice to check the ceiling, not a claim of a bespoke balance error code. |
+| 402 payment_unfunded/fund_wallet, payment_blockhash_stale/sign_again, payment_replay/check_previous_result, payment_invalid/fix_payment | `singit-ask/src/payment-codes.mjs`; `singit-ask/test/payment-codes.test.mjs` |
 | 409 payment_duplicate; stale_payment_permit | `singit-ask/src/errors.mjs:5,14`; `singit-ask/ERRORS.md:15-16`; `singit-ask/test/error-codes.test.mjs:184`; `singit-ask/test/permit-guard.test.mjs:31` |
 | Settlement failure retry and no charge for an answer | `singit-ask/ERRORS.md:40`; `singit-ask/test/app.test.mjs:151`; task's explicit settlement-failure instruction |
 | Variant B free initialize/list/search/validate, tool prefix, four offers, dependency failure and fix, paid steps not run | Supplied 31.10.2026 (Prague) run facts, now recorded in `docs/first-paid-call.md:115-119`. No CDP wallet creation, funding or proxy_tool_call was run. |

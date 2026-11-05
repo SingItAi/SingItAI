@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
@@ -206,7 +207,7 @@ const TAGS = {
                                  "gemini", "deepseek", "singit"),
 };
 
-export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, record = () => {} }) {
+export function addFormatRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, record = () => {} }) {
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const bufferPp = config.priceBufferPp ?? 1;
   const answerLog = answerLogFor(config, log);
@@ -217,6 +218,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       .register(BASE, new ExactEvmScheme())
       .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
       .register(SOLANA, new ExactSvmScheme());
+    attachPaymentFailureCodes(server);
     // Discovery prices the example at list share by default; real POSTs below retain priceGuard.
     // The same probeInput policy drives chat and formats, including optional discovery output budgets.
     const probeCeilings = perRequest(async () => {
@@ -266,7 +268,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       extensions: { ...declareEip2612GasSponsoringExtension(),
         ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: { ...INPUT_SCHEMAS[route], description: probeNote(300, config, true) },
           output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }) },
-    } }, server, { log });
+    } }, server, { log, publicClient });
     app.post(route, async (req, res) => {
       const started = Date.now();
       let retried = false, recorded = false;

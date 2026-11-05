@@ -35,6 +35,7 @@ import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs
 import { withRejectLog } from "./reject-log.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
+import { paymentCodesMiddleware } from "./payment-failure-hooks.mjs";
 
 export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -445,13 +446,15 @@ const exactExampleOffers = timeout => [
 const PAYMENT_REQUIRED = (exactTimeout) => ({ description: "Payment Required: the x402 v2 challenge is in the PAYMENT-REQUIRED response header "
     + "(base64 JSON: x402Version, resource, accepts); the body contains matching x402Version and accepts only for a payment challenge. Sign one of the accepts and retry "
     + "with PAYMENT-SIGNATURE. If a payment was submitted but could not be settled, the 402 has no PAYMENT-REQUIRED header "
-    + "and the body contains only error and code (payment_required).",
+    + "and the body contains error, a refusal code, action and message.",
   ...(exactTimeout ? {} : { description: "Chat challenge example: one Base offer per scheme. The full accepts order is upto Base, upto Solana, exact Base, exact Solana. " +
-    "The PAYMENT-REQUIRED header carries the base64 JSON challenge; settlement failures have only error and code in the body." }),
-  headers: { "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
-  content: { "application/json": { schema: errorRef("PaymentRequired402"), example: {
-    x402Version: 2, accepts: exactTimeout ? exactExampleOffers(exactTimeout) : chatExampleOffers,
-    error: "payment_required", code: "payment_required",
+    "The PAYMENT-REQUIRED header carries the base64 JSON challenge; settlement refusals include a code, action and message." }),
+  headers: { "X-SingIt-Error": { description: "Machine-readable payment refusal code", schema: { type: "string" } }, "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
+  content: { "application/json": { schema: errorRef("PaymentRequired402"), examples: {
+    challenge: { value: { x402Version: 2, accepts: exactTimeout ? exactExampleOffers(exactTimeout) : chatExampleOffers,
+      error: "payment_required", code: "payment_required" } },
+    unfunded: { value: { error: "payment_required", code: "payment_unfunded", action: "fund_wallet",
+      message: "Fund the wallet and its token account. Nothing was charged for this request." } },
   } } } });
 const BAD_REQUEST = "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged";
 const TOO_LARGE = "The JSON body is over 128 kB; nothing was charged";
@@ -495,6 +498,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");
   app.use(errorCodesMiddleware);
+  app.use(paymentCodesMiddleware({ stats: app.locals.healthStats, log }));
   app.use((req, res, next) => {
     res.on("finish", () => {
       try {
@@ -523,7 +527,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         args[index] = Array.isArray(headers) ? rest.flat() : Object.fromEntries(rest);
       }
       const seen = new Set();
-      const merged = [...values, "X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From", "X-SingIt-Fallback-Policy"]
+      const merged = [...values, "X-SingIt-Error", "X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From", "X-SingIt-Fallback-Policy"]
         .flat().flatMap(value => String(value).split(",")).map(value => value.trim())
         .filter(value => {
           const key = value.toLowerCase();
@@ -712,6 +716,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.json({
       openapi: "3.1.0",
       info: { title: "SingIt Ask", version: "1.0.0",
+              termsOfService: "https://singitai.app/terms/",
               description: "Language-model answers paid per answer over x402 in USDC on Base or Solana. No accounts or API keys."
                 + (freeOffer ? ` Free to try: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day, no payment.` : ""),
               "x-guidance": "POST JSON in OpenAI chat-completions format to the paths below. A first request without "
@@ -1027,13 +1032,20 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     ...(config.videoSold && config.videoDiscoverable ? [VIDEO_ROUTE] : []),
     ...modelRoutePaths(catalogue)] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
+  // Free: canonical legal pages, with fixed destinations and no query forwarding.
+  for (const [path, url] of [["/terms", "https://singitai.app/terms/"], ["/privacy", "https://singitai.app/privacy/"]]) {
+    app.get([path, `${path}/`], open, (_req, res) => {
+      res.set("Cache-Control", "public, max-age=3600").redirect(308, url);
+    });
+  }
   // Free: a human or agent landing on the bare origin gets a small service index instead of Express's 404.
   // Express answers HEAD the same way automatically. Open CORS, like the other public documents.
   app.get("/", open, (req, res) => {
     const base = origin(req);
     res.json({ name: SERVICE_NAME, description: DISCOVERY_DESCRIPTION, icon: ICON_URL,
       links: { openapi: `${base}/openapi.json`, x402: `${base}/.well-known/x402`, llmsTxt: `${base}/llms.txt`,
-        models: `${base}/v1/models`, docs: "https://singitai.app/developers/" } });
+        models: `${base}/v1/models`, docs: "https://singitai.app/developers/",
+        terms: "https://singitai.app/terms/", privacy: "https://singitai.app/privacy/" } });
   });
   // Free: llmstxt.org format, generated from the same route list as discovery so it cannot drift from it.
   app.get("/llms.txt", open, (req, res) => {
@@ -1058,6 +1070,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + `${base}/openapi.json and ${base}/v1/models. For Claude Opus, sign \`upto\`: its \`exact\` price carries room `
         + "for thinking tokens and is usually dearer than the answer used (recommendedScheme in "
         + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC}`, "",
+      "## Spending limits", "",
+      "- The 402 quotes the most you can be charged before you sign. Nothing is charged without an answer.",
+      "- To cap an agent's spend, use @singitai/sdk (npm) or singit (PyPI): maxPerCallUsd and maxPerDayUsd "
+        + "(max_per_call_usd and max_per_day_usd in Python) are required, and they are checked in your own process "
+        + "before anything is signed. These are client-side ceilings.",
+      `- Through the MCP server (${MCP_URL}) or a SingIt API key, the owner sets the key's limits at https://app.singitai.app/app/; SingIt's server enforces them.`, "",
       "## Model selection", "", AUTO_GUIDE, "", FALLBACK_GUIDE, "",
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `
@@ -1083,6 +1101,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       `- Full documentation: ${base}/llms-full.txt`,
       `- Models: ${base}/v1/models`,
       "- Docs: https://singitai.app/developers/",
+      "- Terms: https://singitai.app/terms/",
+      "- Privacy policy: https://singitai.app/privacy/",
       `- First paid x402 call: ${FIRST_PAID_CALL_DOC}`,
       `- MCP server (API key, not x402): ${MCP_URL}. Free tools work without a key; paid tools need a SingIt API key created in the app at https://app.singitai.app/app/.`,
     ];
@@ -1128,23 +1148,24 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }).catch(() => {});
     return answer;
   };
-  const route = { facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };
+  const publicClient = priceBook?.publicClient;
+  const route = { publicClient, facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };
   // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
   addCreditRoute(app, config, { facilitatorClient });
   // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
-  if (exaKey) addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl: exaFetch, log });
+  if (exaKey) addSearchRoutes(app, config, { publicClient, facilitatorClient, exaKey, fetchImpl: exaFetch, log });
   // Images from Surplus's image models, with this service's own Surplus key.
-  if (catalogue) addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addImageRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
-  if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
-  if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
+  if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
-  if (catalogue) addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
+  if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
     inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Video from Surplus's text-to-video models, as jobs.
-  if (catalogue) addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addVideoRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
   if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
