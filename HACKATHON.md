@@ -405,7 +405,7 @@ Operational follow-up in the merged SingItAI tree (branch `feat/daily-model-audi
 
 ### Post-competition maintenance — 2026-11-05
 
-Shared Ask stages 1a/1b on `feat/x402-agent-chat` (draft PR work; stage 1a committed as [88908f1](https://github.com/SingItAi/SingItAI/commit/88908f1), stage 1b pending review): paid chat supports tools, tool replies, text/image blocks and larger agent envelopes. Stage 1b adds buffered SSE for chat/Messages/Responses, privacy-bounded client counters and a fake-only SDK session script. This is shared Ask maintenance. Verification uses fake upstreams/facilitators and socket-free HTTP; no live payment or seller acceptance is claimed. See `codex-1b-notes.md` for checks and limitations.
+Shared Ask stages 1a/1b on `feat/x402-agent-chat` (draft PR work; stage 1a committed as [88908f1](https://github.com/SingItAi/SingItAI/commit/88908f1), stage 1b in the same draft PR): paid chat supports tools, tool replies, text/image blocks and larger agent envelopes. Stage 1b adds buffered SSE for chat/Messages/Responses, privacy-bounded client counters and a fake-only SDK session script. This is shared Ask maintenance. Verification uses fake upstreams/facilitators and socket-free HTTP; no live payment or seller acceptance is claimed.
 
 Shared Ask maintenance on `feat/payment-error-codes` (draft PR):
 paid routes now expose safe refusal codes, recovery actions and `X-SingIt-Error`,
