@@ -8,6 +8,8 @@ import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import crypto from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
+import https from "node:https";
+import { Readable } from "node:stream";
 import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
@@ -224,7 +226,7 @@ export function asyncSpeechBody(model, request) {
 }
 
 export async function generateAsyncSpeech(config, model, request, {
-  fetchImpl = fetch, resolveHostname = lookup, timeoutMs = ASYNC_SPEECH_TERMS.timeoutMs,
+  fetchImpl = fetch, artifactFetch, resolveHostname = lookup, timeoutMs = ASYNC_SPEECH_TERMS.timeoutMs,
   pollMs = ASYNC_SPEECH_TERMS.pollMs, maxBytes = ASYNC_SPEECH_TERMS.maxBytes,
 } = {}) {
   const signal = AbortSignal.timeout(timeoutMs);
@@ -236,6 +238,10 @@ export async function generateAsyncSpeech(config, model, request, {
     if (!response.ok) throw new SpeechError(503, "Speech upstream unavailable.");
     return response;
   };
+  // Default production path pins the validated address on the TLS socket (DNS rebinding).
+  // Tests may inject artifactFetch or a custom fetchImpl for the download hop.
+  const download = artifactFetch ?? (fetchImpl === fetch ? pinnedFetch
+    : (url, init) => fetchImpl(url.href, init));
   let job = await (await get('/v1/music/generations', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(asyncSpeechBody(model, request)) })).json();
   if (!/^[A-Za-z0-9_-]{6,80}$/.test(job?.id ?? '')) throw new SpeechError(503, 'Invalid speech job.');
@@ -256,9 +262,9 @@ export async function generateAsyncSpeech(config, model, request, {
   let response;
   for (let redirects = 0; ; redirects++) {
     signal.throwIfAborted();
-    await validateArtifactUrl(url, resolveHostname);
-    response = await fetchImpl(url.href, { redirect: 'manual', signal,
-      headers: url.origin === origin ? headers : {} });
+    const address = await validateArtifactUrl(url, resolveHostname);
+    response = await download(url, { redirect: 'manual', signal,
+      headers: url.origin === origin ? headers : {} }, address);
     if (![301, 302, 303, 307, 308].includes(response.status)) break;
     const location = response.headers.get('location');
     await response.body?.cancel();
@@ -286,7 +292,8 @@ export async function generateAsyncSpeech(config, model, request, {
 }
 
 // Reject non-public destinations, including IPv4-mapped IPv6 addresses. Resolve every
-// hop (including Surplus); a hostname with any unsafe answer fails closed.
+// hop (including Surplus); a hostname with any unsafe answer fails closed. The first
+// safe answer is pinned onto the TLS connection so a later DNS rebind cannot switch hosts.
 const artifactBlocked = new BlockList();
 for (const [address, prefix] of [
   ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
@@ -300,10 +307,27 @@ for (const [address, prefix] of [
 async function validateArtifactUrl(url, resolveHostname) {
   if (url.protocol !== 'https:' || url.username || url.password) throw new SpeechError(503, 'Unsafe speech artifact URL.');
   const hostname = url.hostname.replace(/^\[|\]$/g, '');
-  const addresses = isIP(hostname) ? [{ address: hostname }]
+  const family = isIP(hostname);
+  const addresses = family ? [{ address: hostname, family }]
     : await resolveHostname(hostname, { all: true, verbatim: true });
   if (!Array.isArray(addresses) || !addresses.length || addresses.some(({ address }) => {
-    const family = isIP(address);
-    return !family || artifactBlocked.check(address, family === 4 ? 'ipv4' : 'ipv6');
+    const fam = isIP(address);
+    return !fam || artifactBlocked.check(address, fam === 4 ? 'ipv4' : 'ipv6');
   })) throw new SpeechError(503, 'Unsafe speech artifact address.');
+  const chosen = addresses[0];
+  return { address: chosen.address, family: chosen.family || isIP(chosen.address) };
+}
+// Pin the checked address to the TLS connection; hostname still verifies the certificate.
+function pinnedFetch(url, { headers, signal }, address) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, { headers, signal, lookup: (_host, options, cb) =>
+      options.all ? cb(null, [address]) : cb(null, address.address, address.family) }, (res) => {
+      try {
+        const nullBody = [101, 204, 205, 304].includes(res.statusCode);
+        if (nullBody) res.resume();
+        resolve(new Response(nullBody ? null : Readable.toWeb(res), { status: res.statusCode, headers: res.headers }));
+      } catch (error) { reject(error); }
+    });
+    req.on('error', reject); req.end();
+  });
 }

@@ -142,3 +142,22 @@ test('async speech requires catalogue job units', () => {
     assert.equal(parseVoiceModels({ data: [{ ...metadata[0], pricing: { image: '0.12', media_unit: unit } }] }).speech.size, 0);
   }
 });
+
+test('artifact download pins the validated address (no DNS rebind)', async () => {
+  const seen = [];
+  const result = await generateAsyncSpeech(config, [...parsed.speech.values()][0], { input: 'Hi' }, {
+    resolveHostname: async () => [{ address: '93.184.216.34', family: 4 }],
+    fetchImpl: async (url) => {
+      if (String(url).includes('/v1/music/generations') && !String(url).includes('/v1/media/'))
+        return json({ id: 'job_123', status: 'succeeded', results: [{}] });
+      throw new Error('fetchImpl must not download the artifact when artifactFetch is set');
+    },
+    artifactFetch: async (url, init, address) => {
+      seen.push({ href: url.href, address, redirect: init.redirect });
+      return new Response(audio, { status: 200 });
+    },
+  });
+  assert.deepEqual(result.audio, audio);
+  assert.deepEqual(seen, [{ href: 'https://surplus.test/v1/media/artifacts/job_123/0',
+    address: { address: '93.184.216.34', family: 4 }, redirect: 'manual' }]);
+});
