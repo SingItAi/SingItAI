@@ -152,7 +152,14 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
       } catch (error) {
         // Log only bounded diagnostic fields, never upstream messages or credentials.
         const safe = value => String(value ?? 'unknown').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 100);
-        log(`audio job fail ${kind} ${model.id} code=${safe(error.code)} job=${safe(error.jobId)} last=${safe(error.lastStatus)} http=${safe(error.upstreamStatus)} upstream=${safe(error.upstreamCode)} ms=${Date.now() - started}`);
+        // Upstream strings are logged only when they are known Surplus vocabulary.
+        const known = (value, list) => list.includes(value) ? value : (value == null ? 'unknown' : 'other');
+        const STATUSES = ['queued', 'running', 'processing', 'pending', 'succeeded', 'failed', 'canceled', 'cancelled', 'expired'];
+        const CODES = ['invalid_request', 'invalid_request_error', 'provider_error', 'provider_unavailable', 'expired', 'execution_start_failed', 'unknown',
+          'insufficient_credit', 'insufficient_balance', 'insufficient_allowance', 'account_frozen', 'org_frozen', 'org_closed', 'model_not_found',
+          'no_sellers_for_model', 'no_healthy_sellers', 'rate_limit_exceeded', 'rate_limited', 'not_found', 'failed', 'canceled', 'upstream_error'];
+        const http = Number.isInteger(error.upstreamStatus) ? error.upstreamStatus : 'unknown';
+        log(`audio job fail ${kind} ${model.id} code=${safe(error.code)} job=${safe(error.jobId)} last=${known(error.lastStatus, STATUSES)} http=${http} upstream=${known(error.upstreamCode, CODES)} ms=${Date.now() - started}`);
         return fail();
       }
     });
