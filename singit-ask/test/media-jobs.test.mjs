@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import https from 'node:https';
+import { Readable } from 'node:stream';
 import { runMediaJob, artifactTarget, publicAddress, audioContentType } from '../src/media-jobs.mjs';
 import { AUDIO_MODELS, audioPrices, readAudioGeneration, surplusAudioRequest } from '../src/audio-generation.mjs';
 const resolve = async () => [{ address: '93.184.216.34', family: 4 }];
@@ -17,6 +19,24 @@ function scenario(mode = 'success') {
   return { calls, fetchImpl, artifactFetch: fetchImpl };
 }
 const options = { baseUrl: 'https://surplus.test', key: 'our-key', request: { model: 'upstream', text: 'rain' }, idempotencyKey: 'unique', timeoutMs: 1000, maxBytes: 100, resolve, sleep: async () => {} };
+test('pinned fetch drains null-body responses and rejects callback errors', async (t) => {
+  for (const status of [101, 204, 205, 304, 200]) {
+    const res = Readable.from([]);
+    res.statusCode = status;
+    res.headers = status === 200 ? { 'invalid header': 'value' } : {};
+    const resume = t.mock.method(res, 'resume');
+    const request = t.mock.method(https, 'request', (_url, _init, callback) => ({
+      on() {}, end() { queueMicrotask(() => callback(res)); },
+    }));
+    try {
+      await assert.rejects(runMediaJob({ ...options,
+        fetchImpl: async () => Response.json({ id: 'job123', status: 'succeeded' }),
+      }), status === 101 ? RangeError : status === 200 ? TypeError
+        : status === 304 ? /Artifact unavailable/ : /Non-audio artifact/);
+      if (status !== 200) assert.equal(resume.mock.callCount(), 1);
+    } finally { request.mock.restore(); resume.mock.restore(); }
+  }
+});
 test('submit, poll and download audio bytes with our credit key; job token only on our host', async () => {
   const s = scenario();
   assert.deepEqual(await runMediaJob({ ...options, ...s }), { audio, contentType: 'audio/mpeg' });

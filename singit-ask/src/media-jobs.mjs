@@ -29,7 +29,11 @@ function pinnedFetch(url, { headers, signal }, address) {
   return new Promise((resolve, reject) => {
     const req = https.request(url, { headers, signal, lookup: (_host, options, cb) =>
       options.all ? cb(null, [address]) : cb(null, address.address, address.family) }, (res) => {
-      resolve(new Response(Readable.toWeb(res), { status: res.statusCode, headers: res.headers }));
+      try {
+        const nullBody = [101, 204, 205, 304].includes(res.statusCode);
+        if (nullBody) res.resume();
+        resolve(new Response(nullBody ? null : Readable.toWeb(res), { status: res.statusCode, headers: res.headers }));
+      } catch (error) { reject(error); }
     });
     req.on('error', reject); req.end();
   });
