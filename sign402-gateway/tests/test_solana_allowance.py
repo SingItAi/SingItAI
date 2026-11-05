@@ -530,6 +530,22 @@ class SolanaAllowanceTests(unittest.TestCase):
         with self.assertRaisesRegex(AllowanceError, "paused"):
             self.service.spend(ACCOUNT, 1_000_000, "x", self.paid(1_000_000))
 
+    def test_ensure_not_paused_refuses_during_the_stop_and_passes_after_a_new_approval(self):
+        self.unique_signatures()
+        self.service.ensure_not_paused(ACCOUNT)  # not on the lane yet: nothing to refuse
+        self.grant("20")
+        self.service.ensure_not_paused(ACCOUNT)
+        self.clock[0] += 1
+        self.service.pause(ACCOUNT)
+        calls = len(self.bridge.calls)
+        with self.assertRaisesRegex(AllowanceError, r"Your agent is paused \(emergency stop\).*Nothing was paid"):
+            self.service.ensure_not_paused(ACCOUNT)
+        self.assertEqual(len(self.bridge.calls), calls, "the check reads the pause record only")
+        self.clock[0] += 1
+        fresh = self.service.prepare_wallet(ACCOUNT, "GRANT", amount="10")
+        self.service.submit_wallet(ACCOUNT, fresh["operation"], fresh["transaction"])
+        self.service.ensure_not_paused(ACCOUNT)
+
     def test_a_replayed_already_landed_approval_does_not_resume(self):
         self.unique_signatures()
         self.grant("20")  # lands as Sig1

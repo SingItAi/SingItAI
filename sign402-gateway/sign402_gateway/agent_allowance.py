@@ -941,6 +941,10 @@ def parse_owners(raw: str) -> dict[str, str]:
     return owners
 
 
+PAUSED_TEXT_BASE = ("Your agent is paused (emergency stop), so it cannot spend. Nothing was paid. "
+                    "To spend again, set up a new limiter.")
+
+
 class AllowanceService:
     def __init__(
         self,
@@ -1540,6 +1544,16 @@ class AllowanceService:
         return f"{when} {what}: {state}{detail}"
 
     # -- spending: the agent pays, the limiter funds it --
+
+    def ensure_not_paused(self, user_id: str) -> None:
+        """Refuses while the owner's limiter is paused (the emergency stop). Read-only, spends nothing. An account
+        with no limiter is not stopped by this: whatever it does next has its own checks."""
+        active = self.store.active_limiter(str(user_id))
+        if active is None:
+            return
+        limiter = active["limiter_address"]
+        if self.store.limiter_paused(limiter) or self.evm.call_word(limiter, selector("paused()")):
+            raise AllowanceError(PAUSED_TEXT_BASE)
 
     def lane_for(self, user_id: str) -> sqlite3.Row | None:
         """The user's usable limiter, None if they are not on this lane at all.

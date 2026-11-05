@@ -750,6 +750,11 @@ class SolanaAllowanceService:
                 "amountAtomic": str(op["amount"]), "currency": "SOL" if op["kind"] == "FUND_GAS" else "USDC", "txHash": op["tx"], "detail": detail,
                 "explorer": f"https://solscan.io/tx/{op['tx']}" if op["tx"] else None}
 
+    def ensure_not_paused(self, account: str) -> None:
+        """Refuses while the owner's emergency stop is on. Read-only, spends nothing."""
+        if self.store.paused_at(account) is not None:
+            raise AllowanceError(PAUSED_TEXT)
+
     def pause(self, account: str, *, trigger: str = "user") -> dict[str, Any]:
         """The emergency stop: the agent stops spending at once. No wallet, no transaction, no fee."""
         self.owner(account)
