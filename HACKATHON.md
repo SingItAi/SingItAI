@@ -403,6 +403,34 @@ Ask: every reasoning-tagged model now gets a priced 256-token thinking floor, on
 
 Operational follow-up in the merged SingItAI tree (branch `feat/daily-model-audit`, draft PR #211): `scripts/singit-model-audit.py` checks the paid-route inventory, unpaid listing prices against max_tokens 400 and 2000 quotes, the `/health` outcome windows, the Surplus order books and one free canary per free model. It sends no payment header and alerts only on changes through the existing health-alert delivery. This is shared service monitoring, not a new Solana payment feature. Verification: 19 audit tests and the existing health-alert tests, plus a read-only dry run against the live service. The systemd units are uninstalled templates; no paid answers were made.
 
+### Post-competition maintenance — 2026-11-05
+
+Shared Ask maintenance on `feat/payment-error-codes` (draft PR):
+paid routes now expose safe refusal codes, recovery actions and `X-SingIt-Error`,
+with optional persisted counters by code. This covers Base and Solana and is not a
+new Solana competition contribution. Legacy local 409 bodies remain unchanged.
+Verification: 59 focused socket-free payment/error/health tests pass; generated
+LLM documentation is current. Full Ask and website/script suites were compared
+against unchanged `origin/main` c5d442d using the installed dependencies: the same
+31 Ask test files and six website/script tests fail in this sandbox, including
+unavailable local listeners, child-process output and missing Solana dependencies.
+Limitations: no live facilitator, network requests or real payments were used;
+normal listener-based OpenAPI checks remain blocked by the sandbox. All five
+OpenAPI schema/example/lint tests pass in a temporary copy using the existing
+socket-free request harness in place of the generator's listener.
+
+### API-key readiness follow-up (5 November 2026, post-competition)
+
+Draft PR from `feat/key-path-readiness` in SingItAI: adds a standard-library zero-spend
+key-path checker with an opt-in daily workflow (skipped until the owner sets
+`KEY_CHECK_ENABLED`), and shares actionable tools-refusal guidance between the free and
+fallback gateway routes. This is maintenance of the imported gateway, not new Solana work.
+Verification: full gateway suite (2,251 tests), the 12 checker tests (ten scenarios against a
+loopback server) and the existing script tests pass. Not verified: the live API, the workflow
+on GitHub, the server's paid-proxy setting (only the owner can read it) and the paid tools
+scenario, which is opt-in and was never run. A full probe needs eight requests (nine with paid
+tools), because balance and usage are read before and after.
+
 ## Media API review hardening — 5 November 2026
 
 Uncommitted worktree follow-up (no commit or PR yet, as requested), after the competition period: image edits and embeddings validate billable output, bound streamed upstream responses and embedding batches, and share process-wide payment reservations. EVM replay identity uses normalized network, asset, signer and nonce; Solana uses the signed transaction or signature. `/pricing.json` includes both services with reference requests and network prices. This hardens the new media routes; existing image generation has not yet adopted the shared reservation store.

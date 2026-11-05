@@ -61,9 +61,9 @@ test("response and header examples satisfy their schemas and paid errors have ex
     for (const status of [400, 402, 413, 422, 503]) {
       const response = item.post.responses[status];
       if (!response) continue;
-      assert.ok(response.content["application/json"].example, `${path} ${status}`);
+      assert.ok(examples(response.content["application/json"]).length, `${path} ${status}`);
     }
-    const payment = item.post.responses[402].content["application/json"].example;
+    const payment = item.post.responses[402].content["application/json"].examples.challenge.value;
     assert.ok(ERROR_CODES.includes(payment.code));
     const exactOnly = /\/(exa|images|audio|video)\//.test(path) || path === "/v1/embeddings";
     if (!exactOnly) {

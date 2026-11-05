@@ -103,7 +103,10 @@ Set framework retries to zero so a retry does not sign a second payment.
 | --- | --- |
 | 400 / 413 / 422 | Fix the request; reduce size for 413. Do not retry on another model. |
 | 402 with PAYMENT-REQUIRED | Check budget and sign one offer, then retry. Re-sign only after checking the fresh challenge. |
-| 402 without a challenge | Reconcile the submitted payment before signing again. |
+| 402 payment_unfunded | fund_wallet: Fund the wallet and its token account. Nothing was charged for this request. |
+| 402 payment_blockhash_stale | sign_again: On Solana, sign again with a fresh blockhash. Nothing was charged for this request. |
+| 402 payment_replay | check_previous_result: Check the previous result before paying again. Nothing was charged for this request. |
+| 402 payment_invalid | fix_payment: Fix the payment before retrying. Nothing was charged for this request. |
 | 409 payment_duplicate | Check the original result; do not reuse the signature. |
 | 429 free_budget_exhausted | Wait Retry-After; the daily free budget resets at midnight UTC. |
 | 503 | Wait Retry-After where supplied, then retry. No billable answer means no charge. |
@@ -128,3 +131,5 @@ is no on-chain emergency stop. A paused Solana account is unpaused only by a
 new grant signed after the pause.
 
 Claude Code + SingIt MCP in 60 seconds: https://singitai.app/docs/claude-code/
+
+Clients should treat payment_duplicate and payment_replay as the same condition.

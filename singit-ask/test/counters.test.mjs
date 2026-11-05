@@ -98,7 +98,7 @@ test('private auth, observer and public schemas offline without sockets', async 
   const app = createApp({ ...config, statsToken: token }, { facilitatorClient: facilitator, catalogue: null, log() {} });
   const stats = app.locals.healthStats;
   settle(stats, external);
-  const observer = app.router.stack[1].handle;
+  const observer = app.router.stack[2].handle;
   for (const [method, challenge, statusCode, path] of [['POST', true, 402, ROUTE], ['GET', true, 402, ROUTE], ['HEAD', true, 402, ROUTE], ['POST', false, 402, '/unknown'], ['GET', false, 404, '/unknown']]) {
     const res = Object.assign(new EventEmitter(), { statusCode, hasHeader: () => challenge });
     observer({ method, path }, res, () => {}); res.emit('finish');

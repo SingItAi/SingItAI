@@ -19,6 +19,7 @@ from ipaddress import IPv6Address, ip_address
 from typing import Any, Callable, Mapping
 
 from .web_ask import _api_messages
+from .web_api_keys import TOOLS_UNSUPPORTED_MESSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ class FreeModels:
     def answer(self, row: Mapping[str, Any], body: Mapping[str, Any], client: str, error: type) -> tuple[int, dict[str, Any], dict[str, str]]:
         """One free answer for the key's account. `error` is ApiError: a refusal costs nothing and spends nothing."""
         if body.get("tools") or body.get("functions"):
-            raise error(400, "Tools are not offered yet.", code="tools_unsupported")
+            raise error(400, TOOLS_UNSUPPORTED_MESSAGE, code="tools_unsupported")
         model = str(body.get("model"))[len(PREFIX):]
         if model not in self.models:
             raise error(404, "Free answers come from " + ", ".join(PREFIX + m for m in self.models) + ".",

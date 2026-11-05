@@ -6,6 +6,7 @@ Agents and scripts: fetch machine-readable files from https://ask.singitai.app (
 
 Agents with no wallet of their own: use an MCP key with limits your owner sets: https://singitai.app/docs/mcp-key/
 Caps apply only to calls made with the key to SingIt's MCP and /v1 endpoint; they do not limit spending elsewhere or protect an agent's own wallet.
+Developers who pay from their own wallet with @singitai/sdk (npm) or singit (PyPI) set required client-side ceilings, maxPerCallUsd and maxPerDayUsd, checked in their own process before anything is signed.
 Free first call: POST https://ask.singitai.app/v1/chat/completions with model free/deepseek-v4.1-flash; no key or wallet, subject to the free allowance below.
 
 Agent instructions: https://ask.singitai.app/SKILL.md
@@ -88,7 +89,7 @@ Agents with their own wallet can skip the key: pay per answer over x402 at https
 
 JSON errors include a stable code: OpenAI-style error.code, Messages-format error.code, or a top-level code alongside a string error. Tolerate unknown codes. Reference: https://singitai.app/docs/errors/
 
-A 402 challenge body includes x402Version and accepts, equal to the corresponding fields in the decoded PAYMENT-REQUIRED header, plus error: "payment_required" and code: "payment_required". A settlement-failure 402 has only error and code, with no challenge header.
+A 402 challenge body includes x402Version and accepts, equal to the corresponding fields in the decoded PAYMENT-REQUIRED header, plus error: "payment_required" and code: "payment_required". A settlement-failure 402 has error, code, action and message, with no challenge header.
 
 429s include Retry-After (seconds). Free-tier daily 429s and /v1/prices 429s include X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset (Unix seconds). Free-tier busy 429s have only Retry-After: 5. Prices use fixed minute windows and Retry-After: 60.
 
@@ -96,7 +97,7 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 | --- | --- | --- | --- | --- |
 | 400 / 413 | invalid_json, invalid_request, payload_too_large | Invalid JSON, input or body size | No | Fix request; reduce body for 413. |
 | 401 / 403 | unauthorized, forbidden | Authentication or access refused | No answer charge | Check access. |
-| 402 | payment_required | Payment challenge or refusal | No answer charge on refusal | Inspect PAYMENT-REQUIRED; check budget before signing. Without a challenge, reconcile submitted payment. |
+| 402 | payment_required, payment_unfunded, payment_blockhash_stale, payment_replay, payment_invalid | Payment challenge or refusal | Nothing was charged for this request on refusal | Inspect PAYMENT-REQUIRED; check budget before signing. Without a challenge, reconcile submitted payment. |
 | 404 | model_not_found, not_found | Model, route or symbol unavailable | No | Check route or catalogue. |
 | 409 | payment_duplicate, stale_payment_permit | Signature used or permit nonce stale | No new charge | Check original result; wait for settlement before signing a fresh permit. |
 | 422 | max_tokens_too_small, invalid_request | No answer within output budget or invalid request | No | Fix request; raise max_tokens within budget. |
@@ -139,3 +140,12 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 - [How to limit what an AI agent can spend](https://singitai.app/limit-ai-agent-spending/)
 - [x402 payments with a budget for AI agents](https://singitai.app/x402-budget-for-agents/)
 <!-- generated:model-pages:end -->
+
+## Payment refusal codes
+
+Refused payments keep error: "payment_required" and add a specific code, action and safe message, also exposed in X-SingIt-Error. Nothing was charged for this request, on Base or Solana: the x402 middleware holds the answer until settlement succeeds. Clients should treat payment_duplicate and payment_replay as the same condition.
+
+- payment_unfunded: fund_wallet. Fund the wallet and its token account.
+- payment_blockhash_stale: sign_again. On Solana, sign again with a fresh blockhash.
+- payment_replay: check_previous_result. Check the previous result before paying again.
+- payment_invalid: fix_payment. Fix the payment before retrying.

@@ -113,6 +113,13 @@ class FreeAnswerTests(FreeFixture):
         self.assertEqual((status, type(out).__name__, headers["X-SingIt-Free"]), (200, "Stream", "true"))
         self.assertTrue(out.decode().endswith("data: [DONE]\n\n"))
 
+    def test_free_and_fallback_tools_guidance_is_identical(self):
+        with self.assertRaises(ApiError) as free:
+            self.free_ask({**FREE_BODY, "tools": [{}]})
+        with self.assertRaises(ApiError) as paid:
+            self.api.keys._chat({}, {"tools": [{}]})
+        self.assertEqual(free.exception.message, paid.exception.message)
+
     def test_other_models_tools_and_long_questions_are_refused_before_asking(self):
         cases = {
             "another model": ({**FREE_BODY, "model": "free/claude-opus-5.5"}, 404),
@@ -124,6 +131,10 @@ class FreeAnswerTests(FreeFixture):
             with self.subTest(name), self.assertRaises(ApiError) as caught:
                 self.free_ask(body)
             self.assertEqual(caught.exception.status, status)
+            if name == "tools":
+                self.assertEqual(caught.exception.code, "tools_unsupported")
+                self.assertIn("x402", caught.exception.message)
+                self.assertIn("/v1/messages", caught.exception.message)
         self.assertEqual(self.upstream.sent, [])
         self.assertEqual(self.free._total, 0, "a refusal is not counted")
 
