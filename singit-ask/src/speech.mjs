@@ -1,3 +1,4 @@
+import { routeCopy } from "./listing-snapshot.mjs";
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt speech: text read aloud by any of Surplus's voice models, sold over x402 at the model's list price for the
 // text's length + 30% + the network's settlement fee, and made on Surplus with this service's own key.
@@ -81,7 +82,7 @@ export function speechPrice(listAtomic, network) {
 }
 
 // Keep discovery descriptions within 160 characters, capability first (see app.mjs).
-const DESCRIPTION = "Text-to-speech API (Kokoro, ElevenLabs, Gemini and more), OpenAI speech format. Pay per request in USDC on Base or Solana, no key.";
+const DESCRIPTION = routeCopy("/v1/audio/speech").description;
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["venice-kokoro-tts"], description: "A speech model id from GET /v1/audio/models." },
@@ -161,7 +162,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
     ],
     mimeType: "audio/mpeg", description: DESCRIPTION, serviceName: SERVICE_NAMES[SPEECH_ROUTE], iconUrl: ICON_URL,
-    tags: discoveryTags("text-to-speech", "tts", "speech", "audio", "openai-compatible", "pay-per-use", "solana", "base",
+    tags: discoveryTags(...routeCopy("/v1/audio/speech").tags, "text-to-speech", "tts", "speech", "audio", "openai-compatible", "pay-per-use", "solana", "base",
                         "singit"),
     // The answer is audio bytes, not JSON, so there is no JSON output example to give.
     extensions: declareDiscoveryExtension({ bodyType: "json",

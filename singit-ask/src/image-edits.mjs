@@ -1,3 +1,4 @@
+import { routeCopy } from "./listing-snapshot.mjs";
 import { readBoundedJson, validImage } from "./media-response.mjs";
 // E1: image edits; exact offers follow images.mjs, with settlement after upstream success.
 import { paymentDigest, reservePayment } from "./media-payment-replay.mjs";
@@ -17,7 +18,7 @@ class RequestError extends Error {
 }
 
 // Keep discovery descriptions within 160 characters, capability first (see app.mjs).
-const DESCRIPTION = "Image editing API in OpenAI JSON format. PNG, JPEG and WEBP inputs, optional mask, up to four images. USDC on Base or Solana, no key.";
+const DESCRIPTION = routeCopy("/v1/images/edits").description;
 
 import { readEditRequest, INPUT_SCHEMA, EXAMPLE, OUTPUT_SCHEMA, OUTPUT_EXAMPLE, listAtomic as estimateListAtomic, maxListAtomic, catalogueCeiling } from "./image-edits-request.mjs";
 export const REQUEST_BODY = () => ({ required: true, content: { "application/json": { schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
@@ -70,7 +71,7 @@ export function addRoutes(app, config, { facilitatorClient, publicClient, catalo
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 180, price: price(SOLANA) },
     ],
     mimeType: "application/json", description: DESCRIPTION, serviceName: "SingIt Image Editing", iconUrl: ICON_URL,
-    tags: discoveryTags("image-editing", "image-to-image", "image", "openai-compatible", "pay-per-use", "solana",
+    tags: discoveryTags(...routeCopy("/v1/images/edits").tags, "image-editing", "image-to-image", "image", "openai-compatible", "pay-per-use", "solana",
                         "base", "singit"),
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
