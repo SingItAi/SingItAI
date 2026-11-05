@@ -222,6 +222,8 @@ export class ModelCatalogue {
     this.models = null;
     this.rawModels = null;
     this.bookPrices = new Map();
+    this.audioCatalogue = null; // raw music/SFX pricing and async submission capabilities
+    this.audioCatalogueAt = null;
     this.images = null;   // image models, from the same list
     this.voice = null;    // { speech, transcription } models, from the same list
     this.videos = null;   // text-to-video models, from the same list
@@ -247,6 +249,8 @@ export class ModelCatalogue {
         if (models.size) { this.rawModels = models; this.decorate(); this.loadedAt = this.now(); }
         if (images.size) this.images = images;
         if (response.ok && Array.isArray(body?.data)) {
+          this.audioCatalogue = new Map(body.data.map(entry => [entry.id, entry]));
+          this.audioCatalogueAt = this.now();
           this.edits = parseEditModels(body); this.embeddings = parseEmbeddingModels(body);
         }
         const voice = parseVoiceModels(body);

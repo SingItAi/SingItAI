@@ -219,6 +219,9 @@ node --env-file=.env src/server.mjs
 | `SURPLUS_API_KEY` | Surplus buyer key (`inf_…`) with access to the configured model. Fund its workspace's deposited USDC balance; USDC in the linked wallet alone is not a prepaid balance. |
 | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` | Coinbase CDP facilitator credentials, required. The service reuses the `cdp-x402-service` installation of `@coinbase/x402`. |
 | `SINGIT_ASK_DIRECT_SOLANA` | Set `1` to enable the private direct Solana route with CDP metering. |
+| `SINGIT_ASK_AUDIO_SOLD` | Set exactly `1` to sell music/SFX when ready. Unset/default: 503 before payment and empty audio generation models/prices/discovery. |
+| `SINGIT_ASK_AUDIO_DISCOVERABLE` | Set exactly `1`, together with audio sold and ready, to list music/SFX x402 resources. Unset/default: direct paid POST and known model-list URL still work when ready, but discovery omits the routes. |
+| `SINGIT_ASK_AUDIO_MODELS` | Optional comma-separated public or upstream music/SFX ids. Unset permits all pinned models; set empty permits none. Unknown ids never become ready. |
 | `SINGIT_ASK_VIDEO_SOLD` | Set `1` to sell `/v1/video/generations`. Unset (default): video is off. `POST` answers 503 `video_disabled` with no payment offer, `GET /v1/video/models` answers 503, and video is left out of openapi, discovery and `llms.txt`. Jobs that were already paid can still be polled. Off since the provider failures on 27.10.2026; enabling sales remains an operator decision. |
 | `SINGIT_ASK_VIDEO_DISCOVERABLE` | Only with `SINGIT_ASK_VIDEO_SOLD=1`: set `1` to list `/v1/video/generations` for x402 discovery (402 on GET/HEAD and the empty probe, `/.well-known/x402`, `llms.txt`). Unset (default): sold (if on), but not listed. |
 | `SINGIT_ASK_QUOTE_TOKEN` | Dedicated server-only authentication secret, shared by merchant and gateway (at least 32 characters). |
@@ -480,10 +483,10 @@ Text is required (1–1000 characters); duration is 0.5–22 seconds. Formats: m
 ogg, flac, aac, m4a. Default model: `elevenlabs/sound-effects-v2`.
 
 `POST /v1/audio/generations` accepts `{model?, prompt, lyrics?, instrumental?, duration_seconds?}`.
-Prompt is required (1–10000 characters); duration is 5–240 seconds (default 60).
+Prompt is required (1–2000 characters); duration is 5–240 seconds (default 60).
 Default `minimax/music-2` requires nonempty lyrics and does not accept `instrumental`.
 Music 2.5 and 2.6 accept instrumental mode; instrumental requests cannot include lyrics.
-Lyrics are capped at 20000 characters. Invalid requests return 422 before payment.
+Lyrics are capped at 5000 characters. Invalid requests return 422 before payment.
 
 Both routes offer **exact only on Base**. Solana is refused for both routes: a recent
 blockhash lasts roughly 150 blocks (about 60–90 seconds), shorter than the 180-second
@@ -492,14 +495,26 @@ validity. No signed Solana transaction is held across generation. Supporting Sol
 requires settlement **before** job submission and a durable refund/recovery design;
 that flow is not implemented here.
 
-The draft is disabled by default. `createApp` integrations must supply a synchronous
-`config.audioGenerationReady(upstreamModelId, { listAtomic })` snapshot returning exactly `true`
-only while Surplus credit, the model's route/seller, submission support and the pinned
-flat price are confirmed. Missing, throwing, stale or unknown readiness must fail closed.
-The standard server supplies no readiness adapter, so cannot sell this draft yet.
-Catalogue rejected/suspended models and models absent from its known seller snapshot
-also stay hidden. This gate applies to models,
-pricing, discovery and pre-payment requests. No readiness check calls the network.
+The draft is disabled unless `SINGIT_ASK_AUDIO_SOLD=1`. The standard server installs
+`config.audioGenerationReady(upstreamModelId, { listAtomic })`, returning exactly `true`
+only for a pinned model/price, the optional allowlist, and sufficient prepaid credit.
+A free authenticated `GET /v1/payments/balance` refresh runs immediately after app creation
+when sold, then every 30 seconds (10-second timeout). Only a nonnegative integer string
+`credit_balance_usdc` is accepted, in micro-USDC. Missing, failed, unreadable or older
+than 60 seconds fails closed; failed refreshes clear the previous snapshot. Discovery
+and list paths never await this network read. Snapshot credit is not a reservation:
+concurrent jobs may exhaust credit and then fail without buyer settlement.
+
+The standard catalogue's background five-minute refresh also confirms the upstream
+entry still supports async music/SFX and has `media_unit: job` at the pinned price;
+missing metadata or metadata older than six minutes fails closed. Catalogue rejection
+and suspension checks remain, but its chat-only `served` set does not gate audio.
+The supported endpoint/schema and initial route support come from the offline official
+docs/catalogue, not a paid submission probe; transient seller failures remain possible.
+Integrations supplying their own adapter must uphold these readiness checks too.
+
+Without `SINGIT_ASK_AUDIO_DISCOVERABLE=1`, ready models remain visible at the known
+models/pricing URLs and direct POST works, but x402 resource lists omit both routes.
 
 | Public model | Surplus model | Draft Base USDC |
 | --- | --- | ---: |
@@ -527,13 +542,28 @@ No credit, failed jobs, timeout, invalid audio and oversized artifacts return 50
 x402 does not settle. No retries submit a second job. Payment replay reservations
 are process-local and shared with edits/embeddings.
 
-**OPEN QUESTIONS (offline implementation):** the supplied docs describe music job polling
-and artifact downloads, but omit the submission schema. `surplusAudioRequest` isolates
-our assumed fields: `model,prompt,lyrics,instrumental,duration_seconds` for music,
-`model,text,duration_seconds,response_format` for effects, both submitted to
-`POST /v1/music/generations`. Confirm the sound-effects submission endpoint and format
-support, the duration field and flat per-job billing at the 240-second cap before a
-live rollout. No live request was made. A production readiness/price adapter remains a rollout blocker.
+**RESOLVED (free docs fetched 2026-11-05):**
+- Submission uses `model,prompt,duration_seconds?,lyrics_prompt?,force_instrumental?`.
+  Public SFX `text` maps to `prompt`; public `lyrics`/`instrumental` map to the official names.
+  Music prompt over 2000 or lyrics over 5000 characters returns 422 before payment;
+  SFX retains its stricter 1000-character public limit. No input is truncated.
+- Music and SFX both use `POST /v1/music/generations`; polling/artifacts are unchanged.
+- Flat billing through the public 240-second music cap is confirmed by catalogue
+  `media_unit: "job"` and market per-job benchmark prices. Duration is a generation
+  parameter, not a billing dimension; pins stay unchanged.
+
+Sources: [API reference](https://www.surplusintelligence.ai/docs/api-reference/music-generations),
+market pages for [ElevenLabs SFX](https://www.surplusintelligence.ai/markets/venice-elevenlabs-sound-effects-v2),
+[MiniMax 2](https://www.surplusintelligence.ai/markets/venice-minimax-music-v2) and
+[MiniMax 2.6](https://www.surplusintelligence.ai/markets/venice-minimax-music-v26),
+and owner-provided offline `surplus-m4-music-sfx.json` / `surplus-music-generations-docs-2026-11-05.md`
+in `/workspace/singit/catalogs`.
+Remaining assumptions: the SFX public text-to-prompt translation preserves buyer intent;
+MiniMax market pages advertise only model+prompt, so lyrics/instrumental support relies
+on the API reference and offline model capabilities. Requested SFX `response_format`
+is accepted publicly but not sent upstream (not in the official schema); selection is
+unconfirmed and returned Content-Type follows actual bytes. No live or paid call was made.
+
 There is no prepayment or refund on these Base routes: failed generation/download
 returns an error before settlement; the x402 middleware buffers successful bytes
 until settlement succeeds. A settlement failure must not release the artifact.

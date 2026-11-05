@@ -29,12 +29,11 @@ export const audioPrices = () => AUDIO_MODELS.map(m => ({ ...m, route: m.kind ==
 // submission support, current flat pricing and a healthy route for each upstream model.
 // No live probe is made by discovery. Missing/unknown readiness is unavailable.
 export function availableAudioPrices(config, catalogue) {
-  if (!config.surplusKey || !config.surplusUrl || !config.payToBase) return [];
+  if (config.audioSold !== true || !config.surplusKey || !config.surplusUrl || !config.payToBase) return [];
   return audioPrices().filter(m => {
     try { return config.audioGenerationReady?.(m.upstream, { listAtomic: m.listAtomic }) === true
       && !catalogue?.isUnservable?.(m.upstream)
-      && !catalogue?.isSuspended?.(m.upstream)
-      && (!catalogue?.served || catalogue.served.has(m.upstream)); } catch { return false; }
+      && !catalogue?.isSuspended?.(m.upstream); } catch { return false; }
   });
 }
 const invalid = message => { throw Object.assign(new Error(message), { status: 422 }); };
@@ -43,7 +42,7 @@ export function readAudioGeneration(body, kind) {
   const model = AUDIO_MODELS.find(m => m.id === (body.model ?? (kind === 'music' ? 'minimax/music-2' : 'elevenlabs/sound-effects-v2')) && m.kind === kind);
   if (!model) invalid('Unknown model for this route.');
   const field = kind === 'music' ? 'prompt' : 'text';
-  const limit = kind === 'music' ? 10000 : 1000;
+  const limit = kind === 'music' ? 2000 : 1000;
   if (typeof body[field] !== 'string' || !body[field].trim() || body[field].length > limit) invalid(`${field} must contain 1–${limit} characters.`);
   const request = { model: model.id, [field]: body[field] };
   const duration = body.duration_seconds;
@@ -53,7 +52,7 @@ export function readAudioGeneration(body, kind) {
     request.duration_seconds = duration;
   } else if (kind === 'music') request.duration_seconds = 60;
   if (kind === 'music') {
-    if (body.lyrics !== undefined && (typeof body.lyrics !== 'string' || body.lyrics.length > 20000)) invalid('lyrics must be a string of up to 20000 characters.');
+    if (body.lyrics !== undefined && (typeof body.lyrics !== 'string' || body.lyrics.length > 5000)) invalid('lyrics must be a string of up to 5000 characters.');
     if (model.lyrics_required && !body.lyrics?.trim()) invalid('This model requires lyrics.');
     if (body.instrumental !== undefined && (typeof body.instrumental !== 'boolean' || !model.instrumental)) invalid('This model does not support that instrumental parameter.');
     if (body.instrumental && body.lyrics?.trim()) invalid('Instrumental music cannot include lyrics.');
@@ -65,22 +64,21 @@ export function readAudioGeneration(body, kind) {
   }
   return { model, request };
 }
-// OPEN QUESTION: offline docs omit the submission schema. Both kinds use Surplus's music job endpoint;
-// keep the assumed field translation here so upstream confirmation needs one change.
+// Official music-generations fields; the buyer API retains text/lyrics/instrumental.
 export function surplusAudioRequest(request) {
   const model = AUDIO_MODELS.find(m => m.id === request.model);
-  const body = { model: model.upstream };
-  const fields = model.kind === 'music' ? ['prompt', 'lyrics', 'instrumental', 'duration_seconds']
-    : ['text', 'duration_seconds', 'response_format'];
-  for (const field of fields) if (request[field] !== undefined) body[field] = request[field];
+  const body = { model: model.upstream, prompt: request.prompt ?? request.text };
+  for (const [publicField, upstreamField] of [['lyrics', 'lyrics_prompt'], ['instrumental', 'force_instrumental'], ['duration_seconds', 'duration_seconds']]) {
+    if (request[publicField] !== undefined) body[upstreamField] = request[publicField];
+  }
   return body;
 }
 export const audioSchema = kind => ({ type: 'object', required: [kind === 'music' ? 'prompt' : 'text'], properties: {
   model: { type: 'string', description: 'A public model id from the generation models list.', enum: AUDIO_MODELS.filter(m => m.kind === kind).map(m => m.id), default: kind === 'music' ? 'minimax/music-2' : 'elevenlabs/sound-effects-v2' },
-  [kind === 'music' ? 'prompt' : 'text']: { type: 'string', minLength: 1, maxLength: kind === 'music' ? 10000 : 1000, description: kind === 'music' ? 'Describe the song to generate.' : 'Describe the sound effect to generate.' },
+  [kind === 'music' ? 'prompt' : 'text']: { type: 'string', minLength: 1, maxLength: kind === 'music' ? 2000 : 1000, description: kind === 'music' ? 'Describe the song to generate.' : 'Describe the sound effect to generate.' },
   duration_seconds: { type: 'number', description: 'Audio duration in seconds; flat price per job.', minimum: kind === 'music' ? 5 : 0.5, maximum: kind === 'music' ? 240 : 22, ...(kind === 'music' ? { default: 60 } : {}) },
-  ...(kind === 'music' ? { lyrics: { type: 'string', maxLength: 20000, description: 'Required for music-2. Omit for instrumental.' }, instrumental: { type: 'boolean', description: 'Supported by music-2.5 and music-2.6 only.' } }
-    : { response_format: { type: 'string', description: 'Requested audio format; response Content-Type follows validated bytes.', enum: ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'] } }),
+  ...(kind === 'music' ? { lyrics: { type: 'string', maxLength: 5000, description: 'Required for music-2. Omit for instrumental.' }, instrumental: { type: 'boolean', description: 'Supported by music-2.5 and music-2.6 only.' } }
+    : { response_format: { type: 'string', description: 'Preferred audio format (selection unconfirmed upstream); response Content-Type follows validated bytes.', enum: ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'] } }),
 } });
 export const audioExample = kind => kind === 'music' ? { prompt: 'A gentle folk song', lyrics: 'Morning light across the sea', duration_seconds: 60 } : { text: 'Gentle rain on a tin roof', duration_seconds: 3 };
 export const audioOpenapi = (paidErrors, invalidResponse) => Object.fromEntries(AUDIO_ROUTES.map((route, i) => {

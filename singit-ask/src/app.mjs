@@ -1065,7 +1065,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           + "https://app.singitai.app/app/. Only the wallet spend report on app.singitai.app uses it." } } },
     });
   });
-  const audioRoutes = () => [...new Set(availableAudioPrices(config, catalogue).map(m => m.route))];
+  const audioRoutes = () => config.audioSold && config.audioDiscoverable
+    ? [...new Set(availableAudioPrices(config, catalogue).map(m => m.route))] : [];
   app.get("/.well-known/x402", open, (req, res) => {
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
