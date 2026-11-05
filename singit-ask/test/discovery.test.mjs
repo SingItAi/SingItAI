@@ -168,7 +168,7 @@ test("a browser opening a discoverable route with GET gets the same paywall page
 // Coinbase's Bazaar ranks listings by metadata completeness; a description that spends half its budget on billing
 // reads as incomplete on what the endpoint does. Every discoverable route's resource description must stay short
 // and billing-free (billing lives in openapi.json and /.well-known/x402 instead).
-// All 22 listed routes stay within 160 characters; CDP rejects over 500.
+// All listed routes stay within 160 characters; CDP rejects over 500.
 const limit = () => 160;
 const BILLING_WORDS = /\b(fee|markup|ceiling|settlement)\b|%/i;
 

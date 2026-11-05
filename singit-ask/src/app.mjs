@@ -1,3 +1,4 @@
+import { upstreamModelId } from "./model-aliases.mjs";
 import { imagePrice } from "./images.mjs";
 import { addRoutes as addEditRoutes, REQUEST_BODY as EDIT_BODY } from "./image-edits.mjs";
 import { addRoutes as addEmbeddingRoutes, REQUEST_BODY as EMBEDDING_BODY } from "./embeddings.mjs";
@@ -225,7 +226,7 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                  ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
-      body: JSON.stringify({ model, messages, max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
+      body: JSON.stringify({ model: upstreamModelId(model), messages, max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
                              ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
                                : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
                              ...extra, si_route: { objective: "price" } }),

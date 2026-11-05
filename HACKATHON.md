@@ -442,7 +442,9 @@ Round 6 review (uncommitted, no PR): the cross-route reservation regression now 
 
 PR SingItAI #218 (`feat/images-edits-embeddings`), review fixes after merging main (5 November 2026): billable base64 images now require complete PNG/JPEG/WEBP containers (PNG also checks chunk CRCs and bounded decompression); embeddings must decode to whole finite float32 vectors; replay reservations are normalized (network, asset, signer, nonce), shared by both routes and capped at 10,000 entries without evicting live identities; upstream bodies are read with byte limits; /pricing.json lists embeddings. Verification: singit-ask 723 tests pass (solana-direct needs @solana/kit, not installed locally), website 470/470, scripts 46/46, llms check ok (llms.txt 13,982 bytes). No payment or live upstream call. Limitations: no full JPEG/WEBP pixel decoding or HTTPS URL check; reservations are process-local.
 
-## M4 music and sound effects — 5 November 2026
+## Post-competition M3 draft — 5 November 2026
+
+The merged SingIt Ask gateway has a local draft addition for NVIDIA Nemotron 3.5 Lightning on branch `feat/models-m3` (base `08f53bc`). This extends existing Surplus chat functionality; it is not new Solana wallet work or a competition-period claim. [Draft review, offline verification and owner questions](docs/m3-nemotron-review.md) records the public/upstream mapping, paid terms and metadata limitations. Commit/PR link is pending: this task explicitly prohibits commits, pushes and network access. The draft is not approved for merge. Mock payment checks cover Base and Solana; live upstream cap acceptance and full listener-dependent suites remain unverified.## M4 music and sound effects — 5 November 2026
 
 Uncommitted work on `feat/music-sfx-m4` (no commit or PR, as requested), after the
 competition period: new SingIt Ask routes `/v1/audio/sound-effects` and

@@ -1,3 +1,4 @@
+import { upstreamModelId } from "./model-aliases.mjs";
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
@@ -291,7 +292,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                      ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify(body), signal: AbortSignal.timeout(Math.max(1, started + FORMAT_LIMITS.timeoutMs - Date.now())) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
+          body: JSON.stringify({ ...body, model: upstreamModelId(body.model) }), signal: AbortSignal.timeout(Math.max(1, started + FORMAT_LIMITS.timeoutMs - Date.now())) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
         let response = await send();
         // Read for every status: a long request can come back HTTP 200 with an error body.
         let data = await response.json().catch(() => null);
