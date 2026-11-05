@@ -51,7 +51,7 @@ export function parseModels(data) {
     models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""),
       contextLength: Number(entry.context_length) || 0, promptUsdPerToken: prompt, completionUsdPerToken: completion,
       ...(prompt <= 0 || completion <= 0 ? { listZero: true } : {}),
-      tags: capabilities(entry, inputs), params: entry.supported_parameters.map(String) });
+      features: entry.supported_features, inputs, tags: capabilities(entry, inputs), params: entry.supported_parameters.map(String) });
   }
   return models;
 }

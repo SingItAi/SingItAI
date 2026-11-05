@@ -21,7 +21,8 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { probeNote, addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
 import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue, priceGuard, unservableError } from "./catalogue.mjs";
-import { LIMITS } from "./limits.mjs";
+import { normalizeAgent, toolCalls } from "./agent-chat.mjs";
+import { AGENT_LIMITS, LIMITS } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
 import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
@@ -54,24 +55,33 @@ export class RequestError extends Error {
 }
 
 // The messages and size of an answer, or a RequestError: checked before the model is asked.
-export function readRequest(body, { allowFallback = true } = {}) {
+export function readRequest(body, { allowFallback = true, agent = false } = {}) {
   if (!body || typeof body !== "object") throw new RequestError(400, "Send a JSON body with messages.");
   if (body.stream) throw new RequestError(400, "Streaming is not offered; send stream: false.");
+  const limits = agent ? AGENT_LIMITS : LIMITS;
+  if (!agent) {
+    if (['tools','tool_choice','functions','function_call','parallel_tool_calls'].some(k => body[k] != null) || (Array.isArray(body.messages) && body.messages.some(m => m?.role === 'tool')))
+      throw Object.assign(new RequestError(400, 'This route does not take tools; use POST /v1/chat/completions (the paid agent route).'), { code: 'tools_unsupported' });
+    if (Array.isArray(body.messages) && body.messages.some(m => Array.isArray(m?.content)))
+      throw Object.assign(new RequestError(400, 'This route does not take content blocks; use POST /v1/chat/completions (the paid agent route).'), { code: 'content_blocks_unsupported' });
+  }
   const messages = body.messages;
-  if (!Array.isArray(messages) || messages.length === 0 || messages.length > LIMITS.messages) {
-    throw new RequestError(400, `Send 1 to ${LIMITS.messages} messages.`);
+  if (!Array.isArray(messages) || messages.length === 0 || messages.length > limits.messages) {
+    throw new RequestError(400, `Send 1 to ${limits.messages} messages.`);
   }
   let chars = 0;
-  const clean = messages.map((message) => {
+  const normalized = agent ? normalizeAgent(body, RequestError) : null;
+  const clean = normalized?.messages ?? messages.map((message) => {
     if (!message || !ROLES.has(message.role) || typeof message.content !== "string") {
       throw new RequestError(400, "Each message needs a role (system, user or assistant) and text content.");
     }
     chars += message.content.length;
     return { role: message.role, content: message.content };
   });
-  if (chars > LIMITS.chars) throw new RequestError(400, `Keep the messages under ${LIMITS.chars} characters in all.`);
+  chars = normalized?.chars ?? chars;
+  if (chars > limits.chars) throw new RequestError(400, `Keep the messages under ${LIMITS.chars} characters in all.`);
   const asked = Number(body.max_tokens ?? LIMITS.defaultTokens);
-  const maxTokens = Number.isInteger(asked) && asked > 0 ? Math.min(asked, LIMITS.maxTokens) : LIMITS.defaultTokens;
+  const maxTokens = Number.isInteger(asked) && asked > 0 ? Math.min(asked, limits.maxTokens) : LIMITS.defaultTokens;
   const modelOmitted = body.model === undefined || body.model === null;
   const model = modelOmitted || body.model === "singit-ask" ? undefined : body.model;
   if (model !== undefined && (typeof model !== "string" || !model.trim() || model.length > 120)) {
@@ -91,7 +101,7 @@ export function readRequest(body, { allowFallback = true } = {}) {
     }
     fallbackModels = values.map(id => id.trim());
   }
-  return { ...(fallbackModels ? { fallbackModels } : {}), ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, modelOmitted, model: model?.trim(), messageCount: clean.length };
+  return { ...(normalized ? { request: normalized, flags: normalized.flags } : {}), ...(fallbackModels ? { fallbackModels } : {}), ...(Object.hasOwn(body, "min_tier") ? { minTier: body.min_tier } : {}), messages: clean, maxTokens, chars, modelOmitted, model: model?.trim(), messageCount: clean.length };
 }
 
 // The model an answer is bought from and what it may cost. No model, or the default one, is still looked up on
@@ -202,7 +212,7 @@ const defaultFallbackNote = (config) => {
     + "X-SingIt-Fallback: off to stay strictly pinned.";
 };
 
-export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs } = {}) {
+export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs, agent } = {}) {
   const sends = (name) => !params || params.includes(name);
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
   const off = Object.hasOwn(REASONING_OFF, model) ? REASONING_OFF[model] : null;
@@ -217,7 +227,10 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                  ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
-      body: JSON.stringify({ model, messages, max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
+      body: JSON.stringify({ model, messages,
+        ...(agent?.tools !== undefined ? { tools: agent.tools } : {}),
+        ...(agent?.toolChoice !== undefined ? { tool_choice: agent.toolChoice } : {}),
+        ...(agent?.parallelToolCalls !== undefined ? { parallel_tool_calls: agent.parallelToolCalls } : {}), max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
                              ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
                                : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
                              ...extra, si_route: { objective: "price" } }),
@@ -241,6 +254,7 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
   let data = await response.json().catch(() => null);
   let choice = data?.choices?.[0];
   if (retryOnReasoning && response.ok && !data?.error && choice?.finish_reason === "length"
+      && !toolCalls(choice.message?.tool_calls)
       && (typeof choice.message?.content !== "string" || !choice.message.content.trim()) && deadline - Date.now() > 8000) {
     // The service eats the first attempt; exposure is bounded by one extra call at <= 2x budget.
     budget = retryBudget(budget); retried = true;
@@ -252,15 +266,16 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
     const code = typeof data?.error?.code === "string" ? data.error.code : "upstream_error";
     throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
-  const content = choice.message?.content;
-  if (typeof content !== "string" || !content.trim()) {
+  const calls = toolCalls(choice.message?.tool_calls);
+  const content = typeof choice.message?.content === "string" ? choice.message.content : null;
+  if (!calls && (typeof content !== "string" || !content.trim())) {
     const code = choice.finish_reason === "length" ? "max_tokens_spent_reasoning" : "no_text";
     throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
   // The cost is in the body, and in a header too (docs: x-si-buyer-cost-micro); billUsage reads the body's field.
   const header = response.headers?.get?.("x-si-buyer-cost-micro");
   const usage = data.usage?.buyer_cost_micro == null && header != null ? { ...data.usage, buyer_cost_micro: header } : data.usage ?? null;
-  return { ...(retried ? { retried: true } : {}), content, finishReason: choice.finish_reason ?? "stop", usage };
+  return { ...(retried ? { retried: true } : {}), content, ...(calls ? { message: { role: "assistant", content, tool_calls: calls } } : {}), finishReason: choice.finish_reason ?? "stop", usage };
 }
 
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
@@ -286,6 +301,36 @@ const INPUT_SCHEMA = {
   required: ["messages"],
 };
 
+// Separate objects keep free and per-model routes on the legacy envelope.
+const AGENT_INPUT_SCHEMA = structuredClone(INPUT_SCHEMA);
+const functionNameSchema = { type: 'string', pattern: '^[A-Za-z0-9_.-]{1,64}$' };
+const callSchema = { type: 'object', required: ['id','type','function'], properties: {
+  id: { type: 'string', minLength: 1, maxLength: 64 }, type: { const: 'function', type: 'string' },
+  function: { type: 'object', required: ['name','arguments'], properties: { name: functionNameSchema, arguments: { type: 'string' } } } } };
+const blocksSchema = { type: 'array', items: { oneOf: [
+  { type: 'object', required: ['type','text'], properties: { type: { type: 'string', const: 'text' }, text: { type: 'string' } } },
+  { type: 'object', required: ['type','image_url'], properties: { type: { type: 'string', const: 'image_url' }, image_url: {
+    type: 'object', required: ['url'], properties: { url: { type: 'string', pattern: '^https:|^data:image/(png|jpeg|webp|gif);base64,', description: 'HTTPS URL or base64 image data URL; at most four images per request.' }, detail: { type: 'string', enum: ['auto','low','high'] } } } } }
+] } };
+Object.assign(AGENT_INPUT_SCHEMA.properties, {
+  messages: { type: 'array', minItems: 1, maxItems: AGENT_LIMITS.messages, description: 'Conversation; at most 100000 characters-equivalent including tools and an estimated 8000 per image. Body limit 128 kb.', items: {
+    type: 'object', required: ['role'], properties: {
+      role: { type: 'string', enum: ['system','developer','user','assistant','tool'], description: 'developer is mapped to system.' },
+      content: { oneOf: [{ type: 'string' }, blocksSchema, { type: 'null' }], description: 'Null or omitted only for assistant tool_calls; tool messages accept strings or text blocks.' },
+      tool_calls: { type: 'array', minItems: 1, maxItems: 64, items: callSchema, description: 'Assistant function calls.' },
+      tool_call_id: { type: 'string', minLength: 1, maxLength: 64, description: 'Required on tool messages.' }
+    } } },
+  max_tokens: { type: 'integer', minimum: 1, maximum: 8192, default: 800, description: 'Output token budget; values above 8192 are clamped. Invalid values default to 800.' },
+  tools: { type: 'array', maxItems: 64, items: { type: 'object', required: ['type','function'], properties: {
+    type: { type: 'string', const: 'function' }, function: { type: 'object', required: ['name'], properties: {
+      name: functionNameSchema, description: { type: 'string', maxLength: 4000 }, parameters: { type: 'object', description: 'JSON Schema for function parameters.' }
+    } } } } },
+  tool_choice: { oneOf: [{ type: 'string', enum: ['none','auto','required'] }, { type: 'object', required: ['type','function'], properties: {
+    type: { type: 'string', const: 'function' }, function: { type: 'object', required: ['name'], properties: { name: functionNameSchema } }
+  } }], description: 'Requires tools; a named function must appear in tools.' },
+  parallel_tool_calls: { type: 'boolean', description: 'Requires tools.' }
+});
+
 const OUTPUT_SCHEMA = {
   type: "object", required: ["choices", "billing"],
   properties: {
@@ -309,6 +354,15 @@ const OUTPUT_SCHEMA = {
     } },
   },
 };
+
+const AGENT_OUTPUT_SCHEMA = structuredClone(OUTPUT_SCHEMA);
+AGENT_OUTPUT_SCHEMA.properties.choices.items.properties.message = {
+  type: 'object', required: ['role','content'], properties: {
+    role: { type: 'string', const: 'assistant' }, content: { type: ['string','null'] },
+    tool_calls: { type: 'array', minItems: 1, maxItems: 64, items: callSchema }
+  }
+};
+AGENT_OUTPUT_SCHEMA.properties.choices.items.properties.finish_reason.description = 'stop, length, or tool_calls.';
 
 // Which scheme to sign for a model, when one is clearly better (pricing.mjs's isUptoPrimary): spread into a model's
 // /pricing.json and /v1/models entries, nothing for the others. Advice only: every offer stays in the 402.
@@ -577,8 +631,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const freeListed = free.models.map((m) => ({ id: FREE_PREFIX + m, object: "model", owned_by: "singit", free: true,
     limits: freeLimits }));
   // The question's shape; where free answers are on, the model field says so (Bazaar and OpenAPI read it).
-  const baseInputSchema = { ...INPUT_SCHEMA, description: probeNote(EXAMPLE.input.max_tokens, config) };
-  const inputSchema = freeOffer ? { ...baseInputSchema, properties: { ...INPUT_SCHEMA.properties,
+  const baseInputSchema = { ...AGENT_INPUT_SCHEMA, description: probeNote(EXAMPLE.input.max_tokens, config).replace("above 1200 counts as 1200", "above 8192 counts as 8192") };
+  const inputSchema = freeOffer ? { ...baseInputSchema, properties: { ...AGENT_INPUT_SCHEMA.properties,
     model: { ...INPUT_SCHEMA.properties.model, description: `${INPUT_SCHEMA.properties.model.description} `
       + `Free to try, no payment: ${freeOffer.models.join(", ")}.` } } } : baseInputSchema;
   // What a payer pays on top of the model's own cost: the markup, and one settlement fee per answer.
@@ -728,14 +782,14 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             + `with no payment, within ${freeOffer.perVisitorPerDay} answers a day per network, ${freeOffer.maxTokens} tokens `
             + `and ${freeOffer.maxChars} characters each.` : ""),
           ...(freeOffer ? { "x-free-models": freeListed } : {}),
-          "x-payment-info": { notes: probeNote(EXAMPLE.input.max_tokens, config), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
+          "x-payment-info": { notes: probeNote(EXAMPLE.input.max_tokens, config).replace("above 1200 counts as 1200", "above 8192 counts as 8192"), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: { required: true, content: { "application/json": {
             schema: { type: "object", ...inputSchema, properties: { ...inputSchema.properties,
               min_tier: { type: "string", enum: TIERS, description: "Minimum tier; only valid with model singit/auto." },
               model: { ...inputSchema.properties.model, description: inputSchema.properties.model.description + " " + AUTO_DESCRIPTION + defaultFallbackNote(config) } } }, example: EXAMPLE.input } } },
           responses: {
             200: { description: "The answer, with what it was charged", headers: { ...autoHeaders, "X-SingIt-Free-Remaining": { description: "Free answers left today for this network; the shared cost budget may end free answers sooner", schema: { type: "integer", minimum: 0 } } },
-                   content: { "application/json": { schema: OUTPUT_SCHEMA, example: EXAMPLE.output } } },
+                   content: { "application/json": { schema: AGENT_OUTPUT_SCHEMA, example: EXAMPLE.output } } },
             ...Object.fromEntries(Object.entries(paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }))
               .map(([status, response]) => [status, { ...response, headers: { ...response.headers, ...autoHeaders } }])),
             429: {
@@ -1128,7 +1182,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }).catch(() => {});
     return answer;
   };
-  const route = { facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };
+  const route = { facilitatorClient, catalogue, config, readRequest: body => readRequest(body, { agent: true }), choose: chooseChat, upstream: learning, fetchImpl, log };
   // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
   addCreditRoute(app, config, { facilitatorClient });
   // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
@@ -1170,7 +1224,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         bodyType: "json",
         input: EXAMPLE.input,
         inputSchema,
-        output: { example: EXAMPLE.output, schema: OUTPUT_SCHEMA },
+        output: { example: EXAMPLE.output, schema: AGENT_OUTPUT_SCHEMA },
       }),
     },
   }, { ...route, offerEmptyProbe: true, probeBody: EXAMPLE.input });
