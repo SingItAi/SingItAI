@@ -75,3 +75,20 @@ Observations as of 1 November 2026:
 6. Run mcp-publisher after merge. Restart the gateway to serve serverInfo 0.1.5 after owner approval.
 
 Registry still has 0.1.4 until the owner approves publishing 0.1.5; the live server reports 0.1.3 until the gateway is restarted with this code. No publishing or restart was performed.
+
+## Spending-limits wording (5 November 2026)
+
+Where the "limits" fact is published, and what each place can say:
+
+- **Route descriptions stay as they are.** Every listed route keeps its description within 160 characters, capability
+  first (`singit-ask/test/app.test.mjs`, `discovery.test.mjs`, `free.test.mjs`); today they are 129 to 153 characters, so a
+  sentence about ceilings does not fit. The ceiling a buyer signs is already named in the text ("you sign a price cap").
+- **`/llms.txt` on ask.singitai.app** has a "Spending limits" section: the 402 quotes the most you can be charged before
+  you sign; `@singitai/sdk` and `singit` take required `maxPerCallUsd` and `maxPerDayUsd` (client-side, checked in the
+  buyer's process before signing); through the MCP server or a SingIt API key the owner sets the key's limits and
+  SingIt's server enforces them. `website/llms.txt` and `llms-full.txt` carry the same SDK sentence.
+- **Nothing here says the limits are enforced on-chain.** The Base AgentAllowance contract limits only SingIt's own agent
+  (see the site's limits pages); SDK ceilings are client-side and key limits are server-side.
+- **agentic.market** reads CDP's catalog: its card for ask.singitai.app shows `description: ""`, `category: ""` and
+  `enriched: false`, so the text cannot be set from this repository. It is a provider-side step; proposed text
+  (258 characters): "Pay-per-answer LLM chat (OpenAI, Anthropic and Responses formats), images, speech and Exa web search over x402 in USDC on Base or Solana, with no API key. The max charge is quoted before signing; the SingIt SDK adds client-side ceilings per call and per day.". Category: Inference.

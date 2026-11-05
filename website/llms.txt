@@ -6,6 +6,7 @@ Agents and scripts: fetch machine-readable files from https://ask.singitai.app (
 
 Agents with no wallet of their own: use an MCP key with limits your owner sets: https://singitai.app/docs/mcp-key/
 Caps apply only to calls made with the key to SingIt's MCP and /v1 endpoint; they do not limit spending elsewhere or protect an agent's own wallet.
+Developers who pay from their own wallet with @singitai/sdk (npm) or singit (PyPI) set required client-side ceilings, maxPerCallUsd and maxPerDayUsd, checked in their own process before anything is signed.
 Free first call: POST https://ask.singitai.app/v1/chat/completions with model free/deepseek-v4.1-flash; no key or wallet, subject to the free allowance below.
 
 Agent instructions: https://ask.singitai.app/SKILL.md
