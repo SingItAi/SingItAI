@@ -163,14 +163,51 @@ function discoveryChallenge(httpServer) {
 // challenge: `routes` is `paymentMiddleware`'s own shape, `{ "POST /the/route": { accepts, mimeType, ... } }`.
 // `discoverable` should mirror whichever check already grants that route's empty-POST probe the same 402 (see
 // `isDiscoveryProbe` above) — a route that does not offer that probe should not advertise itself over GET either.
+const ALLOWANCE_ABI = [{ type: "function", name: "allowance", stateMutability: "view",
+  inputs: [{ name: "owner", type: "address" }, { name: "spender", type: "address" }],
+  outputs: [{ name: "", type: "uint256" }] }];
+const PERMIT2 = "0x000000000022d473030f116ddee9f6b43ac78ba3";
+const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const allowanceServers = new WeakSet();
+// Buyers echo the server's declared extension (`info: { version }`) back whether or not they signed anything for it,
+// so only a payload that carries the signed material counts as sponsored.
+const signedExtension = (extension, field) => typeof extension?.info?.[field] === "string" && extension.info[field].length > 0;
 const statsServers = new WeakSet(), statsRoutes = new WeakMap();
 export function addPaymentRoute(app, routes, server,
-  { discoverable = true, log = console.log, permitGuard = defaultPermitGuard } = {}) {
+  { discoverable = true, log = console.log, permitGuard = defaultPermitGuard, publicClient, allowanceTimeoutMs = 3_000 } = {}) {
   const paths = statsRoutes.get(server) ?? new Set();
   for (const key of Object.keys(routes)) if (key.startsWith("POST ")) paths.add(key.slice(5));
   statsRoutes.set(server, paths);
   app.locals.paidRoutes ??= new Set();
   for (const path of paths) app.locals.paidRoutes.add(path);
+  if (!allowanceServers.has(server)) {
+    allowanceServers.add(server);
+    server.onBeforeVerify(async ctx => {
+      let timer;
+      try {
+        const { requirements, paymentPayload } = ctx;
+        const authorization = paymentPayload?.payload?.permit2Authorization;
+        const extensions = paymentPayload?.extensions;
+        if (!publicClient || requirements?.scheme !== "upto" ||
+            !/^eip155:[0-9]+$/.test(requirements.network) || !authorization ||
+            signedExtension(extensions?.eip2612GasSponsoring, "signature") || signedExtension(extensions?.erc20ApprovalGasSponsoring, "signedTransaction") ||
+            !ADDRESS.test(authorization.from) || !ADDRESS.test(requirements.asset) ||
+            typeof requirements.amount !== "string" || !/^[0-9]+$/.test(requirements.amount)) return;
+        const allowance = await Promise.race([
+          publicClient.readContract({ address: requirements.asset, abi: ALLOWANCE_ABI, functionName: "allowance",
+            args: [authorization.from, PERMIT2], blockTag: "latest" }),
+          new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("timeout")), allowanceTimeoutMs); }),
+        ]);
+        if (typeof allowance !== "bigint" || allowance < 0n || allowance >= BigInt(requirements.amount)) return;
+        const path = ctx.transportContext?.request?.path;
+        const route = statsRoutes.get(server)?.has(path) ? path : "payment";
+        try { log(`singit-ask: ${route} pre-verify allowance too low network=${requirements.network} scheme=upto amount=${requirements.amount}`); } catch {}
+        return { abort: true, reason: "permit2_allowance_required",
+          message: "Include an EIP-2612 permit or approve Permit2 for at least the ceiling. Nothing was charged." };
+      } catch { /* An unavailable or unreadable allowance leaves verification to the facilitator. */ }
+      finally { clearTimeout(timer); }
+    });
+  }
   if (!statsServers.has(server)) {
     statsServers.add(server);
     const record = ok => ctx => {
@@ -266,7 +303,7 @@ export function perRequest(quote) {
 // `makeOffers(quotes, probeFallback)`: `probeFallback(bucket, network)` is the discovery probes' price for that
 // offer (see `exampleProbe`), present only when `probeBody` is given; without it the probes keep the standing ceiling.
 export function addUsageRoute(app, route, makeOffers, details, { facilitatorClient, catalogue, config, readRequest,
-  choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log,
+  choose = async i => ({ ...i, model: config.model, info: null }), quotes = new WeakMap(), upstream, fetchImpl, log, publicClient,
   offerEmptyProbe = false, probeBody }) {
   const probeFallback = probeBody === undefined ? undefined : exampleProbe({ probeBody, readRequest, choose, config,
     exactOutputFraction: config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION });
@@ -317,7 +354,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     }
   });
   addPaymentRoute(app, { [`POST ${route}`]: { accepts: offers, mimeType: "application/json", ...details } }, server,
-    { discoverable: offerEmptyProbe, log });
+    { discoverable: offerEmptyProbe, log, publicClient });
   app.post(route, async (req, res) => {
     const started = Date.now();
     try {

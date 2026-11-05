@@ -175,7 +175,7 @@ const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
     exaAtomic: { type: "string" }, markupAtomic: { type: "string" }, feeAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } } } };
 
-export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl = fetch, log = console.error }) {
+export function addSearchRoutes(app, config, { facilitatorClient, publicClient, exaKey, fetchImpl = fetch, log = console.error }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
@@ -214,7 +214,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
     serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: TAGS[route],
     extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
       output: { example: outputExamples()[route], schema: OUTPUT_SCHEMA } }),
-  }])), server, { log });
+  }])), server, { log, publicClient });
   for (const [route, exaPath] of Object.entries(SEARCH_ROUTES)) {
     app.post(route, async (req, res) => {
       const header = req.get("payment-signature") ?? req.get("x-payment");
