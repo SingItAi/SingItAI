@@ -157,7 +157,7 @@ test("summarize counts findings and only --strict makes warnings fail", () => {
 test("the app as built today passes the lint", { skip: !existsSync(ASK_MODULES) && "singit-ask/node_modules is not installed" }, async () => {
   const result = await lintApp();
   assert.deepEqual(result.global, []);
-  assert.equal(result.routes.length, 25);
+  assert.equal(result.routes.length, 28);
   const config = JSON.parse(readFileSync(path.join(HERE, "..", "bazaar-resources.json"), "utf8"));
   assert.deepEqual(new Set(config.resources.map(r => r.url)),
     new Set(result.routes.map(r => `https://ask.singitai.app${r.route}`)));

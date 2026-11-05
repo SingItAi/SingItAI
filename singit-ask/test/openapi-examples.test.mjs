@@ -74,15 +74,15 @@ test("response and header examples satisfy their schemas and paid errors have ex
       assert.deepEqual(payment.accepts, offers, path);
     } else {
       const module = path === "/v1/embeddings" ? "embeddings" : ["/v1/images/edits", "/v1/images/image2image"].includes(path) ? "image-edits" : path.includes("/exa/") ? "search" : path.includes("/images/") ? "images"
-        : path.includes("/audio/") ? "speech" : "video";
+        : ["/v1/audio/sound-effects", "/v1/audio/generations"].includes(path) ? "audio-generation" : path.includes("/audio/") ? "speech" : "video";
       const source = readFileSync(new URL(`../src/${module}.mjs`, import.meta.url), "utf8");
-      const timeout = Number(source.match(/maxTimeoutSeconds: (\d+)/)[1]);
+      const timeout = module === "audio-generation" ? (path.endsWith("sound-effects") ? 120 : 240) : Number(source.match(/maxTimeoutSeconds: (\d+)/)[1]);
       assert.deepEqual(payment.accepts.map(o => [o.scheme, o.network, o.maxTimeoutSeconds]),
         [["exact", "eip155:8453", timeout], ["exact", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", timeout]], path);
       assert.deepEqual(payment.accepts[0].extra, { name: "USD Coin", version: "2" });
       assert.ok(!Object.hasOwn(payment.accepts[1], "extra"));
       const error = item.post.responses[503].content["application/json"].example.error;
-      if (!["video", "image-edits", "embeddings"].includes(module)) assert.ok(source.includes(`code: "${error.code}", message: "${error.message}"`), path);
+      if (!["video", "image-edits", "embeddings", "audio-generation"].includes(module)) assert.ok(source.includes(`code: "${error.code}", message: "${error.message}"`), path);
     }
     const parser = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
     const message = parser.match(/const message = tooLarge \? "([^"]+)"/)[1];

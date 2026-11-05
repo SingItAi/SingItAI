@@ -75,9 +75,12 @@ test("top-level shape: generatedAt, currency, referenceRequest, networks, note",
   assert.match(body.note, /exact pays the amount shown, flat/);
 });
 
-test("lists every model /v1/models exposes (answerable, or the default), never the idle one", async (t) => {
-  const url = await serve(t);
-  const body = await (await fetch(`${url}/pricing.json`)).json();
+test("lists every model /v1/models exposes (answerable, or the default), never the idle one", async () => {
+  const app = createApp(CONFIG, { facilitatorClient: fakeFacilitator(), catalogue: fakeCatalogue,
+    fetchImpl: neverAsked, upstream: neverAsked, log: () => {} });
+  let body;
+  await app.router.stack.find(l => l.route?.path === '/pricing.json').route.stack.at(-1)
+    .handle({}, { json(value) { body = value; } });
   const ids = body.models.map((m) => m.id).sort();
   assert.deepEqual(ids, ["claude-sonnet-5.5", "deepseek-v4.1-flash", "pro-model", "singit/auto"]);
   assert.equal(Object.hasOwn(body.models.find(m => m.id === "singit/auto"), "perMillion"), false);

@@ -1,4 +1,5 @@
 import { ASYNC_SPEECH_MODELS } from "./speech-models.mjs";
+import { publicModelId, upstreamModelId } from "./model-aliases.mjs";
 import { NEVER_HIDE, MAX_PROVIDERS, validId, readSuspensions, writeSuspensions } from "./suspensions.mjs";
 export { NEVER_HIDE } from "./suspensions.mjs";
 import { bookPrices, derivedPrice, matchesBook } from "./reference-prices.mjs";
@@ -37,7 +38,7 @@ export function capabilities(entry, inputs) {
 export function parseModels(data) {
   const models = new Map();
   for (const entry of Array.isArray(data?.data) ? data.data : []) {
-    const id = typeof entry?.id === "string" ? entry.id.trim() : "";
+    const id = typeof entry?.id === "string" ? publicModelId(entry.id.trim()) : "";
     const prompt = Number(entry?.pricing?.prompt);
     const completion = Number(entry?.pricing?.completion);
     const arch = entry?.architecture;
@@ -48,11 +49,13 @@ export function parseModels(data) {
     const outputs = arch?.output_modalities ?? to?.split("+") ?? [];
     if (!id || !Number.isFinite(prompt) || !Number.isFinite(completion) || !(prompt >= 0) || !(completion >= 0)) continue;
     if (!inputs.includes("text") || outputs.length !== 1 || outputs[0] !== "text") continue;
-    if (!entry.supported_parameters?.includes("max_tokens")) continue;
-    models.set(id, { id, name: String(entry.name || id), provider: String(entry.provider || ""),
+    // M3: this one reviewed Surplus entry omits max_tokens (05 Nov offline metadata).
+    // Still send a cap: refusal is a non-settling error, never an unbounded paid request.
+    if (!entry.supported_parameters?.includes("max_tokens") && id !== "nemotron-3.5-lightning") continue;
+    models.set(id, { id, name: id === "nemotron-3.5-lightning" ? "NVIDIA Nemotron 3.5 Lightning" : String(entry.name || id), provider: String(entry.provider || ""),
       contextLength: Number(entry.context_length) || 0, promptUsdPerToken: prompt, completionUsdPerToken: completion,
       ...(prompt <= 0 || completion <= 0 ? { listZero: true } : {}),
-      tags: capabilities(entry, inputs), params: entry.supported_parameters.map(String) });
+      tags: capabilities(entry, inputs), params: (entry.supported_parameters ?? []).map(String) });
   }
   return models;
 }
@@ -144,7 +147,7 @@ function parseMarket(data) {
   for (const entry of Array.isArray(data?.data?.markets) ? data.data.markets : []) {
     const discount = entry?.best_trusted_offer_discount_pct;
     if (typeof entry?.model === "string" && typeof discount === "number" && discount >= 0 && discount <= 100)
-      market.set(entry.model, { trustedShare: (100 - discount) / 100 });
+      market.set(publicModelId(entry.model), { trustedShare: (100 - discount) / 100 });
   }
   return market;
 }
@@ -154,7 +157,7 @@ function parseMarket(data) {
 // choosing it would only end in an error. Measured on 12 October: 39 of 227 listed models had no such offer.
 function qualifies(offer, blocked, id) {
   const model = offer?.model ?? offer?.model_id;
-  if (model != null && String(model).toLowerCase() !== String(id).toLowerCase()) return false;
+  if (model != null && String(model).toLowerCase() !== String(upstreamModelId(id)).toLowerCase()) return false;
   return offer?.trusted === true && offer?.healthy === true && offer?.available === true
     && !(typeof offer.cap_remaining === "number" && offer.cap_remaining <= 0)
     && !blocked.has(String(offer.provider_id ?? "").toLowerCase());
@@ -228,6 +231,8 @@ export class ModelCatalogue {
     this.models = null;
     this.rawModels = null;
     this.bookPrices = new Map();
+    this.audioCatalogue = null; // raw music/SFX pricing and async submission capabilities
+    this.audioCatalogueAt = null;
     this.images = null;   // image models, from the same list
     this.voice = null;    // { speech, transcription } models, from the same list
     this.videos = null;   // text-to-video models, from the same list
@@ -253,6 +258,8 @@ export class ModelCatalogue {
         if (models.size) { this.rawModels = models; this.decorate(); this.loadedAt = this.now(); }
         if (images.size) this.images = images;
         if (response.ok && Array.isArray(body?.data)) {
+          this.audioCatalogue = new Map(body.data.map(entry => [entry.id, entry]));
+          this.audioCatalogueAt = this.now();
           this.edits = parseEditModels(body); this.embeddings = parseEmbeddingModels(body);
         }
         const voice = parseVoiceModels(body);
@@ -309,7 +316,7 @@ export class ModelCatalogue {
             const id = ids[next++];
             const seenSeq = this.rejectionSeq;
             try {
-              const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`,
+              const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(upstreamModelId(id))}`,
                                                     { signal: AbortSignal.timeout(10_000) });
               const book = response.ok ? await response.json() : null;
               if (this.rawModels?.get(id)?.listZero && book && matchesBook(book, id)) {
@@ -371,7 +378,7 @@ export class ModelCatalogue {
       const pending = (async () => {
         let count = cached?.count ?? null;
         try {
-          const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`,
+          const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(upstreamModelId(id))}`,
                                                 { signal: AbortSignal.timeout(10_000) });
           const book = response.ok ? await response.json() : null;
           const offers = book?.data?.offers ?? book?.offers;
@@ -506,7 +513,7 @@ export class ModelCatalogue {
     const task = (async () => {
       let share = null;
       try {
-        const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(3000) });
+        const response = await this.fetchImpl(`${this.url}/api/markets/${encodeURIComponent(upstreamModelId(id))}`, { signal: AbortSignal.timeout(3000) });
         if (response.ok) share = cheapestShare(await response.json(), this.blocked, id);
       } catch { /* An unreadable book must not prevent a quote. */ }
       this.liveBooks.delete(id);
