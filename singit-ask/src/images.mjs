@@ -123,10 +123,10 @@ export function addImageRoutes(app, config, { facilitatorClient, publicClient, c
     const models = await catalogue.imageModels().catch(() => new Map());
     res.json({ object: "list", endpoint: IMAGE_ROUTE, fees: { markupPct: IMAGE_TERMS.markupBps / 100,
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
-      data: [...models.values()].map((m) => {
+      data: [...models.values(), ...((await catalogue.editModels?.().catch(() => new Map()))?.values() ?? [])].map((m) => {
         const list = imageListAtomic(m, { prompt: "", n: 1, size: m.sizes?.includes("1024x1024") || !m.sizes ? "1024x1024" : m.sizes[0] });
         return { id: m.id, object: "model", name: m.name, owned_by: m.provider || "surplus", metering: m.metering,
-          sizes: m.sizes, listUsdPerImage: list / 1e6, singitUsdPerImage: Number(imagePrice(list, BASE).totalAtomic) / 1e6 };
+          edits: m.id.endsWith("-edit"), sizes: m.sizes, listUsdPerImage: list / 1e6, singitUsdPerImage: Number(imagePrice(list, BASE).totalAtomic) / 1e6 };
       }).sort((a, b) => a.singitUsdPerImage - b.singitUsdPerImage) });
   });
 

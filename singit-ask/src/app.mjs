@@ -1,3 +1,9 @@
+import { imagePrice } from "./images.mjs";
+import { addRoutes as addEditRoutes, REQUEST_BODY as EDIT_BODY } from "./image-edits.mjs";
+import { addRoutes as addEmbeddingRoutes, REQUEST_BODY as EMBEDDING_BODY } from "./embeddings.mjs";
+import { EXAMPLE as EDIT_REFERENCE, readEditRequest, listAtomic as editListAtomic, catalogueCeiling as editCeiling, OUTPUT_SCHEMA as EDIT_OUTPUT, OUTPUT_EXAMPLE as EDIT_EXAMPLE } from "./image-edits-request.mjs";
+import { EXAMPLE as EMBEDDING_REFERENCE, readEmbeddingRequest, listAtomic as embeddingListAtomic, catalogueCeiling as embeddingCeiling, OUTPUT_SCHEMA as EMBEDDING_OUTPUT, OUTPUT_EXAMPLE as EMBEDDING_EXAMPLE } from "./embeddings-request.mjs";
+const EXTRA_PAID = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings"];
 // SingIt Ask: one answer from a language model, paid over x402 in USDC on Solana or Base for what it
 // actually cost: model tokens + 30% + the network's settlement fee, up to a ceiling that follows the model's
 // price (0.003 USDC for the default and cheap ones). Coinbase CDP settles.
@@ -485,7 +491,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                                     observed = new ObservedPrices({ file: config.observedFile }),
                                     spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
-  fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log });
+  fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log, responseLimits: {
+    [`${config.surplusUrl}/v1/images/edits`]: config.maxEditResponseBytes ?? 40 * 1024 * 1024,
+    [`${config.surplusUrl}/v1/embeddings`]: config.maxEmbeddingResponseBytes ?? 8 * 1024 * 1024,
+  } });
   for (const id of [config.model, ...Object.values(AUTO_CONFIG.tiers).flat()]) catalogue?.neverHide?.add(id);
   const app = express();
   app.locals.paidRoutes = new Set([CREDIT_ROUTE]);
@@ -551,6 +560,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       res.json(privateStatsBody(app.locals.healthStats));
     });
   }
+  // Four images (or one image plus mask), base64 expansion and JSON overhead; other routes stay at 128 KB.
+  app.post(EXTRA_PAID.slice(0, 2), express.json({ limit: Math.ceil((config.maxEditImageBytes ?? 8 * 1024 * 1024) * 4 / 3) * 4 + 65536 }));
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
   // ...with a JSON body like every other refusal, not Express's HTML page (documented in openapi.json).
   app.use((error, req, res, next) => {
@@ -643,6 +654,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         // Virtual routes have no fixed token rate; priced-model consumers use property presence.
         { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION },
         ...freeListed,
+        ...[...((await catalogue?.embeddingModels?.().catch(() => new Map()))?.values() ?? [])].map(m => ({ ...m, object: "model", tags: ["embedding"] })),
         ...models.map(m => {
           const price = displayPrice(m, observed, market);
           const { share = null, basis, ours = null } = price ?? {};
@@ -690,6 +702,23 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     let autoPrice = { upto: null, exact: null };
     try { autoPrice = await pricingFor(config, catalogue, AUTO_ID); } catch { /* no eligible healthy model */ }
     priced.push({ id: AUTO_ID, name: "SingIt Auto", description: AUTO_DESCRIPTION, ...autoPrice });
+    for (const [kind, route, entries, reference, read, estimate] of [
+      ['image-editing', '/v1/images/edits', await catalogue?.editModels?.() ?? new Map(), EDIT_REFERENCE, readEditRequest, editListAtomic],
+      ['embedding', '/v1/embeddings', await catalogue?.embeddingModels?.() ?? new Map(), EMBEDDING_REFERENCE, readEmbeddingRequest, embeddingListAtomic],
+    ]) {
+      for (const model of entries.values()) {
+        const referenceRequest = { ...reference, model: model.id };
+        const amount = estimate(model, read(referenceRequest, model, config));
+        const exact = Object.fromEntries([['base', BASE], ['solana', SOLANA]].map(([name, network]) => {
+          const price = imagePrice(amount, network);
+          return [name, { ceilingAtomic: price.totalAtomic, usd: Number(usd(price.totalAtomic)) }];
+        }));
+        priced.push({ id: model.id, name: model.name ?? model.id, kind, route, referenceRequest, exact,
+          ...(kind === 'embedding' ? { usdPerMillionTokens: model.usdPerMillionTokens,
+            priceDescription: 'Exact on a conservative estimate: one token per UTF-8 input byte plus eight bytes per input; rounded up to micro-USD. No usage refund.' }
+            : { priceDescription: 'Exact per output image; one output image per request.' }) });
+      }
+    }
     const chars = PRICING_REFERENCE.content.length;
     res.json({
       generatedAt: new Date().toISOString(),
@@ -713,6 +742,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Free: how directories (x402scan, agents) find the paid route. x402scan reads this first, then /.well-known/x402.
   app.get("/openapi.json", open, async (req, res) => {
     const price = await priceRange(catalogue);
+    const editMax = usd(imagePrice(await editCeiling(catalogue), SOLANA).totalAtomic);
+    const embeddingMax = usd(imagePrice(await embeddingCeiling(catalogue, config), SOLANA).totalAtomic);
     res.json({
       openapi: "3.1.0",
       info: { title: "SingIt Ask", version: "1.0.0",
@@ -793,6 +824,20 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           responses: { 200: { description: "The answer in that API's format, with billing" },
                        ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged", reasoning: true,
                                        schema: route === "/v1/messages" ? ANTHROPIC_ERROR_SCHEMA : ERROR_SCHEMA }) },
+          security: [{ x402: [] }],
+        } }])) : {}),
+        ...(catalogue ? Object.fromEntries(EXTRA_PAID.map((path, i) => [path, { post: {
+          operationId: ["createImageEdit", "createImageEditAlias", "createEmbeddings"][i],
+          summary: i === 2 ? "Create embeddings for input text" : "Create edited images from input images",
+          description: i === 2 ? "Exact price uses one token per UTF-8 input byte plus per-item overhead, markup and settlement fee. Charged after upstream success."
+            : "Edit PNG, JPEG or WEBP data URIs, up to four images or one image with a mask. Charged after upstream success.",
+          "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: i === 2 ? embeddingMax : editMax }, protocols: [{ x402: {} }] },
+          requestBody: i === 2 ? EMBEDDING_BODY() : EDIT_BODY(),
+          responses: { 200: { description: "Result with billing", content: { "application/json": { schema: i === 2 ? EMBEDDING_OUTPUT : EDIT_OUTPUT, example: i === 2 ? EMBEDDING_EXAMPLE : EDIT_EXAMPLE } } },
+            ...paidErrors({ exactTimeout: 180, notFound: "No such model is available", duplicate: true, noAnswer: "Upstream failed or returned no usable result; nothing charged" }),
+            413: errorBody(i === 2 ? "Embedding input exceeds the configured byte limit" : "Image exceeds the configured decoded byte limit or JSON body limit",
+              ERROR_SCHEMA, errorExample("invalid_request_error", "The request body is too large.", "payload_too_large")),
+            422: errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request")) },
           security: [{ x402: [] }],
         } }])) : {}),
         ...(catalogue ? { [IMAGE_ROUTE]: { post: {
@@ -1018,17 +1063,19 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.get("/.well-known/x402", open, (req, res) => {
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
-                         `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`,
+                         ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`,
                          ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
                          ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
+      resourceDetails: catalogue ? EXTRA_PAID.map(path => ({ resource: `${origin(req)}${path}`, networks: [BASE, SOLANA],
+        outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT })) : [],
       instructions: `${DESCRIPTION} Speech models/prices: GET ${origin(req)}/v1/audio/models (including async ElevenLabs multilingual-v2, v3 and ByteDance Seed Audio 1.0). Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
   // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
   // list below and llms.txt can never list a route this instance did not add.
-  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE,
+  const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), ...EXTRA_PAID, IMAGE_ROUTE, SPEECH_ROUTE,
     ...(config.videoSold && config.videoDiscoverable ? [VIDEO_ROUTE] : []),
     ...modelRoutePaths(catalogue)] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
@@ -1155,6 +1202,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
   if (exaKey) addSearchRoutes(app, config, { publicClient, facilitatorClient, exaKey, fetchImpl: exaFetch, log });
   // Images from Surplus's image models, with this service's own Surplus key.
+  if (catalogue) {
+    addEditRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
+    addEmbeddingRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
+  }
   if (catalogue) addImageRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
   if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
