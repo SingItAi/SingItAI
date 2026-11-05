@@ -139,10 +139,10 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 
 Refused payments keep error: "payment_required" and add a specific code, action and safe message, also exposed in X-SingIt-Error. Nothing was charged for this request, on Base or Solana: the x402 middleware holds the answer until settlement succeeds. Clients should treat payment_duplicate and payment_replay as the same condition.
 
-- payment_unfunded: fund_wallet. Fund the wallet and its token account. Nothing was charged for this request.
-- payment_blockhash_stale: sign_again. On Solana, sign again with a fresh blockhash. Nothing was charged for this request.
-- payment_replay: check_previous_result. Check the previous result before paying again. Nothing was charged for this request.
-- payment_invalid: fix_payment. Fix the payment before retrying. Nothing was charged for this request.
+- payment_unfunded: fund_wallet. Fund the wallet and its token account.
+- payment_blockhash_stale: sign_again. On Solana, sign again with a fresh blockhash.
+- payment_replay: check_previous_result. Check the previous result before paying again.
+- payment_invalid: fix_payment. Fix the payment before retrying.
 
 ## Model pages with prices
 
