@@ -212,7 +212,11 @@ export function renderPages(s, shell, hold = { hidden: [] }) {
   for (const m of catalogSnapshot.data.filter(m => m.modality !== "video")) {
     const file = `models/${catalogSlug(m.id)}/index.html`;
     if (files.has(file)) continue;
-    const request = m.modality === "search" ? { query: "Hello" } : m.modality === "image" ? { model: m.id, prompt: "A green robot" } : { model: m.id, messages: [{ role: "user", content: "Hello" }] };
+    const request = m.id === "exa/contents" ? { urls: ["https://x402.org"], text: true }
+      : m.id === "exa/answer" ? { query: "What is x402?" }
+      : m.modality === "search" ? { query: "Hello" }
+      : m.modality === "image" ? { model: m.id, prompt: "A green robot" }
+      : { model: m.id, messages: [{ role: "user", content: "Hello" }] };
     const curl = `curl -i -X POST https://ask.singitai.app${modelEndpoint(m)} -H 'Content-Type: application/json' -d '${JSON.stringify(request)}'`;
     const body = section("Model", `<p>Modality: ${e(m.modality)}</p><p>Snapshot price (USD): <code>${e(priceSummary(m.price))}</code></p><p>Prices as of ${e(catalogSnapshot.fetchedAt)}. The live response is authoritative.</p>`)
       + section("Call it", `<pre><code>${e(curl)}</code></pre><p>Unpaid demo; paid routes return HTTP 402. Free routes follow their published limits.</p>`);
