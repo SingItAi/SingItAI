@@ -180,7 +180,7 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
   const app = createApp(config, { facilitatorClient, catalogue, exaKey: "lint", fetchImpl: never, exaFetch: never, log: () => {}, upstream: never });
   const server = await new Promise((resolve) => { const s = app.listen(0, "127.0.0.1", () => resolve(s)); });
 
-  const routes = [ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, ...Object.keys(SEARCH_ROUTES), ...MODEL_ROUTES.map(m => routePath(m.id))];
+  const routes = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings", ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, ...Object.keys(SEARCH_ROUTES), ...MODEL_ROUTES.map(m => routePath(m.id))];
   const global = [];
   const results = [];
   try {

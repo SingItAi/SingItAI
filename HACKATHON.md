@@ -430,3 +430,14 @@ loopback server) and the existing script tests pass. Not verified: the live API,
 on GitHub, the server's paid-proxy setting (only the owner can read it) and the paid tools
 scenario, which is opt-in and was never run. A full probe needs eight requests (nine with paid
 tools), because balance and usage are read before and after.
+
+## Media API review hardening — 5 November 2026
+
+Uncommitted worktree follow-up (no commit or PR yet, as requested), after the competition period: image edits and embeddings validate billable output, bound streamed upstream responses and embedding batches, and share process-wide payment reservations. EVM replay identity uses normalized network, asset, signer and nonce; Solana uses the signed transaction or signature. `/pricing.json` includes both services with reference requests and network prices. This hardens the new media routes; existing image generation has not yet adopted the shared reservation store.
+
+Verification: 13 socket-free media tests and 24 OpenAPI, discovery and generated-document tests passed offline. Route snapshots were regenerated offline and confirmed unchanged for these schema changes. The full service suite was attempted but cannot be verified here: the sandbox denies loopback listeners (`EPERM`). No live upstream calls, payments, deployment or commits were made. Reservations remain in memory and are scoped to one process.
+
+Round 6 review (uncommitted, no PR): the cross-route reservation regression now uses equal quoted prices and asserts one upstream call. Media response caps are enforced before diagnostic logging clones the body, so oversized success and error streams cancel their source promptly. Six selected socket-free media tests pass, including a new logger/limiter regression covering both routes at 200 and 500 with fewer than five source pulls. Eleven additional logging/OpenAPI checks pass; 17 listener-dependent checks and the full media-file attempt remain blocked by sandbox loopback restrictions. No network calls or commits were made; the full suite still needs an unrestricted rerun.
+
+
+PR SingItAI #218 (`feat/images-edits-embeddings`), review fixes after merging main (5 November 2026): billable base64 images now require complete PNG/JPEG/WEBP containers (PNG also checks chunk CRCs and bounded decompression); embeddings must decode to whole finite float32 vectors; replay reservations are normalized (network, asset, signer, nonce), shared by both routes and capped at 10,000 entries without evicting live identities; upstream bodies are read with byte limits; /pricing.json lists embeddings. Verification: singit-ask 723 tests pass (solana-direct needs @solana/kit, not installed locally), website 470/470, scripts 46/46, llms check ok (llms.txt 13,982 bytes). No payment or live upstream call. Limitations: no full JPEG/WEBP pixel decoding or HTTPS URL check; reservations are process-local.
