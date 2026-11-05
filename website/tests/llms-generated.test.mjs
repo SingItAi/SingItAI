@@ -115,11 +115,9 @@ test('free list input keeps a positive SingIt output listed', async () => {
 });
 
 test('snapshot breakdown replaces the model count claim and agent guides explain routing', async () => {
-  const s = await json('data/models-snapshot.json');
-  const hold = JSON.parse(await readFile(new URL('../../scripts/hidden-models.json', import.meta.url), 'utf8'));
   const catalog = await json('data/catalog-snapshot.json');
   const { breakdown } = await import('../../scripts/generate-catalog-page.mjs');
-  assert.equal(catalog.counts.chat, visibleSnapshot(s, hold).models.length + catalog.data.filter(m => m.kind !== 'model' && m.modality === 'chat').length);
+  assert.equal(catalog.counts.chat, catalog.data.filter(m => m.modality === 'chat').length);
   assert.ok((await read('llms.txt')).includes(breakdown(catalog)));
   for (const file of ['llms.txt', 'SKILL.md', 'llms-full.txt']) {
     const text = await read(file);

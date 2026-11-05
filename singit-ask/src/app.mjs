@@ -1321,7 +1321,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     description: DISCOVERY_DESCRIPTION,
     serviceName: SERVICE_NAMES[ROUTE],
     iconUrl: ICON_URL,
-    tags: discoveryTags(...routeCopy(ROUTE).tags, "llm", "chat-completions", "inference", "openai-compatible", "chat", "claude", "gpt", "gemini",
+    tags: discoveryTags("chat-completions", ...routeCopy(ROUTE).tags, "llm", "inference", "openai-compatible", "chat", "claude", "gpt", "gemini",
                         "deepseek", "singit"),
     extensions: {
       ...declareEip2612GasSponsoringExtension(),

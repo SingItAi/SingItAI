@@ -71,7 +71,7 @@ export function addRoutes(app, config, { facilitatorClient, publicClient, catalo
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 180, price: price(SOLANA) },
     ],
     mimeType: "application/json", description: DESCRIPTION, serviceName: "SingIt Image Editing", iconUrl: ICON_URL,
-    tags: discoveryTags(...routeCopy("/v1/images/edits").tags, "image-editing", "image-to-image", "image", "openai-compatible", "pay-per-use", "solana",
+    tags: discoveryTags("image-editing", ...routeCopy("/v1/images/edits").tags, "image-to-image", "image", "openai-compatible", "pay-per-use", "solana",
                         "base", "singit"),
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,

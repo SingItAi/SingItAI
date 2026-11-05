@@ -61,7 +61,7 @@ test('samples are sorted, diverse and limited to eligible catalog entries', () =
   for (const modality of ['music', 'sound_effects', 'video']) {
     assert.equal(listingCopy({ data }, modality, 'Generate'), null);
     const flags = modality === 'video' ? { videoSold: true } : { audioSold: true };
-    assert.ok(listingCopy({ data }, modality, 'Generate', flags).tags.includes(`${modality}-secret`));
+    assert.doesNotMatch(JSON.stringify(listingCopy({ data }, modality, 'Generate', flags)), /secret/);
   }
   for (const modality of ['image', 'speech', 'image_edit', 'embeddings']) {
     const missing = listingCopy({ data }, modality, 'API');
@@ -94,6 +94,24 @@ test('default discovery preserves 26 URLs and shares descriptions with challenge
     assert.doesNotMatch(detail.description, /ceiling|\bfees?\b|%/i, path);
     assert.doesNotMatch(detail.description, /0x[0-9a-fA-F]{8,}/, path);
     assert.doesNotMatch(detail.description, /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/, path);
+  }
+});
+
+test('published media listings use populated snapshot counts and exclude hidden models', () => {
+  const snapshot = JSON.parse(readFileSync(new URL('../../website/data/catalog-snapshot.json', import.meta.url)));
+  for (const [modality, path] of [
+    ['image', '/v1/images/generations'], ['image_edit', '/v1/images/edits'],
+    ['embeddings', '/v1/embeddings'], ['speech', '/v1/audio/speech'],
+  ]) {
+    const copy = routeCopy(path);
+    assert.ok(snapshot.counts[modality] > 0);
+    assert.ok(copy.description.length <= 160);
+    assert.doesNotMatch(copy.description, /\b(fee|markup|ceiling|settlement)\b|%/i);
+    for (const id of copy.tags.slice(1)) assert.ok(snapshot.data.some(e => (e.id.slice(0, 60) === id || e.id.split(/[-/]/)[0] === id) && e.modality === modality));
+    assert.doesNotMatch(JSON.stringify(copy), /music|sound.effects|video/i);
+  }
+  for (const modality of ['music', 'sound_effects', 'video', 'transcription']) {
+    assert.ok(!snapshot.data.some(e => e.modality === modality));
   }
 });
 

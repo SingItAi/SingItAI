@@ -172,7 +172,7 @@ export function addImageRoutes(app, config, { facilitatorClient, publicClient, c
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 180, price: price(SOLANA) },
     ],
     mimeType: "application/json", description: DESCRIPTION, serviceName: SERVICE_NAMES[IMAGE_ROUTE], iconUrl: ICON_URL,
-    tags: discoveryTags(...routeCopy("/v1/images/generations").tags, "image-generation", "text-to-image", "image", "openai-compatible", "flux", "pay-per-use", "solana",
+    tags: discoveryTags("image-generation", ...routeCopy("/v1/images/generations").tags, "text-to-image", "image", "openai-compatible", "flux", "pay-per-use", "solana",
                         "base", "singit"),
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
