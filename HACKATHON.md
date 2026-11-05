@@ -406,3 +406,39 @@ Operational follow-up in the merged SingItAI tree (branch `feat/daily-model-audi
 ### Post-competition maintenance — 2026-11-05
 
 Shared Ask stages 1a/1b on `feat/x402-agent-chat` (draft PR work; stage 1a committed as [88908f1](https://github.com/SingItAi/SingItAI/commit/88908f1), stage 1b pending review): paid chat supports tools, tool replies, text/image blocks and larger agent envelopes. Stage 1b adds buffered SSE for chat/Messages/Responses, privacy-bounded client counters and a fake-only SDK session script. This is shared Ask maintenance. Verification uses fake upstreams/facilitators and socket-free HTTP; no live payment or seller acceptance is claimed. See `codex-1b-notes.md` for checks and limitations.
+
+Shared Ask maintenance on `feat/payment-error-codes` (draft PR):
+paid routes now expose safe refusal codes, recovery actions and `X-SingIt-Error`,
+with optional persisted counters by code. This covers Base and Solana and is not a
+new Solana competition contribution. Legacy local 409 bodies remain unchanged.
+Verification: 59 focused socket-free payment/error/health tests pass; generated
+LLM documentation is current. Full Ask and website/script suites were compared
+against unchanged `origin/main` c5d442d using the installed dependencies: the same
+31 Ask test files and six website/script tests fail in this sandbox, including
+unavailable local listeners, child-process output and missing Solana dependencies.
+Limitations: no live facilitator, network requests or real payments were used;
+normal listener-based OpenAPI checks remain blocked by the sandbox. All five
+OpenAPI schema/example/lint tests pass in a temporary copy using the existing
+socket-free request harness in place of the generator's listener.
+
+### API-key readiness follow-up (5 November 2026, post-competition)
+
+Draft PR from `feat/key-path-readiness` in SingItAI: adds a standard-library zero-spend
+key-path checker with an opt-in daily workflow (skipped until the owner sets
+`KEY_CHECK_ENABLED`), and shares actionable tools-refusal guidance between the free and
+fallback gateway routes. This is maintenance of the imported gateway, not new Solana work.
+Verification: full gateway suite (2,251 tests), the 12 checker tests (ten scenarios against a
+loopback server) and the existing script tests pass. Not verified: the live API, the workflow
+on GitHub, the server's paid-proxy setting (only the owner can read it) and the paid tools
+scenario, which is opt-in and was never run. A full probe needs eight requests (nine with paid
+tools), because balance and usage are read before and after.
+
+Merge verification on `feat/x402-agent-chat` (uncommitted merge of `origin/main`,
+5 November 2026): preserves stages 1a/1b alongside payment refusal codes,
+key-path readiness and metadata. Five focused persistence checks pass, including
+agent traffic and payment refusal counters round-tripping in one state file.
+The socket-free Bazaar harness reports no findings across advertised routes;
+error vocabulary and generated LLM references are consistent. The LLM generator
+now has an offline CLI and a working `--check`. Limitations: full suites were run,
+but this sandbox blocks loopback listeners and some child-process output;
+no live upstream, network request or real payment was used.

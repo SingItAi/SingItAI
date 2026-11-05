@@ -351,3 +351,50 @@ The [service](../deploy/systemd/singit-model-audit.service) and
 installation needs the owner's OK. They schedule 07:30 local with a one-minute
 random delay, persistent catch-up, a 300-second timeout and SuccessExitStatus=2.
 Replace the checkout placeholder before installation. Nothing installs them.
+
+## API-key path readiness
+
+`singit-key-path-check.py` uses Python 3.12 standard library only. The key comes
+only from `SINGIT_KEY_CHECK_API_KEY`; never pass it as a command argument.
+
+```sh
+python3 scripts/singit-key-path-check.py --report --write key-path.json --append key-path-history.jsonl
+python3 scripts/singit-key-path-check.py --streak key-path-history.jsonl
+```
+
+The default base is `https://app.singitai.app/v1`; override with `--base-url` or
+`SINGIT_API_BASE`. `--free-model free/<id>` selects a free model; otherwise the
+first advertised free model is used. A run validates the unauthenticated OpenAI
+error shape, authenticated model inventory, numeric balance and daily usage,
+a tiny free answer with numeric usage and no reported charge, actionable free
+tools refusal, unchanged balances and non-increasing usage. Reports contain
+check outcomes and billing numbers, never prompts, answers or API keys.
+Use a dedicated idle account: concurrent spending makes the comparison fail.
+
+Exit codes: **0** green; **2** broken; **3** incomplete (no free model or free
+allowance exhausted); **1** usage/configuration error or crash. Missing credentials
+fail. There are eight requests per complete run (six without a free model),
+ten-second timeouts, no redirects and no retries. A free allowance 429 records
+Retry-After and is incomplete. History keeps only timestamps, outcomes and check
+flags; `--streak` reads history without credentials or network and counts consecutive
+UTC days ending at the latest entry, requiring all runs on each day to be green.
+
+Paid tools is owner-approved only, never CI: both `--paid-tools` and
+`SINGIT_KEY_CHECK_PAID_OK=yes`, plus `--paid-model <id>`, are required. The optional
+`--max-spend-usd` defaults to 0.05 and must be positive and at most 0.05. This adds
+one request with 32 maximum tokens. A 400 `tools_unsupported` is recorded as a
+refusal; a 200 may return text or tool calls. Reported charges are checked against
+the cap **after** the call; this does not enforce a server-side spending limit.
+
+This probe does not prove that the proxy/balance path is enabled: that requires
+owner-only inspection of the server's `SIGN402_WEB_SURPLUS_API_KEY` environment.
+The proxy forwards tools upstream; fallback and free routes refuse tools/functions
+with x402 guidance. A successful free check does not prove paid tools or streaming
+work, or that a paid response can be purchased.
+
+The `key-path-check.yml` workflow is disabled until the owner creates a small-cap
+key in the app, adds secret `SINGIT_KEY_CHECK_API_KEY` and sets repository variable
+`KEY_CHECK_ENABLED=true`. Disabled jobs are skipped. It runs daily at 05:47 UTC
+and on manual dispatch; incomplete runs fail. Reports go to the step summary and
+30-day artifacts. Readiness requires seven consecutive successful scheduled runs;
+manual runs alone do not establish that criterion.

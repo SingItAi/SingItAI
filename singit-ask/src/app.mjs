@@ -37,6 +37,7 @@ import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs
 import { withRejectLog } from "./reject-log.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
 import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
+import { paymentCodesMiddleware } from "./payment-failure-hooks.mjs";
 
 export const BASE = "eip155:8453";
 export const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -323,7 +324,7 @@ Object.assign(AGENT_INPUT_SCHEMA.properties, {
       tool_call_id: { type: 'string', minLength: 1, maxLength: 64, description: 'Required on tool messages.' }
     } } },
   max_tokens: { type: 'integer', minimum: 1, maximum: 8192, default: 800, description: 'Output token budget; values above 8192 are clamped. Invalid values default to 800.' },
-  tools: { type: 'array', maxItems: 64, items: { type: 'object', required: ['type','function'], properties: {
+  tools: { type: 'array', maxItems: 64, description: 'Function tools available to the model; at most 64 definitions.', items: { type: 'object', required: ['type','function'], properties: {
     type: { type: 'string', const: 'function' }, function: { type: 'object', required: ['name'], properties: {
       name: functionNameSchema, description: { type: 'string', maxLength: 4000 }, parameters: { type: 'object', description: 'JSON Schema for function parameters.' }
     } } } } },
@@ -501,13 +502,15 @@ const exactExampleOffers = timeout => [
 const PAYMENT_REQUIRED = (exactTimeout) => ({ description: "Payment Required: the x402 v2 challenge is in the PAYMENT-REQUIRED response header "
     + "(base64 JSON: x402Version, resource, accepts); the body contains matching x402Version and accepts only for a payment challenge. Sign one of the accepts and retry "
     + "with PAYMENT-SIGNATURE. If a payment was submitted but could not be settled, the 402 has no PAYMENT-REQUIRED header "
-    + "and the body contains only error and code (payment_required).",
+    + "and the body contains error, a refusal code, action and message.",
   ...(exactTimeout ? {} : { description: "Chat challenge example: one Base offer per scheme. The full accepts order is upto Base, upto Solana, exact Base, exact Solana. " +
-    "The PAYMENT-REQUIRED header carries the base64 JSON challenge; settlement failures have only error and code in the body." }),
-  headers: { "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
-  content: { "application/json": { schema: errorRef("PaymentRequired402"), example: {
-    x402Version: 2, accepts: exactTimeout ? exactExampleOffers(exactTimeout) : chatExampleOffers,
-    error: "payment_required", code: "payment_required",
+    "The PAYMENT-REQUIRED header carries the base64 JSON challenge; settlement refusals include a code, action and message." }),
+  headers: { "X-SingIt-Error": { description: "Machine-readable payment refusal code", schema: { type: "string" } }, "PAYMENT-REQUIRED": { description: "Base64-encoded JSON x402 payment requirements", schema: { type: "string" } } },
+  content: { "application/json": { schema: errorRef("PaymentRequired402"), examples: {
+    challenge: { value: { x402Version: 2, accepts: exactTimeout ? exactExampleOffers(exactTimeout) : chatExampleOffers,
+      error: "payment_required", code: "payment_required" } },
+    unfunded: { value: { error: "payment_required", code: "payment_unfunded", action: "fund_wallet",
+      message: "Fund the wallet and its token account. Nothing was charged for this request." } },
   } } } });
 const BAD_REQUEST = "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged";
 const TOO_LARGE = "The JSON body is over 128 kB; nothing was charged";
@@ -551,6 +554,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");
   app.use(errorCodesMiddleware);
+  app.use(paymentCodesMiddleware({ stats: app.locals.healthStats, log }));
   app.use((req, res, next) => {
     res.on("finish", () => {
       try {
@@ -579,7 +583,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         args[index] = Array.isArray(headers) ? rest.flat() : Object.fromEntries(rest);
       }
       const seen = new Set();
-      const merged = [...values, "X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From", "X-SingIt-Fallback-Policy"]
+      const merged = [...values, "X-SingIt-Error", "X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From", "X-SingIt-Fallback-Policy"]
         .flat().flatMap(value => String(value).split(",")).map(value => value.trim())
         .filter(value => {
           const key = value.toLowerCase();
@@ -1129,6 +1133,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       "Paid /v1/chat/completions: up to 200 messages, 100000 estimated characters including tools and 8000 per image, 64 tools/calls, four images and 8192 output tokens (default 800; 128 kB JSON body). Tools/images depend on model capabilities. Messages and Responses support tools and up to 32000 output tokens.", "",
       "Chat, Messages and Responses accept stream:true as complete buffered SSE after settlement, not token by token. Billing and PAYMENT-RESPONSE are retained; errors remain JSON. Chat stream_options accepts only include_usage:boolean and requires stream:true. Free and per-model chat retain their existing text-only limits and also support buffered SSE.", "",
       "numbers.json agent_traffic reports served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels for total/last_24h/last_7d. No raw headers or prompts are stored.", "",
+
+      "## Spending limits", "",
+      "- The 402 quotes the most you can be charged before you sign. Nothing is charged without an answer.",
+      "- To cap an agent's spend, use @singitai/sdk (npm) or singit (PyPI): maxPerCallUsd and maxPerDayUsd "
+        + "(max_per_call_usd and max_per_day_usd in Python) are required, and they are checked in your own process "
+        + "before anything is signed. These are client-side ceilings.",
+      `- Through the MCP server (${MCP_URL}) or a SingIt API key, the owner sets the key's limits at https://app.singitai.app/app/; SingIt's server enforces them.`, "",
       "## Model selection", "", AUTO_GUIDE, "", FALLBACK_GUIDE, "",
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `

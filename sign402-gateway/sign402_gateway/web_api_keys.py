@@ -48,6 +48,13 @@ ASK_URL = "https://ask.singitai.app"
 NAME = re.compile(r"[\w .,:()'-]{1,40}")
 
 
+TOOLS_UNSUPPORTED_MESSAGE = (
+    "Tools/functions are not offered on this route; send the request without tools/functions, "
+    "or pay per call over x402 at POST https://ask.singitai.app/v1/messages, which accepts tools "
+    "(docs: https://singitai.app/docs/api/)."
+)
+
+
 class ApiError(Exception):
     """An error in OpenAI's shape, so SDKs show its message as it is."""
 
@@ -474,7 +481,8 @@ class ApiKeys:
 
     def _chat(self, row, body: Mapping[str, Any], *, rate: bool = True) -> tuple[int, Any, dict[str, str]]:
         if body.get("tools") or body.get("functions"):
-            raise ApiError(400, "Tools are not offered yet.", code="tools_unsupported")
+            # The proxy path forwards tools upstream; this refusal applies only to the fallback.
+            raise ApiError(400, TOOLS_UNSUPPORTED_MESSAGE, code="tools_unsupported")
         key_id, account = row["key_id"], row["account_id"]
         per, daily = int(row["per_request_cap_atomic"]), int(row["daily_cap_atomic"])
         if rate:

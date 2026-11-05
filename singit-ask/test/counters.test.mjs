@@ -98,7 +98,7 @@ test('private auth, observer and public schemas offline without sockets', async 
   const app = createApp({ ...config, statsToken: token }, { facilitatorClient: facilitator, catalogue: null, log() {} });
   const stats = app.locals.healthStats;
   settle(stats, external);
-  const observer = app.router.stack[1].handle;
+  const observer = app.router.stack[2].handle;
   for (const [method, challenge, statusCode, path] of [['POST', true, 402, ROUTE], ['GET', true, 402, ROUTE], ['HEAD', true, 402, ROUTE], ['POST', false, 402, '/unknown'], ['GET', false, 404, '/unknown']]) {
     const res = Object.assign(new EventEmitter(), { statusCode, hasHeader: () => challenge });
     observer({ method, path }, res, () => {}); res.emit('finish');
@@ -163,4 +163,20 @@ test("public counts disclose the own-payment basis and historical limits", () =>
     assert.equal(typeof n.definitions.counts_label, "string");
     assert.equal(privateStatsBody(stats).counts_basis, n.counts_basis);
   }
+});
+
+test('agent traffic and payment refusal counters survive the same persisted state', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'ask-combined-counters-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, 'stats.json');
+  const stats = new HealthStats({ file });
+  stats.recordAgent({ body: { tools: [{ type: 'function' }], stream: true }, get: () => undefined });
+  stats.recordPaymentFailure({ code: 'payment_unfunded' });
+  stats.flush();
+  const expected = numbersBody(stats);
+  const loaded = numbersBody(new HealthStats({ file }));
+  assert.equal(loaded.agent_traffic.total.with_tools, 1);
+  assert.equal(loaded.settlement_failures_by_code.total.payment_unfunded, 1);
+  assert.deepEqual(loaded.agent_traffic, expected.agent_traffic);
+  assert.deepEqual(loaded.settlement_failures_by_code, expected.settlement_failures_by_code);
 });
