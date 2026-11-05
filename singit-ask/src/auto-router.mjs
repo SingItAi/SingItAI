@@ -1,3 +1,4 @@
+import { unsupportedCapability, capabilityError } from "./agent-chat.mjs";
 // Text-only lite policy: eco requires every short/plain limit; premium matches long input,
 // reasoning with an answer budget >= 1000 (within the HTTP limit of 1200), or reasoning with code/medium input. Otherwise standard.
 // Thresholds and phrases live in config. Selection prices the request's upto ceiling on Base;
@@ -31,7 +32,7 @@ validateAutoConfig(AUTO_CONFIG);
 AUTO_CONFIG.pinnedDefaultFallbacks ??= {};
 const reasoningPattern = new RegExp(`\\b(?:${AUTO_CONFIG.reasoningWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i");
 export function classifyAuto(input) {
-  const text = input.messages.map(m => m.content).join("\n");
+  const text = input.messages.map(m => Array.isArray(m.content) ? m.content.filter(b => b.type === "text").map(b => b.text).join("\n") : m.content ?? "").join("\n");
   const tokens = Math.ceil(input.chars / AUTO_CONFIG.charsPerToken);
   const reasoning = reasoningPattern.test(text), code = text.includes("```");
   const { eco, premium } = AUTO_CONFIG;
@@ -54,6 +55,7 @@ export async function chooseAuto(config, catalogue, input, ErrorClass, log = () 
       const info = await catalogue?.resolve(id).catch(() => null);
       const skip = reason => log(`singit-ask: auto skip model=${id} reason=${reason}`);
       if (!info || catalogue.isSuspended?.(info.id) || catalogue.isUnservable?.(info.id) || (catalogue.canAnswer && !await catalogue.canAnswer(info.id))) { skip("unhealthy"); continue; }
+      if (unsupportedCapability(info, input.flags)) continue;
       const candidate = { ...input, model: info.id, info, ...priceGuard(catalogue, info.id, config.priceBufferPp ?? 1),
         autoTier: tier, autoReason: classified.reason };
       // Same rule as the paid call: a quote whose ceiling already covers the list-price worst case sends no floor,
@@ -72,6 +74,7 @@ export async function chooseAuto(config, catalogue, input, ErrorClass, log = () 
       return { ...best, autoAlternates };
     }
   }
+  if (input.flags?.tools || input.flags?.images) throw capabilityError(input.flags.tools ? "tools" : "images", AUTO_ID, ErrorClass);
   throw unservableError(catalogue, AUTO_ID, ErrorClass);
 }
 

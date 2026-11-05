@@ -143,6 +143,10 @@
 <section class="lp-section"><div class="shell"><h2 class="section-title">Discover endpoints</h2>
 <p>The live x402 resource list is at <a href="https://ask.singitai.app/.well-known/x402">ask.singitai.app/.well-known/x402</a>. The site alias <a href="https://singitai.app/.well-known/x402">singitai.app/.well-known/x402</a> redirects there so the list stays current. <a href="/llms.txt">/llms.txt</a> provides a text entry point. The site’s <a href="https://singitai.app/openapi.json">/openapi.json</a> redirects to the x402 spec; use <a href="/openapi-keys.json">/openapi-keys.json</a> for key authentication.</p>
 </div></section>
+<section><h2>x402 agent chat and SSE</h2>
+<p>Paid <code>POST https://ask.singitai.app/v1/chat/completions</code> supports function tools, assistant/tool exchanges, developer instructions and text/image blocks: 200 messages, 100000 estimated characters including tools and 8000 per image, 64 tools/calls, four images and 8192 output tokens (default 800), within a 128 kB JSON body. Capabilities depend on the model. Legacy plain text requests with stream:false and max_tokens&lt;=1200 retain their behavior. Messages and Responses already support tools and up to 32000 output tokens.</p>
+<p>Chat, Messages and Responses accept <code>stream:true</code> as buffered SSE: a complete answer is released after settlement, rather than token by token. Billing, pricing and PAYMENT-RESPONSE are retained. Chat ends with [DONE]; Responses with response.completed. Chat <code>stream_options</code> accepts only <code>{include_usage:boolean}</code>, only with stream:true. Errors remain JSON. Free and per-model chat also support buffered SSE with their existing text-only limits; free models refuse tools/images.</p>
+<p><code>GET https://ask.singitai.app/numbers.json</code> includes agent_traffic: total/last_24h/last_7d calls, with_tools, with_stream, with_images and fixed by_source product labels for served paid and free answers. These counters contain no raw client headers, prompts or addresses.</p></section>
 </main>
 <footer class="footer">
   <div class="shell footer-inner">

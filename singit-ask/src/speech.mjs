@@ -7,6 +7,10 @@ import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // payment is verified, Surplus makes the audio, and only then is the payment settled: no audio, no charge. The audio
 // is checked against the requested format (mp3 by default), with what was charged in the X-SingIt-* headers.
 import crypto from "node:crypto";
+import { lookup } from "node:dns/promises";
+import { BlockList, isIP } from "node:net";
+import https from "node:https";
+import { Readable } from "node:stream";
 import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
@@ -18,6 +22,7 @@ import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, 
 export const SPEECH_ROUTE = "/v1/audio/speech";
 export const AUDIO_MODELS_ROUTE = "/v1/audio/models";
 export const SPEECH_TERMS = Object.freeze({ markupBps: 3000, maxChars: 4096 });
+export const ASYNC_SPEECH_TERMS = Object.freeze({ markupBps: 3000, maxChars: 4096, timeoutMs: 110_000, pollMs: 1000, maxBytes: 20 * 1024 * 1024 });
 const FORMATS = new Set(["mp3", "opus", "aac", "flac", "wav", "pcm"]);
 export const SPEECH_CONTENT_TYPES = Object.freeze({
   mp3: "audio/mpeg", wav: "audio/wav", flac: "audio/flac", opus: "audio/ogg", aac: "audio/aac", pcm: "audio/pcm",
@@ -53,6 +58,9 @@ export function readSpeechRequest(body, model) {
   if (typeof body.input !== "string" || !body.input.trim() || body.input.length > SPEECH_TERMS.maxChars) {
     throw new SpeechError(400, `Send input text of up to ${SPEECH_TERMS.maxChars} characters.`);
   }
+  if (model.usdPerJob && (body.speed !== undefined || body.response_format !== undefined)) {
+    throw new SpeechError(400, "Async speech returns the provider audio format; speed and response_format are not supported.");
+  }
   const request = { model: model.id, input: body.input };
   if (body.voice !== undefined) {
     if (typeof body.voice !== "string" || body.voice.length > 60 || (model.voices && !model.voices.includes(body.voice))) {
@@ -72,7 +80,7 @@ export function readSpeechRequest(body, model) {
 }
 
 // The model's list price for this text, in micro-USD (at least 1).
-export const speechListAtomic = (model, request) => Math.max(1, Math.ceil(model.usdPerUnit * request.input.length / 1000 * 1e6));
+export const speechListAtomic = (model, request) => Math.max(1, Math.ceil((model.usdPerJob ?? model.usdPerUnit * request.input.length / 1000) * 1e6));
 
 export function speechPrice(listAtomic, network) {
   const list = BigInt(listAtomic);
@@ -85,7 +93,7 @@ export function speechPrice(listAtomic, network) {
 const DESCRIPTION = routeCopy("/v1/audio/speech").description;
 
 const INPUT_SCHEMA = { properties: {
-  model: { type: "string", examples: ["venice-kokoro-tts"], description: "A speech model id from GET /v1/audio/models." },
+  model: { type: "string", examples: ["venice-kokoro-tts"], description: "A speech model id from GET /v1/audio/models, including elevenlabs/multilingual-v2, elevenlabs/v3, bytedance/seed-audio-1.0 (fixed per-job pricing; provider audio format; no speed/response_format)." },
   input: { type: "string", minLength: 1, maxLength: SPEECH_TERMS.maxChars, description: "The text to read aloud." },
   voice: { type: "string", maxLength: 60, examples: ["af_heart"], description: "A voice of the model; they are listed at GET /v1/audio/models." },
   response_format: { type: "string", enum: [...FORMATS], default: "mp3", description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type." },
@@ -98,7 +106,7 @@ const EXAMPLE = Object.freeze({ model: "venice-kokoro-tts", input: "Hello from S
 export const SPEECH_REQUEST_BODY = () => ({ required: true, content: { "application/json": {
   schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
 
-export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
+export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, resolveHostname = lookup, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
@@ -110,9 +118,12 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
   // Free: speech prices for x402 and transcription prices for API-key consumers.
   app.get(AUDIO_MODELS_ROUTE, open, async (_req, res) => {
     const voice = await catalogue.voiceModels().catch(() => ({ speech: new Map(), transcription: new Map() }));
-    const speech = [...voice.speech.values()].map((m) => ({ id: m.id, object: "model", kind: "speech", x402: true, route: SPEECH_ROUTE, name: m.name,
-      owned_by: m.provider || "surplus", voices: m.voices, listUsdPer1kChars: m.usdPerUnit,
-      singitUsdPer1kChars: Number((m.usdPerUnit * (1 + SPEECH_TERMS.markupBps / 10000)).toFixed(6)) }));
+    const speech = [...voice.speech.values()].map((m) => ({ id: m.id, object: "model", kind: "speech", modality: "speech", upstream_id: m.upstreamId ?? m.id, x402: true, route: SPEECH_ROUTE, name: m.name,
+      owned_by: m.provider || "surplus", voices: m.voices, ...(m.usdPerJob ? { listUsdPerJob: m.usdPerJob,
+        singitUsdPerJob: (Number(speechPrice(Math.ceil(m.usdPerJob * 1e6), BASE).totalAtomic) - Number(FEES[BASE])) / 1e6,
+        totalUsdPerJob: Object.fromEntries([BASE, SOLANA].map(n => [n, Number(speechPrice(Math.ceil(m.usdPerJob * 1e6), n).totalAtomic) / 1e6])) }
+        : { listUsdPer1kChars: m.usdPerUnit,
+      singitUsdPer1kChars: Number((m.usdPerUnit * (1 + SPEECH_TERMS.markupBps / 10000)).toFixed(6)) }) }));
     const transcription = [...voice.transcription.values()].map((m) => ({ id: m.id, object: "model", kind: "transcription",
       x402: false, route: null, access: "api-key",
       name: m.name, owned_by: m.provider || "surplus", listUsdPerMinute: m.usdPerUnit,
@@ -121,7 +132,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
       note: "Transcription models are priced here for API-key use and are not payable on /v1/audio/speech over x402.",
       fees: { markupPct: SPEECH_TERMS.markupBps / 100,
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
-      data: [...speech.sort((a, b) => a.listUsdPer1kChars - b.listUsdPer1kChars),
+      data: [...speech.sort((a, b) => (a.listUsdPerJob ?? a.listUsdPer1kChars) - (b.listUsdPerJob ?? b.listUsdPer1kChars)),
              ...transcription.sort((a, b) => a.listUsdPerMinute - b.listUsdPerMinute)] });
   });
 
@@ -147,7 +158,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
     try {
       const model = await catalogue.resolveSpeech(req.body?.model);
       const request = readSpeechRequest(req.body, model);
-      priced.set(req.body, { request, listAtomic: speechListAtomic(model, request) });
+      priced.set(req.body, { model, request, listAtomic: speechListAtomic(model, request) });
       next();
     } catch (error) {
       const status = error instanceof UnknownModel ? 404 : error.status ?? 503;
@@ -176,20 +187,24 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
     if (used.has(seen)) return res.status(409).json({ error: { type: "invalid_request_error", code: "payment_duplicate", message: "This payment was already used." } });
     used.set(seen, Date.now());
     for (const [k, at] of used) if (Date.now() - at > 3_600_000) used.delete(k);
-    const { request, listAtomic } = priced.get(req.body);
+    const { model, request, listAtomic } = priced.get(req.body);
     const started = Date.now();
-    let response, audio;
+    let response, audio, actualFormat;
     try {
-      response = await fetchImpl(`${config.surplusUrl}${SPEECH_ROUTE}`, { method: "POST",
+      if (model.usdPerJob) {
+        ({ response, audio, format: actualFormat } = await generateAsyncSpeech(config, model, request, { fetchImpl, resolveHostname }));
+      } else {
+        response = await fetchImpl(`${config.surplusUrl}${SPEECH_ROUTE}`, { method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}` },
         body: JSON.stringify(request), signal: AbortSignal.timeout(120_000) });
-      audio = Buffer.from(await response.arrayBuffer());
+        audio = Buffer.from(await response.arrayBuffer());
+      }
     } catch (error) {
       log(`singit-ask: voice model unreachable (${error.name})`);
       return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer", message: "No audio was made. You were not charged." } });
     }
     const type = response.headers.get("content-type") ?? "";
-    const format = request.response_format ?? "mp3";
+    const format = actualFormat ?? request.response_format ?? "mp3";
     const pcmError = format === "pcm" && /(?:json|text|html)/i.test(type);
     if (!response.ok || !audio.length || !matchesSpeechFormat(audio, format) || pcmError) {
       log(`singit-ask: voice model ${request.model} answered HTTP ${response.status} (format ${format}, upstream content-type ${JSON.stringify(type)}, ${audio.length} bytes, first4 ${audio.subarray(0, 4).toString("hex")})`);
@@ -202,5 +217,118 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
     res.set({ "Content-Type": speechContentType(format, audio), "X-SingIt-Charged-Atomic": billing.totalAtomic, "X-SingIt-List-Atomic": billing.listAtomic,
               "Cache-Control": "no-store" });
     res.send(audio);
+  });
+}
+
+// OPEN QUESTION: offline docs do not specify TTS fields on music jobs. Verify prompt + voice
+// with one explicitly approved paid call before merging. Keep this assumption in one adapter.
+export function asyncSpeechBody(model, request) {
+  return { model: model.upstreamId, prompt: request.input, ...(request.voice ? { voice: request.voice } : {}) };
+}
+
+export async function generateAsyncSpeech(config, model, request, {
+  fetchImpl = fetch, artifactFetch, resolveHostname = lookup, timeoutMs = ASYNC_SPEECH_TERMS.timeoutMs,
+  pollMs = ASYNC_SPEECH_TERMS.pollMs, maxBytes = ASYNC_SPEECH_TERMS.maxBytes,
+} = {}) {
+  const signal = AbortSignal.timeout(timeoutMs);
+  const headers = { Authorization: `Bearer ${config.surplusKey}` };
+  // The same deadline covers submission, polling, redirects and streamed download.
+  const get = async (path, init = {}) => {
+    signal.throwIfAborted();
+    const response = await fetchImpl(`${config.surplusUrl}${path}`, { ...init, headers: { ...headers, ...init.headers }, signal });
+    if (!response.ok) throw new SpeechError(503, "Speech upstream unavailable.");
+    return response;
+  };
+  // Default production path pins the validated address on the TLS socket (DNS rebinding).
+  // Tests may inject artifactFetch or a custom fetchImpl for the download hop.
+  const download = artifactFetch ?? (fetchImpl === fetch ? pinnedFetch
+    : (url, init) => fetchImpl(url.href, init));
+  let job = await (await get('/v1/music/generations', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(asyncSpeechBody(model, request)) })).json();
+  if (!/^[A-Za-z0-9_-]{6,80}$/.test(job?.id ?? '')) throw new SpeechError(503, 'Invalid speech job.');
+  const id = job.id;
+  while (job.status !== 'succeeded') {
+    if (!['queued', 'submitted', 'running'].includes(job.status)) throw new SpeechError(503, 'Speech job failed.');
+    await new Promise((resolve, reject) => {
+      const abort = () => { clearTimeout(timer); reject(signal.reason); };
+      const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, pollMs);
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+    });
+    job = await (await get(`/v1/music/generations/${id}`)).json();
+  }
+  if (!Array.isArray(job.results) || !job.results.length) throw new SpeechError(503, 'Missing speech artifact.');
+  const origin = new URL(config.surplusUrl).origin;
+  let url = new URL(`/v1/media/artifacts/${id}/0`, origin);
+  let response;
+  for (let redirects = 0; ; redirects++) {
+    signal.throwIfAborted();
+    const address = await validateArtifactUrl(url, resolveHostname);
+    response = await download(url, { redirect: 'manual', signal,
+      headers: url.origin === origin ? headers : {} }, address);
+    if (![301, 302, 303, 307, 308].includes(response.status)) break;
+    const location = response.headers.get('location');
+    await response.body?.cancel();
+    if (!location || redirects >= 3) throw new SpeechError(503, 'Invalid speech artifact redirect.');
+    url = new URL(location, url);
+  }
+  if (!response.ok) throw new SpeechError(503, 'Speech artifact unavailable.');
+  if (Number(response.headers.get('content-length')) > maxBytes) {
+    await response.body?.cancel();
+    throw new SpeechError(503, 'Speech artifact too large.');
+  }
+  const chunks = []; let bytes = 0;
+  if (!response.body) throw new SpeechError(503, 'Empty speech artifact.');
+  for await (const chunk of response.body) {
+    signal.throwIfAborted();
+    bytes += chunk.length;
+    if (bytes > maxBytes) throw new SpeechError(503, 'Speech artifact too large.');
+    chunks.push(chunk);
+  }
+  signal.throwIfAborted();
+  const audio = Buffer.concat(chunks);
+  const format = ['mp3', 'wav', 'opus', 'flac', 'aac'].find(f => matchesSpeechFormat(audio, f));
+  if (!audio.length || !format) throw new SpeechError(503, 'Invalid speech artifact.');
+  return { response, audio, format };
+}
+
+// Reject non-public destinations, including IPv4-mapped IPv6 addresses. Resolve every
+// hop (including Surplus); a hostname with any unsafe answer fails closed. The first
+// safe answer is pinned onto the TLS connection so a later DNS rebind cannot switch hosts.
+const artifactBlocked = new BlockList();
+for (const [address, prefix] of [
+  ['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8],
+  ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16],
+  ['168.63.129.16', 32], ['192.0.0.0', 24], ['198.18.0.0', 15], ['224.0.0.0', 3],
+]) artifactBlocked.addSubnet(address, prefix, 'ipv4');
+for (const [address, prefix] of [
+  ['::', 96], ['::1', 128], ['fc00::', 7], ['fec0::', 10], ['fe80::', 10], ['ff00::', 8],
+  ['64:ff9b::', 96], ['64:ff9b:1::', 48], ['2002::', 16],
+]) artifactBlocked.addSubnet(address, prefix, 'ipv6');
+async function validateArtifactUrl(url, resolveHostname) {
+  if (url.protocol !== 'https:' || url.username || url.password) throw new SpeechError(503, 'Unsafe speech artifact URL.');
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+  const family = isIP(hostname);
+  const addresses = family ? [{ address: hostname, family }]
+    : await resolveHostname(hostname, { all: true, verbatim: true });
+  if (!Array.isArray(addresses) || !addresses.length || addresses.some(({ address }) => {
+    const fam = isIP(address);
+    return !fam || artifactBlocked.check(address, fam === 4 ? 'ipv4' : 'ipv6');
+  })) throw new SpeechError(503, 'Unsafe speech artifact address.');
+  const chosen = addresses[0];
+  return { address: chosen.address, family: chosen.family || isIP(chosen.address) };
+}
+// Pin the checked address to the TLS connection; hostname still verifies the certificate.
+function pinnedFetch(url, { headers, signal }, address) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, { headers, signal, lookup: (_host, options, cb) =>
+      options.all ? cb(null, [address]) : cb(null, address.address, address.family) }, (res) => {
+      try {
+        const nullBody = [101, 204, 205, 304].includes(res.statusCode);
+        if (nullBody) res.resume();
+        resolve(new Response(nullBody ? null : Readable.toWeb(res), { status: res.statusCode, headers: res.headers }));
+      } catch (error) { reject(error); }
+    });
+    req.on('error', reject); req.end();
   });
 }

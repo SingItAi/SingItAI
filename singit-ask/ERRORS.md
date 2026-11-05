@@ -1,9 +1,14 @@
 # Ask API errors
 
-JSON errors retain their existing status, message, type and envelope. OpenAI-compatible routes add `error.code`; Anthropic Messages also puts the code inside `error`. Errors with a string `error` retain that string and add a top-level `code`. Clients should handle unknown codes for forward compatibility.
+JSON errors retain their existing status, message, type and envelope. OpenAI-compatible routes add `error.code`; Anthropic Messages also puts the code inside `error`. Errors with a string `error` retain that string and add a top-level `code`. Clients should handle unknown codes for forward compatibility. With stream:true, errors remain JSON (never partial SSE). Invalid stream values or stream_options return 400 invalid_request before payment; stream_options accepts only include_usage:boolean and requires stream:true.
 
 | Code | Meaning |
 | --- | --- |
+| `tools_unsupported` | This route does not support tools. |
+| `content_blocks_unsupported` | This route does not support content blocks. |
+| `tools_unsupported_for_model` | The selected model does not support tools. |
+| `images_unsupported_for_model` | The selected model does not support image inputs. |
+| `upstream_rejected_request` | The upstream provider rejected the request. |
 | `invalid_json` | Request body is unreadable JSON. |
 | `invalid_request` | Request fields cannot be accepted, including fallback_models unless it is an array of 1–3 unique nonempty model ids excluding the pinned model and singit/auto. |
 | `payload_too_large` | Request exceeds the 128 kB JSON limit. |

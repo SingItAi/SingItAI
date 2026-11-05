@@ -164,3 +164,19 @@ test("public counts disclose the own-payment basis and historical limits", () =>
     assert.equal(privateStatsBody(stats).counts_basis, n.counts_basis);
   }
 });
+
+test('agent traffic and payment refusal counters survive the same persisted state', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'ask-combined-counters-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, 'stats.json');
+  const stats = new HealthStats({ file });
+  stats.recordAgent({ body: { tools: [{ type: 'function' }], stream: true }, get: () => undefined });
+  stats.recordPaymentFailure({ code: 'payment_unfunded' });
+  stats.flush();
+  const expected = numbersBody(stats);
+  const loaded = numbersBody(new HealthStats({ file }));
+  assert.equal(loaded.agent_traffic.total.with_tools, 1);
+  assert.equal(loaded.settlement_failures_by_code.total.payment_unfunded, 1);
+  assert.deepEqual(loaded.agent_traffic, expected.agent_traffic);
+  assert.deepEqual(loaded.settlement_failures_by_code, expected.settlement_failures_by_code);
+});

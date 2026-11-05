@@ -70,15 +70,15 @@ test('samples are sorted, diverse and limited to eligible catalog entries', () =
   }
 });
 
-test('default discovery preserves 25 URLs and shares descriptions with challenges and OpenAPI', async t => {
+test('default discovery preserves 26 URLs and shares descriptions with challenges and OpenAPI', async t => {
   const { url } = await serve(t, {}, { audioSold: false, audioDiscoverable: false });
   const discovery = await (await request(url + '/.well-known/x402')).json();
   const llms = await (await request(url + '/llms.txt')).text();
   assert.doesNotMatch(llms, /video|music|sound.effects/i);
   assert.match(llms, /transcription is API-key only/);
   const openapi = await (await request(url + '/openapi.json')).json();
-  assert.equal(discovery.resources.length, 25);
-  assert.equal(discovery.resourceDetails.length, 25);
+  assert.equal(discovery.resources.length, 26);
+  assert.equal(discovery.resourceDetails.length, 26);
   assert.doesNotMatch(JSON.stringify(openapi), /video|music|sound.effects/i);
   assert.doesNotMatch(JSON.stringify(discovery), /video|music|sound.effects/i);
   for (const detail of discovery.resourceDetails) {

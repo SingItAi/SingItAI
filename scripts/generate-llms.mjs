@@ -1,4 +1,3 @@
-import { routeCopy } from '../singit-ask/src/listing-snapshot.mjs';
 import { readFileSync } from 'node:fs';
 import { breakdown } from './generate-catalog-page.mjs';
 const catalog = JSON.parse(readFileSync(new URL('../website/data/catalog-snapshot.json', import.meta.url), 'utf8'));
@@ -78,18 +77,9 @@ export function renderModelLinks() {
     ['Live reference prices', 'https://ask.singitai.app/pricing.json'],
     ...limits.map(p => [p.title.replace(' | SingIt', ''), `https://singitai.app/${p.slug}/`]),
   ];
-  // One shared blurb per modality keeps the compact guide below its 14 KB budget.
-  const listingPaths = ['/v1/chat/completions', '/v1/images/edits', '/v1/embeddings',
-    '/v1/images/generations', '/v1/audio/speech', '/v1/exa/search'];
-  // Compact sync with D2: modality counts + key names only (full DESCRIPTION lives on Ask discovery).
-  const listings = tasks.filter(([, , paths, free]) => !free && listingPaths.includes(paths[0]))
-    .map(([task, , paths]) => {
-      const d = routeCopy(paths[0]).description;
-      const snap = (d.match(/Snapshot: [^.]+\./) || d.match(/listed at GET \/v1\/catalog\./) || [''])[0];
-      return `- ${task}: ${snap}`.trimEnd();
-    }).join('\n');
+  // Compact: snapshot counts here; full route DESCRIPTION lives on Ask discovery (D2).
   return '## Models\n\nSnapshot: ' + breakdown(catalog)
-    + (catalog.coverage ? ' (partial offline snapshot).' : '.') + '\n\n' + listings + '\n\n'
+    + (catalog.coverage ? ' (partial offline snapshot).' : '.') + '\n\n'
     + links.map(([name, url]) => `- [${label(name)}](${url})`).join('\n');
 }
 
@@ -107,27 +97,37 @@ Only billable answers charge; upstream 503s never charge. For 400/413/422, fix t
 
 Free tier: ${DEFAULT_FREE_MODELS.length} free models, ${FREE_DEFAULTS.perVisitorPerDay} answers/day/network, shared daily cost cap $${FREE_DEFAULTS.budgetUsdPerDay}. The shared cap may run out (free_budget_exhausted); resets at midnight UTC. No wallet or key required. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
 
-Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Full model list: per-model reference prices, upto before exact.`;
+Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools included; 8000 per image), 64 tools/calls, four images, max_tokens 8192 (default 800), 128 kB JSON body. Model capabilities constrain tools/images. Messages/Responses support tools and 32000 output tokens.
+
+Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
+
+/numbers.json agent_traffic: 24h/7d paid/free with_tools/stream/images; fixed by_source. No raw headers/prompts/addresses.
+
+Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Per-model reference prices are in the full models list, with upto before exact.`;
 }
 
-// Standalone offline regeneration of the three agent guides only.
-if (process.argv[1] && import.meta.url === (await import('node:url')).pathToFileURL(process.argv[1]).href) {
-  (async () => { try {
+// Regenerate only the LLM references from committed snapshots; no network access.
+async function runCli() {
+  if (!process.argv[1]) return;
+  const { pathToFileURL } = await import('node:url');
+  const { resolve } = await import('node:path');
+  if (import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
     if (process.argv.slice(2).some(arg => arg !== '--check')) throw new Error('Usage: generate-llms.mjs [--check]');
     const { readFile, writeFile } = await import('node:fs/promises');
     const { price, visibleSnapshot } = await import('./generate-model-pages.mjs');
-    const read = name => readFile(new URL(`../website/${name}`, import.meta.url), 'utf8');
+    const website = new URL('../website/', import.meta.url);
+    const read = name => readFile(new URL(name, website), 'utf8');
     const snapshot = JSON.parse(await read('data/models-snapshot.json'));
     const hidden = JSON.parse(await readFile(new URL('./hidden-models.json', import.meta.url), 'utf8'));
     const routes = JSON.parse(await read('data/ask-routes.json'));
-    const files = renderLlms(await read('llms.txt'), visibleSnapshot(snapshot, hidden), routes, price);
-    let changed = 0;
-    for (const [name, content] of files) {
+    const stale = [];
+    for (const [name, content] of renderLlms(await read('llms.txt'), visibleSnapshot(snapshot, hidden), routes, price)) {
       if (await read(name) === content) continue;
-      if (process.argv.includes('--check')) throw new Error(`Generated file differs: ${name}`);
-      await writeFile(new URL(`../website/${name}`, import.meta.url), content);
-      changed++;
+      stale.push(name);
+      if (!process.argv.includes('--check')) await writeFile(new URL(name, website), content);
     }
-    console.log(`${files.size} llms files; ${changed} updated`);
-  } catch (error) { console.error(error.message); process.exitCode = 1; } })();
+    if (process.argv.includes('--check') && stale.length) throw new Error(`Generated files differ: ${stale.join(', ')}`);
+  }
 }
+
+runCli().catch(error => { console.error(error.message); process.exitCode = 1; });

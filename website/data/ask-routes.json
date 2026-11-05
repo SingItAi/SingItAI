@@ -193,6 +193,16 @@
       }
     },
     {
+      "path": "/v1/chat/nemotron-3.5-lightning",
+      "method": "POST",
+      "summary": "Generate a NVIDIA Nemotron 3.5 Lightning chat completion",
+      "price": {
+        "min": "0.001",
+        "max": "0.004578",
+        "currency": "USD"
+      }
+    },
+    {
       "path": "/v1/chat/qwen3.8-max-0902",
       "method": "POST",
       "summary": "Generate a Qwen3.8 Max chat completion",

@@ -1,3 +1,5 @@
+import { validTraffic, recordTraffic, trafficNumbers } from './agent-traffic.mjs';
+
 import { PAYMENT_ERROR_CODES } from "./payment-codes.mjs";
 // Observed model and payment-rail health and settled usage counters: public status and numbers should
 // describe what this installation has seen, rather than promise that an untested model or rail works.
@@ -53,12 +55,12 @@ function validState(s) {
     && object(o.routes) && Object.keys(o.routes).length <= ROUTE_CAP
     && Object.entries(o.routes).every(([key, n]) => (key === "other" || /^\/[^\s]{0,200}$/.test(key)) && count(n));
   const refusals = o => object(o) && Object.entries(o).every(([k, n]) => PAYMENT_ERROR_CODES.includes(k) && count(n));
-  return object(s) && (s.paymentFailures === undefined || refusals(s.paymentFailures)) && (s.c402 === undefined || c402(s.c402)) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
+  return object(s) && (s.agent_traffic === undefined || validTraffic(s.agent_traffic)) && (s.paymentFailures === undefined || refusals(s.paymentFailures)) && (s.c402 === undefined || c402(s.c402)) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
     && hashes(s.payers, PAYER_CAP) && typeof s.capped === "boolean" && totals(s.totals)
     && models(s.models, modelLast) && networks(s.networks, last) && object(s.buckets)
     && Object.keys(s.buckets).length <= RETENTION_HOURS
     && Object.entries(s.buckets).every(([key, b]) => Number.isFinite(Date.parse(key)) && object(b)
-      && (b.paymentFailures === undefined || refusals(b.paymentFailures)) && (b.c402 === undefined || c402(b.c402)) && models(b.models, modelCounts) && networks(b.networks, counts) && totals(b.totals)
+      && (b.agent_traffic === undefined || validTraffic(b.agent_traffic)) && (b.paymentFailures === undefined || refusals(b.paymentFailures)) && (b.c402 === undefined || c402(b.c402)) && models(b.models, modelCounts) && networks(b.networks, counts) && totals(b.totals)
       && hashes(b.payers, BUCKET_PAYER_CAP) && typeof b.capped === "boolean");
 }
 export class HealthStats {
@@ -115,6 +117,8 @@ export class HealthStats {
       models: Object.create(null), networks: {}, totals: {}, payers: [], capped: false, c402: challengeCounts(), paymentFailures: {} };
 
   }
+  recordAgent(req) { try { recordTraffic(this, req); } catch {} }
+
   recordPaymentFailure({ code } = {}) {
     try {
       if (!PAYMENT_ERROR_CODES.includes(code)) return;
@@ -327,7 +331,7 @@ export function numbersBody(stats) {
     [code, entries.reduce((sum, b) => sum + (b.paymentFailures?.[code] || 0), 0)]));
   const byNetwork = key => Object.fromEntries(["base", "solana"].map(n =>
     [n, key === "atomic" ? volume(total.byNetwork[n]?.atomic) : total.byNetwork[n]?.calls || 0]));
-  return { schema: 1, generated_at: new Date(stats.now()).toISOString(), since,
+  return { schema: 1, agent_traffic: trafficNumbers(stats), generated_at: new Date(stats.now()).toISOString(), since,
     scope: "Settled payments on publicly listed x402 routes; own payers are excluded only once an own-payer list is configured (see counts_basis).",
     settlement_failures_by_code: { total: refusals([stats.state]), last_24h: refusals(stats.window(24)), last_7d: refusals(stats.window(168)) },
     paid_calls: { ...fields("calls"), by_network: byNetwork("calls") },
@@ -357,6 +361,8 @@ export function numbersBody(stats) {
       counts_label: "Human-readable coverage, including the limits of historical own-payment exclusion.",
       own_payers_configured: "True when the own-payer list is non-empty. Adding it removes historical own unique hashes; earlier calls and volume cannot be corrected because payer-level payment history is not stored.",
       own_payments_excluded: "Configured own-payer settlements excluded from calls, volume and unique payers.",
+      agent_traffic: "Served paid and free chat/Messages/Responses answers, including own clients; total and UTC hourly windows count tools, streams, images and fixed client product labels without raw headers or prompts.",
+
       settlement_failures_by_code: "Refused payments, verification or settlement, with a code, across all routes with the hooks; does not replace settlement_failures.",
       settlement_failures: "Failed facilitator settlements across all routes during each window.",
       availability: "External availability is published separately at https://app.singitai.app/status.json."
