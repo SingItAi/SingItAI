@@ -712,6 +712,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.json({
       openapi: "3.1.0",
       info: { title: "SingIt Ask", version: "1.0.0",
+              termsOfService: "https://singitai.app/terms/",
               description: "Language-model answers paid per answer over x402 in USDC on Base or Solana. No accounts or API keys."
                 + (freeOffer ? ` Free to try: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day, no payment.` : ""),
               "x-guidance": "POST JSON in OpenAI chat-completions format to the paths below. A first request without "
@@ -1027,13 +1028,20 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     ...(config.videoSold && config.videoDiscoverable ? [VIDEO_ROUTE] : []),
     ...modelRoutePaths(catalogue)] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
+  // Free: canonical legal pages, with fixed destinations and no query forwarding.
+  for (const [path, url] of [["/terms", "https://singitai.app/terms/"], ["/privacy", "https://singitai.app/privacy/"]]) {
+    app.get([path, `${path}/`], open, (_req, res) => {
+      res.set("Cache-Control", "public, max-age=3600").redirect(308, url);
+    });
+  }
   // Free: a human or agent landing on the bare origin gets a small service index instead of Express's 404.
   // Express answers HEAD the same way automatically. Open CORS, like the other public documents.
   app.get("/", open, (req, res) => {
     const base = origin(req);
     res.json({ name: SERVICE_NAME, description: DISCOVERY_DESCRIPTION, icon: ICON_URL,
       links: { openapi: `${base}/openapi.json`, x402: `${base}/.well-known/x402`, llmsTxt: `${base}/llms.txt`,
-        models: `${base}/v1/models`, docs: "https://singitai.app/developers/" } });
+        models: `${base}/v1/models`, docs: "https://singitai.app/developers/",
+        terms: "https://singitai.app/terms/", privacy: "https://singitai.app/privacy/" } });
   });
   // Free: llmstxt.org format, generated from the same route list as discovery so it cannot drift from it.
   app.get("/llms.txt", open, (req, res) => {
@@ -1083,6 +1091,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       `- Full documentation: ${base}/llms-full.txt`,
       `- Models: ${base}/v1/models`,
       "- Docs: https://singitai.app/developers/",
+      "- Terms: https://singitai.app/terms/",
+      "- Privacy policy: https://singitai.app/privacy/",
       `- First paid x402 call: ${FIRST_PAID_CALL_DOC}`,
       `- MCP server (API key, not x402): ${MCP_URL}. Free tools work without a key; paid tools need a SingIt API key created in the app at https://app.singitai.app/app/.`,
     ];
