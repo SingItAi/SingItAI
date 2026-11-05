@@ -49,7 +49,7 @@ test('docs metadata, schema, sitemap, tracking and links', async () => {
 });
 test('docs error vocabulary exactly matches dependency-free API source', async () => {
   const html = await read('docs/errors/index.html');
-  const codes = [...html.matchAll(/data-error-code="([a-z_]+)"/g)].map(m => m[1]);
+  const codes = [...html.matchAll(/data-error-code="([a-z0-9_]+)"/g)].map(m => m[1]);
   assert.deepEqual(codes.sort(), [...ERROR_CODES].sort());
   for (const status of [400, 401, 402, 403, 404, 409, 413, 422, 429, 502, 503, 504, 500]) {
     assert.ok(codes.includes(defaultErrorCode(status)));

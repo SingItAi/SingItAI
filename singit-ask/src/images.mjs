@@ -108,7 +108,7 @@ const OUTPUT_SCHEMA = { type: "object", required: ["data", "billing"], propertie
 const EXAMPLE = Object.freeze({ model: "venice-seedream-v5-lite", prompt: "a small green robot holding a coin, flat illustration",
   n: 1, size: "1024x1024" });
 
-export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
+export function addImageRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
@@ -174,7 +174,7 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
       inputSchema: INPUT_SCHEMA, output: { example: OUTPUT_EXAMPLE, schema: OUTPUT_SCHEMA } }),
-  } }, server, { log });
+  } }, server, { log, publicClient });
   app.post(IMAGE_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
     const network = JSON.parse(Buffer.from(header, "base64").toString()).accepted?.network;

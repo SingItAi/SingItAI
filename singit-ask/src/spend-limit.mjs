@@ -158,11 +158,16 @@ export function spendLimitMiddleware({ reader = null, log = () => {} } = {}) {
     if (typeof res.json === "function") {
       const json = res.json.bind(res);
       res.json = (body) => {
-        if (res.statusCode === 402 && body && typeof body === "object" && !Array.isArray(body)) {
+        if ([402, 412].includes(res.statusCode) && body && typeof body === "object" && !Array.isArray(body)) {
           try {
             const challenge = decodeHeader(res.getHeader("payment-required"));
+            if (res.statusCode === 412 && challenge?.error !== "permit2_allowance_required") return json(body);
+            if (challenge?.error === "permit2_allowance_required") res.statusCode = 402;
             body = { ...body, error: body.error ?? "payment_required", code: body.code ?? "payment_required",
               ...(challenge?.accepts ? { x402Version: challenge.x402Version, accepts: challenge.accepts } : {}) };
+            if (challenge?.error === "permit2_allowance_required") body = { ...body,
+              error: "permit2_allowance_required", code: "permit2_allowance_required",
+              message: "Include an EIP-2612 permit or approve Permit2 for at least the ceiling. Nothing was charged." };
             if (limit) body = { ...body, singitSpendLimit: offersAgainstLimit(limit, seen ?? []) };
           } catch { /* keep the body */ }
         }

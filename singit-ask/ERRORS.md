@@ -11,6 +11,7 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 | `not_found` | Route or price symbol is unavailable. |
 | `payment_required` | Payment challenge; select an offer and retry with a signature. |
 | `stale_payment_permit` | Payment permit is stale; obtain a fresh challenge. |
+| `permit2_allowance_required` | An `upto` payment on Base carried no EIP-2612 permit and the payer's USDC allowance to Permit2 is below the signed ceiling. Nothing was charged and no model ran: add a permit (or approve Permit2 for at least the ceiling) and retry. |
 | `payment_duplicate` | Payment signature was already used. |
 | `rate_limited` | Request allowance exhausted. |
 | `free_tier_exhausted` | Visitor allowance or shared daily answer allowance exhausted. |

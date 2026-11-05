@@ -1128,23 +1128,24 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }).catch(() => {});
     return answer;
   };
-  const route = { facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };
+  const publicClient = priceBook?.publicClient;
+  const route = { publicClient, facilitatorClient, catalogue, config, readRequest, choose: chooseChat, upstream: learning, fetchImpl, log };
   // API balance top-ups for app.singitai.app, bought by the account's own agent. Not listed for discovery.
   addCreditRoute(app, config, { facilitatorClient });
   // Web search, page contents and cited answers from Exa, bought with SingIt's Exa key: only when there is one.
-  if (exaKey) addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchImpl: exaFetch, log });
+  if (exaKey) addSearchRoutes(app, config, { publicClient, facilitatorClient, exaKey, fetchImpl: exaFetch, log });
   // Images from Surplus's image models, with this service's own Surplus key.
-  if (catalogue) addImageRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addImageRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
-  if (catalogue) addSpeechRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
-  if (catalogue) addFormatRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
+  if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
-  if (catalogue) addModelRoutes(app, config, { facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
+  if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
     inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Video from Surplus's text-to-video models, as jobs.
-  if (catalogue) addVideoRoutes(app, config, { facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addVideoRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.
   if (priceBook) addPriceRoutes(app, { book: priceBook, open });
   // Free answers first: a "free/" model is answered here; every other question goes on to be paid.
