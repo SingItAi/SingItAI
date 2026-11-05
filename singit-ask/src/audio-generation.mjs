@@ -141,6 +141,7 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
       if (reservation === 'full') return fail();
       const { model, request } = priced.get(req.body);
       if (!availableAudioPrices(config, catalogue).some(m => m.id === model.id)) return fail();
+      const started = Date.now();
       try {
         const { audio, contentType } = await runMediaJob({ baseUrl: config.surplusUrl, key: config.surplusKey,
           request: surplusAudioRequest(request), idempotencyKey: `singit-${digest}`, timeoutMs: i ? 180000 : 60000,
@@ -148,7 +149,19 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
         const billing = imagePrice(model.listAtomic, payment.accepted.network);
         res.set({ 'Content-Type': contentType, 'Cache-Control': 'no-store', 'X-SingIt-Charged-Atomic': billing.totalAtomic, 'X-SingIt-List-Atomic': billing.listAtomic });
         res.send(audio);
-      } catch { return fail(); }
+      } catch (error) {
+        // Log only bounded diagnostic fields, never upstream messages or credentials.
+        const safe = value => String(value ?? 'unknown').replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 100);
+        // Upstream strings are logged only when they are known Surplus vocabulary.
+        const known = (value, list) => list.includes(value) ? value : (value == null ? 'unknown' : 'other');
+        const STATUSES = ['queued', 'running', 'processing', 'pending', 'succeeded', 'failed', 'canceled', 'cancelled', 'expired'];
+        const CODES = ['invalid_request', 'invalid_request_error', 'provider_error', 'provider_unavailable', 'expired', 'execution_start_failed', 'unknown',
+          'insufficient_credit', 'insufficient_balance', 'insufficient_allowance', 'account_frozen', 'org_frozen', 'org_closed', 'model_not_found',
+          'no_sellers_for_model', 'no_healthy_sellers', 'rate_limit_exceeded', 'rate_limited', 'not_found', 'failed', 'canceled', 'upstream_error'];
+        const http = Number.isInteger(error.upstreamStatus) ? error.upstreamStatus : 'unknown';
+        log(`audio job fail ${kind} ${model.id} code=${safe(error.code)} job=${safe(error.jobId)} last=${known(error.lastStatus, STATUSES)} http=${http} upstream=${known(error.upstreamCode, CODES)} ms=${Date.now() - started}`);
+        return fail();
+      }
     });
   }
 }

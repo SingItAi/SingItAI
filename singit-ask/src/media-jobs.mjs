@@ -51,33 +51,64 @@ export function audioContentType(b) {
 export async function runMediaJob({ baseUrl, key, request, idempotencyKey, timeoutMs, maxBytes,
   fetchImpl = fetch, artifactFetch, resolve = lookup, now = Date.now,
   sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
+  const endpoint = `${baseUrl.replace(/\/$/, '')}/v1/music/generations`;
+  let id, lastStatus, upstreamStatus, upstreamCode, headers = { Authorization: `Bearer ${key}` }, phase = 'submit_failed';
+  const terminal = status => ['failed', 'canceled', 'cancelled', 'expired'].includes(status);
+  const failure = (code, message) => Object.assign(new Error(message), { code, jobId: id, lastStatus, upstreamStatus, upstreamCode });
+  async function cancel() {
+    if (!id || lastStatus === 'succeeded' || terminal(lastStatus)) return;
+    const cancelController = new AbortController();
+    let cancelTimer;
+    try {
+      await Promise.race([
+        (async () => {
+          const response = await fetchImpl(`${endpoint}/${id}`, { method: 'DELETE', headers,
+            signal: cancelController.signal, redirect: 'error' });
+          await response.body?.cancel();
+        })(),
+        new Promise(resolve => { cancelTimer = setTimeout(resolve, 5000); }),
+      ]);
+    } catch { /* Best effort: preserve the original failure. */ }
+    finally { clearTimeout(cancelTimer); cancelController.abort(); }
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const deadline = now() + timeoutMs;
   const signal = controller.signal;
-  const check = () => { signal.throwIfAborted(); if (now() >= deadline) throw new Error('Media timeout'); };
+  const check = () => { if (signal.aborted || now() >= deadline) throw failure('timeout', 'Media timeout'); };
   // Race even mocks and stalled body readers against the same whole-job deadline.
-  const aborted = new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('Media timeout')), { once: true }));
+  const aborted = new Promise((_, reject) => signal.addEventListener('abort', () => reject(failure('timeout', 'Media timeout')), { once: true }));
   async function work() {
     const auth = { Authorization: `Bearer ${key}` };
-    const endpoint = `${baseUrl.replace(/\/$/, '')}/v1/music/generations`;
     const json = async (url, init) => {
       check();
       const response = await fetchImpl(url, { ...init, signal, redirect: 'error' });
-      if (!response.ok) { await response.body?.cancel(); throw new Error('Media upstream unavailable'); }
+      if (!response.ok) {
+        upstreamStatus = response.status;
+        // Keep only Surplus's machine-readable error code (closed vocabulary), never its message.
+        const body = await readBoundedJson(response, 16 * 1024).catch(() => null);
+        upstreamCode = body?.error?.code ?? body?.error?.type ?? body?.code;
+        throw new Error('Media upstream unavailable');
+      }
       return readBoundedJson(response, 256 * 1024);
     };
     let job = await json(endpoint, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(request) });
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(job.id ?? '')) throw new Error('Invalid job id');
-    const id = job.id;
+    id = job.id;
+    lastStatus = job.status;
     const token = job.job_token ?? job.token;
-    const headers = token ? { 'X-Job-Token': token } : auth;
+    headers = token ? { 'X-Job-Token': token } : auth;
+    phase = 'poll_failed';
+    let previousDelay = 1000, delay = 2000;
     while (job.status !== 'succeeded') {
       check();
-      if (['failed', 'canceled', 'cancelled', 'expired'].includes(job.status)) throw new Error('Media failed');
-      await sleep(Math.min(1000, Math.max(1, deadline - now()))); check();
+      if (terminal(job.status)) { upstreamCode = job.error?.type ?? job.type; throw failure('job_failed', 'Media failed'); }
+      await sleep(Math.min(delay, Math.max(0, deadline - now()))); check();
+      [previousDelay, delay] = [delay, Math.min(previousDelay + delay, 10000)];
       job = await json(`${endpoint}/${id}`, { headers });
+      lastStatus = job.status;
     }
+    phase = 'artifact_failed';
     let target = new URL(`/v1/media/artifacts/${id}/0`, baseUrl);
     const ownOrigin = new URL(baseUrl).origin;
     for (let redirects = 0; redirects <= 5; redirects++) {
@@ -99,5 +130,13 @@ export async function runMediaJob({ baseUrl, key, request, idempotencyKey, timeo
     throw new Error('Too many redirects');
   }
   try { return await Promise.race([work(), aborted]); }
+  catch (error) {
+    const result = failure(signal.aborted || now() >= deadline ? 'timeout'
+      : error.code === 'job_failed' ? 'job_failed' : phase, error.message);
+    clearTimeout(timer);
+    controller.abort();
+    await cancel();
+    throw Object.assign(error, { code: result.code, jobId: result.jobId, lastStatus: result.lastStatus, upstreamStatus, upstreamCode });
+  }
   finally { clearTimeout(timer); controller.abort(); }
 }
