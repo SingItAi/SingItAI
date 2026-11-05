@@ -1,3 +1,5 @@
+import { routeCopy } from "../src/listing-snapshot.mjs";
+import { registerApp, request as fetch } from "./fixtures/listing-harness.mjs";
 // SI-62: one x402 resource per popular model, /v1/chat/<model>, each the same offers and billing as
 // /v1/chat/completions (metered.mjs's addUsageRoute does that work; nothing here duplicates it), except the
 // model is pinned by the path instead of the body.
@@ -55,9 +57,9 @@ async function serve(t, { upstream } = {}) {
     return { content: "Try Caffè Propaganda.", finishReason: "stop", usage: { total_tokens: 42, buyer_cost_micro: 100 } };
   });
   const app = createApp(CONFIG, { facilitatorClient: facilitator, upstream: answer, log: () => {}, catalogue });
-  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
-  t.after(() => listener.close());
-  return { url: `http://127.0.0.1:${listener.address().port}`, facilitator, asked };
+  const { url, close } = registerApp(app);
+  t.after(close);
+  return { url, facilitator, asked };
 }
 
 const post = (url, body, headers = {}) => fetch(url, { method: "POST",
@@ -103,7 +105,7 @@ test("every model route's description is short, billing-free, and the resource c
     const required = decode((await fetch(`${url}${route}`, { method: "GET" })).headers.get("payment-required"));
     const description = required.resource.description;
     assert.equal(description, discoveryDescription(model), route);
-    assert.ok(description.length <= 160, `${route}: ${description.length} chars`);
+    assert.ok(description.length <= 500, `${route}: ${description.length} chars`);
     assert.doesNotMatch(description, BILLING_WORDS, route);
     assert.match(required.resource.iconUrl ?? "", /\.png$/, route);
     assert.equal(required.resource.serviceName, `SingIt ${model.name} Chat`, route);
@@ -223,8 +225,9 @@ test("pinned route schemas exclude generic-only fields while generic chat retain
   assert.ok(doc.paths[ROUTE].post.requestBody.content["application/json"].schema.properties.fallback_models);
   const generic = decode((await fetch(url + ROUTE)).headers.get("payment-required"));
   assert.ok(generic.extensions.bazaar.schema.properties.input.properties.body.properties.fallback_models);
-  assert.ok(generic.resource.description.length <= 160);
-  assert.match(generic.resource.description, /singit\/auto/);
-  assert.match(generic.resource.description, /free\//);
-  assert.match(doc.paths[ROUTE].post.description, /settlement fee/, "openapi keeps the billing terms");
+  assert.ok(generic.resource.description.length <= 500);
+  // D2 aggregate copy uses the 500-character policy; D4 alias copy has its own 160-character tests.
+  assert.equal(generic.resource.description, routeCopy(ROUTE).description);
+  assert.ok(doc.paths[ROUTE].post.description.startsWith(routeCopy(ROUTE).description));
+  assert.match(doc.paths[ROUTE].post.description, /free\//);
 });

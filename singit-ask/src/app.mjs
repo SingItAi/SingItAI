@@ -1,4 +1,6 @@
-import { routeCopy } from "./listing-snapshot.mjs";
+import { MODEL_ALIAS_ROUTES, aliasPath, aliasDescription, aliasPaths, aliasCopy } from "./model-alias-routes.mjs";
+import { routeCopy as baseRouteCopy } from "./listing-snapshot.mjs";
+const routeCopy = path => aliasCopy(path) ?? baseRouteCopy(path);
 import { buildCatalog, catalogResponse, MODALITIES } from './catalog.mjs';
 import { validateStream, agentResponses } from './agent-stream.mjs';
 import { upstreamModelId } from "./model-aliases.mjs";
@@ -46,7 +48,7 @@ import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
 import { withRejectLog } from "./reject-log.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
-import { addModelRoutes, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
+import { addModelRoutes, addModelAliasRoutes, chatAliasOpenapiPaths, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 import { paymentCodesMiddleware } from "./payment-failure-hooks.mjs";
 
 export const BASE = "eip155:8453";
@@ -825,7 +827,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     const price = await priceRange(catalogue);
     const editMax = usd(imagePrice(await editCeiling(catalogue), SOLANA).totalAtomic);
     const embeddingMax = usd(imagePrice(await embeddingCeiling(catalogue, config), SOLANA).totalAtomic);
-    res.json({
+    const document = {
       openapi: "3.1.0",
       info: { title: "SingIt Ask", version: "1.0.0",
               termsOfService: "https://singitai.app/terms/",
@@ -888,8 +890,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } }])) : {}),
         // Per-model routes (#66) answer the same errors as /v1/chat/completions minus the free tier's 429, plus 404
         // for a model the catalogue does not list; documented with the shared JSON error shapes (SI-63).
-        ...(catalogue ? Object.fromEntries(Object.entries(await modelOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA,
-          outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config })).map(([route, item]) => [route,
+        ...(catalogue ? Object.fromEntries(Object.entries({ ...await chatAliasOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }), ...await modelOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA,
+          outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }) }).map(([route, item]) => [route,
           { post: { ...item.post, responses: { 200: item.post.responses[200],
             ...paidErrors({ notFound: "This model is not available; nothing was charged",
                             noAnswer: "No billable answer came back; nothing was charged", reasoning: true }) } } }])) : {}),
@@ -1138,7 +1140,18 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           + "retry with the signature here." },
         singitApiKey: { type: "http", scheme: "bearer", description: "A SingIt API key (sk_singit_...) from "
           + "https://app.singitai.app/app/. Only the wallet spend report on app.singitai.app uses it." } } },
-    });
+    };
+    if (catalogue) for (const model of MODEL_ALIAS_ROUTES.filter(m => m.modality === "image" && !catalogue.isSuspended?.(m.id))) {
+      const base = document.paths[IMAGE_ROUTE].post;
+      const requestBody = structuredClone(base.requestBody);
+      const body = requestBody.content["application/json"];
+      body.example.model = model.id;
+      body.schema.properties.model = { type: "string", const: model.id };
+      body.schema.required = body.schema.required.filter(key => key !== "model");
+      document.paths[aliasPath(model)] = { post: { ...base, operationId: `aliasImage${model.id.replace(/[^a-zA-Z0-9]/g, "_")}`,
+        summary: `Generate images with ${model.name}`, description: aliasDescription(model), requestBody } };
+    }
+    res.json(document);
   });
   const audioRoutes = () => config.audioSold && config.audioDiscoverable
     ? [...new Set(availableAudioPrices(config, catalogue).map(m => m.route))] : [];
@@ -1147,6 +1160,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
                          ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, ...audioRoutes().map(path => `${origin(req)}${path}`),
                          ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
+                         ...aliasPaths(catalogue).map((route) => `${origin(req)}${route}`),
                          ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
@@ -1158,7 +1172,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // list below and llms.txt can never list a route this instance did not add.
   const discoverableRoutes = () => [ROUTE, ...(catalogue ? [...Object.keys(FORMAT_ROUTES), ...EXTRA_PAID, IMAGE_ROUTE, SPEECH_ROUTE, ...audioRoutes(),
     ...(config.videoSold && config.videoDiscoverable ? [VIDEO_ROUTE] : []),
-    ...modelRoutePaths(catalogue)] : []),
+    ...aliasPaths(catalogue), ...modelRoutePaths(catalogue)] : []),
     ...(exaKey ? Object.keys(SEARCH_ROUTES) : [])];
   // Free: canonical legal pages, with fixed destinations and no query forwarding.
   for (const [path, url] of [["/terms", "https://singitai.app/terms/"], ["/privacy", "https://singitai.app/privacy/"]]) {
@@ -1301,6 +1315,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
   if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
+    inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
+  if (catalogue) addModelAliasRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
     inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Video from Surplus's text-to-video models, as jobs.
   if (catalogue) addVideoRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });

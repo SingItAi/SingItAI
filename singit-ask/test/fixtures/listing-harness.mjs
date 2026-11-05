@@ -24,7 +24,7 @@ const catalogue = {
   async videoModels() { return new Map(); }, async resolveVideo() { throw new UnknownModel("no"); },
 };
 
-function fakeFacilitator() {
+export function fakeFacilitator() {
   const calls = { verify: 0, settle: [] };
   return { calls,
     async getSupported() {

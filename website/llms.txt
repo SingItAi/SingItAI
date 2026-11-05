@@ -33,6 +33,8 @@ Discovery card (MCP, not an A2A task endpoint): https://ask.singitai.app/.well-k
 | Models / pricing lookups (free) | GET https://ask.singitai.app/v1/models; GET https://ask.singitai.app/pricing.json | Free |
 | Health | GET https://ask.singitai.app/health | Free |
 
+Pinned aliases: POST /v1/models/<id>/chat or /images. IDs: https://ask.singitai.app/llms-models.txt. Omit model or match id.
+
 ## Money rules for agents
 
 Unpaid calls: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). Decode it, sign one offer, retry the same request with PAYMENT-SIGNATURE. Success: HTTP 200 with PAYMENT-RESPONSE.
@@ -49,7 +51,7 @@ Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools incl
 
 Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
 
-/numbers.json agent_traffic: 24h/7d paid/free with_tools/stream/images; fixed by_source. No raw headers/prompts/addresses.
+/numbers.json: aggregate traffic only.
 
 Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Per-model reference prices are in the full models list, with upto before exact.
 <!-- generated:ask-guide:end -->

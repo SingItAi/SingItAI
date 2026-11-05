@@ -71,7 +71,7 @@ export function addRoutes(app, config, { facilitatorClient, publicClient, catalo
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 180, price: price(SOLANA) },
     ],
     mimeType: "application/json", description: DESCRIPTION, serviceName: "SingIt Embeddings", iconUrl: ICON_URL,
-    tags: discoveryTags(...routeCopy("/v1/embeddings").tags, "embeddings", "text", "openai-compatible", "pay-per-use", "solana",
+    tags: discoveryTags("embeddings", "text", "openai-compatible", "pay-per-use", "solana", ...routeCopy("/v1/embeddings").tags,
                         "base", "singit"),
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,

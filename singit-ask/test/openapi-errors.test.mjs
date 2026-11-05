@@ -1,3 +1,5 @@
+import { MODEL_ALIAS_ROUTES, aliasPath } from "../src/model-alias-routes.mjs";
+import { registerApp, request as fetch } from "./fixtures/listing-harness.mjs";
 // Every paid path in openapi.json documents its 402 (with the PAYMENT-REQUIRED header) and the error codes its
 // handlers really send, in the JSON shape they send them. Directories (Coinbase's Bazaar) read these; a code listed
 // here that the route never answers with, or a missing one it does, is a metadata bug. The shared 400/413 come from
@@ -35,15 +37,16 @@ const facilitator = { async getSupported() {
 async function serve(t) {
   const app = createApp({ ...CONFIG, maxEditImageBytes: 1024 }, { facilitatorClient: facilitator, catalogue, exaKey: "exa_test_key", fetchImpl: never,
     exaFetch: never, log: () => {}, upstream: never });
-  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
-  t.after(() => listener.close());
-  return `http://127.0.0.1:${listener.address().port}`;
+  const { url, close } = registerApp(app);
+  t.after(close);
+  return url;
 }
 
 // The codes each paid route answers with, read from its handlers (app.mjs, formats.mjs, images.mjs, speech.mjs,
 // search.mjs, video.mjs, metered.mjs). 413/400 also cover the body parser.
 const COMMON = [400, 402, 413, 503];
 const EXPECTED = {
+  ...Object.fromEntries(MODEL_ALIAS_ROUTES.map(m => [aliasPath(m), [...COMMON, 404, m.modality === "chat" ? 422 : 409]])),
   ...Object.fromEntries(["/v1/audio/sound-effects", "/v1/audio/generations"].map(path => [path, [...COMMON, 409, 422]])),
   ...Object.fromEntries(["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings"].map(path => [path, [...COMMON, 404, 409, 422]])),
   [ROUTE]: [...COMMON, 422, 429],

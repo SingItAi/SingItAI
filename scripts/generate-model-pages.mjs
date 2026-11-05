@@ -1,3 +1,12 @@
+import { priceSummary } from "./generate-catalog-page.mjs";
+import { readFileSync } from "node:fs";
+import { MODEL_ALIAS_ROUTES, aliasPath } from "../singit-ask/src/model-alias-routes.mjs";
+const catalogSnapshot = JSON.parse(readFileSync(new URL("../website/data/catalog-snapshot.json", import.meta.url), "utf8"));
+export const catalogSlug = id => id.split("/").map(safeSlug).join("/");
+export const modelEndpoint = m => {
+  const alias = MODEL_ALIAS_ROUTES.find(a => a.id === m.id);
+  return alias ? aliasPath(alias) : m.route ?? "/v1/chat/completions";
+};
 import { DEFAULT_FREE_EXAMPLE } from "../singit-ask/src/free.mjs";
 import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
 import path from "node:path";
@@ -127,11 +136,11 @@ function modelPage(shell, s, m) {
   ]) : "<p>No per-token price is listed for this model. A request costs the minimum request price below.</p>";
   const basis = m.expectedUsdPerMillionTokens?.basis;
   const basisText = basis === "observed" ? "based on what answers from this model have cost us" : "estimate from sellers' quotes, not yet confirmed by answers we paid for, so the real price can be higher";
-  const facts = [m.owned_by !== undefined && `Provider: ${e(m.owned_by)}`, m.contextLength !== undefined && `Context window: ${m.contextLength.toLocaleString("en-US")} tokens`, m.tags?.filter((t) => t.toLowerCase() !== "video").length && `Tags: ${m.tags.filter((t) => t.toLowerCase() !== "video").map(e).join(", ")}`].filter(Boolean).join(" · ");
+  const facts = [`Modality: ${e(m.modality ?? "chat")}`, m.owned_by !== undefined && `Provider: ${e(m.owned_by)}`, m.contextLength !== undefined && `Context window: ${m.contextLength.toLocaleString("en-US")} tokens`, m.tags?.filter((t) => t.toLowerCase() !== "video").length && `Tags: ${m.tags.filter((t) => t.toLowerCase() !== "video").map(e).join(", ")}`].filter(Boolean).join(" · ");
   const date = new Date(s.fetchedAt).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
   const reasoning = m.tags?.includes("reasoning") || REASONING_BY_MEASUREMENT.has(m.id);
   const request = JSON.stringify({ model: m.id, max_tokens: reasoning ? 400 : 200, messages: [{ role: "user", content: reasoning ? "Say hello in one sentence." : "Hello" }] });
-  const curl = `curl -i https://ask.singitai.app/v1/chat/completions \\\n  -H 'Content-Type: application/json' \\\n  -d '${request}'`;
+  const curl = `curl -i -X POST https://ask.singitai.app${modelEndpoint(m)} \\\n  -H 'Content-Type: application/json' \\\n  -d '${request}'`;
   const faq = [
     ["What is x402?", "x402 is an HTTP payment protocol. An unpaid request returns HTTP 402 with a payment offer; sign one offer and retry the same request with proof of payment."],
     ["Do I need an account?", "No account or API key is needed for these x402 calls."],
@@ -199,6 +208,16 @@ export function renderPages(s, shell, hold = { hidden: [] }) {
     ids.add(m.id);
     files.set(`models/${m.id}/index.html`, modelPage(shell, s, m));
   }
+  // D3 also contains search, free and router entries missing from the older chat pricing snapshot.
+  for (const m of catalogSnapshot.data.filter(m => m.modality !== "video")) {
+    const file = `models/${catalogSlug(m.id)}/index.html`;
+    if (files.has(file)) continue;
+    const request = m.modality === "search" ? { query: "Hello" } : m.modality === "image" ? { model: m.id, prompt: "A green robot" } : { model: m.id, messages: [{ role: "user", content: "Hello" }] };
+    const curl = `curl -i -X POST https://ask.singitai.app${modelEndpoint(m)} -H 'Content-Type: application/json' -d '${JSON.stringify(request)}'`;
+    const body = section("Model", `<p>Modality: ${e(m.modality)}</p><p>Snapshot price (USD): <code>${e(priceSummary(m.price))}</code></p><p>Prices as of ${e(catalogSnapshot.fetchedAt)}. The live response is authoritative.</p>`)
+      + section("Call it", `<pre><code>${e(curl)}</code></pre><p>Unpaid demo; paid routes return HTTP 402. Free routes follow their published limits.</p>`);
+    files.set(file, page(shell, { slug: `models/${catalogSlug(m.id)}`, title: modelTitle(m.name ?? m.id), h1: m.name ?? m.id, description: `Call ${m.name ?? m.id} with SingIt. Modality: ${m.modality}. Snapshot prices and curl example.`, body }));
+  }
   const groups = new Map();
   for (const m of s.models) {
     const provider = m.owned_by ?? "Provider not listed";
@@ -227,7 +246,7 @@ export async function generate(check = false) {
   const stale = [];
   // Model directories belong to this generator; removed models must not linger.
   for (const dir of await readdir(path.join(website, "models"), { withFileTypes: true })) {
-    if (dir.isDirectory() && !files.has(`models/${dir.name}/index.html`)) {
+    if (dir.isDirectory() && ![...files.keys()].some(f => f.startsWith(`models/${dir.name}/`))) {
       const directory = path.join(website, "models", dir.name);
       const entries = await readdir(directory);
       const html = entries.includes("index.html") ? await readFile(path.join(directory, "index.html"), "utf8") : "";
