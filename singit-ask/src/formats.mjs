@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
@@ -217,6 +218,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, catalogue, fet
       .register(BASE, new ExactEvmScheme())
       .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
       .register(SOLANA, new ExactSvmScheme());
+    attachPaymentFailureCodes(server);
     // Discovery prices the example at list share by default; real POSTs below retain priceGuard.
     // The same probeInput policy drives chat and formats, including optional discovery output budgets.
     const probeCeilings = perRequest(async () => {

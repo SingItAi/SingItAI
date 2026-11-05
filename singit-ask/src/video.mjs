@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt video: a clip from any of Surplus's text-to-video models, sold over x402 at the model's list price per job +
 // 30% + the network's settlement fee, made on Surplus with this service's own key.
 //
@@ -138,6 +139,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, catalogue, fetc
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
+  attachPaymentFailureCodes(server);
   const priced = new WeakMap();
   const used = new Map();
   const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");

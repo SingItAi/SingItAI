@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt search: Exa's web search, page contents and cited answers, sold over x402 at Exa's list price plus a flat $0.001 settlement fee
 // on both Base and Solana, and bought from Exa with SingIt's own Exa API key, as BlockRun does
 // (docs/singit-gateway-spec.md, 4.2).
@@ -179,6 +180,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, exaKey, fetchI
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
+  attachPaymentFailureCodes(server);
   const prices = new WeakMap();        // parsed body -> Exa's list price, for the middleware's price functions
   const used = new Map();              // payment signature digest -> when: one payment, one request to Exa
   const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");

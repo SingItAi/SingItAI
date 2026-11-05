@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt speech: text read aloud by any of Surplus's voice models, sold over x402 at the model's list price for the
 // text's length + 30% + the network's settlement fee, and made on Surplus with this service's own key.
 //
@@ -100,6 +101,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, catalogue, fet
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
+  attachPaymentFailureCodes(server);
   const priced = new WeakMap();
   const used = new Map();
   const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");

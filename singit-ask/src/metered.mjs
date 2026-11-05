@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 // Pay for actual usage: the payer authorizes a ceiling with x402 `upto`, and CDP settles only what the
 // answer cost, after it came back. A request that ends in 400 or above is never charged.
@@ -276,6 +277,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
     .register(SOLANA, new ExactSvmScheme());
+  attachPaymentFailureCodes(server);
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const answerLog = answerLogFor(config, log);

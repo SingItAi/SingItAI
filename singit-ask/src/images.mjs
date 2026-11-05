@@ -1,3 +1,4 @@
+import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // SingIt images: an image from any of Surplus's image models, sold over x402 at the model's list price + 30% + the
 // network's settlement fee, and bought on Surplus with this service's own key, like the answers.
 //
@@ -112,6 +113,7 @@ export function addImageRoutes(app, config, { facilitatorClient, catalogue, fetc
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
+  attachPaymentFailureCodes(server);
   const priced = new WeakMap();   // parsed body -> { request, listAtomic }
   const used = new Map();         // payment signature digest -> when
   const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");
