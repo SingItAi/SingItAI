@@ -637,8 +637,6 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
   });
   app.get("/v1/catalog", open, async (req, res) => {
-    if (req.query.modality !== undefined && !MODALITIES.includes(req.query.modality))
-      return res.status(400).json({ error: { message: "Unknown modality", code: "invalid_request" } });
     try {
       const data = await buildCatalog({ catalogue, config, free, searchEnabled: !!exaKey,
         chatPrice: m => pricingFor(config, catalogue, m.id),
@@ -652,7 +650,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             return [name, { ceilingAtomic: p.totalAtomic, usd: Number(usd(p.totalAtomic)) }];
           })) };
         } });
-      res.json(catalogResponse(data, req.query.modality));
+      try { res.json(catalogResponse(data, req.query.modality)); }
+      catch (error) {
+        if (!(error instanceof RangeError)) throw error;
+        res.status(400).json({ error: { message: 'Unknown modality', code: 'invalid_request' } });
+      }
     } catch {
       res.set('Retry-After', '5').status(503).json({ error: { message: 'Catalog unavailable; retry shortly', code: 'upstream_unavailable' } });
     }
@@ -967,7 +969,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           } },
         "/v1/catalog": { get: {
           operationId: "listCatalog", summary: "List all currently sold modalities, payment access and prices",
-          parameters: [{ name: "modality", in: "query", schema: { type: "string", enum: MODALITIES } }],
+          parameters: [{ name: "modality", in: "query", schema: { type: "string", enum: [...MODALITIES, ...new Set(availableAudioPrices(config, catalogue).map(m => m.kind === 'music' ? 'music' : 'sound_effects')), ...(config.videoSold === true ? ['video'] : [])] } }],
           responses: { 200: { description: "Catalog entries and global per-modality counts" }, 400: { description: "Unknown modality" }, 503: { description: "Catalog unavailable" } },
         } },
         "/v1/models": { get: {
