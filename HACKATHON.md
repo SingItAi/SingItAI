@@ -430,3 +430,7 @@ loopback server) and the existing script tests pass. Not verified: the live API,
 on GitHub, the server's paid-proxy setting (only the owner can read it) and the paid tools
 scenario, which is opt-in and was never run. A full probe needs eight requests (nine with paid
 tools), because balance and usage are read before and after.
+
+## Post-competition M3 draft — 5 November 2026
+
+The merged SingIt Ask gateway has a local draft addition for NVIDIA Nemotron 3.5 Lightning on branch `feat/models-m3` (base `08f53bc`). This extends existing Surplus chat functionality; it is not new Solana wallet work or a competition-period claim. [Draft review, offline verification and owner questions](docs/m3-nemotron-review.md) records the public/upstream mapping, paid terms and metadata limitations. Commit/PR link is pending: this task explicitly prohibits commits, pushes and network access. The draft is not approved for merge. Mock payment checks cover Base and Solana; live upstream cap acceptance and full listener-dependent suites remain unverified.

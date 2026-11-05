@@ -1,3 +1,4 @@
+import { upstreamModelId } from "./model-aliases.mjs";
 // SingIt Ask: one answer from a language model, paid over x402 in USDC on Solana or Base for what it
 // actually cost: model tokens + 30% + the network's settlement fee, up to a ceiling that follows the model's
 // price (0.003 USDC for the default and cheap ones). Coinbase CDP settles.
@@ -218,7 +219,7 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                  ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}) },
-      body: JSON.stringify({ model, messages, max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
+      body: JSON.stringify({ model: upstreamModelId(model), messages, max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
                              ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
                                : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
                              ...extra, si_route: { objective: "price" } }),
