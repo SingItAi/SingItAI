@@ -485,7 +485,7 @@ const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, sch
     errorExample(schema === ANTHROPIC_ERROR_SCHEMA ? "api_error" : "upstream_error", exampleMessage, exampleCode, schema)), headers: RETRY_AFTER },
 });
 
-export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, log = console.error,
+export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, resolveHostname, log = console.error,
                                     agentFilesDir, exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({
                                       url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
@@ -862,7 +862,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             operationId: "createSpeech", summary: "Generate speech with any listed voice model",
             description: "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: the "
               + "model's list price for the text + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models: "
-              + "GET /v1/audio/models. Nothing is charged without audio.",
+              + "GET /v1/audio/models. Async speech: elevenlabs/multilingual-v2 and elevenlabs/v3 cost 0.157 USDC Base / 0.158 Solana per job; bytedance/seed-audio-1.0 costs 0.004738 / 0.005738. Max 4096 characters, provider audio format, no response_format or speed. A 110-second deadline includes artifact validation; failures never settle. Nothing is charged without audio.",
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
             requestBody: SPEECH_REQUEST_BODY(),
             responses: { 200: { description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type.", content: Object.fromEntries([...Object.values(SPEECH_CONTENT_TYPES), "audio/mp4"].map((type) => [type, {}])) },
@@ -1077,7 +1077,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
       resourceDetails: catalogue ? EXTRA_PAID.map(path => ({ resource: `${origin(req)}${path}`, networks: [BASE, SOLANA],
         outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT })) : [],
-      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`
+      instructions: `${DESCRIPTION} Speech models/prices: GET ${origin(req)}/v1/audio/models (including async ElevenLabs multilingual-v2, v3 and ByteDance Seed Audio 1.0). Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
@@ -1142,7 +1142,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       "## Free", "",
       `- GET ${base}/v1/models — models and their prices`,
       ...(catalogue ? [`- GET ${base}/v1/images/models — image models and their prices`,
-        `- GET ${base}/v1/audio/models — speech and transcription models and their prices`] : []),
+        `- GET ${base}/v1/audio/models — speech and transcription models and their prices; async speech: elevenlabs/multilingual-v2, elevenlabs/v3, bytedance/seed-audio-1.0 (4096 characters, provider format, fixed per-job price)`] : []),
       ...(priceBook ? [`- GET ${base}/v1/prices — crypto, metal and fx prices, no payment`] : []),
       `- GET ${base}/health — service, model and payment-rail status`,
       `- GET ${base}/numbers.json — measured usage numbers with definitions`, "",
@@ -1217,7 +1217,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (catalogue) addImageRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
   if (catalogue) addAudioGenerationRoutes(app, config, { publicClient, facilitatorClient, fetchImpl, log, open, catalogue });
-  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
+  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, resolveHostname, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
   if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing

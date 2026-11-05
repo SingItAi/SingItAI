@@ -1,3 +1,4 @@
+import { ASYNC_SPEECH_MODELS } from "./speech-models.mjs";
 import { publicModelId, upstreamModelId } from "./model-aliases.mjs";
 import { NEVER_HIDE, MAX_PROVIDERS, validId, readSuspensions, writeSuspensions } from "./suspensions.mjs";
 export { NEVER_HIDE } from "./suspensions.mjs";
@@ -111,6 +112,11 @@ export function parseVoiceModels(data) {
     if (!id || OTHER_SERVICE.test(id) || !(price > 0)) continue;
     const model = { id, name: String(entry.name || id), provider: String(entry.provider || ""), usdPerUnit: price,
       voices: Array.isArray(entry.voices) && entry.voices.length ? entry.voices.map(String) : null };
+    const asyncModel = ASYNC_SPEECH_MODELS.find(m => m.upstreamId === id);
+    if (asyncModel && modality === "music" && unit === "job") {
+      if (["number", "string"].includes(typeof entry.pricing.image) && Number.isFinite(price) && price < 2) speech.set(asyncModel.id, { ...model, ...asyncModel, usdPerJob: price });
+      continue;
+    }
     if (modality === "text->audio" && unit === "1K characters") speech.set(id, model);
     if (modality === "audio->text" && unit === "minute") transcription.set(id, model);
   }
@@ -638,6 +644,11 @@ export class ModelCatalogue {
 
   async resolveSpeech(id) {
     const model = (await this.voiceModels()).speech.get(String(id ?? "").trim());
+    if (!model && ASYNC_SPEECH_MODELS.some(m => m.id === String(id ?? "").trim())) {
+      const error = new Error("That speech model has no usable live job price.");
+      error.status = 503;
+      throw error;
+    }
     if (!model) throw new UnknownModel("That speech model is not available. See GET /v1/audio/models.");
     return model;
   }
