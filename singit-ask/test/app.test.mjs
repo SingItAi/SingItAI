@@ -330,19 +330,19 @@ test("the OpenAPI document guides agents and names a contact, for x402scan", asy
   assert.deepEqual(doc.info.contact, { name: "SingIt", email: "contact@singitai.app", url: "https://singitai.app" });
 });
 
-test("/.well-known/x402 points to the paid route at its public URL", async (t) => {
-  const { url } = await serve(t);
-  const response = await new Promise((resolve, reject) => {
-    const req = httpRequest(`${url}/.well-known/x402`, { headers: { Host: "ask.singitai.app", "X-Forwarded-Proto": "https" } },
-      (res) => { let body = ""; res.on("data", (c) => { body += c; }); res.on("end", () => resolve({ status: res.statusCode, body })); res.on("error", reject); });
-    req.on("error", reject);
-    req.end();
-  });
-  assert.equal(response.status, 200);
-  const doc = JSON.parse(response.body);
+test("/.well-known/x402 points to the paid route at its public URL", async () => {
+  const app = createApp(CONFIG, { facilitatorClient: fakeFacilitator(), catalogue: fakeCatalogue,
+    fetchImpl: () => { throw new Error('discovery must not call upstream'); }, log: () => {} });
+  let doc;
+  // Invoke with the public protocol/host Express obtains behind the trusted proxy.
+  await app.router.stack.find(l => l.route?.path === '/.well-known/x402').route.stack.at(-1)
+    .handle({ protocol: 'https', get: name => name === 'host' ? 'ask.singitai.app' : undefined },
+      { json(value) { doc = value; } });
   assert.equal(doc.version, 1);
   assert.deepEqual(doc.resources, ["https://ask.singitai.app/v1/chat/completions",
                                    "https://ask.singitai.app/v1/messages", "https://ask.singitai.app/v1/responses",
+                                   "https://ask.singitai.app/v1/images/edits", "https://ask.singitai.app/v1/images/image2image",
+                                   "https://ask.singitai.app/v1/embeddings",
                                    "https://ask.singitai.app/v1/images/generations", "https://ask.singitai.app/v1/audio/speech",
                                    // no video: unlisted while SINGIT_ASK_VIDEO_DISCOVERABLE is off
                                    ...modelRoutePaths().map((route) => `https://ask.singitai.app${route}`)]);

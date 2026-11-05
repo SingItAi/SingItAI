@@ -81,6 +81,23 @@ export function parseImageModels(data) {
   return models;
 }
 
+// E1 and E5: only explicitly priced catalogue entries are offered.
+export function parseEditModels(data) {
+  const entries = (data?.data ?? []).filter(e => typeof e.id === "string" && e.id.endsWith("-edit") && e.metering === "per_image");
+  const models = new Map();
+  for (const e of entries) {
+    const price = Number(e.pricing?.image);
+    if (Number.isFinite(price) && price > 0) models.set(e.id, { id: e.id, name: e.name || e.id, provider: e.provider,
+      metering: "per_image", imageUsd: price, sizes: e.sizes?.length ? e.sizes : null, params: e.supported_parameters ?? [] });
+  }
+  return models;
+}
+export function parseEmbeddingModels(data) {
+  return new Map((data?.data ?? []).filter(e => typeof e.id === "string" && e.architecture?.modality === "embedding"
+    && (e.media_unit ?? e.pricing?.media_unit) === "1M tokens" && Number.isFinite(Number(e.pricing?.image)) && Number(e.pricing.image) > 0)
+    .map(e => [e.id, { id: e.id, name: e.name || e.id, provider: e.provider, embedding: true, usdPerMillionTokens: Number(e.pricing.image) }]));
+}
+
 // Voice models, from the same list: text to speech priced per 1000 characters, speech to text per minute of audio.
 export function parseVoiceModels(data) {
   const speech = new Map(), transcription = new Map();
@@ -205,6 +222,8 @@ export class ModelCatalogue {
     this.models = null;
     this.rawModels = null;
     this.bookPrices = new Map();
+    this.audioCatalogue = null; // raw music/SFX pricing and async submission capabilities
+    this.audioCatalogueAt = null;
     this.images = null;   // image models, from the same list
     this.voice = null;    // { speech, transcription } models, from the same list
     this.videos = null;   // text-to-video models, from the same list
@@ -229,6 +248,11 @@ export class ModelCatalogue {
         const models = parseModels(body), images = parseImageModels(body);
         if (models.size) { this.rawModels = models; this.decorate(); this.loadedAt = this.now(); }
         if (images.size) this.images = images;
+        if (response.ok && Array.isArray(body?.data)) {
+          this.audioCatalogue = new Map(body.data.map(entry => [entry.id, entry]));
+          this.audioCatalogueAt = this.now();
+          this.edits = parseEditModels(body); this.embeddings = parseEmbeddingModels(body);
+        }
         const voice = parseVoiceModels(body);
         if (voice.speech.size) this.voice = voice;
         const videos = parseVideoModels(body);
@@ -570,6 +594,19 @@ export class ModelCatalogue {
   async list() {
     // Observed prices are shares of list price and cannot supply a missing list price.
     return [...(await this.all()).values()].filter(m => m.unpriced !== true && !this.isSuspended(m.id)).sort((a, b) => a.completionUsdPerToken - b.completionUsdPerToken);
+  }
+
+  async editModels() { await this.all().catch(() => null); return this.edits ?? new Map(); }
+  async embeddingModels() { await this.all().catch(() => null); return this.embeddings ?? new Map(); }
+  async resolveEdit(id) {
+    const model = (await this.editModels()).get(id);
+    if (!model) throw new UnknownModel("That edit model is not available.");
+    return model;
+  }
+  async resolveEmbedding(id) {
+    const model = (await this.embeddingModels()).get(id);
+    if (!model) throw new UnknownModel("That embedding model is not available.");
+    return model;
   }
 
   async imageModels() {

@@ -442,3 +442,87 @@ error vocabulary and generated LLM references are consistent. The LLM generator
 now has an offline CLI and a working `--check`. Limitations: full suites were run,
 but this sandbox blocks loopback listeners and some child-process output;
 no live upstream, network request or real payment was used.
+## Media API review hardening — 5 November 2026
+
+Uncommitted worktree follow-up (no commit or PR yet, as requested), after the competition period: image edits and embeddings validate billable output, bound streamed upstream responses and embedding batches, and share process-wide payment reservations. EVM replay identity uses normalized network, asset, signer and nonce; Solana uses the signed transaction or signature. `/pricing.json` includes both services with reference requests and network prices. This hardens the new media routes; existing image generation has not yet adopted the shared reservation store.
+
+Verification: 13 socket-free media tests and 24 OpenAPI, discovery and generated-document tests passed offline. Route snapshots were regenerated offline and confirmed unchanged for these schema changes. The full service suite was attempted but cannot be verified here: the sandbox denies loopback listeners (`EPERM`). No live upstream calls, payments, deployment or commits were made. Reservations remain in memory and are scoped to one process.
+
+Round 6 review (uncommitted, no PR): the cross-route reservation regression now uses equal quoted prices and asserts one upstream call. Media response caps are enforced before diagnostic logging clones the body, so oversized success and error streams cancel their source promptly. Six selected socket-free media tests pass, including a new logger/limiter regression covering both routes at 200 and 500 with fewer than five source pulls. Eleven additional logging/OpenAPI checks pass; 17 listener-dependent checks and the full media-file attempt remain blocked by sandbox loopback restrictions. No network calls or commits were made; the full suite still needs an unrestricted rerun.
+
+
+PR SingItAI #218 (`feat/images-edits-embeddings`), review fixes after merging main (5 November 2026): billable base64 images now require complete PNG/JPEG/WEBP containers (PNG also checks chunk CRCs and bounded decompression); embeddings must decode to whole finite float32 vectors; replay reservations are normalized (network, asset, signer, nonce), shared by both routes and capped at 10,000 entries without evicting live identities; upstream bodies are read with byte limits; /pricing.json lists embeddings. Verification: singit-ask 723 tests pass (solana-direct needs @solana/kit, not installed locally), website 470/470, scripts 46/46, llms check ok (llms.txt 13,982 bytes). No payment or live upstream call. Limitations: no full JPEG/WEBP pixel decoding or HTTPS URL check; reservations are process-local.
+
+## M4 music and sound effects — 5 November 2026
+
+Uncommitted work on `feat/music-sfx-m4` (no commit or PR, as requested), after the
+competition period: new SingIt Ask routes `/v1/audio/sound-effects` and
+`/v1/audio/generations`, offering exact USDC on Base and Solana. This extends the
+imported gateway; it is not part of the original competition implementation.
+Five pinned public model aliases map to the supplied offline Surplus catalogue.
+The shared media-job runner submits with SingIt's prepaid key, polls, downloads
+within 60/180 seconds and 5/25 MiB, checks audio container magic, and returns bytes
+before settlement. Artifact redirects require HTTPS and public DNS addresses;
+TLS downloads pin the checked address. Failures return 503 without settlement.
+OpenAPI, discovery, flat network prices and the sibling generation-model list are
+updated; the 27-route Bazaar metadata remains draft, not published. Video visibility
+is unchanged. `website/llms.txt` is unchanged at 13,982 bytes.
+
+Verification offline: 13 shared job tests, three direct-handler/discovery tests,
+three OpenAPI lint tests, two schema/example tests and 11 validator unit tests pass.
+Additionally, 14 Bazaar unit checks and one pricing unit check pass. Listener-based
+checks cannot run in this sandbox (confirmed `EPERM` on loopback): four new x402
+settlement cases, 11 discovery checks, five OpenAPI error checks, 11 pricing checks
+and the app-wide Bazaar lint. Existing shared test helpers and generators were not
+rewritten. No network calls, installs, payments, publication, deployment or commits.
+
+Limitations / OPEN QUESTIONS: supplied docs omit the music/effects submission
+schema. `surplusAudioRequest` isolates assumed music fields
+`model,prompt,lyrics,instrumental,duration_seconds` and effects fields
+`model,text,duration_seconds,response_format`, both sent to `/v1/music/generations`.
+Confirm the effects endpoint, format support, duration field and flat billing through
+240 seconds before rollout. Container checks are not full audio decoding; replay
+reservations remain process-local. Solana transaction validity must last through
+completion and settlement; the 180-second music deadline may outlast a recent blockhash.
+
+
+M4 safety follow-up (2026-11-05), commit `M4: fix tests, Solana settle-before-job`
+on `feat/music-sfx-m4` (following f2fa755): the new music/effects routes now refuse
+Solana rather than retaining a signed transaction across generation. A recent
+blockhash lasts about 150 blocks / 60–90 seconds; a 180-second job cannot safely
+precede settlement. Future Solana support requires settling before submission and
+durable refund/recovery handling. The earlier draft's long-validity requirement
+above is superseded, not a supported workaround.
+
+Audio availability now fails closed without an integration readiness snapshot
+confirming Surplus credit, routes and pinned prices; standard production startup
+has no adapter and leaves this draft unavailable. Unservable models stay hidden.
+Base still generates and validates bounded audio before settlement; middleware
+buffers delivery until settlement succeeds. OpenAPI bounds share the price helper.
+Artifact DNS pinning, HTTPS redirects and credential stripping were reviewed;
+reserved address filtering was tightened. Video was not changed.
+
+Verification: full singit-ask suite outside the sandbox after the readiness stub
+in openapi-errors: pass except the known solana-direct env failure (@solana/kit
+not installed). Listener-based audio settlement tests pass. No external requests,
+payments, deployment or secrets. Open rollout questions remain: Surplus submission
+schema/effects endpoint, flat billing through 240 s, live readiness integration,
+and durable replay protection across processes.
+
+M5 hidden draft (2026-11-05), branch `feat/video-m5-hidden`: video stays off by default
+(`SINGIT_ASK_VIDEO_SOLD` / discoverable untouched). Solana offers removed; a Solana payment
+header is refused before a job starts (same blockhash rule as M4 music/SFX). Base hold-and-poll,
+health gate and fallback unchanged. No paid call, no deploy, no announcement.
+
+M4 audio readiness follow-up (2026-11-05), branch `feat/audio-readiness`: adds opt-in audio sales and separate
+x402 discovery, a synchronous readiness adapter backed by a free prepaid balance
+snapshot (60-second TTL, refresh every 30 seconds), and catalogue async/job/price
+checks (six-minute TTL). Chat seller membership no longer gates music/SFX.
+The supplied free API reference and offline catalogue resolve the shared SFX/music
+endpoint, official prompt/lyrics_prompt/force_instrumental fields, and flat job
+billing through the public music duration cap. README records sources and remaining
+format/model-parameter assumptions. This is post-competition SingIt API work;
+no Solana enablement, paid call, deployment or environment edit.
+Verification: focused audio tests 14/14; full singit-ask 755/756 (known solana-direct
+@solana/kit env miss on this worktree, same as main here). Production remains off
+pending operator OK, merge/deploy and SINGIT_ASK_AUDIO_SOLD=1.

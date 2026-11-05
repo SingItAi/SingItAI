@@ -12,6 +12,8 @@ export const tasks = [
   ['Anthropic Messages', 'POST', ['/v1/messages']],
   ['OpenAI Responses', 'POST', ['/v1/responses']],
   ['Per-model chat routes', 'POST', ['/v1/chat/{model}']],
+  ['Image edits (JSON data URIs)', 'POST', ['/v1/images/edits', '/v1/images/image2image']],
+  ['Embeddings (exact input estimate)', 'POST', ['/v1/embeddings']],
   ['Image generation', 'POST', ['/v1/images/generations']],
   ['Speech', 'POST', ['/v1/audio/speech']],
   ['Exa web search', 'POST', ['/v1/exa/search']],
@@ -49,7 +51,8 @@ export function renderLlms(text, s, routes, format) {
   text = replaceBlock(text, 'model-pages', renderModelLinks());
   const models = renderModelList(s, format);
   const body = text.replace(/^<!-- generated:[^\n]+ -->\n/gm, '');
-  return new Map([['llms.txt', text], ['llms-models.txt', models], ['llms-full.txt', body.trimEnd() + '\n\n' + models.replace(/^# SingIt model pages/, '## Model pages with prices')]]);
+  const audioDraft = 'Draft Ask audio: POST /v1/audio/sound-effects and /v1/audio/generations return audio bytes after bounded server-side generation; Base-only exact USDC (Solana refused; disabled until credit, route and pricing readiness are confirmed), model capabilities and flat prices at GET /v1/audio/generation-models. Not yet published.';
+  return new Map([['llms.txt', text], ['llms-models.txt', models], ['llms-full.txt', body.trimEnd() + '\n\n' + models.replace(/^# SingIt model pages/, '## Model pages with prices').trimEnd() + '\n\n' + audioDraft + '\n']]);
 }
 
 export function renderModelList(s, format) {
@@ -76,15 +79,15 @@ export function renderMoney(s, format) {
   const fees = ['base', 'solana'].map(n => format(s.fees.perAnswerUsd[s.networks[n].chain]));
   return `## Money rules for agents
 
-Call without payment: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). Decode that header, sign one offer, and retry the same request with PAYMENT-SIGNATURE. Success is HTTP 200 with PAYMENT-RESPONSE.
+Unpaid calls: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). Decode it, sign one offer, retry the same request with PAYMENT-SIGNATURE. Success: HTTP 200 with PAYMENT-RESPONSE.
 
-\`upto\` is listed first: pay the actual cost up to the signed ceiling. \`exact\` is a flat price for a typical-length answer (about 30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Do not sign above your budget.
+\`upto\` is listed first: pay the actual cost up to the signed ceiling. \`exact\` is priced for a typical answer (~30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Never sign above budget.
 
-LLM, image and speech charges are model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Solana uses the same API URLs as Base. Exa uses Exa's own price with no markup, plus a flat settlement fee of $0.001 on both Base and Solana. The route table shows discovery ranges in USDC; the request's 402 offer is authoritative.
+LLM/image/speech: model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Base and Solana share API URLs. Exa: own price, no markup, plus settlement fee of $0.001 on both Base and Solana. Route ranges are USDC; the request's 402 offer is authoritative.
 
-Charged only when a billable answer came back: an upstream 503 never charges. Do not retry a 400/413/422 on another model; fix the request. A 409 means this payment signature was already used. For 503, wait for Retry-After where supplied. A 429 on the free tier means wait for Retry-After.
+Only billable answers charge; upstream 503s never charge. For 400/413/422, fix the request; do not switch models. 409: payment signature already used. For 503, wait Retry-After if supplied; for free-tier 429, wait Retry-After.
 
-Free tier: ${DEFAULT_FREE_MODELS.length} free models, up to ${FREE_DEFAULTS.perVisitorPerDay} answers a day per network, with a shared daily cost cap of $${FREE_DEFAULTS.budgetUsdPerDay}. The shared free tier may run out for the day (free_budget_exhausted); it resets at midnight UTC. No wallet or key required. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
+Free tier: ${DEFAULT_FREE_MODELS.length} free models, ${FREE_DEFAULTS.perVisitorPerDay} answers/day/network, shared daily cost cap $${FREE_DEFAULTS.budgetUsdPerDay}. The shared cap may run out (free_budget_exhausted); resets at midnight UTC. No wallet or key required. Each free answer reports \`billing.remainingToday\`; when used up, drop the \`free/\` prefix to pay.
 
 Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools included; 8000 per image), 64 tools/calls, four images, max_tokens 8192 (default 800), 128 kB JSON body. Model capabilities constrain tools/images. Messages/Responses support tools and 32000 output tokens.
 

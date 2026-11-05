@@ -1,3 +1,4 @@
+import { boundResponse } from "./media-response.mjs";
 // What Surplus said when it refused a paid question (29 October). A 404 minimum_discount_not_met only said "lower the
 // floor" in our own log; the body also says which share the cheapest otherwise-eligible seller really sells at ("Best
 // otherwise-eligible estimated discount is 25%"), which is the number the price guard should be compared with.
@@ -82,12 +83,14 @@ async function readSome(response) {
 // `fetchImpl` wrapped: after every non-2xx answer to a POST under `surplusUrl`, log the refusal. The response goes
 // back at once and untouched; the log is written afterwards from a bounded read of a clone, and a failure while
 // logging never reaches the caller. `.idle()` resolves when the logging started so far is done (tests).
-export function withRejectLog(fetchImpl, { surplusUrl, log }) {
+export function withRejectLog(fetchImpl, { surplusUrl, log, responseLimits = {} }) {
   if (!surplusUrl) return fetchImpl;
   const prefix = `${surplusUrl}/`;
   const pending = new Set();
   const surplusFetch = async function surplusFetch(url, init, ...rest) {
-    const response = await fetchImpl(url, init, ...rest);
+    let response = await fetchImpl(url, init, ...rest);
+    const limit = responseLimits[String(url)];
+    if (limit !== undefined) response = boundResponse(response, limit);
     try {
       if (response.ok || String(init?.method ?? "GET").toUpperCase() !== "POST" || !String(url).startsWith(prefix)) return response;
       let model = null;
