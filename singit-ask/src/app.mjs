@@ -307,7 +307,7 @@ const INPUT_SCHEMA = {
     model: { type: "string", examples: ["deepseek-v4.1-flash", "claude-opus-5.5", "gpt-5.5", "gemini-3.8-flash"],
       description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
     fallback_models: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string" },
-      description: "Optional on paid /v1/chat/completions only: 1–3 trimmed unique model ids, excluding the pinned model and singit/auto. Before payment, an unavailable pinned model may use the first healthy priced candidate whose Base upto ceiling is no higher than the pinned ceiling, and in the same auto tier if the pinned model has one. The chosen model determines the quote and usage charge." },
+      description: "Optional on paid /v1/chat/completions only: 1–3 trimmed unique model ids, excluding the pinned model and singit/auto. Before payment, an unavailable pinned model may use the first healthy priced candidate whose Base upto maximum price is no higher than the pinned model's, and in the same auto tier if the pinned model has one. The chosen model determines the quote and usage charge." },
     stream_options: { type: "object", additionalProperties: false, properties: { include_usage: { type: "boolean" } }, description: "Only with stream:true." },
     stream: { type: "boolean", enum: [false, true], description: "Buffered SSE: the complete answer is released after settlement, not token by token." },
   },
@@ -666,7 +666,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const origin = req => `${req.protocol}://${req.get("host")}`;
   // Public, read-only documents: the website reads them straight from the browser.
   const open = (_req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); next(); };
-  // At most 500 characters: Coinbase's facilitator rejects longer descriptions.
+  // Listing descriptions stay within 160 characters.
   const DESCRIPTION = routeCopy(ROUTE).description;
   const DISCOVERY_DESCRIPTION = DESCRIPTION;
   const LLMS_INTRO = DESCRIPTION;
@@ -677,8 +677,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     + "tier up, never below min_tier. Only POST /v1/chat/completions.";
   const FALLBACK_GUIDE = "fallback_models is optional on paid POST /v1/chat/completions with a pinned model: 1 to 3 unique "
     + "model ids (not the pinned model, not singit/auto). If the pinned model is unavailable before "
-    + "payment, the first healthy priced candidate whose Base upto ceiling is no higher than the pinned "
-    + "one answers (same auto tier if the pinned model has one). X-SingIt-Model and "
+    + "payment, the first healthy priced candidate whose Base upto maximum price is no higher than the pinned "
+    + "model's answers (same auto tier if the pinned model has one). X-SingIt-Model and "
     + "X-SingIt-Fallback-From identify which model answered and which was replaced.";
   app.get("/health", open, (_req, res) => {
     res.set("Cache-Control", "no-store");
