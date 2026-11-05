@@ -12,6 +12,8 @@ export const tasks = [
   ['Anthropic Messages', 'POST', ['/v1/messages']],
   ['OpenAI Responses', 'POST', ['/v1/responses']],
   ['Per-model chat routes', 'POST', ['/v1/chat/{model}']],
+  ['Image edits (JSON data URIs)', 'POST', ['/v1/images/edits', '/v1/images/image2image']],
+  ['Embeddings (exact input estimate)', 'POST', ['/v1/embeddings']],
   ['Image generation', 'POST', ['/v1/images/generations']],
   ['Speech', 'POST', ['/v1/audio/speech']],
   ['Exa web search', 'POST', ['/v1/exa/search']],

@@ -20,6 +20,8 @@ Discovery card (MCP, not an A2A task endpoint): https://ask.singitai.app/.well-k
 | Anthropic Messages | POST https://ask.singitai.app/v1/messages | 0.001..1.225042 USDC per call |
 | OpenAI Responses | POST https://ask.singitai.app/v1/responses | 0.001..1.225042 USDC per call |
 | Per-model chat routes | POST https://ask.singitai.app/v1/chat/{model} | 0.001..0.20584 USDC per call |
+| Image edits (JSON data URIs) | POST https://ask.singitai.app/v1/images/edits; POST https://ask.singitai.app/v1/images/image2image | 0.001..0.47 USDC per call |
+| Embeddings (exact input estimate) | POST https://ask.singitai.app/v1/embeddings | 0.001..0.023125 USDC per call |
 | Image generation | POST https://ask.singitai.app/v1/images/generations | 0.014..2.602 USDC per call |
 | Speech | POST https://ask.singitai.app/v1/audio/speech | 0.001..0.336 USDC per call |
 | Exa web search | POST https://ask.singitai.app/v1/exa/search | 0.002..0.051 USDC per call |

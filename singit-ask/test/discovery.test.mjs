@@ -25,7 +25,7 @@ const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("ut
 // Every discoverable paid route: chat/completions, Anthropic/OpenAI's own formats, images, speech, Exa's three,
 // and one per popular model (SI-62). `/v1/chat/completions/metered` and `/v1/video/generations` (unless
 // SINGIT_ASK_VIDEO_DISCOVERABLE=1) are paid but not listed; `/v1/credit` is paid and deliberately hidden.
-const DISCOVERABLE = [ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, ...Object.keys(SEARCH_ROUTES),
+const DISCOVERABLE = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings", ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, ...Object.keys(SEARCH_ROUTES),
   ...modelRoutePaths()];
 
 function fakeFacilitator() {
@@ -199,6 +199,9 @@ test("every discoverable route's resource carries a PNG icon and a service name"
 // Bazaar keeps only the first 5 tags, so the category tag has to be among them. Video is checked too, with its
 // discovery switched on.
 const EXPECTED = {
+  "/v1/images/edits": { serviceName: "SingIt Image Editing", category: "image-editing", opens: /^Image editing/ },
+  "/v1/images/image2image": { serviceName: "SingIt Image Editing", category: "image-editing", opens: /^Image editing/ },
+  "/v1/embeddings": { serviceName: "SingIt Embeddings", category: "embeddings", opens: /^Text embeddings/ },
   [ROUTE]: { serviceName: "SingIt LLM Chat Completions", category: "chat-completions", opens: /^OpenAI-compatible chat API\b/ },
   "/v1/messages": { serviceName: "SingIt Anthropic Messages API", category: "anthropic-messages", opens: /^Anthropic Messages API\b/ },
   "/v1/responses": { serviceName: "SingIt OpenAI Responses API", category: "openai-responses", opens: /^OpenAI Responses API\b/ },

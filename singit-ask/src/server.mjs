@@ -65,6 +65,8 @@ function required(name) {
   return value;
 }
 
+// E1 / E5 input limits, bytes; invalid settings retain the bounded defaults.
+const byteLimit = (value, fallback) => Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : fallback;
 const probeTokens = Number(process.env.SINGIT_ASK_PROBE_MAX_TOKENS);
 const config = {
   probeShare: process.env.SINGIT_ASK_PROBE_SHARE === "live" ? "live" : "list",
@@ -80,6 +82,11 @@ const config = {
   payToSolana: required("SINGIT_ASK_PAY_TO_SOLANA"),
   payToBase: required("SINGIT_ASK_PAY_TO_BASE"),
   surplusKey: required("SURPLUS_API_KEY"),
+  maxEditImageBytes: byteLimit(process.env.SINGIT_ASK_MAX_EDIT_IMAGE_BYTES, 8 * 1024 * 1024),
+  maxEditResponseBytes: byteLimit(process.env.SINGIT_ASK_MAX_EDIT_RESPONSE_BYTES, 40 * 1024 * 1024),
+  maxEmbeddingResponseBytes: byteLimit(process.env.SINGIT_ASK_MAX_EMBEDDING_RESPONSE_BYTES, 8 * 1024 * 1024),
+  maxEmbeddingInputs: byteLimit(process.env.SINGIT_ASK_MAX_EMBEDDING_INPUTS, 256),
+  maxEmbeddingBytes: byteLimit(process.env.SINGIT_ASK_MAX_EMBEDDING_BYTES, 100_000),
   surplusUrl: (process.env.SURPLUS_API_URL || "https://api.surplusintelligence.ai").replace(/\/$/, ""),
   model: process.env.SINGIT_ASK_MODEL || "deepseek-v4.1-flash",
   // Where the gateway's free wallet report lives (listed in /openapi.json only; this service does not serve it).

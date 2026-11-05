@@ -342,6 +342,8 @@ test("/.well-known/x402 points to the paid route at its public URL", async (t) =
   assert.equal(doc.version, 1);
   assert.deepEqual(doc.resources, ["https://ask.singitai.app/v1/chat/completions",
                                    "https://ask.singitai.app/v1/messages", "https://ask.singitai.app/v1/responses",
+                                   "https://ask.singitai.app/v1/images/edits", "https://ask.singitai.app/v1/images/image2image",
+                                   "https://ask.singitai.app/v1/embeddings",
                                    "https://ask.singitai.app/v1/images/generations", "https://ask.singitai.app/v1/audio/speech",
                                    // no video: unlisted while SINGIT_ASK_VIDEO_DISCOVERABLE is off
                                    ...modelRoutePaths().map((route) => `https://ask.singitai.app${route}`)]);

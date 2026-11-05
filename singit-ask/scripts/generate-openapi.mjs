@@ -2,7 +2,6 @@
 // a price book that is never read, and a catalogue of every pinned model route stand in for Coinbase and Surplus, so the document has every route.
 // Used to check the spec against the pay-skills catalogue linter (`pay catalog check`) and by test/openapi-lint.test.mjs.
 //   node scripts/generate-openapi.mjs > openapi.json
-import http from "node:http";
 import { createApp, BASE, SOLANA } from "../src/app.mjs";
 import { PriceBook } from "../src/prices.mjs";
 import { MODEL_ROUTES } from "../src/model-routes.mjs";
@@ -21,6 +20,9 @@ const stubFacilitator = {
 const models = MODEL_ROUTES.map((m, i) => ({ id: m.id, name: m.name, provider: m.provider ?? "stub", contextLength: 1e6,
   promptUsdPerToken: (1 + i) * 1e-6, completionUsdPerToken: (1 + i) * 4e-6 }));
 const catalogue = { async resolve(id) { return models.find((m) => m.id === id); }, async canAnswer() { return true; },
+  // Offline media fixtures: rates also exercised in images.test.mjs and image-edits-embeddings.test.mjs.
+  async editModels() { return new Map([["gpt-image-2-edit", { id: "gpt-image-2-edit", metering: "per_image", imageUsd: 0.36 }]]); },
+  async embeddingModels() { return new Map([["venice-embed-1", { id: "venice-embed-1", usdPerMillionTokens: 0.1625 }]]); },
   async list() { return models; }, models };
 
 export async function generateOpenapi(overrides = {}) {
@@ -28,18 +30,12 @@ export async function generateOpenapi(overrides = {}) {
     surplusKey: "inf_stub", surplusUrl: "https://surplus.invalid", model: "deepseek-v4.1-flash", exaKey: "stub", videoSold: false,
     observedFile: "/nonexistent/observed.json", ...overrides };
   const app = createApp(config, { facilitatorClient: stubFacilitator, catalogue, priceBook: new PriceBook({ publicClient: null }), log: () => {} });
-  const listener = await new Promise((resolve) => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); });
-  try {
-    // Asked as the public site is (https, its host name), so `servers` names the production origin. fetch() cannot set Host.
-    return await new Promise((resolve, reject) => {
-      http.get({ host: "127.0.0.1", port: listener.address().port, path: "/openapi.json",
-        headers: { host: "ask.singitai.app", "x-forwarded-proto": "https" } }, (res) => {
-        let text = ""; res.setEncoding("utf8");
-        res.on("data", (chunk) => { text += chunk; });
-        res.on("end", () => { try { resolve(JSON.parse(text)); } catch (error) { reject(error); } });
-      }).on("error", reject);
-    });
-  } finally { listener.close(); }
+  // Invoke the registered document handler directly: offline generation needs no listening socket.
+  const route = app.router.stack.find(layer => layer.route?.path === "/openapi.json").route;
+  let document;
+  await route.stack.at(-1).handle({ protocol: "https", get: name => name === "host" ? "ask.singitai.app" : undefined },
+    { json: value => { document = value; } });
+  return document;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
