@@ -497,3 +497,8 @@ not installed). Listener-based audio settlement tests pass. No external requests
 payments, deployment or secrets. Open rollout questions remain: Surplus submission
 schema/effects endpoint, flat billing through 240 s, live readiness integration,
 and durable replay protection across processes.
+
+M5 hidden draft (2026-11-05), branch `feat/video-m5-hidden`: video stays off by default
+(`SINGIT_ASK_VIDEO_SOLD` / discoverable untouched). Solana offers removed; a Solana payment
+header is refused before a job starts (same blockhash rule as M4 music/SFX). Base hold-and-poll,
+health gate and fallback unchanged. No paid call, no deploy, no announcement.

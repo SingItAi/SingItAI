@@ -167,9 +167,10 @@ this update.
 When video is enabled, a free order-book read checks seller health (cached for 60 seconds). A model with no
 qualifying seller and no compatible healthy substitute returns 503 `no_healthy_sellers` before any 402; unhealthy models are hidden from
 `/v1/video/models`. Unreadable books keep the last known health; unknown health is allowed for the requested model.
-Clips have a $0.20 list floor: with 30% markup and settlement fee the minimum is $0.261 on Base or $0.262 on Solana.
-The paid response waits for a finished clip: up to about 85 seconds on Base, 35 seconds on Solana to leave
-time for settlement before the signed transaction blockhash expires. Failed or late jobs return 503 `video_failed`
+Clips have a $0.20 list floor: with 30% markup and settlement fee the minimum is $0.261 on Base.
+Video is Base only: Solana is refused (`unsupported_network`) because a recent blockhash (~60–90 s) can expire
+during the hold and settlement. Future Solana needs settle-before-submit plus durable refund/recovery.
+The paid response waits for a finished clip: up to about 85 seconds on Base. Failed or late jobs return 503 `video_failed`
 or `video_timeout` without settlement; late jobs are canceled best effort. Polling and downloads stay free.
 Every job that does not deliver a clip writes one server-log line `video job not delivered {…}` with the Surplus job id, HTTP status,
 Surplus's error code/type/message (truncated, token- and key-shaped text blanked), elapsed seconds and a `reason`:
