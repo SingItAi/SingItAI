@@ -15,7 +15,7 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 | `model_not_found` | Requested model is unavailable. A model Surplus lists at price 0 is sold only if it has a reviewed reference price; others are not sold. |
 | `not_found` | Route or price symbol is unavailable. |
 | `payment_required` | Payment challenge; select an offer and retry with a signature. |
-| `stale_payment_permit` | Payment permit is stale; obtain a fresh challenge. |
+| `stale_payment_permit` | Your previous payment already spent this permit nonce. Wait for its transaction, then fetch a new 402 and sign again. Nothing was charged for this request. |
 | `payment_unfunded` | Fund the wallet and its token account. Nothing was charged for this request. |
 | `payment_blockhash_stale` | On Solana, sign again with a fresh blockhash. Nothing was charged for this request. |
 | `payment_replay` | Check the previous result before paying again. Nothing was charged for this request. |

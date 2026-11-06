@@ -155,3 +155,37 @@ for (const billed of ["1000", "4001"]) {
     }
   });
 }
+
+test("a stale permit refusal frees the daily reservation and says to wait", async () => {
+  const merchant = await startMerchant({
+    accepts: () => [exactOffer({ network: NETWORK, asset: ASSET, payTo: PAY_TO, amount: "4000" })],
+    paidResponse: { status: 409, body: { error: { type: "invalid_request_error", code: "stale_payment_permit", message: "Stale." } } },
+  });
+  try {
+    const client = makeSingIt({ merchant, maxPerCallUsd: 0.004, maxPerDayUsd: 0.006 });
+    const before = client.limiter.remainingAtomic();
+    await assert.rejects(client.chat({ messages: [{ role: "user", content: "Hello" }], scheme: "exact" }), /stale_payment_permit.*Wait for the previous/s);
+    assert.equal(client.limiter.remainingAtomic(), before);
+  } finally {
+    await merchant.close();
+  }
+});
+
+for (const [name, body] of [
+  ["payment_duplicate", { error: { type: "invalid_request_error", code: "payment_duplicate", message: "Used." } }],
+  ["an unreadable body", "not json"],
+]) {
+  test(`a 409 with ${name} keeps the reservation: it may have settled`, async () => {
+    const merchant = await startMerchant({
+      accepts: () => [exactOffer({ network: NETWORK, asset: ASSET, payTo: PAY_TO, amount: "4000" })],
+      paidResponse: { status: 409, body },
+    });
+    try {
+      const client = makeSingIt({ merchant, maxPerCallUsd: 0.004, maxPerDayUsd: 0.006 });
+      await assert.rejects(client.chat({ messages: [{ role: "user", content: "Hello" }], scheme: "exact" }), /HTTP 409.*stays counted/s);
+      assert.equal(client.limiter.remainingAtomic(), 2000n);
+    } finally {
+      await merchant.close();
+    }
+  });
+}

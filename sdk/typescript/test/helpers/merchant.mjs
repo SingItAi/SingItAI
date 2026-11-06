@@ -124,7 +124,7 @@ export function exactOffer({ network, asset, payTo, amount, maxTimeoutSeconds = 
 // Starts a one-shot local HTTP merchant. `accepts(body)` builds the offer list for a given
 // request body; `bill(offer)` decides the atomic amount actually billed for that offer (defaults
 // to the full ceiling for `exact`, half of it for `upto`, simulating metered usage).
-export function startMerchant({ accepts, bill, verifyOverride } = {}) {
+export function startMerchant({ accepts, bill, verifyOverride, paidResponse } = {}) {
   let resourceUrl;
   const server = http.createServer(async (req, res) => {
     if (req.method !== "POST") { res.writeHead(404).end(); return; }
@@ -146,6 +146,11 @@ export function startMerchant({ accepts, bill, verifyOverride } = {}) {
     if (!ok) {
       res.writeHead(402, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Invalid payment signature." }));
+      return;
+    }
+    if (paidResponse) {
+      res.writeHead(paidResponse.status, { "Content-Type": "application/json" });
+      res.end(typeof paidResponse.body === "string" ? paidResponse.body : JSON.stringify(paidResponse.body));
       return;
     }
     const billedAtomic = (bill ?? (o => (o.scheme === "exact" ? o.amount : (BigInt(o.amount) / 2n).toString())))(offer);

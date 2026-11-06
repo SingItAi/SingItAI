@@ -43,7 +43,10 @@ export function createPermitGuard({ maxEntries = 10000, ttlMs = 600000, now = Da
       let p;
       try {
         const header = req.get("payment-signature") ?? req.get("x-payment");
-        p = permit(JSON.parse(Buffer.from(header, "base64").toString()));
+        const payment = JSON.parse(Buffer.from(header, "base64").toString());
+        // Same condition as `record`: a payment that does not go through Permit2 never spends this permit.
+        if (!payment?.payload?.permit2Authorization) return next();
+        p = permit(payment);
       } catch { return next(); }
       if (!p || !(p.nonce <= entry(p.key)?.nonce)) return next();
       return res.status(409).json({ error: { type: "invalid_request_error", code: "stale_payment_permit",
