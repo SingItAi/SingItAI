@@ -3,6 +3,7 @@ import { publicModelId, upstreamModelId } from "./model-aliases.mjs";
 import { NEVER_HIDE, MAX_PROVIDERS, validId, readSuspensions, writeSuspensions } from "./suspensions.mjs";
 export { NEVER_HIDE } from "./suspensions.mjs";
 import { bookPrices, derivedPrice, matchesBook } from "./reference-prices.mjs";
+import { GUARD_SHARES_MAX_AGE_MS, readGuardShares, writeGuardShares } from "./guard-shares.mjs";
 // Every text model Surplus sells, read from Surplus itself: a hand-kept list of 400+ models would be stale
 // the day a seller adds one. The list is public; the prices are per token in USD.
 
@@ -191,6 +192,7 @@ export function cheapestShare(book, blocked, id) {
 // (config.priceBufferPp, default 1 percentage point) for the market to move between quote and payment, capped at
 // list price. No guard share known (book not read, model unknown) prices at list (share 1, no header sent): the
 // ceiling still holds, just without Surplus being told to beat it.
+// A share restored after a restart (guard-shares.mjs) comes through here like one just read, with the same header.
 export function priceGuard(catalogue, id, bufferPp) {
   const cheapest = catalogue?.guardShare ? catalogue.guardShare(id) : null;
   if (cheapest === null || cheapest === undefined) return { share: 1, minDiscount: null };
@@ -202,7 +204,7 @@ export function priceGuard(catalogue, id, bufferPp) {
 // cached is served at once even when it is old, and one refresh at a time runs in the background. Only the very
 // first read, with nothing cached yet, waits.
 export class ModelCatalogue {
-  constructor({ url, fetchImpl = fetch, now = Date.now, blocked = [], unservableTtlMs = 15 * 60 * 1000, learnedGuardTtlMs = 600_000, priceRejectedTtlMs = 120_000, liveDiscountTtlMs = 30_000, neverHide = [], suspensionsFile = null }) {
+  constructor({ url, fetchImpl = fetch, now = Date.now, blocked = [], unservableTtlMs = 15 * 60 * 1000, learnedGuardTtlMs = 600_000, priceRejectedTtlMs = 120_000, liveDiscountTtlMs = 30_000, neverHide = [], suspensionsFile = null, guardSharesFile = null, guardSharesMaxAgeMs = GUARD_SHARES_MAX_AGE_MS }) {
     Object.assign(this, { url, fetchImpl, now, unservableTtlMs });
     this.unservable = new Map();
     this.sellerFailures = new Map();
@@ -226,6 +228,13 @@ export class ModelCatalogue {
     this.blocked = new Set(blocked.map((p) => String(p).toLowerCase()));
     this.served = null;  // ids of the models that can be answered now; null until first read
     this.guardShares = new Map();  // cheapest qualifying share of list per model id, from the same order books
+    this.guardReadAt = new Map();  // when each of those shares' own book was read
+    this.guardSharesFile = guardSharesFile;
+    // The last pass, so a restart does not quote at list price until this process's first pass ends (guard-shares.mjs).
+    for (const [id, { share, readAt }] of readGuardShares(guardSharesFile, this.now(), guardSharesMaxAgeMs)) {
+      this.guardShares.set(id, share);
+      this.guardReadAt.set(id, readAt);
+    }
     this.servedAt = 0;
     this.loadingServed = null;
     this.models = null;
@@ -308,6 +317,12 @@ export class ModelCatalogue {
         const ids = [...((this.models ?? (await this.loadModels(), this.models)) ?? new Map()).keys()];
         const served = new Set();
         const guards = new Map();
+        const guardReadAt = new Map();
+        const keepGuard = (id) => {
+          if (!this.guardShares.has(id)) return;
+          guards.set(id, this.guardShares.get(id));
+          if (this.guardReadAt.has(id)) guardReadAt.set(id, this.guardReadAt.get(id));
+        };
         const sellers = new Map();
         const readable = new Map();
         let next = 0;
@@ -332,12 +347,12 @@ export class ModelCatalogue {
                   .map(o => String(o.provider_id ?? "")).filter(validId)));
               } else if (this.sellers.has(id)) sellers.set(id, this.sellers.get(id));
               const share = book ? cheapestShare(book, this.blocked, id) : null;
-              if (share !== null) guards.set(id, share);
-              else if (!book && this.guardShares.has(id)) guards.set(id, this.guardShares.get(id));
+              if (share !== null) { guards.set(id, share); guardReadAt.set(id, this.now()); }
+              else if (!book) keepGuard(id);
             } catch {
               if (this.served?.has(id) ?? true) served.add(id);
               if (this.sellers.has(id)) sellers.set(id, this.sellers.get(id));
-              if (this.guardShares.has(id)) guards.set(id, this.guardShares.get(id));
+              keepGuard(id);
             }
             if (pauseMs) await new Promise((resolve) => setTimeout(resolve, pauseMs));
           }
@@ -345,7 +360,7 @@ export class ModelCatalogue {
         await Promise.all(Array.from({ length: 2 }, worker));
         this.decorate();
         const floor = this.served ? this.served.size / 2 : ids.length / 4;
-        if (ids.length && served.size >= floor) { this.served = served; this.guardShares = guards; this.sellers = sellers; this.servedAt = this.now();
+        if (ids.length && served.size >= floor) { this.served = served; this.guardShares = guards; this.guardReadAt = guardReadAt; this.sellers = sellers; this.servedAt = this.now();
           for (const [id, r] of this.rejections) {
             // Only a book requested after the latest rejection says anything about that rejection.
             if (!(readable.get(id) >= (r.seq ?? 0))) continue;
@@ -361,7 +376,8 @@ export class ModelCatalogue {
             const fresh = !r.truncated && [...(sellers.get(id) ?? [])].some(p => !r.providers.includes(p));
             if (r.gone || fresh) this.noteAnswered(id);
           }
-          this.saveSuspensions(); }
+          this.saveSuspensions();
+          await writeGuardShares(this.guardSharesFile, guards, guardReadAt); }
         else if (ids.length) this.servedAt = this.now();  // keep what was offered; try again next time
       } finally { this.loadingServed = null; }
     })();
@@ -548,8 +564,9 @@ export class ModelCatalogue {
   }
 
   // The cheapest qualifying share of list price last seen for a model, read synchronously from the order books
-  // (same pass as `served`): null until read, or when none qualified. Used to price a ceiling's worst case closer
-  // to what Surplus would really charge (pricing.mjs's `priceGuard`), never to lower it unguarded.
+  // (same pass as `served`, or the last process's pass, guard-shares.mjs): null until read, or when none qualified.
+  // Used to price a ceiling's worst case closer to what Surplus would really charge (pricing.mjs's `priceGuard`),
+  // never to lower it unguarded.
   guardShare(id) {
     // A reference-priced model is bought at an absolute price, never against a discount: its list price is 0, so a
     // discount_pct on its book (Surplus has none today) must not lower the ceiling or send X-Min-Discount.
