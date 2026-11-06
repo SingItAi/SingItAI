@@ -1,13 +1,7 @@
 {
   "version": 1,
-  "description": "D4 first-wave model aliases for x402 discovery. Ranked by our call volume + BlockRun overlap. Edit only with Product OK.",
+  "description": "D4 first-wave model aliases for x402 discovery. Ranked by our call volume + BlockRun overlap. A model with an SI-62 /v1/chat/<id> route is never listed here: that route stays its one advertised record. Edit only with Product OK.",
   "aliases": [
-    {
-      "id": "deepseek-v4.1-flash",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
     {
       "id": "deepseek-v4-pro-0813",
       "modality": "chat",
@@ -33,79 +27,7 @@
       "base_path": "/v1/chat/completions"
     },
     {
-      "id": "gpt-5.5",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "claude-haiku-5.5",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "claude-sonnet-5.5",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "glm-5.3",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "deepseek-v4-pro",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "gemini-3.8-flash",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "claude-opus-5.5",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "kimi-k3",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "qwen3.8-max-0902",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "gemini-3.1-pro-preview",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
       "id": "e2ee-qwen3-6-35b-a3b-uncensored-p",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "gpt-5.6-sol",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "gpt-5.6-terra",
       "modality": "chat",
       "suffix": "chat",
       "base_path": "/v1/chat/completions"
@@ -184,18 +106,6 @@
     },
     {
       "id": "qwen3.5-flash",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "grok-4.7",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
-      "id": "nemotron-3.5-lightning",
       "modality": "chat",
       "suffix": "chat",
       "base_path": "/v1/chat/completions"

@@ -5,7 +5,9 @@ const catalogSnapshot = JSON.parse(readFileSync(new URL("../website/data/catalog
 export const catalogSlug = id => id.split("/").map(safeSlug).join("/");
 export const modelEndpoint = m => {
   const alias = MODEL_ALIAS_ROUTES.find(a => a.id === m.id);
-  return alias ? aliasPath(alias) : m.route ?? "/v1/chat/completions";
+  if (alias) return aliasPath(alias);
+  // A model with an SI-62 route keeps it as its one address; the snapshot records it as that model's route.
+  return m.route ?? catalogSnapshot.data.find(e => e.id === m.id && e.modality === "chat")?.route ?? "/v1/chat/completions";
 };
 import { DEFAULT_FREE_EXAMPLE } from "../singit-ask/src/free.mjs";
 import { readFile, writeFile, mkdir, readdir, rm } from "node:fs/promises";
@@ -209,7 +211,7 @@ export function renderPages(s, shell, hold = { hidden: [] }) {
     files.set(`models/${m.id}/index.html`, modelPage(shell, s, m));
   }
   // D3 also contains search, free and router entries missing from the older chat pricing snapshot.
-  for (const m of catalogSnapshot.data.filter(m => m.modality !== "video")) {
+  for (const m of catalogSnapshot.data.filter(m => m.modality !== "video" && !hold.hidden.some(h => h.id === m.id))) {
     const file = `models/${catalogSlug(m.id)}/index.html`;
     if (files.has(file)) continue;
     const request = m.id === "exa/contents" ? { urls: ["https://x402.org"], text: true }

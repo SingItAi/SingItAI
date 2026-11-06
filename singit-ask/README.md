@@ -616,7 +616,8 @@ D4 adds pinned resources at `POST /v1/models/<id>/chat` and
 pricing and payment handlers and the shared spend-limit middleware. Omit body
 `model` or set it to the path id. Each alias has its own x402 discovery resource
 and OpenAPI entry. Website examples are unpaid requests, generated offline.
-The draft wave contains 39 chat and 10 image aliases. `gemini-3.1-pro` is
-excluded because the offline hidden-models record marks it unavailable.
-The offline D3 website snapshot is partial (chat and search); generation does
-not fabricate image or audio inventory or prices.
+The draft wave contains 24 chat and 10 image aliases. `gemini-3.1-pro` is
+excluded because the offline hidden-models record marks it unavailable. The 15
+SI-62 models keep `POST /v1/chat/<id>` as their one advertised record and have
+no alias. A chat alias reads a request as `POST /v1/chat/completions` does, with
+the model pinned, so the same body gets the same price and limits.

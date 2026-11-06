@@ -33,7 +33,7 @@ Discovery card (MCP, not an A2A task endpoint): https://ask.singitai.app/.well-k
 | Models / pricing lookups (free) | GET https://ask.singitai.app/v1/models; GET https://ask.singitai.app/pricing.json | Free |
 | Health | GET https://ask.singitai.app/health | Free |
 
-Pinned aliases: POST /v1/models/<id>/chat or /images. IDs: https://ask.singitai.app/llms-models.txt. Omit model or match id.
+Aliases: POST /v1/models/<id>/chat or /images; ids at https://ask.singitai.app/llms-models.txt.
 
 ## Money rules for agents
 

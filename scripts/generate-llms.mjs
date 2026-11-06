@@ -51,7 +51,7 @@ export function renderLlms(text, s, routes, format) {
   const rows = taskRows(routes.routes, format);
   const table = '## I need to... -> Call -> Price\n\n| Task | Call | Price |\n| --- | --- | --- |\n' + rows.map(r => `| ${r.join(' | ')} |`).join('\n');
   const money = renderMoney(s, format);
-  text = replaceBlock(text, 'ask-guide', table + '\n\nPinned aliases: POST /v1/models/<id>/chat or /images. IDs: https://ask.singitai.app/llms-models.txt. Omit model or match id.' + '\n\n' + money);
+  text = replaceBlock(text, 'ask-guide', table + '\n\nAliases: POST /v1/models/<id>/chat or /images; ids at https://ask.singitai.app/llms-models.txt.' + '\n\n' + money);
   text = replaceBlock(text, 'model-pages', renderModelLinks());
   if (Buffer.byteLength(text) > 14000) throw new Error('llms.txt exceeds 14000 bytes');
   const models = renderModelList(s, format) + '\n## D4 aliases\n\n' + MODEL_ALIAS_ROUTES.map(m => `- POST https://ask.singitai.app${aliasPath(m)}`).join('\n') + '\n';

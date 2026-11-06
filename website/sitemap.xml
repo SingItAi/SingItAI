@@ -247,17 +247,112 @@
   <url><loc>https://singitai.app/models/venice-uncensored-1.2/</loc></url>
   <url><loc>https://singitai.app/models/venice-uncensored-role-play/</loc></url>
   <url><loc>https://singitai.app/models/xiaomi-mimo-v2-5/</loc></url>
-  <url><loc>https://singitai.app/models/exa/answer/</loc></url>
-  <url><loc>https://singitai.app/models/exa/contents/</loc></url>
-  <url><loc>https://singitai.app/models/exa/search/</loc></url>
   <url><loc>https://singitai.app/models/free/deepseek-v4.1-flash/</loc></url>
   <url><loc>https://singitai.app/models/free/gemma-3-27b-it/</loc></url>
   <url><loc>https://singitai.app/models/free/gemma-4-e2b/</loc></url>
   <url><loc>https://singitai.app/models/free/mistral-small-3.2-24b-instruct/</loc></url>
   <url><loc>https://singitai.app/models/free/openai-gpt-oss-20b/</loc></url>
   <url><loc>https://singitai.app/models/free/qwen3-coder-30b-a3b-instruct/</loc></url>
+  <url><loc>https://singitai.app/models/glm-5.3-flashx-legal/</loc></url>
   <url><loc>https://singitai.app/models/singit-ask/</loc></url>
   <url><loc>https://singitai.app/models/singit/auto/</loc></url>
+  <url><loc>https://singitai.app/models/venice-uncensored/</loc></url>
+  <url><loc>https://singitai.app/models/venice-embed-1/</loc></url>
+  <url><loc>https://singitai.app/models/flux.2-flex/</loc></url>
+  <url><loc>https://singitai.app/models/flux.2-klein-4b/</loc></url>
+  <url><loc>https://singitai.app/models/gemini-2.5-flash-image/</loc></url>
+  <url><loc>https://singitai.app/models/gpt-5-image/</loc></url>
+  <url><loc>https://singitai.app/models/gpt-5-image-mini/</loc></url>
+  <url><loc>https://singitai.app/models/gpt-5.4-image-2/</loc></url>
+  <url><loc>https://singitai.app/models/seedream-4.5/</loc></url>
+  <url><loc>https://singitai.app/models/venice-chroma/</loc></url>
+  <url><loc>https://singitai.app/models/venice-flux-1.1/</loc></url>
+  <url><loc>https://singitai.app/models/venice-flux-1.1-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-flux-2-max/</loc></url>
+  <url><loc>https://singitai.app/models/venice-flux-2-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-flux-3-image/</loc></url>
+  <url><loc>https://singitai.app/models/venice-gpt-image-1.5/</loc></url>
+  <url><loc>https://singitai.app/models/venice-gpt-image-2/</loc></url>
+  <url><loc>https://singitai.app/models/venice-gpt-image-2-5-flare/</loc></url>
+  <url><loc>https://singitai.app/models/venice-gpt-image-2-5-sunburst/</loc></url>
+  <url><loc>https://singitai.app/models/venice-grok-imagine/</loc></url>
+  <url><loc>https://singitai.app/models/venice-grok-imagine-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-grok-imagine-quality/</loc></url>
+  <url><loc>https://singitai.app/models/venice-hunyuan-image-v3/</loc></url>
+  <url><loc>https://singitai.app/models/venice-ideogram-v4/</loc></url>
+  <url><loc>https://singitai.app/models/venice-ideogram-v4-5/</loc></url>
+  <url><loc>https://singitai.app/models/venice-imagineart-1.5-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-krea-2-turbo/</loc></url>
+  <url><loc>https://singitai.app/models/venice-krea-v2-large/</loc></url>
+  <url><loc>https://singitai.app/models/venice-krea-v2-medium/</loc></url>
+  <url><loc>https://singitai.app/models/venice-luma-uni-1/</loc></url>
+  <url><loc>https://singitai.app/models/venice-luma-uni-1-max/</loc></url>
+  <url><loc>https://singitai.app/models/venice-lustify-sdxl/</loc></url>
+  <url><loc>https://singitai.app/models/venice-lustify-v7/</loc></url>
+  <url><loc>https://singitai.app/models/venice-lustify-v8/</loc></url>
+  <url><loc>https://singitai.app/models/venice-nano-banana-2/</loc></url>
+  <url><loc>https://singitai.app/models/venice-nano-banana-2-1/</loc></url>
+  <url><loc>https://singitai.app/models/venice-nano-banana-2-lite/</loc></url>
+  <url><loc>https://singitai.app/models/venice-nano-banana-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-qwen-image/</loc></url>
+  <url><loc>https://singitai.app/models/venice-qwen-image-2/</loc></url>
+  <url><loc>https://singitai.app/models/venice-qwen-image-2-1-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-qwen-image-2-1-turbo/</loc></url>
+  <url><loc>https://singitai.app/models/venice-qwen-image-2-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-qwen-image-3/</loc></url>
+  <url><loc>https://singitai.app/models/venice-qwen-image-3-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-recraft-v4/</loc></url>
+  <url><loc>https://singitai.app/models/venice-recraft-v4-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-sd35/</loc></url>
+  <url><loc>https://singitai.app/models/venice-sdxl/</loc></url>
+  <url><loc>https://singitai.app/models/venice-seedream-v4/</loc></url>
+  <url><loc>https://singitai.app/models/venice-seedream-v5-lite/</loc></url>
+  <url><loc>https://singitai.app/models/venice-seedream-v5-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-wai-illustrious/</loc></url>
+  <url><loc>https://singitai.app/models/venice-wan-2.7/</loc></url>
+  <url><loc>https://singitai.app/models/venice-wan-2.7-pro/</loc></url>
+  <url><loc>https://singitai.app/models/venice-z-image-turbo/</loc></url>
+  <url><loc>https://singitai.app/models/firered-image-edit/</loc></url>
+  <url><loc>https://singitai.app/models/flux-2-max-edit/</loc></url>
+  <url><loc>https://singitai.app/models/flux-3-image-edit/</loc></url>
+  <url><loc>https://singitai.app/models/gpt-image-1-5-edit/</loc></url>
+  <url><loc>https://singitai.app/models/gpt-image-2-5-flare-edit/</loc></url>
+  <url><loc>https://singitai.app/models/gpt-image-2-5-sunburst-edit/</loc></url>
+  <url><loc>https://singitai.app/models/gpt-image-2-edit/</loc></url>
+  <url><loc>https://singitai.app/models/grok-imagine-edit/</loc></url>
+  <url><loc>https://singitai.app/models/grok-imagine-image-2-0-edit/</loc></url>
+  <url><loc>https://singitai.app/models/grok-imagine-quality-edit/</loc></url>
+  <url><loc>https://singitai.app/models/ideogram-v4-5-edit/</loc></url>
+  <url><loc>https://singitai.app/models/luma-uni-1-edit/</loc></url>
+  <url><loc>https://singitai.app/models/luma-uni-1-max-edit/</loc></url>
+  <url><loc>https://singitai.app/models/muse-image-edit/</loc></url>
+  <url><loc>https://singitai.app/models/nano-banana-2-1-edit/</loc></url>
+  <url><loc>https://singitai.app/models/nano-banana-2-edit/</loc></url>
+  <url><loc>https://singitai.app/models/nano-banana-2-lite-edit/</loc></url>
+  <url><loc>https://singitai.app/models/nano-banana-pro-edit/</loc></url>
+  <url><loc>https://singitai.app/models/qwen-image-2-edit/</loc></url>
+  <url><loc>https://singitai.app/models/qwen-image-2-pro-edit/</loc></url>
+  <url><loc>https://singitai.app/models/seedream-v4-edit/</loc></url>
+  <url><loc>https://singitai.app/models/seedream-v5-lite-edit/</loc></url>
+  <url><loc>https://singitai.app/models/seedream-v5-pro-edit/</loc></url>
+  <url><loc>https://singitai.app/models/wan-2-7-pro-edit/</loc></url>
+  <url><loc>https://singitai.app/models/exa/answer/</loc></url>
+  <url><loc>https://singitai.app/models/exa/contents/</loc></url>
+  <url><loc>https://singitai.app/models/exa/search/</loc></url>
+  <url><loc>https://singitai.app/models/bytedance/seed-audio-1.0/</loc></url>
+  <url><loc>https://singitai.app/models/elevenlabs/multilingual-v2/</loc></url>
+  <url><loc>https://singitai.app/models/elevenlabs/v3/</loc></url>
+  <url><loc>https://singitai.app/models/tts-chatterbox-hd/</loc></url>
+  <url><loc>https://singitai.app/models/tts-gemini-3-1-flash/</loc></url>
+  <url><loc>https://singitai.app/models/tts-inworld-1-5-max/</loc></url>
+  <url><loc>https://singitai.app/models/tts-minimax-speech-02-hd/</loc></url>
+  <url><loc>https://singitai.app/models/tts-orpheus/</loc></url>
+  <url><loc>https://singitai.app/models/tts-qwen3-0-6b/</loc></url>
+  <url><loc>https://singitai.app/models/tts-qwen3-1-7b/</loc></url>
+  <url><loc>https://singitai.app/models/tts-xai-v1/</loc></url>
+  <url><loc>https://singitai.app/models/venice-elevenlabs-tts-turbo-v2-5/</loc></url>
+  <url><loc>https://singitai.app/models/venice-kokoro-tts/</loc></url>
+  <url><loc>https://singitai.app/models/venice-tts-1/</loc></url>
   <url><loc>https://singitai.app/models/all/</loc></url>
   <url><loc>https://singitai.app/agent-spending-limits/</loc></url>
   <url><loc>https://singitai.app/limit-ai-agent-spending/</loc></url>

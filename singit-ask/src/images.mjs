@@ -136,7 +136,7 @@ export function addImageRoutes(app, config, { facilitatorClient, publicClient, c
     const route = alias ? aliasPath(alias) : IMAGE_ROUTE;
     const example = alias ? { ...EXAMPLE, model: alias.id } : EXAMPLE;
     if (alias) app.post(route, (req, res, next) => {
-      if (req.body?.model !== undefined && req.body.model !== alias.id) return res.status(400).json({ error: { message: "model does not match this route", code: "invalid_request" } });
+      if (req.body?.model !== undefined && req.body.model !== alias.id) return res.status(400).json({ error: { type: "invalid_request_error", code: "invalid_request", message: `This route answers only ${alias.id}; omit model or set it to ${alias.id}.` } });
       if (req.body && Object.keys(req.body).length) req.body.model = alias.id;
       next();
     });

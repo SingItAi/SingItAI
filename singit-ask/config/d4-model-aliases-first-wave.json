@@ -4,24 +4,11 @@
   "our_log": "/home/hermes/.sign402/singit-ask-answers.jsonl on VPS (read-only)",
   "blockrun_source": "/workspace/singit/product/blockrun-endpoints-raw-2026-11-05/br_models.json",
   "catalog": "https://ask.singitai.app/v1/catalog",
-  "count": 50,
-  "chat": 40,
+  "count": 35,
+  "chat": 25,
   "image": 10,
   "image_edit": 0,
   "models": [
-    {
-      "rank": 1,
-      "id": "deepseek-v4.1-flash",
-      "name": "DeepSeek V4.1 Flash",
-      "modality": "chat",
-      "alias_path": "/v1/models/deepseek-v4.1-flash/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:625",
-        "si62_featured",
-        "blockrun_list"
-      ]
-    },
     {
       "rank": 2,
       "id": "deepseek-v4-pro-0813",
@@ -70,132 +57,6 @@
       ]
     },
     {
-      "rank": 6,
-      "id": "gpt-5.5",
-      "name": "GPT-5.5",
-      "modality": "chat",
-      "alias_path": "/v1/models/gpt-5.5/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:5",
-        "si62_featured",
-        "blockrun_list"
-      ]
-    },
-    {
-      "rank": 7,
-      "id": "claude-haiku-5.5",
-      "name": "Claude Haiku 5.5",
-      "modality": "chat",
-      "alias_path": "/v1/models/claude-haiku-5.5/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:5",
-        "si62_featured"
-      ]
-    },
-    {
-      "rank": 8,
-      "id": "claude-sonnet-5.5",
-      "name": "Claude Sonnet 5.5",
-      "modality": "chat",
-      "alias_path": "/v1/models/claude-sonnet-5.5/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:3",
-        "si62_featured",
-        "blockrun_list"
-      ]
-    },
-    {
-      "rank": 9,
-      "id": "glm-5.3",
-      "name": "GLM 5.3",
-      "modality": "chat",
-      "alias_path": "/v1/models/glm-5.3/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:2",
-        "si62_featured",
-        "blockrun_list"
-      ]
-    },
-    {
-      "rank": 10,
-      "id": "deepseek-v4-pro",
-      "name": "DeepSeek V4 Pro",
-      "modality": "chat",
-      "alias_path": "/v1/models/deepseek-v4-pro/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:2",
-        "si62_featured",
-        "blockrun_list"
-      ]
-    },
-    {
-      "rank": 11,
-      "id": "gemini-3.8-flash",
-      "name": "Gemini 3.8 Flash",
-      "modality": "chat",
-      "alias_path": "/v1/models/gemini-3.8-flash/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:2",
-        "si62_featured",
-        "blockrun_list"
-      ]
-    },
-    {
-      "rank": 12,
-      "id": "claude-opus-5.5",
-      "name": "Claude Opus 5.5",
-      "modality": "chat",
-      "alias_path": "/v1/models/claude-opus-5.5/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:2",
-        "si62_featured",
-        "blockrun_list"
-      ]
-    },
-    {
-      "rank": 13,
-      "id": "kimi-k3",
-      "name": "Kimi K3",
-      "modality": "chat",
-      "alias_path": "/v1/models/kimi-k3/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:2",
-        "si62_featured"
-      ]
-    },
-    {
-      "rank": 14,
-      "id": "qwen3.8-max-0902",
-      "name": "Qwen: Qwen3.8 Max (0902)",
-      "modality": "chat",
-      "alias_path": "/v1/models/qwen3.8-max-0902/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:2",
-        "si62_featured"
-      ]
-    },
-    {
-      "rank": 15,
-      "id": "gemini-3.1-pro-preview",
-      "name": "Gemini 3.1 Pro Preview",
-      "modality": "chat",
-      "alias_path": "/v1/models/gemini-3.1-pro-preview/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:2",
-        "si62_featured"
-      ]
-    },
-    {
       "rank": 16,
       "id": "e2ee-qwen3-6-35b-a3b-uncensored-p",
       "name": "Qwen 3.6 35B A3B Uncensored (E2EE)",
@@ -204,32 +65,6 @@
       "forwards_to": "/v1/chat/completions",
       "sources": [
         "our_calls:2"
-      ]
-    },
-    {
-      "rank": 17,
-      "id": "gpt-5.6-sol",
-      "name": "GPT-5.6 Sol",
-      "modality": "chat",
-      "alias_path": "/v1/models/gpt-5.6-sol/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:1",
-        "si62_featured",
-        "blockrun_list"
-      ]
-    },
-    {
-      "rank": 18,
-      "id": "gpt-5.6-terra",
-      "name": "GPT-5.6 Terra",
-      "modality": "chat",
-      "alias_path": "/v1/models/gpt-5.6-terra/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "our_calls:1",
-        "si62_featured",
-        "blockrun_list"
       ]
     },
     {
@@ -385,30 +220,6 @@
       "forwards_to": "/v1/chat/completions",
       "sources": [
         "our_calls:1"
-      ]
-    },
-    {
-      "rank": 33,
-      "id": "grok-4.7",
-      "name": "Grok 4.7",
-      "modality": "chat",
-      "alias_path": "/v1/models/grok-4.7/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "si62_featured",
-        "blockrun_list"
-      ]
-    },
-    {
-      "rank": 34,
-      "id": "nemotron-3.5-lightning",
-      "name": "NVIDIA Nemotron 3.5 Lightning",
-      "modality": "chat",
-      "alias_path": "/v1/models/nemotron-3.5-lightning/chat",
-      "forwards_to": "/v1/chat/completions",
-      "sources": [
-        "si62_featured",
-        "blockrun_list"
       ]
     },
     {

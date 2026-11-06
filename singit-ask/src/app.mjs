@@ -890,7 +890,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } }])) : {}),
         // Per-model routes (#66) answer the same errors as /v1/chat/completions minus the free tier's 429, plus 404
         // for a model the catalogue does not list; documented with the shared JSON error shapes (SI-63).
-        ...(catalogue ? Object.fromEntries(Object.entries({ ...await chatAliasOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }), ...await modelOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA,
+        ...(catalogue ? Object.fromEntries(Object.entries({ ...await chatAliasOpenapiPaths(catalogue, { inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }), ...await modelOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA,
           outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }) }).map(([route, item]) => [route,
           { post: { ...item.post, responses: { 200: item.post.responses[200],
             ...paidErrors({ notFound: "This model is not available; nothing was charged",
@@ -1316,8 +1316,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
   if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
     inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
-  if (catalogue) addModelAliasRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
-    inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
+  // Aliases read a request as /v1/chat/completions does, so the same body gets the same limits and the same price.
+  if (catalogue) addModelAliasRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: body => readRequest(body, { agent: true, allowFallback: false }), upstream: learning, fetchImpl, log,
+    inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Video from Surplus's text-to-video models, as jobs.
   if (catalogue) addVideoRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Free prices: crypto and metals from Chainlink on Base, currencies from Chainlink or the ECB.

@@ -32,7 +32,7 @@ Discovery card (MCP, not an A2A task endpoint): https://ask.singitai.app/.well-k
 | Models / pricing lookups (free) | GET https://ask.singitai.app/v1/models; GET https://ask.singitai.app/pricing.json | Free |
 | Health | GET https://ask.singitai.app/health | Free |
 
-Pinned aliases: POST /v1/models/<id>/chat or /images. IDs: https://ask.singitai.app/llms-models.txt. Omit model or match id.
+Aliases: POST /v1/models/<id>/chat or /images; ids at https://ask.singitai.app/llms-models.txt.
 
 ## Money rules for agents
 
@@ -376,24 +376,11 @@ singit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rule
 
 ## D4 aliases
 
-- POST https://ask.singitai.app/v1/models/deepseek-v4.1-flash/chat
 - POST https://ask.singitai.app/v1/models/deepseek-v4-pro-0813/chat
 - POST https://ask.singitai.app/v1/models/glm-5.3-flash/chat
 - POST https://ask.singitai.app/v1/models/claude-haiku-4.5/chat
 - POST https://ask.singitai.app/v1/models/gpt-6-luna/chat
-- POST https://ask.singitai.app/v1/models/gpt-5.5/chat
-- POST https://ask.singitai.app/v1/models/claude-haiku-5.5/chat
-- POST https://ask.singitai.app/v1/models/claude-sonnet-5.5/chat
-- POST https://ask.singitai.app/v1/models/glm-5.3/chat
-- POST https://ask.singitai.app/v1/models/deepseek-v4-pro/chat
-- POST https://ask.singitai.app/v1/models/gemini-3.8-flash/chat
-- POST https://ask.singitai.app/v1/models/claude-opus-5.5/chat
-- POST https://ask.singitai.app/v1/models/kimi-k3/chat
-- POST https://ask.singitai.app/v1/models/qwen3.8-max-0902/chat
-- POST https://ask.singitai.app/v1/models/gemini-3.1-pro-preview/chat
 - POST https://ask.singitai.app/v1/models/e2ee-qwen3-6-35b-a3b-uncensored-p/chat
-- POST https://ask.singitai.app/v1/models/gpt-5.6-sol/chat
-- POST https://ask.singitai.app/v1/models/gpt-5.6-terra/chat
 - POST https://ask.singitai.app/v1/models/e2ee-gemma-4-26b-a4b-uncensored-p/chat
 - POST https://ask.singitai.app/v1/models/gemma-4-uncensored/chat
 - POST https://ask.singitai.app/v1/models/glm-4.7-flash-heretic/chat
@@ -407,8 +394,6 @@ singit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rule
 - POST https://ask.singitai.app/v1/models/minimax-m2.7-highspeed/chat
 - POST https://ask.singitai.app/v1/models/e2ee-glm-5.1/chat
 - POST https://ask.singitai.app/v1/models/qwen3.5-flash/chat
-- POST https://ask.singitai.app/v1/models/grok-4.7/chat
-- POST https://ask.singitai.app/v1/models/nemotron-3.5-lightning/chat
 - POST https://ask.singitai.app/v1/models/gpt-6-astra/chat
 - POST https://ask.singitai.app/v1/models/gpt-6.1-sol/chat
 - POST https://ask.singitai.app/v1/models/gpt-6-sol/chat
