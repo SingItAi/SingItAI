@@ -10,6 +10,7 @@ import { FORMAT_ROUTES } from "../src/formats.mjs";
 import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage } from "../src/pricing.mjs";
 import { ModelCatalogue, UnknownModel, priceGuard } from "../src/catalogue.mjs";
 import { modelRoutePaths } from "../src/model-routes.mjs";
+import { aliasPaths } from "../src/model-alias-routes.mjs";
 import { SEARCH_ROUTES } from "../src/search.mjs";
 import { VIDEO_ROUTE } from "../src/video.mjs";
 
@@ -228,7 +229,7 @@ test("an empty unpaid request gets the standing offer, so directories can regist
     assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]),
       [[BASE, "3000"], [SOLANA, "3000"], [BASE, "3000"], [SOLANA, "3000"]]);
     assert.ok(required.extensions?.bazaar?.info, "x402scan needs the input schema to index the route");
-    assert.match(required.resource.description, /200\+ models/);
+    assert.match(required.resource.description, /OpenAI-compatible chat API/);
     assert.doesNotMatch(required.resource.description, /at most 0\.003/);
   }
   assert.equal(asked.length, 0);
@@ -345,6 +346,7 @@ test("/.well-known/x402 points to the paid route at its public URL", async () =>
                                    "https://ask.singitai.app/v1/embeddings",
                                    "https://ask.singitai.app/v1/images/generations", "https://ask.singitai.app/v1/audio/speech",
                                    // no video: unlisted while SINGIT_ASK_VIDEO_DISCOVERABLE is off
+                                   ...aliasPaths().map((route) => `https://ask.singitai.app${route}`),
                                    ...modelRoutePaths().map((route) => `https://ask.singitai.app${route}`)]);
   assert.match(doc.instructions, /GET https:\/\/ask\.singitai\.app\/v1\/models/);
 });
@@ -405,7 +407,7 @@ test("GET /llms.txt describes only what is live: Exa, free tier, prices, no vide
     const manifest = await (await fetch(`${on.url}/.well-known/x402`)).json();
     assert.ok(manifest.instructions.includes(term), term);
   }
-  assert.match(on.text, /Free first call, no wallet: model free\/deepseek-v4\.1-flash/);
+  assert.match(on.text, /Model "free\/deepseek-v4\.1-flash"/);
   assert.ok(!on.text.includes("when enabled"));
   assert.match(on.text, /Exa web search/);
   for (const route of Object.keys(SEARCH_ROUTES)) assert.ok(on.text.includes(`- POST ${on.url}${route}`), route);

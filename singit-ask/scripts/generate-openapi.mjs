@@ -27,7 +27,7 @@ const catalogue = { async resolve(id) { return models.find((m) => m.id === id); 
 
 export async function generateOpenapi(overrides = {}) {
   const config = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", payToBase: "0x1111111111111111111111111111111111111111",
-    surplusKey: "inf_stub", surplusUrl: "https://surplus.invalid", model: "deepseek-v4.1-flash", exaKey: "stub", videoSold: false,
+    surplusKey: "inf_stub", surplusUrl: "https://surplus.invalid", model: "deepseek-v4.1-flash", exaKey: "stub", videoSold: false, audioSold: true, audioDiscoverable: true,
     observedFile: "/nonexistent/observed.json", ...overrides };
   const app = createApp(config, { facilitatorClient: stubFacilitator, catalogue, priceBook: new PriceBook({ publicClient: null }), log: () => {} });
   // Invoke the registered document handler directly: offline generation needs no listening socket.

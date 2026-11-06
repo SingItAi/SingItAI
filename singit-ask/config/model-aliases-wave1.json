@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "description": "D4 first-wave model aliases for x402 discovery. Ranked by our call volume + BlockRun overlap. A model with an SI-62 /v1/chat/<id> route is never listed here: that route stays its one advertised record. Edit only with Product OK.",
+  "aliases": [
+    {
+      "id": "deepseek-v4-pro-0813",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "glm-5.3-flash",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "claude-haiku-4.5",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "gpt-6-luna",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "e2ee-qwen3-6-35b-a3b-uncensored-p",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "e2ee-gemma-4-26b-a4b-uncensored-p",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "gemma-4-uncensored",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "glm-4.7-flash-heretic",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "qwen3.6-plus-uncensored",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "venice-uncensored-1.2",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "venice-uncensored-role-play",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "deepseek-v4.1-flash-uncensored",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "qwen3.5-plus",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "e2ee-gpt-oss-20b-p",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "qwen3-5-9b",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "minimax-m2.7-highspeed",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "e2ee-glm-5.1",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "qwen3.5-flash",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "gpt-6-astra",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "gpt-6-sol",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "gpt-5.6-sol-pro",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "gpt-5.6-terra-pro",
+      "modality": "chat",
+      "suffix": "chat",
+      "base_path": "/v1/chat/completions"
+    },
+    {
+      "id": "venice-gpt-image-2",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    },
+    {
+      "id": "venice-gpt-image-1.5",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    },
+    {
+      "id": "venice-flux-2-pro",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    },
+    {
+      "id": "venice-flux-2-max",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    },
+    {
+      "id": "venice-flux-3-image",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    },
+    {
+      "id": "venice-ideogram-v4-5",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    },
+    {
+      "id": "seedream-4.5",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    },
+    {
+      "id": "venice-grok-imagine",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    },
+    {
+      "id": "venice-recraft-v4",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    },
+    {
+      "id": "flux.2-flex",
+      "modality": "image",
+      "suffix": "images",
+      "base_path": "/v1/images/generations"
+    }
+  ],
+  "excluded": [
+    {
+      "id": "gemini-3.1-pro",
+      "reason": "Offline hidden-models.json: seller cannot route this model (2026-11-01)."
+    }
+  ]
+}

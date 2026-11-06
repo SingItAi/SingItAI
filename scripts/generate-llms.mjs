@@ -1,3 +1,4 @@
+import { MODEL_ALIAS_ROUTES, aliasPath } from "../singit-ask/src/model-alias-routes.mjs";
 import { readFileSync } from 'node:fs';
 import { breakdown } from './generate-catalog-page.mjs';
 const catalog = JSON.parse(readFileSync(new URL('../website/data/catalog-snapshot.json', import.meta.url), 'utf8'));
@@ -50,10 +51,10 @@ export function renderLlms(text, s, routes, format) {
   const rows = taskRows(routes.routes, format);
   const table = '## I need to... -> Call -> Price\n\n| Task | Call | Price |\n| --- | --- | --- |\n' + rows.map(r => `| ${r.join(' | ')} |`).join('\n');
   const money = renderMoney(s, format);
-  text = replaceBlock(text, 'ask-guide', table + '\n\n' + money);
+  text = replaceBlock(text, 'ask-guide', table + '\n\nAliases: POST /v1/models/<id>/chat or /images; ids at https://ask.singitai.app/llms-models.txt.' + '\n\n' + money);
   text = replaceBlock(text, 'model-pages', renderModelLinks());
   if (Buffer.byteLength(text) > 14000) throw new Error('llms.txt exceeds 14000 bytes');
-  const models = renderModelList(s, format);
+  const models = renderModelList(s, format) + '\n## D4 aliases\n\n' + MODEL_ALIAS_ROUTES.map(m => `- POST https://ask.singitai.app${aliasPath(m)}`).join('\n') + '\n';
   const body = text.replace(/^<!-- generated:[^\n]+ -->\n/gm, '');
 
   const audioDraft = 'Draft Ask audio: POST /v1/audio/sound-effects and /v1/audio/generations return audio bytes after bounded server-side generation; Base-only exact USDC (Solana refused; disabled until credit, route and pricing readiness are confirmed), model capabilities and flat prices at GET /v1/audio/generation-models. Not yet published.';
@@ -100,7 +101,7 @@ Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools incl
 
 Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
 
-/numbers.json agent_traffic: 24h/7d paid/free with_tools/stream/images; fixed by_source. No raw headers/prompts/addresses.
+/numbers.json: aggregate traffic only.
 
 Reference chat request: ${s.referenceRequest.messages} message(s), ${s.referenceRequest.chars} characters, ${s.referenceRequest.inputTokens} input tokens, max_tokens ${s.referenceRequest.maxOutputTokens}. Per-model reference prices are in the full models list, with upto before exact.`;
 }

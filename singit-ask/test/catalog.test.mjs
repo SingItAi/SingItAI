@@ -63,7 +63,7 @@ test('static website counts use kept API catalog entries and exclude unpublished
   assert.equal(captured.counts.transcription, 0);
   const html = renderCatalog(s);
   for (const [modality, count] of Object.entries(s.counts)) assert.ok(html.includes(`<dd data-modality="${modality}">${count}</dd>`));
-  assert.doesNotMatch(html.split('<body>')[1], /<script|video/i);
+  assert.doesNotMatch(html.split('<body>')[1], /<script(?![^>]*type="application\/ld\+json")|\bvideo\b/i);
   assert.equal(await readFile(new URL('../../website/models/index.html', import.meta.url), 'utf8'), html);
 });
 

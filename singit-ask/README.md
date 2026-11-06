@@ -610,3 +610,14 @@ unconfirmed and returned Content-Type follows actual bytes. No live or paid call
 There is no prepayment or refund on these Base routes: failed generation/download
 returns an error before settlement; the x402 middleware buffers successful bytes
 until settlement succeeds. A settlement failure must not release the artifact.
+D4 adds pinned resources at `POST /v1/models/<id>/chat` and
+`POST /v1/models/<id>/images`. The first wave is configured in
+`config/model-aliases-wave1.json`; these routes reuse the existing chat/image
+pricing and payment handlers and the shared spend-limit middleware. Omit body
+`model` or set it to the path id. Each alias has its own x402 discovery resource
+and OpenAPI entry. Website examples are unpaid requests, generated offline.
+The draft wave contains 24 chat and 10 image aliases. `gemini-3.1-pro` is
+excluded because the offline hidden-models record marks it unavailable. The 15
+SI-62 models keep `POST /v1/chat/<id>` as their one advertised record and have
+no alias. A chat alias reads a request as `POST /v1/chat/completions` does, with
+the model pinned, so the same body gets the same price and limits.

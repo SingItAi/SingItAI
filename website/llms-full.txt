@@ -32,6 +32,8 @@ Discovery card (MCP, not an A2A task endpoint): https://ask.singitai.app/.well-k
 | Models / pricing lookups (free) | GET https://ask.singitai.app/v1/models; GET https://ask.singitai.app/pricing.json | Free |
 | Health | GET https://ask.singitai.app/health | Free |
 
+Aliases: POST /v1/models/<id>/chat or /images; ids at https://ask.singitai.app/llms-models.txt.
+
 ## Money rules for agents
 
 Unpaid calls: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). Decode it, sign one offer, retry the same request with PAYMENT-SIGNATURE. Success: HTTP 200 with PAYMENT-RESPONSE.
@@ -48,7 +50,7 @@ Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools incl
 
 Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
 
-/numbers.json agent_traffic: 24h/7d paid/free with_tools/stream/images; fixed by_source. No raw headers/prompts/addresses.
+/numbers.json: aggregate traffic only.
 
 Reference chat request: 1 message(s), 30 characters, 12 input tokens, max_tokens 800. Per-model reference prices are in the full models list, with upto before exact.
 
@@ -371,5 +373,42 @@ singit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rule
 | [Venice Uncensored 1.2](https://singitai.app/models/venice-uncensored-1.2/) | $0.025012 | $0.112554 | 0.001823 | 0.0015 | 0.002823 | 0.002249 |
 | [Venice Role Play Uncensored](https://singitai.app/models/venice-uncensored-role-play/) | $0.559 | $2.236 | 0.00283 | 0.00155 | 0.00383 | 0.00255 |
 | [MiMo-V2.5](https://singitai.app/models/xiaomi-mimo-v2-5/) | $0.156 | $0.78 | 0.001652 | 0.0015 | 0.002652 | 0.002197 |
+
+## D4 aliases
+
+- POST https://ask.singitai.app/v1/models/deepseek-v4-pro-0813/chat
+- POST https://ask.singitai.app/v1/models/glm-5.3-flash/chat
+- POST https://ask.singitai.app/v1/models/claude-haiku-4.5/chat
+- POST https://ask.singitai.app/v1/models/gpt-6-luna/chat
+- POST https://ask.singitai.app/v1/models/e2ee-qwen3-6-35b-a3b-uncensored-p/chat
+- POST https://ask.singitai.app/v1/models/e2ee-gemma-4-26b-a4b-uncensored-p/chat
+- POST https://ask.singitai.app/v1/models/gemma-4-uncensored/chat
+- POST https://ask.singitai.app/v1/models/glm-4.7-flash-heretic/chat
+- POST https://ask.singitai.app/v1/models/qwen3.6-plus-uncensored/chat
+- POST https://ask.singitai.app/v1/models/venice-uncensored-1.2/chat
+- POST https://ask.singitai.app/v1/models/venice-uncensored-role-play/chat
+- POST https://ask.singitai.app/v1/models/deepseek-v4.1-flash-uncensored/chat
+- POST https://ask.singitai.app/v1/models/qwen3.5-plus/chat
+- POST https://ask.singitai.app/v1/models/e2ee-gpt-oss-20b-p/chat
+- POST https://ask.singitai.app/v1/models/qwen3-5-9b/chat
+- POST https://ask.singitai.app/v1/models/minimax-m2.7-highspeed/chat
+- POST https://ask.singitai.app/v1/models/e2ee-glm-5.1/chat
+- POST https://ask.singitai.app/v1/models/qwen3.5-flash/chat
+- POST https://ask.singitai.app/v1/models/gpt-6-astra/chat
+- POST https://ask.singitai.app/v1/models/gpt-6.1-sol/chat
+- POST https://ask.singitai.app/v1/models/gpt-6-sol/chat
+- POST https://ask.singitai.app/v1/models/gpt-5.6-luna/chat
+- POST https://ask.singitai.app/v1/models/gpt-5.6-sol-pro/chat
+- POST https://ask.singitai.app/v1/models/gpt-5.6-terra-pro/chat
+- POST https://ask.singitai.app/v1/models/venice-gpt-image-2/images
+- POST https://ask.singitai.app/v1/models/venice-gpt-image-1.5/images
+- POST https://ask.singitai.app/v1/models/venice-flux-2-pro/images
+- POST https://ask.singitai.app/v1/models/venice-flux-2-max/images
+- POST https://ask.singitai.app/v1/models/venice-flux-3-image/images
+- POST https://ask.singitai.app/v1/models/venice-ideogram-v4-5/images
+- POST https://ask.singitai.app/v1/models/seedream-4.5/images
+- POST https://ask.singitai.app/v1/models/venice-grok-imagine/images
+- POST https://ask.singitai.app/v1/models/venice-recraft-v4/images
+- POST https://ask.singitai.app/v1/models/flux.2-flex/images
 
 Draft Ask audio: POST /v1/audio/sound-effects and /v1/audio/generations return audio bytes after bounded server-side generation; Base-only exact USDC (Solana refused; disabled until credit, route and pricing readiness are confirmed), model capabilities and flat prices at GET /v1/audio/generation-models. Not yet published.

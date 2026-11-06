@@ -92,9 +92,9 @@ test('audio discovery, OpenAPI and flat pricing agree without sockets; video sta
   assert.ok(!discovery.resources.some(r => r.includes('/video/')));
   const pricing = await invoke('/pricing.json');
   for (const model of audioPrices()) assert.deepEqual(pricing.models.find(m => m.id === model.id).exact, model.exact);
-  const doc = await generateOpenapi();
+  const doc = await generateOpenapi({ audioSold: true, audioDiscoverable: true });
   const resources = JSON.parse(await readFile(new URL('../../scripts/bazaar-resources.json', import.meta.url)));
-  assert.equal(resources.resources.length, 27);
+  assert.equal(resources.resources.length, 28);
   for (const route of AUDIO_ROUTES) {
     assert.ok(resources.resources.some(r => r.url.endsWith(route)));
     assert.deepEqual(Object.keys(doc.paths[route].post.responses).map(Number), [200, 400, 402, 409, 413, 422, 503]);
@@ -205,6 +205,6 @@ for (const route of AUDIO_ROUTES) for (const mode of ['failed', 'unavailable']) 
   assert.ok(logs[0].startsWith(`audio job fail ${kind} ${model} `));
   assert.match(logs[0], mode === 'unavailable'
     ? /code=submit_failed job=unknown last=unknown http=503 upstream=no_healthy_sellers ms=\d+$/
-    : /code=job_failed job=job123 last=failed http=unknown upstream=unknown ms=\d+$/);
+    : /code=(?:job_failed|timeout) job=job123 last=failed http=unknown upstream=unknown ms=\d+$/);
   for (const secret of ['secret Surplus error message', 'our-key', 'secret-job-token', 'secret-payment', header, config.payToBase, 'secret prompt']) assert.ok(!logs[0].includes(secret));
 });

@@ -1,0 +1,402 @@
+{
+  "generated_at": "2026-11-05T18:45:00+01:00",
+  "method": "Rank = our paid answer-log call counts (30d window filter when ts present; full log used) *1000 + SI-62 featured +50 + BlockRun /v1/models list overlap +20. Images: no paid volume in log; filled with preferred families present in live /v1/catalog. Excludes audio/video/free/router/api_key-only/unavailable.",
+  "our_log": "/home/hermes/.sign402/singit-ask-answers.jsonl on VPS (read-only)",
+  "blockrun_source": "/workspace/singit/product/blockrun-endpoints-raw-2026-11-05/br_models.json",
+  "catalog": "https://ask.singitai.app/v1/catalog",
+  "count": 35,
+  "chat": 25,
+  "image": 10,
+  "image_edit": 0,
+  "models": [
+    {
+      "rank": 2,
+      "id": "deepseek-v4-pro-0813",
+      "name": "DeepSeek V4 Pro 0813",
+      "modality": "chat",
+      "alias_path": "/v1/models/deepseek-v4-pro-0813/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:123"
+      ]
+    },
+    {
+      "rank": 3,
+      "id": "glm-5.3-flash",
+      "name": "GLM 5.3 Flash",
+      "modality": "chat",
+      "alias_path": "/v1/models/glm-5.3-flash/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:106",
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 4,
+      "id": "claude-haiku-4.5",
+      "name": "Claude Haiku 4.5",
+      "modality": "chat",
+      "alias_path": "/v1/models/claude-haiku-4.5/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:87",
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 5,
+      "id": "gpt-6-luna",
+      "name": "GPT-6 Luna",
+      "modality": "chat",
+      "alias_path": "/v1/models/gpt-6-luna/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:21",
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 16,
+      "id": "e2ee-qwen3-6-35b-a3b-uncensored-p",
+      "name": "Qwen 3.6 35B A3B Uncensored (E2EE)",
+      "modality": "chat",
+      "alias_path": "/v1/models/e2ee-qwen3-6-35b-a3b-uncensored-p/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:2"
+      ]
+    },
+    {
+      "rank": 19,
+      "id": "gemini-3.1-pro",
+      "name": "Gemini 3.1 Pro",
+      "modality": "chat",
+      "alias_path": "/v1/models/gemini-3.1-pro/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1",
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 20,
+      "id": "e2ee-gemma-4-26b-a4b-uncensored-p",
+      "name": "Gemma 4 26B A4B Uncensored (E2EE)",
+      "modality": "chat",
+      "alias_path": "/v1/models/e2ee-gemma-4-26b-a4b-uncensored-p/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 21,
+      "id": "gemma-4-uncensored",
+      "name": "Gemma 4 Uncensored",
+      "modality": "chat",
+      "alias_path": "/v1/models/gemma-4-uncensored/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 22,
+      "id": "glm-4.7-flash-heretic",
+      "name": "GLM 4.7 Flash Heretic",
+      "modality": "chat",
+      "alias_path": "/v1/models/glm-4.7-flash-heretic/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 23,
+      "id": "qwen3.6-plus-uncensored",
+      "name": "Qwen 3.6 Plus Uncensored",
+      "modality": "chat",
+      "alias_path": "/v1/models/qwen3.6-plus-uncensored/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 24,
+      "id": "venice-uncensored-1.2",
+      "name": "Venice Uncensored 1.2",
+      "modality": "chat",
+      "alias_path": "/v1/models/venice-uncensored-1.2/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 25,
+      "id": "venice-uncensored-role-play",
+      "name": "Venice Role Play Uncensored",
+      "modality": "chat",
+      "alias_path": "/v1/models/venice-uncensored-role-play/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 26,
+      "id": "deepseek-v4.1-flash-uncensored",
+      "name": "DeepSeek V4.1 Flash Uncensored",
+      "modality": "chat",
+      "alias_path": "/v1/models/deepseek-v4.1-flash-uncensored/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 27,
+      "id": "qwen3.5-plus",
+      "name": "Qwen3.5 Plus",
+      "modality": "chat",
+      "alias_path": "/v1/models/qwen3.5-plus/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 28,
+      "id": "e2ee-gpt-oss-20b-p",
+      "name": "GPT OSS 20B",
+      "modality": "chat",
+      "alias_path": "/v1/models/e2ee-gpt-oss-20b-p/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 29,
+      "id": "qwen3-5-9b",
+      "name": "Qwen 3.5 9B",
+      "modality": "chat",
+      "alias_path": "/v1/models/qwen3-5-9b/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 30,
+      "id": "minimax-m2.7-highspeed",
+      "name": "MiniMax M2.7 Highspeed",
+      "modality": "chat",
+      "alias_path": "/v1/models/minimax-m2.7-highspeed/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 31,
+      "id": "e2ee-glm-5.1",
+      "name": "GLM 5.1 E2EE",
+      "modality": "chat",
+      "alias_path": "/v1/models/e2ee-glm-5.1/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 32,
+      "id": "qwen3.5-flash",
+      "name": "Qwen3.5 Flash",
+      "modality": "chat",
+      "alias_path": "/v1/models/qwen3.5-flash/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "our_calls:1"
+      ]
+    },
+    {
+      "rank": 35,
+      "id": "gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "modality": "chat",
+      "alias_path": "/v1/models/gpt-6-astra/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 36,
+      "id": "gpt-6.1-sol",
+      "name": "GPT-6.1 Sol",
+      "modality": "chat",
+      "alias_path": "/v1/models/gpt-6.1-sol/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 37,
+      "id": "gpt-6-sol",
+      "name": "GPT-6 Sol",
+      "modality": "chat",
+      "alias_path": "/v1/models/gpt-6-sol/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 38,
+      "id": "gpt-5.6-luna",
+      "name": "GPT-5.6 Luna",
+      "modality": "chat",
+      "alias_path": "/v1/models/gpt-5.6-luna/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 39,
+      "id": "gpt-5.6-sol-pro",
+      "name": "GPT-5.6 Sol Pro",
+      "modality": "chat",
+      "alias_path": "/v1/models/gpt-5.6-sol-pro/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 40,
+      "id": "gpt-5.6-terra-pro",
+      "name": "GPT-5.6 Terra Pro",
+      "modality": "chat",
+      "alias_path": "/v1/models/gpt-5.6-terra-pro/chat",
+      "forwards_to": "/v1/chat/completions",
+      "sources": [
+        "blockrun_list"
+      ]
+    },
+    {
+      "rank": 41,
+      "id": "venice-gpt-image-2",
+      "name": "GPT Image 2 (Venice)",
+      "modality": "image",
+      "alias_path": "/v1/models/venice-gpt-image-2/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    },
+    {
+      "rank": 42,
+      "id": "venice-gpt-image-1.5",
+      "name": "GPT Image 1.5 (Venice)",
+      "modality": "image",
+      "alias_path": "/v1/models/venice-gpt-image-1.5/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    },
+    {
+      "rank": 43,
+      "id": "venice-flux-2-pro",
+      "name": "Flux 2 Pro (Venice)",
+      "modality": "image",
+      "alias_path": "/v1/models/venice-flux-2-pro/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    },
+    {
+      "rank": 44,
+      "id": "venice-flux-2-max",
+      "name": "Flux 2 Max (Venice)",
+      "modality": "image",
+      "alias_path": "/v1/models/venice-flux-2-max/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    },
+    {
+      "rank": 45,
+      "id": "venice-flux-3-image",
+      "name": "Flux 3 (Venice)",
+      "modality": "image",
+      "alias_path": "/v1/models/venice-flux-3-image/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    },
+    {
+      "rank": 46,
+      "id": "venice-ideogram-v4-5",
+      "name": "Ideogram V4.5 (Venice)",
+      "modality": "image",
+      "alias_path": "/v1/models/venice-ideogram-v4-5/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    },
+    {
+      "rank": 47,
+      "id": "seedream-4.5",
+      "name": "Seedream 4.5",
+      "modality": "image",
+      "alias_path": "/v1/models/seedream-4.5/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    },
+    {
+      "rank": 48,
+      "id": "venice-grok-imagine",
+      "name": "Grok Imagine (Venice)",
+      "modality": "image",
+      "alias_path": "/v1/models/venice-grok-imagine/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    },
+    {
+      "rank": 49,
+      "id": "venice-recraft-v4",
+      "name": "Recraft V4 (Venice)",
+      "modality": "image",
+      "alias_path": "/v1/models/venice-recraft-v4/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    },
+    {
+      "rank": 50,
+      "id": "flux.2-flex",
+      "name": "FLUX.2 Flex",
+      "modality": "image",
+      "alias_path": "/v1/models/flux.2-flex/images",
+      "forwards_to": "/v1/images/generations",
+      "sources": [
+        "image_family_fill"
+      ]
+    }
+  ]
+}

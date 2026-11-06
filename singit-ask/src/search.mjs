@@ -210,7 +210,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, publicClient, 
   }
   addPaymentRoute(app, Object.fromEntries(Object.keys(SEARCH_ROUTES).map((route) => [`POST ${route}`, {
     accepts: offers(route), mimeType: "application/json", description: DESCRIPTIONS[route],
-    serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: discoveryTags(...routeCopy(route).tags, ...TAGS[route]),
+    serviceName: SERVICE_NAMES[route], iconUrl: ICON_URL, tags: discoveryTags(...TAGS[route], ...routeCopy(route).tags),
     extensions: declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: INPUT_SCHEMAS[route],
       output: { example: outputExamples()[route], schema: OUTPUT_SCHEMA } }),
   }])), server, { log, publicClient });

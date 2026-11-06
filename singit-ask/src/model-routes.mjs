@@ -1,3 +1,4 @@
+import { MODEL_ALIAS_ROUTES, aliasPath, aliasDescription } from "./model-alias-routes.mjs";
 import { routeCopy } from "./listing-snapshot.mjs";
 import { errorRef } from "./errors.mjs";
 // SI-62: one x402 resource per popular model, `/v1/chat/<model>`, so a Bazaar search for a model name ("claude
@@ -12,7 +13,7 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addUsageRoute, probeNote, baseOffer, exactBaseOffer, exactSolanaOffer, solanaOffer } from "./metered.mjs";
 import { unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
-import { LIMITS } from "./limits.mjs";
+import { AGENT_LIMITS, LIMITS } from "./limits.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, ICON_URL, ceilingAtomic, discoveryTags, modelServiceName, usd } from "./pricing.mjs";
 
 // Public ids resolve through the catalogue; model-aliases.mjs maps any upstream difference.
@@ -58,6 +59,10 @@ for (const model of MODEL_ROUTES) {
   if (model.id === "completions") throw new Error('model-routes.mjs: "completions" is not a model id');
 }
 
+// One advertised record per model: an SI-62 route stays the model's address, so an alias may never repeat it.
+for (const alias of MODEL_ALIAS_ROUTES) {
+  if (MODEL_ROUTES.some(m => m.id.toLowerCase() === alias.id.toLowerCase())) throw new Error(`Alias repeats SI-62 route: ${alias.id}`);
+}
 export const routePath = (id) => `/v1/chat/${id}`;
 export const modelRoutePaths = (catalogue) => MODEL_ROUTES.filter(m => !catalogue?.isSuspended?.(m.id)).map((m) => routePath(m.id));
 
@@ -135,26 +140,36 @@ const modelInputSchema = (schema, config = {}) => ({ ...schema, description: pro
         + "The price cap you sign grows with it (the 402 states the exact amount for your request); the charge follows what was used." }])),
 });
 
+// An alias answers what POST /v1/chat/completions answers for that model (agent limits, tools, content blocks), with
+// the model pinned: only the fields that would pick another model go, and the note states the agent token limit.
+const aliasInputSchema = (schema, config = {}) => ({ ...schema,
+  description: probeNote(400, config).replace(`above ${LIMITS.maxTokens} counts as ${LIMITS.maxTokens}`, `above ${AGENT_LIMITS.maxTokens} counts as ${AGENT_LIMITS.maxTokens}`),
+  properties: Object.fromEntries(Object.entries(schema.properties).filter(([name]) => !["fallback_models", "min_tier"].includes(name))),
+});
+const pinned = (schema, model) => ({ ...schema, properties: { ...schema.properties, model: { type: "string", const: model.id } } });
+const ROUTE_SET = Object.freeze({ models: MODEL_ROUTES, pathFor: m => routePath(m.id), describe: m => discoveryDescription(m), schemaFor: modelInputSchema, schemaOf: schema => schema, prefix: "" });
+const ALIAS_SET = Object.freeze({ models: MODEL_ALIAS_ROUTES.filter(m => m.modality === "chat"), pathFor: aliasPath, describe: aliasDescription, schemaFor: aliasInputSchema, schemaOf: pinned, prefix: "alias" });
+
 export function addModelRoutes(app, config, { facilitatorClient, publicClient, catalogue, readRequest, upstream, fetchImpl, log,
-                                              inputSchema, outputSchema, exampleOutput }) {
+                                              inputSchema, outputSchema, exampleOutput }, { models, pathFor, describe, schemaFor, schemaOf } = ROUTE_SET) {
   const bufferPp = config.priceBufferPp ?? 1;
-  inputSchema = modelInputSchema(inputSchema, config);
-  for (const model of MODEL_ROUTES) {
+  inputSchema = schemaFor(inputSchema, config);
+  for (const model of models) {
     // The discovery probes are quoted for this route's own Bazaar example body (metered.mjs's `exampleProbe`).
-    addUsageRoute(app, routePath(model.id), (quotes, fallback) => [
+    addUsageRoute(app, pathFor(model), (quotes, fallback) => [
       // upto first (SI-102): the metered, actual-cost offer is the one a buyer that only inspects accepts[0] sees.
       baseOffer(config, quotes, fallback("upto", BASE)),
       solanaOffer(config, quotes, fallback("upto", SOLANA)),
       exactBaseOffer(config, quotes, fallback("exact", BASE)),
       exactSolanaOffer(config, quotes, fallback("exact", SOLANA)),
     ], {
-      description: discoveryDescription(model),
+      description: describe(model),
       serviceName: modelServiceName(model.name),
       iconUrl: ICON_URL,
       tags: modelTags(model),
       extensions: {
         ...declareEip2612GasSponsoringExtension(),
-        ...declareDiscoveryExtension({ bodyType: "json", input: modelExample(model), inputSchema,
+        ...declareDiscoveryExtension({ bodyType: "json", input: modelExample(model), inputSchema: schemaOf(inputSchema, model),
           output: { example: exampleOutput, schema: outputSchema } }),
       },
     }, {
@@ -169,15 +184,15 @@ export function addModelRoutes(app, config, { facilitatorClient, publicClient, c
 
 // Every model route's openapi.json path entry, priced at that model's own range when the catalogue can resolve it
 // right now, else the generic `fallbackPrice` (the same one /v1/chat/completions shows).
-export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, exampleOutput, fallbackPrice, config = {} }) {
-  inputSchema = modelInputSchema(inputSchema, config);
-  const entries = await Promise.all(MODEL_ROUTES.filter(m => !catalogue?.isSuspended?.(m.id)).map(async (model) => {
+export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, exampleOutput, fallbackPrice, config = {} }, { models, pathFor, describe, schemaFor, schemaOf, prefix } = ROUTE_SET) {
+  inputSchema = schemaFor(inputSchema, config);
+  const entries = await Promise.all(models.filter(m => !catalogue?.isSuspended?.(m.id)).map(async (model) => {
     const own = await modelPriceRange(catalogue, model);
-    return [routePath(model.id), { post: {
-      operationId: operationId(model), summary: `Generate a ${model.name} chat completion`, description: discoveryDescription(model),
+    return [pathFor(model), { post: {
+      operationId: prefix + operationId(model), summary: `Generate a ${model.name} chat completion`, description: describe(model),
       "x-payment-info": { notes: probeNote(400, config), price: { mode: "dynamic", currency: "USD", ...(own ?? fallbackPrice) }, protocols: [{ x402: {} }] },
       requestBody: { required: true, content: { "application/json": {
-        schema: { type: "object", ...inputSchema }, example: modelExample(model) } } },
+        schema: { type: "object", ...schemaOf(inputSchema, model) }, example: modelExample(model) } } },
       responses: {
         200: { description: "The answer, with what it was charged",
                content: { "application/json": { schema: outputSchema, example: exampleOutput }, "text/event-stream": { schema: { type: "string" }, description: "Complete buffered chat SSE after settlement, ending with [DONE]." } } },
@@ -193,3 +208,6 @@ export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, 
   }));
   return Object.fromEntries(entries);
 }
+
+export const addModelAliasRoutes = (app, config, deps) => addModelRoutes(app, config, deps, ALIAS_SET);
+export const chatAliasOpenapiPaths = (catalogue, options) => modelOpenapiPaths(catalogue, options, ALIAS_SET);

@@ -5,6 +5,8 @@ import { listingCopy } from '../../singit-ask/src/listing-copy.mjs';
 import { routeCopy } from '../../singit-ask/src/listing-snapshot.mjs';
 import { catalogResponse } from '../../singit-ask/src/catalog-shape.mjs';
 import { serve, request } from '../../singit-ask/test/fixtures/listing-harness.mjs';
+import { aliasPaths } from '../../singit-ask/src/model-alias-routes.mjs';
+
 
 const TAIL = 'Pay per call in USDC on Base or Solana, no API key. Models: GET /v1/catalog.';
 
@@ -70,15 +72,16 @@ test('samples are sorted, diverse and limited to eligible catalog entries', () =
   }
 });
 
-test('default discovery preserves 26 URLs and shares descriptions with challenges and OpenAPI', async t => {
+test('default discovery preserves base URLs plus D4 model aliases and shares descriptions with challenges and OpenAPI', async t => {
   const { url } = await serve(t, {}, { audioSold: false, audioDiscoverable: false });
   const discovery = await (await request(url + '/.well-known/x402')).json();
   const llms = await (await request(url + '/llms.txt')).text();
   assert.doesNotMatch(llms, /video|music|sound.effects/i);
   assert.match(llms, /transcription is API-key only/);
   const openapi = await (await request(url + '/openapi.json')).json();
-  assert.equal(discovery.resources.length, 26);
-  assert.equal(discovery.resourceDetails.length, 26);
+  const expected = 26 + aliasPaths().length;
+  assert.equal(discovery.resources.length, expected);
+  assert.equal(discovery.resourceDetails.length, expected);
   assert.doesNotMatch(JSON.stringify(openapi), /video|music|sound.effects/i);
   assert.doesNotMatch(JSON.stringify(discovery), /video|music|sound.effects/i);
   assert.doesNotMatch(discovery.instructions, /ceiling/i);

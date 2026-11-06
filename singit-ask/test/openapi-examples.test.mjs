@@ -65,7 +65,7 @@ test("response and header examples satisfy their schemas and paid errors have ex
     }
     const payment = item.post.responses[402].content["application/json"].examples.challenge.value;
     assert.ok(ERROR_CODES.includes(payment.code));
-    const exactOnly = /\/(exa|images|audio|video)\//.test(path) || path === "/v1/embeddings";
+    const exactOnly = /\/(exa|images|audio|video)\//.test(path) || path === "/v1/embeddings" || /^\/v1\/models\/[^/]+\/images$/.test(path);
     if (!exactOnly) {
       const offers = await Promise.all([baseOffer, exactBaseOffer].map(async build => {
         const { price, ...offer } = build({ payToBase: "<pay-to address>" }, new WeakMap(), () => "1500");
@@ -73,7 +73,7 @@ test("response and header examples satisfy their schemas and paid errors have ex
       }));
       assert.deepEqual(payment.accepts, offers, path);
     } else {
-      const module = path === "/v1/embeddings" ? "embeddings" : ["/v1/images/edits", "/v1/images/image2image"].includes(path) ? "image-edits" : path.includes("/exa/") ? "search" : path.includes("/images/") ? "images"
+      const module = path === "/v1/embeddings" ? "embeddings" : ["/v1/images/edits", "/v1/images/image2image"].includes(path) ? "image-edits" : path.includes("/exa/") ? "search" : (path.includes("/images/") || path.endsWith("/images")) ? "images"
         : ["/v1/audio/sound-effects", "/v1/audio/generations"].includes(path) ? "audio-generation" : path.includes("/audio/") ? "speech" : "video";
       const source = readFileSync(new URL(`../src/${module}.mjs`, import.meta.url), "utf8");
       const timeout = module === "audio-generation" ? (path.endsWith("sound-effects") ? 120 : 240) : Number(source.match(/maxTimeoutSeconds: (\d+)/)[1]);
