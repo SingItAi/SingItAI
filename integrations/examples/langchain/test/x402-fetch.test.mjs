@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { generatePrivateKey } from "viem/accounts";
 import { createSingitPaidFetch } from "../src/x402/pay.js";
-import { SingItPaymentError, BASE_PIN } from "../src/x402/guards.js";
+import { SingItPaymentError, BASE_PIN, DailyLimiter, usdToAtomic } from "../src/x402/guards.js";
 import { startMockMerchant, uptoOffer } from "./helpers/mock-merchant.mjs";
 import { runFreeChatProbe } from "../src/free-chat-probe.mjs";
 import http from "node:http";
@@ -179,5 +179,56 @@ test("a redirect on the paid request is refused and never carries PAYMENT-SIGNAT
   } finally {
     await new Promise(r => merchant.close(r));
     await new Promise(r => sink.close(r));
+  }
+});
+
+const staleOffer = () => [uptoOffer({ asset: BASE_PIN.asset, payTo: BASE_PIN.payTo, amount: "4000", facilitatorAddress: FACILITATOR })];
+const STALE_PERMIT_409 = { status: 409, body: { error: { type: "invalid_request_error", code: "stale_payment_permit", message: "Stale." } } };
+const payOnce = (merchant, limiter) => createSingitPaidFetch({
+  evmPrivateKey: privateKey, maxPerCallUsd: 0.004, maxPerDayUsd: 0.006, baseUrl: merchant.url, limiter,
+})(`${merchant.url}/v1/chat/completions`, {
+  method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ messages: [{ role: "user", content: "Hello" }] }),
+});
+
+test("a stale permit refusal frees the daily reservation, says to wait, and is not repeated", async () => {
+  const merchant = await startMockMerchant({ accepts: staleOffer, paidResponse: STALE_PERMIT_409 });
+  try {
+    const limiter = new DailyLimiter(usdToAtomic(0.006));
+    await assert.rejects(payOnce(merchant, limiter), /stale_payment_permit.*Nothing was paid.*Wait for the previous/s);
+    assert.equal(limiter.remainingAtomic(), 6000n);
+    assert.equal(merchant.requests.length, 2); // the challenge and one paid attempt
+  } finally {
+    await merchant.close();
+  }
+});
+
+for (const [name, body] of [
+  ["payment_duplicate", { error: { type: "invalid_request_error", code: "payment_duplicate", message: "Used." } }],
+  ["an unreadable body", "not json"],
+]) {
+  test(`a 409 with ${name} keeps the reservation: it may have settled`, async () => {
+    const merchant = await startMockMerchant({ accepts: staleOffer, paidResponse: { status: 409, body } });
+    try {
+      const limiter = new DailyLimiter(usdToAtomic(0.006));
+      await assert.rejects(payOnce(merchant, limiter), /HTTP 409.*stays counted/s);
+      assert.equal(limiter.remainingAtomic(), 2000n);
+      assert.equal(merchant.requests.length, 2);
+    } finally {
+      await merchant.close();
+    }
+  });
+}
+
+test("runPaidChat: back-to-back stale permit refusals do not drain the daily cap", async () => {
+  const merchant = await startMockMerchant({ accepts: staleOffer, paidResponse: STALE_PERMIT_409 });
+  try {
+    const caps = { evmPrivateKey: privateKey, maxPerCallUsd: 0.01, maxPerDayUsd: 0.006 };
+    const call = () => runPaidChat({ question: "hello", caps, baseUrl: merchant.url });
+    await assert.rejects(call(), error => /stale_payment_permit.*Wait for the previous/s.test(`${error.message} ${error.cause?.message}`));
+    await assert.rejects(call(), error => /stale_payment_permit.*Wait for the previous/s.test(`${error.message} ${error.cause?.message}`));
+    assert.equal(merchant.requests.length, 4); // each call: the challenge and one paid attempt
+  } finally {
+    await merchant.close();
   }
 });
