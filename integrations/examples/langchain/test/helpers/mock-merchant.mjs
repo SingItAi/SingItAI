@@ -114,9 +114,11 @@ export function exactOffer({ asset, payTo, amount, maxTimeoutSeconds = 120, asse
 // Starts a one-shot local HTTP merchant. `accepts(body)` builds the offer list for a given request
 // body; `bill(offer)` decides the atomic amount actually billed (defaults to the full ceiling for
 // `exact`, half of it for `upto`, simulating metered usage).
-export function startMockMerchant({ accepts, bill, verifyOverride, receiptNetwork = "eip155:8453" } = {}) {
+export function startMockMerchant({ accepts, bill, verifyOverride, receiptNetwork = "eip155:8453", paidResponse } = {}) {
   let resourceUrl;
+  const requests = [];
   const server = http.createServer(async (req, res) => {
+    requests.push(req.method);
     if (req.method !== "POST") { res.writeHead(404).end(); return; }
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
@@ -138,6 +140,11 @@ export function startMockMerchant({ accepts, bill, verifyOverride, receiptNetwor
       res.end(JSON.stringify({ error: "Invalid payment signature." }));
       return;
     }
+    if (paidResponse) {
+      res.writeHead(paidResponse.status, { "Content-Type": "application/json" });
+      res.end(typeof paidResponse.body === "string" ? paidResponse.body : JSON.stringify(paidResponse.body));
+      return;
+    }
     const billedAtomic = (bill ?? (o => (o.scheme === "exact" ? o.amount : (BigInt(o.amount) / 2n).toString())))(offer);
     res.setHeader("payment-response", encode({ success: true, network: receiptNetwork, payer, transaction: `0x${"ab".repeat(32)}` }));
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -151,7 +158,7 @@ export function startMockMerchant({ accepts, bill, verifyOverride, receiptNetwor
     server.listen(0, "127.0.0.1", () => {
       const url = `http://127.0.0.1:${server.address().port}`;
       resourceUrl = `${url}/v1/chat/completions`;
-      resolve({ url, resourceUrl, close: () => new Promise(r => server.close(r)) });
+      resolve({ url, resourceUrl, requests, close: () => new Promise(r => server.close(r)) });
     });
   });
 }

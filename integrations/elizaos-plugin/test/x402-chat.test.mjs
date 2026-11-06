@@ -220,3 +220,57 @@ test("SINGIT_PAID_CHAT reports failure with the HTTP status when Ask errors befo
     await server.close();
   }
 });
+
+const staleOffer = () => [uptoOffer({ asset: BASE_PIN.asset, payTo: BASE_PIN.payTo, amount: "4000", facilitatorAddress: "0x0000000000000000000000000000000000000002" })];
+const STALE_PERMIT_409 = { status: 409, body: { error: { type: "invalid_request_error", code: "stale_payment_permit", message: "Stale." } } };
+const payOnce = (merchant, limiter) => payAskRequest({
+  body: { messages: [{ role: "user", content: "Hello" }] }, baseUrl: merchant.url,
+  evmPrivateKey: privateKey, limiter, maxPerCallAtomic: usdToAtomic(0.004),
+});
+
+test("a stale permit refusal frees the daily reservation, says to wait, and is not repeated", async () => {
+  const merchant = await startMockMerchant({ accepts: staleOffer, paidResponse: STALE_PERMIT_409 });
+  try {
+    const limiter = new DailyLimiter(usdToAtomic(0.006));
+    await assert.rejects(payOnce(merchant, limiter), /stale_payment_permit.*Nothing was paid.*Wait for the previous/s);
+    assert.equal(limiter.remainingAtomic(), 6000n);
+    assert.equal(merchant.requests.length, 2); // the challenge and one paid attempt
+  } finally {
+    await merchant.close();
+  }
+});
+
+for (const [name, body] of [
+  ["payment_duplicate", { error: { type: "invalid_request_error", code: "payment_duplicate", message: "Used." } }],
+  ["an unreadable body", "not json"],
+]) {
+  test(`a 409 with ${name} keeps the reservation: it may have settled`, async () => {
+    const merchant = await startMockMerchant({ accepts: staleOffer, paidResponse: { status: 409, body } });
+    try {
+      const limiter = new DailyLimiter(usdToAtomic(0.006));
+      await assert.rejects(payOnce(merchant, limiter), /HTTP 409.*stays counted/s);
+      assert.equal(limiter.remainingAtomic(), 2000n);
+      assert.equal(merchant.requests.length, 2);
+    } finally {
+      await merchant.close();
+    }
+  });
+}
+
+test("SINGIT_PAID_CHAT: back-to-back stale permit refusals do not drain the daily cap", async () => {
+  const merchant = await startMockMerchant({ accepts: staleOffer, paidResponse: STALE_PERMIT_409 });
+  try {
+    const runtime = makeRuntime({
+      SINGIT_ASK_BASE_URL: merchant.url, SINGIT_EVM_PRIVATE_KEY: privateKey,
+      SINGIT_MAX_PER_CALL_USD: "0.01", SINGIT_MAX_PER_DAY_USD: "0.006",
+    });
+    const run = () => singitPaidChatAction.handler(runtime, { content: { text: "ask singit ask: hi" } }, undefined, undefined, () => {});
+    for (let call = 0; call < 2; call += 1) {
+      const result = await run();
+      assert.equal(result.success, false);
+      assert.match(result.error, /stale_payment_permit.*Wait for the previous/s);
+    }
+  } finally {
+    await merchant.close();
+  }
+});

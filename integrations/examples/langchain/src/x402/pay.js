@@ -29,6 +29,10 @@ export function mergeExtensions(signedExtensions, declaredExtensions) {
   }));
 }
 
+const isStalePermit = async response => {
+  try { return JSON.parse(await response.text())?.error?.code === "stale_payment_permit"; } catch { return false; }
+};
+
 async function signOffer(scheme, offer, extensions, signer) {
   const { [scheme === "upto" ? "UptoEvmScheme" : "ExactEvmScheme"]: Scheme } =
     await import(scheme === "upto" ? "@x402/evm/upto/client" : "@x402/evm/exact/client");
@@ -81,6 +85,8 @@ export function createSingitPaidFetch({
     // redirect: "error" so a redirect can never carry PAYMENT-SIGNATURE elsewhere or resend the paid POST.
     const paidRequest = new Request(request.clone(), { redirect: "error" });
     paidRequest.headers.set("PAYMENT-SIGNATURE", Buffer.from(JSON.stringify(payload)).toString("base64"));
+    // Once a signed payment has left, only a 402 (payment refused) or a 409 stale_payment_permit (refused before
+    // verification) proves nothing settled. Anything else may still have settled, so the reservation stays counted.
     let response;
     try {
       response = await fetchImpl(paidRequest);
@@ -91,6 +97,12 @@ export function createSingitPaidFetch({
     if (response.status === 402) {
       release();
       throw new SingItPaymentError("The merchant refused the payment (HTTP 402); nothing was paid and it was not repeated.");
+    }
+    if (response.status === 409 && await isStalePermit(response)) {
+      release();
+      throw new SingItPaymentError("The merchant refused this payment's USDC permit as stale (HTTP 409 stale_payment_permit): "
+        + "your RPC had not seen the previous payment yet. Nothing was paid and it was not repeated. "
+        + "Wait for the previous payment's transaction, then call again.");
     }
     if (response.status !== 200) {
       throw new SingItPaymentError(`Paid request returned HTTP ${response.status}; it was not repeated, and its ceiling `

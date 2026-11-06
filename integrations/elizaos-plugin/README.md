@@ -101,7 +101,7 @@ payment = {
 }
 ```
 
-The paid request is never retried automatically; if it fails after signing, its ceiling stays counted against the daily cap.
+The paid request is never retried automatically. If it fails after signing, its ceiling stays counted against the daily cap, unless Ask's reply proves nothing settled: a **402**, or a **409** with code `stale_payment_permit`. That 409 means your RPC had not seen your previous payment yet, so wait for that payment's transaction before calling again.
 
 ## Safety
 
