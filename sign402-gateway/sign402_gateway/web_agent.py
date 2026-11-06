@@ -84,7 +84,6 @@ INTENTS = {
             "and not food as a topic (a recipe, how to cook, food history or culture: that is chat).",
     "goods": "Buy physical goods or shop online, not an explicit gift-card request.",
     "travel": "Book a hotel, flight, transport or another travel service, not mobile data.",
-    "link_telegram": "Connect or link the Telegram bot to this account.",
     "email_me": "Send something from this chat to the user's own email: a summary, a route, a list, notes.",
     "call": "Phone a business or place for the user: book a table, ask about opening hours or availability, ask a "
             "question by phone.",
@@ -204,7 +203,6 @@ def keyword_intent(text: str) -> str:
         ("gift_card", ("gift card", "voucher", "подароч", "steam", "amazon", "netflix", "spotify", "карт",
                        "gutschein", "geschenkkarte", "poukaz", "dárkov")),
         ("buy_tool", ("crypto news", "market news", "крипто", "funding", "ens ", "risk")),
-        ("link_telegram", ("telegram", "телеграм")),
     ]
     for intent, words in table:
         if any(w in t for w in words):
@@ -987,7 +985,6 @@ class WebAgent:
             "email_me": lambda a, l, t, i: self._on_email(a, chat_id, l, t),
             "call": lambda a, l, t, i: self._on_call(a, chat_id, l, t),
             **{intent: self._on_catalog for intent in CATALOG_INTENTS},
-            "link_telegram": self._on_link,
         }
         handler = handlers.get(intent)
         logger.info("web agent: read as %s", intent)
@@ -1122,10 +1119,6 @@ class WebAgent:
         if not items:
             return say(lang, "Nothing bought yet.", "Пока ничего не куплено."), []
         return say(lang, "Your recent purchases:", "Ваши последние покупки:"), [{"type": "purchases", "items": items[:8]}]
-
-    def _on_link(self, account, lang, text, intent):
-        return say(lang, "Link your Telegram from the menu on the left: Telegram → Link, then send the code to the bot.",
-                   "Привяжите Telegram в меню слева: Telegram → Link, и отправьте код боту."), [{"type": "link_telegram"}]
 
     def _ready(self, account, lang) -> tuple[str, list] | None:
         if account.startswith(SOLANA_ACCOUNT) and self.solana is None:

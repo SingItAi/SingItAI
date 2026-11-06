@@ -79,6 +79,17 @@ class AgentTests(unittest.TestCase):
         self.assertNotIn("floatAtomic",state)
         self.assertIn("allowanceAtomic is permission",wg.VENICE_SYSTEM)
 
+    def test_typing_telegram_gets_a_normal_reply_not_a_link_card(self):
+        # The Telegram bot does not exist: the intent, its reply and its card are gone, and a message that
+        # names Telegram is handled like any other, even if a classifier still names the old intent.
+        for intent in ("chat", "link_telegram"):
+            message = self.send("link my telegram", intent)
+            self.assertNotIn("link_telegram", [c.get("type") for c in message["cards"]])
+            self.assertNotIn("Telegram", message["text"])
+            self.assertEqual(message["text"], "Venice: hello!")  # the conversational model answered
+        self.assertNotIn("link_telegram", wg.INTENTS)
+        self.assertFalse(hasattr(wg.WebAgent, "_on_link"))
+
     def rank(self, text, options):
         self.ranked = dict(options)
         if self.fit is None:
@@ -647,6 +658,8 @@ class JevTests(unittest.TestCase):
         self.assertEqual(wg.keyword_intent("купи криптоновости"), "buy_tool")
         self.assertEqual(wg.keyword_intent("поставь лимит 20 в день"), "set_limits")
         self.assertEqual(wg.keyword_intent("отзови разрешение"), "revoke")
+        self.assertEqual(wg.keyword_intent("link telegram"), "chat")
+        self.assertEqual(wg.keyword_intent("привяжи телеграм"), "chat")
 
 
 if __name__ == "__main__":
