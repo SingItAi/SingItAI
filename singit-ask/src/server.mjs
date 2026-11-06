@@ -18,6 +18,8 @@
 //   SINGIT_ASK_OBSERVED_PRICES where what answers cost per model is kept (no prompts), default
 //                              ~/.config/singit-ask/observed-prices.json
 //   SINGIT_ASK_SUSPENSIONS_FILE persistent model backoff, default ~/.config/singit-ask/model-suspensions.json
+//   SINGIT_ASK_GUARD_SHARES_FILE last order-book shares (src/guard-shares.mjs), so a restart keeps its prices, default
+//                              ~/.config/singit-ask/guard-shares.json
 //   SINGIT_ASK_STATS_FILE      persistent private counters, default ~/.config/singit-ask/health-stats.json
 //   SINGIT_ASK_OWN_PAYERS_FILE optional own payers, one per line with # comments
 //   SINGIT_ASK_FREE_MODELS     models answered free as "free/<id>" (comma-separated); unset means six default free models,
@@ -117,6 +119,7 @@ setExactReserve(parseExactReserve(process.env.SINGIT_ASK_EXACT_RESERVE));
 setExaMarkupBps(parseExaMarkupBps(process.env.SINGIT_ASK_EXA_MARKUP_BPS));
 setExaFeeAtomic(parseExaFeeAtomic(process.env.SINGIT_ASK_EXA_FEE_ATOMIC));
 config.suspensionsFile = process.env.SINGIT_ASK_SUSPENSIONS_FILE || `${process.env.HOME}/.config/singit-ask/model-suspensions.json`;
+config.guardSharesFile = process.env.SINGIT_ASK_GUARD_SHARES_FILE || `${process.env.HOME}/.config/singit-ask/guard-shares.json`;
 config.statsFile = process.env.SINGIT_ASK_STATS_FILE || `${process.env.HOME}/.config/singit-ask/health-stats.json`;
 config.statsToken = process.env.SINGIT_ASK_STATS_TOKEN;
 try {
@@ -155,6 +158,7 @@ const priceBook = new PriceBook({ publicClient: createPublicClient({ chain: base
   batch: { multicall: true } }) });
 
 const app = createApp(config, { facilitatorClient, priceBook });
+console.error(`singit-ask: price guards restored: ${app.locals.catalogue?.guardShares.size ?? 0}`);
 const audioReadiness = createAudioReadiness(config, { catalogue: app.locals.catalogue });
 config.audioGenerationReady = audioReadiness.ready;
 audioReadiness.start();
