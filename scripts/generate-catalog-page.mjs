@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { catalogResponse } from '../singit-ask/src/catalog-shape.mjs';
+import { EXCLUDED_MODALITIES } from './catalog-snapshot.mjs';
 const root = new URL('../website/', import.meta.url);
 const read = p => readFile(new URL(p, root), 'utf8');
 const e = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -22,7 +23,7 @@ export const availability = m => m.available === true ? 'Available at capture' :
 export function renderCatalog(s) {
   const actual = catalogResponse(s.data);
   if (JSON.stringify(actual.counts) !== JSON.stringify(s.counts)) throw new Error('Snapshot counts disagree');
-  if (s.data.some(m => ['video', 'music', 'sound_effects'].includes(m.modality))) throw new Error('Gated modality in snapshot');
+  if (s.data.some(m => EXCLUDED_MODALITIES.includes(m.modality))) throw new Error('Gated modality in snapshot');
   if (new Set(s.data.map(anchor)).size !== s.data.length) throw new Error('Duplicate catalog anchor');
   const structured = {
     '@context': 'https://schema.org', '@type': 'ItemList',

@@ -68,7 +68,7 @@ test('encoding, availability and access support fresh D3 entries safely', () => 
 });
 
 test('generator refuses gated entries and ambiguous anchors', () => {
-  for (const modality of ['video', 'music', 'sound_effects']) {
+  for (const modality of ['video', 'music', 'sound_effects', 'transcription']) {
     const gated = structuredClone(snapshot);
     gated.data.push({ ...gated.data[0], modality });
     gated.counts = catalogResponse(gated.data).counts;
@@ -93,4 +93,14 @@ test('catalog content follows a changed snapshot without pinned totals or model 
   assert.equal(structured.numberOfItems, changed.data.length);
   assert.deepEqual(structured.itemListElement.map(m => m.name), changed.data.map(m => m.name ?? m.id));
   assert.deepEqual([...page.matchAll(/<tr id="([^"]+)"/g)].map(m => m[1]), changed.data.map(m => encodeURIComponent(m.id)));
+});
+
+ test('published catalog includes captured image, editing, embeddings and speech entries', () => {
+  assert.equal(snapshot.fetchedAt, '2026-11-05T17:25:00Z');
+  for (const modality of ['image', 'image_edit', 'embeddings', 'speech']) {
+    const entries = snapshot.data.filter(e => e.modality === modality);
+    assert.ok(entries.length > 0, modality);
+    assert.equal(snapshot.counts[modality], entries.length);
+    assert.ok(html.includes(`<td>${modality}</td>`));
+  }
 });

@@ -173,7 +173,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
     ],
     mimeType: "audio/mpeg", description: DESCRIPTION, serviceName: SERVICE_NAMES[SPEECH_ROUTE], iconUrl: ICON_URL,
-    tags: discoveryTags(...routeCopy("/v1/audio/speech").tags, "text-to-speech", "tts", "speech", "audio", "openai-compatible", "pay-per-use", "solana", "base",
+    tags: discoveryTags("text-to-speech", ...routeCopy("/v1/audio/speech").tags, "tts", "speech", "audio", "openai-compatible", "pay-per-use", "solana", "base",
                         "singit"),
     // The answer is audio bytes, not JSON, so there is no JSON output example to give.
     extensions: declareDiscoveryExtension({ bodyType: "json",

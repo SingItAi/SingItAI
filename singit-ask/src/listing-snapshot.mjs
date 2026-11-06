@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { listingCopy } from './listing-copy.mjs';
 const snapshot = JSON.parse(readFileSync(new URL('../../website/data/catalog-snapshot.json', import.meta.url), 'utf8'));
-// TODO: capture the full D3 media catalog; the offline snapshot currently covers chat and search only.
 export const copyFor = (modality, capability, flags) => listingCopy(snapshot, modality, capability, flags);
 export const routeCopy = path => {
   if (path.startsWith('/v1/exa/')) return copyFor('search', ({ search: 'Exa web search with ranked results', contents: 'Exa page contents and highlights', answer: 'Exa web answer with citations' })[path.split('/').at(-1)]);

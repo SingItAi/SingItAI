@@ -6,6 +6,7 @@ import { serve, request } from './fixtures/listing-harness.mjs';
 import { availableAudioPrices, MUSIC_ROUTE, SFX_ROUTE } from '../src/audio-generation.mjs';
 import { CONFIG } from './fixtures/listing-harness.mjs';
 import { BASE } from '../src/pricing.mjs';
+import { snapshot, EXCLUDED_MODALITIES } from '../../scripts/catalog-snapshot.mjs';
 import { renderCatalog } from '../../scripts/generate-catalog-page.mjs';
 const map = (...entries) => new Map(entries.map(e => [e.id, e]));
 const voice = { speech: map({id:'tts',usdPerUnit:0.01}), transcription: map({id:'stt',usdPerUnit:0.02}) };
@@ -48,22 +49,22 @@ test('videoSold false (default): video absent from catalog and discovery', async
     if(path==='/v1/catalog') assert.ok(!Object.hasOwn(JSON.parse(text).counts,'video'));
   }
 });
-test('static counts and API catalog shape agree on the exact snapshot inputs',async t=>{
-  const s=JSON.parse(await readFile(new URL('../../website/data/catalog-snapshot.json',import.meta.url)));
-  const chat=s.data.filter(m=>m.modality==='chat' && m.kind==='model');
-  const free=s.data.filter(m=>m.kind==='free').map(m=>m.id.slice(5));
-  const data=await buildCatalog({catalogue:{list:async()=>chat},free:{models:free}, searchEnabled:true});
-  assert.deepEqual(catalogResponse(data).counts,s.counts);
-  const raw = chat.map(m => ({...m,promptUsdPerToken:0.000001,completionUsdPerToken:0.000002}));
-  const {url}=await serve(t,{list:async()=>raw,resolve:async id=>raw.find(m=>m.id===id),canAnswer:async()=>true,
-    imageModels:async()=>map(),editModels:async()=>map(),embeddingModels:async()=>map(),
-    voiceModels:async()=>({speech:map(),transcription:map()})},{freeModels:free,audioSold:false});
-  const api=await (await request(url+'/v1/catalog')).json();
-  assert.deepEqual(api.counts,s.counts);
-  const html=renderCatalog(s);
-  for(const [modality,count] of Object.entries(s.counts)) assert.ok(html.includes(`<dd data-modality="${modality}">${count}</dd>`));
-  assert.doesNotMatch(html,/<script|video/i);
-  assert.equal(await readFile(new URL('../../website/models/index.html',import.meta.url),'utf8'),html);
+test('static website counts use kept API catalog entries and exclude unpublished modalities', async t => {
+  const s = JSON.parse(await readFile(new URL('../../website/data/catalog-snapshot.json', import.meta.url)));
+  assert.deepEqual(catalogResponse(s.data).counts, s.counts);
+  assert.deepEqual(s.excluded, EXCLUDED_MODALITIES);
+  for (const modality of EXCLUDED_MODALITIES) assert.ok(!s.data.some(m => m.modality === modality));
+  for (const modality of ['image', 'image_edit', 'embeddings', 'speech']) assert.ok(s.counts[modality] > 0);
+  const { url } = await serve(t, { voiceModels: async () => voice }, { audioSold: false, videoSold: false });
+  const api = await (await request(url + '/v1/catalog')).json();
+  const captured = snapshot(api, s.fetchedAt);
+  assert.deepEqual(captured.data, api.data.filter(m => !EXCLUDED_MODALITIES.includes(m.modality)));
+  assert.deepEqual(captured.counts, catalogResponse(captured.data).counts);
+  assert.equal(captured.counts.transcription, 0);
+  const html = renderCatalog(s);
+  for (const [modality, count] of Object.entries(s.counts)) assert.ok(html.includes(`<dd data-modality="${modality}">${count}</dd>`));
+  assert.doesNotMatch(html.split('<body>')[1], /<script|video/i);
+  assert.equal(await readFile(new URL('../../website/models/index.html', import.meta.url), 'utf8'), html);
 });
 
 test('media entries reuse pricing.json reference prices; every existing modality is present', async t => {
