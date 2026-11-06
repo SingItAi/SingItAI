@@ -1,5 +1,6 @@
+from .wallet import create_wallet, funding_uri
 from .client import SingIt
 from .guards import DailyLimiter, SingItPaymentError, select_offer
 from .pins import NETWORKS
 
-__all__ = ["SingIt", "SingItPaymentError", "DailyLimiter", "select_offer", "NETWORKS"]
+__all__ = ["create_wallet", "funding_uri", "SingIt", "SingItPaymentError", "DailyLimiter", "select_offer", "NETWORKS"]
