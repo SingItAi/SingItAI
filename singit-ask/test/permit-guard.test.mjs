@@ -101,3 +101,11 @@ test("only permits an upto settlement consumed are remembered (no poisoning via 
   guard.record(payload("9", "0xVictim"), upto(), { payer: "0xVICTIM" });
   assert.equal(stale().result, 409);
 });
+
+test("a payment that does not use Permit2 is never refused over a permit riding along", () => {
+  const guard = createPermitGuard();
+  settle(guard, payload());
+  assert.equal(check(guard, encode(payload())).result, 409);
+  assert.equal(check(guard, encode({ ...payload(), payload: { authorization: {}, signature: "0x" } })).result, "next");
+  assert.equal(check(guard, encode({ ...payload(), payload: { transaction: "x" } })).result, "next");
+});

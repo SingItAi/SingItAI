@@ -42,6 +42,13 @@ def _required_model(model: str | None) -> str:
     return model
 
 
+def _is_stale_permit(raw: bytes) -> bool:
+    try:
+        return json.loads(raw)["error"]["code"] == "stale_payment_permit"
+    except (ValueError, KeyError, TypeError):
+        return False
+
+
 def _payer_from_payload(payload: dict) -> str | None:
     inner = payload.get("payload") or {}
     auth = inner.get("permit2Authorization") or inner.get("authorization")
@@ -180,9 +187,9 @@ class SingIt:
             release()
             raise
 
-        # Once a signed payment has left, only a 402 (payment refused) proves nothing settled. A dropped connection,
-        # another status or an unreadable invoice may still have settled, so the worst-case reservation stays
-        # counted against today's cap (Codex review).
+        # Once a signed payment has left, only a 402 (payment refused) or a 409 stale_payment_permit (refused before
+        # verification) proves nothing settled. A dropped connection, another status or an unreadable invoice may
+        # still have settled, so the worst-case reservation stays counted against today's cap (Codex review).
         try:
             status, headers, raw = _post_json(url, encoded, {"PAYMENT-SIGNATURE": encode_header(payload)})
         except Exception as error:
@@ -192,6 +199,12 @@ class SingIt:
         if status == 402:
             release()
             raise SingItPaymentError("The merchant refused the payment (HTTP 402); nothing was paid and it was not repeated.")
+        if status == 409 and _is_stale_permit(raw):
+            release()
+            raise SingItPaymentError(
+                "The merchant refused this payment's USDC permit as stale (HTTP 409 stale_payment_permit): your RPC "
+                "had not seen the previous payment yet. Nothing was paid and it was not repeated. Wait for the "
+                "previous payment's transaction, then call again.")
         if status != 200:
             raise SingItPaymentError(
                 f"Paid request returned HTTP {status}; it was not repeated, and its ceiling stays counted against "

@@ -1,3 +1,4 @@
+import json
 import pytest
 from eth_account import Account
 
@@ -122,6 +123,25 @@ def test_a_refused_payment_frees_the_daily_reservation(account, start):
     with pytest.raises(SingItPaymentError, match="refused"):
         singit.chat(messages=MESSAGES, scheme="exact")
     assert singit.limiter.remaining_atomic() == 3000
+
+
+def test_a_stale_permit_refusal_frees_the_daily_reservation(account, start):
+    merchant = start([exact("2000")])
+    merchant.paid_response = (409, json.dumps({"error": {"code": "stale_payment_permit", "message": "Stale."}}).encode())
+    singit = client(account, merchant, max_per_call_usd=0.003, max_per_day_usd=0.003)
+    with pytest.raises(SingItPaymentError, match="(?s)stale_payment_permit.*Wait for the previous"):
+        singit.chat(messages=MESSAGES, scheme="exact")
+    assert singit.limiter.remaining_atomic() == 3000
+
+
+@pytest.mark.parametrize("body", [json.dumps({"error": {"code": "payment_duplicate"}}).encode(), b"not json", b"[]"])
+def test_another_409_keeps_the_reservation(account, start, body):
+    merchant = start([exact("2000")])
+    merchant.paid_response = (409, body)
+    singit = client(account, merchant, max_per_call_usd=0.003, max_per_day_usd=0.003)
+    with pytest.raises(SingItPaymentError, match="(?s)HTTP 409.*stays counted"):
+        singit.chat(messages=MESSAGES, scheme="exact")
+    assert singit.limiter.remaining_atomic() == 1000
 
 
 def test_wallet_report_and_allowance_parse_the_mock_response(account, start):

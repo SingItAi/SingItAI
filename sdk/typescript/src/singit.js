@@ -40,6 +40,10 @@ async function readJsonOrThrow(response) {
  * Every payment is checked against a pinned network/asset/payTo and a per-call and per-day USDC
  * ceiling before anything is signed; see guards.js. Nothing here ever raises a configured ceiling.
  */
+const isStalePermit = async response => {
+  try { return JSON.parse(await response.text())?.error?.code === "stale_payment_permit"; } catch { return false; }
+};
+
 export class SingIt {
   constructor(options = {}) {
     const {
@@ -145,9 +149,9 @@ export class SingIt {
       throw error;
     }
 
-    // Once a signed payment has left, only a 402 (payment refused) proves nothing settled. A dropped connection,
-    // another status or an unreadable invoice may still have settled, so the worst-case reservation stays counted
-    // against today's cap (Codex review).
+    // Once a signed payment has left, only a 402 (payment refused) or a 409 stale_payment_permit (refused before
+    // verification) proves nothing settled. A dropped connection, another status or an unreadable invoice may still
+    // have settled, so the worst-case reservation stays counted against today's cap (Codex review).
     let response;
     try {
       response = await send({ "PAYMENT-SIGNATURE": Buffer.from(JSON.stringify(payload)).toString("base64") });
@@ -158,6 +162,12 @@ export class SingIt {
     if (response.status === 402) {
       release();
       throw new SingItPaymentError("The merchant refused the payment (HTTP 402); nothing was paid and it was not repeated.");
+    }
+    if (response.status === 409 && await isStalePermit(response)) {
+      release();
+      throw new SingItPaymentError("The merchant refused this payment's USDC permit as stale (HTTP 409 stale_payment_permit): "
+        + "your RPC had not seen the previous payment yet. Nothing was paid and it was not repeated. "
+        + "Wait for the previous payment's transaction, then call again.");
     }
     if (response.status !== 200) {
       throw new SingItPaymentError(`Paid request returned HTTP ${response.status}; it was not repeated, and its ceiling `

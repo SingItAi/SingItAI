@@ -144,6 +144,7 @@ class Merchant:
         self.payment_headers: list[str] = []
         self.requests = 0
         self.refuse = False  # answer a signed payment with 402, as a facilitator that rejects it would
+        self.paid_response = None  # (status, body bytes) to answer a signed payment with instead
         self.bill = bill or (lambda offer: offer["amount"] if offer["scheme"] == "exact" else str(int(offer["amount"]) // 2))
         outer = self
 
@@ -183,6 +184,12 @@ class Merchant:
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
                     self.wfile.write(json.dumps({"error": "Invalid payment signature."}).encode())
+                    return
+                if outer.paid_response:
+                    self.send_response(outer.paid_response[0])
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(outer.paid_response[1])
                     return
                 billed_atomic = outer.bill(offer)
                 receipt = {"success": True, "network": offer["network"], "payer": payer, "transaction": f"0x{'ab' * 32}"}
