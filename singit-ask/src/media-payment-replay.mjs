@@ -23,3 +23,6 @@ export function reservePayment(key, { store = reservations, now = Date.now(), ma
   store.set(key, now);
   return 'reserved';
 }
+
+// Ends a reservation early, once the request that held it has answered (payment-reservation.mjs).
+export function releasePayment(key, { store = reservations } = {}) { store.delete(key); }
