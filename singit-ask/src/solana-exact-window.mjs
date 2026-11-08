@@ -45,8 +45,9 @@ export function solanaExactWindow(req, config = {}) {
 }
 
 // Runs `work(remainingMs)` inside the window. One gate decides the outcome: whichever of the answer and the cutoff
-// comes first wins, and the other is ignored. An answer that arrives after the cutoff is never returned as a success,
-// so it can never reach settlement. Throws WindowExceeded when the window is missing, already spent or runs out.
+// comes first wins, and the other is ignored. An answer is accepted only if it completes strictly before the cutoff,
+// read from the clock when it completes (a timer can fire late), so an answer at or after the cutoff never reaches
+// settlement. Throws WindowExceeded when the window is missing, already spent or runs out.
 export async function withinWindow(win, work) {
   if (win.cutoff == null) throw new WindowExceeded("unverified");
   const remaining = win.cutoff - win.clock.now();
@@ -56,8 +57,18 @@ export async function withinWindow(win, work) {
     timer = win.clock.setTimeout(() => { if (!decided) { decided = true; reject(new WindowExceeded("timeout")); } }, remaining);
   });
   const answer = Promise.resolve().then(() => work(remaining)).then(
-    value => { if (decided) throw new WindowExceeded("late"); decided = true; return value; },
-    error => { if (decided) throw new WindowExceeded("late"); decided = true; throw error; });
+    value => {
+      if (decided) throw new WindowExceeded("late");
+      decided = true;
+      if (win.clock.now() >= win.cutoff) throw new WindowExceeded("late");   // completed at or after the cutoff
+      return value;
+    },
+    error => {
+      if (decided) throw new WindowExceeded("late");
+      decided = true;
+      if (win.clock.now() >= win.cutoff) throw new WindowExceeded("late");
+      throw error;
+    });
   answer.catch(() => {});
   try { return await Promise.race([answer, cutoff]); }
   finally { win.clock.clearTimeout(timer); }

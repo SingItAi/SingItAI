@@ -1277,13 +1277,16 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Every answer that came back teaches the price shown for its model. It never delays or fails the answer.
   const learning = async (config_, messages, maxTokens, fetchImpl_, model = config.model, options) => {
     let answer;
+    // Inside a Solana exact window the route records the outcome the payer actually got (metered.mjs): an answer the
+    // window discarded is not a success, and a cut-off call is one failure, not none or two.
+    const recordsOutcome = options?.windowObserved !== true;
     try { answer = await upstream(config_, messages, maxTokens, fetchImpl_, model, options); }
     catch (error) {
-      try { app.locals.healthStats.recordModel(model, { ok: false, code: error.code, status: error.status }); } catch {}
+      if (recordsOutcome) try { app.locals.healthStats.recordModel(model, { ok: false, code: error.code, status: error.status }); } catch {}
       throw error;
     }
     catalogue?.noteAnswered?.(model);
-    try { app.locals.healthStats.recordModel(model, { ok: true, retried: answer.retried }); } catch {}
+    if (recordsOutcome) try { app.locals.healthStats.recordModel(model, { ok: true, retried: answer.retried }); } catch {}
     catalogue?.resolve(model, { allowUnpriced: true }).then((list) => {
       if (list.priceBasis === "reference") {
         const usage = answer.usage;

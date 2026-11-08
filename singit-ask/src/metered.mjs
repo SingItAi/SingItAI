@@ -379,15 +379,27 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       const win = solanaExactWindow(req, config);
       const deadline = Math.min(started + 95_000, win?.cutoff ?? Infinity);
       const inWindow = work => win ? withinWindow(win, work) : work();
+      // With a window, exactly one model outcome per request is recorded here, after the gate has decided.
+      const observeWindow = (model, outcome) => { if (win) try { app.locals?.healthStats?.recordModel(model, outcome); } catch {} };
       const attempt = input => upstream(config, input.messages, input.maxTokens, fetchImpl, input.model,
-        { ...(input.request ? { agent: input.request } : {}), minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: true,
+        { ...(input.request ? { agent: input.request } : {}), minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: !win,  // Solana exact: one upstream attempt, no retry inside the window
+          ...(win ? { windowObserved: true } : {}),
           timeoutMs: Math.max(1, deadline - Date.now()), deadline });
       let answer;
-      try { answer = await inWindow(() => attempt(req.askInput)); }
+      try {
+        answer = await inWindow(() => attempt(req.askInput));
+        observeWindow(req.askInput.model, { ok: true, retried: answer.retried });
+      }
       catch (error) {
-        if (error instanceof WindowExceeded) throw error;
+        if (error instanceof WindowExceeded) {
+          // The model was asked and did not answer in time: one failure. Spent before the model: no model outcome.
+          if (error.phase === "timeout" || error.phase === "late")
+            observeWindow(req.askInput.model, { ok: false, code: error.code, status: 503 });
+          throw error;
+        }
+        observeWindow(req.askInput.model, { ok: false, code: error.code, status: error.status });
         const bucket = exact ? "exact" : "upto";
-        const alternate = !(req.askInput.request && error.status === 400) && error.name === "UpstreamError" && error.status >= 400  // refused before any answer; a 200 with no text (no_text, max_tokens_spent_reasoning) may already be billed
+        const alternate = !win && !(req.askInput.request && error.status === 400) && error.name === "UpstreamError" && error.status >= 400  // refused before any answer; a 200 with no text (no_text, max_tokens_spent_reasoning) may already be billed
           && Date.now() < deadline && req.askInput.autoAlternates?.find(candidate =>
             BigInt(ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network]) <= BigInt(paid.terms.maxChargeAtomic));
         if (!alternate) throw error;
@@ -425,6 +437,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       if (error instanceof WindowExceeded) {
         // Not the seller's failure to count against it: the payment's window ran out. Nothing settles.
         log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (solana exact window, ${error.phase})`);
+        try { app.locals?.healthStats?.recordWindowRefusal?.(error.phase); } catch {}
         return res.status(503).json({ error: { type: "upstream_error", code: "no_billable_answer",
           message: "The answer did not complete in time for this Solana exact payment. You were not charged; try again." },
           ...windowRefusal(res, `req_${randomUUID()}`) });

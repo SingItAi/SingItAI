@@ -7,7 +7,7 @@ import { request } from "./helpers/http-request.mjs";
 import { withFacilitatorHints } from "../src/facilitator-hints.mjs";
 import { createApp, BASE, SOLANA } from "../src/app.mjs";
 import { parseModels } from "../src/catalogue.mjs";
-import { numbersBody } from "../src/health-stats.mjs";
+import { numbersBody, privateStatsBody } from "../src/health-stats.mjs";
 import { SOLANA_EXACT_WINDOW_MS, WindowExceeded, withinWindow } from "../src/solana-exact-window.mjs";
 
 const T = SOLANA_EXACT_WINDOW_MS;
@@ -46,7 +46,7 @@ function setup({ clock = fakeClock(), verify = "ok", settle = "ok", upstream } =
   });
   const app = createApp(config, { facilitatorClient, log() {}, clock,
     catalogue: { resolve: async () => info, list: async () => [info], canAnswer: async () => true },
-    upstream: async () => { calls.model++; return upstream ? upstream(calls) : { content: "PRIVATE ANSWER", usage: { buyer_cost_micro: 100 } }; },
+    upstream: async (...args) => { calls.model++; calls.options = args[5]; return upstream ? upstream(calls) : { content: "PRIVATE ANSWER", usage: { buyer_cost_micro: 100 } }; },
     fetchImpl: async () => { throw new Error("unexpected fetch"); } });
   const send = async ({ network = SOLANA, scheme = "exact" } = {}) => {
     const post = h => request(app, "/v1/chat/completions", { method: "POST", body: JSON.stringify(BODY), headers: { "content-type": "application/json", ...h } });
@@ -143,6 +143,23 @@ test("A-UPSTREAM-TIMEOUT: a model still answering at the cutoff is cut off; 503,
   const n = numbersBody(s.app.locals.healthStats);
   assert.equal(n.paid_calls.total, 0, "not counted as a settled call");
   assert.equal(n.settlement_failures.last_24h, 0, "not a settlement failure either");
+  // A-PHASE-METRICS: the window refusal is its own private outcome, apart from verify and settle failures.
+  const p = privateStatsBody(s.app.locals.healthStats);
+  assert.equal(p.solana_exact_window_refusals.last_24h.timeout, 1);
+  assert.equal(p.payment_failures_by_phase.verify.last_24h.payment_blockhash_stale, 0);
+  assert.equal(p.payment_failures_by_phase.settle.last_24h.payment_blockhash_stale, 0);
+});
+
+test("A-ONE-ATTEMPT: Solana exact gets one upstream attempt, no reasoning retry; other payments keep it", async () => {
+  const sol = setup({ clock: fakeClock(0, 1_000) });
+  await sol.send();
+  assert.equal(sol.calls.options.retryOnReasoning, false);
+  const base = setup();
+  await base.send({ network: BASE, scheme: "exact" });
+  assert.equal(base.calls.options.retryOnReasoning, true, "unchanged outside the window");
+  const budget = setup({ clock: fakeClock(0, T) });
+  await budget.send();
+  assert.equal(privateStatsBody(budget.app.locals.healthStats).solana_exact_window_refusals.last_24h.budget, 1);
 });
 
 test("A-LATE-RESPONSE-RACE: an answer that arrives after the cutoff is not returned and never settles", async () => {
@@ -158,18 +175,61 @@ test("A-LATE-RESPONSE-RACE: an answer that arrives after the cutoff is not retur
   assert.equal(s.calls.settle, 0, "no background late settlement");
 });
 
-test("A-RESPONSE-AT-CUTOFF: one gate decides; never both an answer and a refusal", async () => {
+test("A-RESPONSE-AT-CUTOFF: an answer is accepted only if it completes strictly before the cutoff", async () => {
+  // The clock is read when the answer completes; the cutoff timer has not fired yet in any of these.
+  for (const [done, ok] of [[T - 1, true], [T, false], [T + 1, false]]) {
+    const s = setup({ clock: fakeClock(0, 1_000, done) });   // verified at t0, model called at t0+1s, answer at `done`
+    const res = await s.send();
+    await new Promise(r => setImmediate(r));
+    assert.equal(s.calls.model, 1, String(done));
+    if (ok) { assert.equal(res.status, 200, String(done)); assert.equal(s.calls.settle, 1); }
+    else { assertWindowRefusal(res); assert.equal(s.calls.settle, 0, `answer at ${done} must not settle`); }
+  }
+  // Whichever of answer and timer callback runs first, the cutoff wins once it has passed.
   for (const order of ["answer-first", "cutoff-first"]) {
-    const clock = fakeClock(0, 1_000);
+    const clock = fakeClock(0, 1_000, T);
     const s = setup({ clock, upstream: () => new Promise(resolve => {
       const answer = () => resolve({ content: "PRIVATE ANSWER", usage: { buyer_cost_micro: 100 } });
       queueMicrotask(() => { if (order === "answer-first") { answer(); clock.fire(); } else { clock.fire(); answer(); } });
     }) });
     const res = await s.send();
     await new Promise(r => setImmediate(r));
-    if (res.status === 200) assert.equal(s.calls.settle, 1, order);
-    else { assertWindowRefusal(res); assert.equal(s.calls.settle, 0, order); }
+    assertWindowRefusal(res);
+    assert.equal(s.calls.settle, 0, order);
   }
+});
+
+test("A-MODEL-OUTCOME: chat records exactly one actual outcome per window request, never a discarded success", async () => {
+  const outcome = async (opts) => {
+    const s = setup(opts);
+    const res = await s.send();
+    await new Promise(r => setImmediate(r));
+    const m = (await request(s.app, "/health")).body.models?.test;
+    return { res, s, m: m ? { attempts: m.attempts, successes: m.successes, failures: m.failures } : null };
+  };
+  const fast = await outcome({ clock: fakeClock(0, 1_000) });
+  assert.equal(fast.res.status, 200);
+  assert.deepEqual(fast.m, { attempts: 1, successes: 1, failures: 0 });
+  const budget = await outcome({ clock: fakeClock(0, T) });
+  assertWindowRefusal(budget.res);
+  assert.equal(budget.m, null, "no model call, no model outcome");
+  let clock = fakeClock(0, 1_000);
+  const timeout = await outcome({ clock, upstream: () => { queueMicrotask(() => clock.fire()); return new Promise(() => {}); } });
+  assertWindowRefusal(timeout.res);
+  assert.deepEqual(timeout.m, { attempts: 1, successes: 0, failures: 1 }, "a cut-off call is one failure");
+  clock = fakeClock(0, 1_000);
+  const late = await outcome({ clock, upstream: () => new Promise(resolve => queueMicrotask(() => {
+    clock.fire(); queueMicrotask(() => resolve({ content: "PRIVATE ANSWER", usage: { buyer_cost_micro: 100 } })); })) });
+  assertWindowRefusal(late.res);
+  assert.deepEqual(late.m, { attempts: 1, successes: 0, failures: 1 }, "a discarded late answer is not a success");
+  const atCutoff = await outcome({ clock: fakeClock(0, 1_000, T) });
+  assertWindowRefusal(atCutoff.res);
+  assert.deepEqual(atCutoff.m, { attempts: 1, successes: 0, failures: 1 });
+  for (const r of [budget, timeout, late, atCutoff]) assert.equal(r.s.calls.settle, 0);
+  // Outside the window the wrapper keeps recording as before.
+  const base = setup();
+  await base.send({ network: BASE, scheme: "exact" });
+  assert.equal((await request(base.app, "/health")).body.models.test.successes, 1);
 });
 
 test("A-POST-MODEL-BLOCKHASH-NOT-FOUND: a refusal after the answer stays a visible failure, with no recovery and no new payment", async () => {
@@ -199,6 +259,31 @@ test("A-PHASE-METRICS: a verification refusal is not a settlement failure; a set
   assert.equal(numbersBody(atSettle.app.locals.healthStats).settlement_failures.last_24h, 1);
   for (const n of [v, numbersBody(atSettle.app.locals.healthStats)])
     assert.ok(!JSON.stringify(n).includes(payer) && !JSON.stringify(n).includes("BlockhashNotFound"));
+  // Private: the phase is split, with the code as the only label.
+  const pv = privateStatsBody(atVerify.app.locals.healthStats).payment_failures_by_phase;
+  const ps = privateStatsBody(atSettle.app.locals.healthStats).payment_failures_by_phase;
+  assert.equal(pv.verify.last_24h.payment_blockhash_stale, 1);
+  assert.equal(pv.settle.last_24h.payment_blockhash_stale, 0);
+  assert.equal(ps.settle.last_24h.payment_blockhash_stale, 1);
+  assert.equal(ps.verify.last_24h.payment_blockhash_stale, 0);
+  for (const b of [pv, ps]) assert.ok(!JSON.stringify(b).includes("simulation") && !JSON.stringify(b).includes(payer));
+});
+
+test("A-POST-MODEL-GENERIC-SIMULATION-FAILED: the production aggregate's generic reason stays a visible settle failure", async () => {
+  // The aggregate journal line names only the generic code; this is that case without BlockhashNotFound.
+  const generic = { reason: "invalid_exact_svm_payload_transaction_simulation_failed", message: "simulation failed: transaction would fail on-chain" };
+  const s = setup({ clock: fakeClock(0, 1_000), settle: generic });
+  const res = await s.send();
+  assert.equal(res.status, 402);
+  assert.equal(res.body.code, "payment_invalid", "not guessed as stale");
+  assert.equal(res.headers["x-singit-recovered"], undefined);
+  assert.ok(!leaked(res));
+  assert.equal(s.calls.model, 1);
+  assert.equal(s.calls.settle, 1);
+  const n = numbersBody(s.app.locals.healthStats);
+  assert.equal(n.settlement_failures.last_24h, 1);
+  assert.equal(n.paid_calls.total, 0);
+  assert.equal(privateStatsBody(s.app.locals.healthStats).payment_failures_by_phase.settle.last_24h.payment_invalid, 1);
 });
 
 test("A-NON-SCOPE-REGRESSION: Base exact, Base upto and Solana upto do not use the window", async () => {
@@ -216,7 +301,7 @@ const nemotron = parseModels({ data: [JSON.parse(readFileSync(new URL("./fixture
 const nid = "nemotron-3.5-lightning";
 for (const route of ["/v1/messages", "/v1/responses"]) {
   test(`${route}: inside the window it answers; at or past the cutoff it is a 503 without settlement`, async () => {
-    for (const mode of ["fast", "spent", "timeout"]) {
+    for (const mode of ["fast", "spent", "timeout", "reasoning"]) {
       const clock = fakeClock(0, mode === "spent" ? T : 1_000);
       const calls = { seller: 0, settle: 0 };
       const facilitatorClient = withFacilitatorHints({ getSupported: supported, verify: async () => ({ isValid: true, payer }),
@@ -226,6 +311,10 @@ for (const route of ["/v1/messages", "/v1/responses"]) {
         catalogue, facilitatorClient, log() {}, clock,
         fetchImpl: async () => { calls.seller++;
           if (mode === "timeout") { queueMicrotask(() => clock.fire()); return new Promise(() => {}); }
+          // All of the output budget spent on reasoning, no text: elsewhere this gets one retry with a larger budget.
+          if (mode === "reasoning") return Response.json(route === "/v1/messages"
+            ? { type: "message", stop_reason: "max_tokens", content: [{ type: "thinking", thinking: "..." }], usage: { buyer_cost_micro: 1 } }
+            : { status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output: [{ type: "reasoning", summary: [] }], usage: { buyer_cost_micro: 1 } });
           return Response.json({ ...(route === "/v1/messages" ? { type: "message", content: [{ type: "text", text: "hello" }] }
             : { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "hello" }] }] }), usage: { buyer_cost_micro: 1 } }); } });
       const body = JSON.stringify(route === "/v1/messages" ? { model: nid, max_tokens: 300, messages: [{ role: "user", content: "Hi" }] }
@@ -235,6 +324,7 @@ for (const route of ["/v1/messages", "/v1/responses"]) {
       const accepted = required.accepts.find(a => a.network === SOLANA && a.scheme === "exact");
       const res = await post({ "payment-signature": encode({ x402Version: 2, resource: required.resource, accepted, payload: { transaction: "signed" } }) });
       if (mode === "fast") { assert.equal(res.status, 200, mode); assert.equal(calls.settle, 1); continue; }
+      if (mode === "reasoning") { assert.equal(res.status, 422, mode); assert.equal(calls.seller, 1, "no second attempt"); assert.equal(calls.settle, 0); continue; }
       assert.equal(res.status, 503, mode);
       assert.equal(res.headers["x-singit-error"], "no_billable_answer");
       assert.equal(res.headers["retry-after"], "30");
@@ -244,3 +334,41 @@ for (const route of ["/v1/messages", "/v1/responses"]) {
     }
   });
 }
+
+// The per-model route (/v1/chat/{model}) runs the real askSurplus through the learning wrapper; alias routes share
+// the same handler (addUsageRoute) and wrapper.
+test("A-MODEL-OUTCOME on /v1/chat/{model}: fast, timeout and late give one outcome each; no settle without an answer", async () => {
+  const path = `/v1/chat/${nid}`;
+  for (const mode of ["fast", "timeout", "late"]) {
+    const clock = fakeClock(0, 1_000);
+    const calls = { seller: 0, settle: 0 };
+    const facilitatorClient = withFacilitatorHints({ getSupported: supported, verify: async () => ({ isValid: true, payer }),
+      settle: async (_p, req) => { calls.settle++; return { success: true, transaction: "tx", network: req.network, payer }; } });
+    const catalogue = { models: nemotron, list: async () => [...nemotron.values()], resolve: async () => nemotron.get(nid), canAnswer: async () => true };
+    const answer = () => Response.json({ choices: [{ message: { content: "Hello" }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 2, completion_tokens: 3, buyer_cost_micro: 1 } });
+    const app = createApp({ ...config, model: "deepseek-v4.1-flash", surplusUrl: "https://surplus.invalid", surplusKey: "test" }, {
+      catalogue, facilitatorClient, log() {}, clock,
+      fetchImpl: async () => { calls.seller++;
+        if (mode === "fast") return answer();
+        if (mode === "timeout") { queueMicrotask(() => clock.fire()); return new Promise(() => {}); }
+        return new Promise(resolve => queueMicrotask(() => { clock.fire(); queueMicrotask(() => resolve(answer())); })); } });
+    const body = JSON.stringify({ messages: [{ role: "user", content: "Hi" }], max_tokens: 100 });
+    const post = h => request(app, path, { method: "POST", body, headers: { "content-type": "application/json", ...h } });
+    const required = decode((await post({})).headers["payment-required"]);
+    const accepted = required.accepts.find(a => a.network === SOLANA && a.scheme === "exact");
+    const res = await post({ "payment-signature": encode({ x402Version: 2, resource: required.resource, accepted, payload: { transaction: "signed" } }) });
+    await new Promise(r => setImmediate(r));
+    const m = (await request(app, "/health")).body.models?.[nid];
+    if (mode === "fast") {
+      assert.equal(res.status, 200, mode);
+      assert.equal(calls.settle, 1);
+      assert.deepEqual([m.attempts, m.successes, m.failures], [1, 1, 0]);
+    } else {
+      assertWindowRefusal(res);
+      assert.equal(calls.settle, 0, mode);
+      assert.deepEqual([m.attempts, m.successes, m.failures], [1, 0, 1], mode);
+    }
+    assert.equal(calls.seller, 1, `${mode}: one upstream attempt`);
+  }
+});

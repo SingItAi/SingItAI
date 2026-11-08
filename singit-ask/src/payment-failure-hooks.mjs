@@ -46,11 +46,11 @@ export function paymentCodesMiddleware({ stats, log, clock } = {}) {
     res.json = body => {
       if (res.statusCode === 402 && store.failure && body
           && [Object.prototype, null].includes(Object.getPrototypeOf(body))) {
-        const { code, network } = store.failure;
+        const { code, network, phase } = store.failure;
         body = { ...body, code, action: ACTIONS[code], message: MESSAGES[code] };
         if (!recorded) {
           recorded = true;
-          try { stats?.recordPaymentFailure({ code, network }); } catch {}
+          try { stats?.recordPaymentFailure({ code, network, phase }); } catch {}
         }
       }
       // errorCodesMiddleware supplies a legacy 409 default inside this wrapper.

@@ -302,7 +302,8 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
           let response = await send();
           // Read for every status: a long request can come back HTTP 200 with an error body.
           let data = await response.json().catch(() => null);
-          if (response.ok && data && !data.error && data.type !== "error" && data.status !== "failed" && spentOnReasoning(route, data)
+          // Solana exact gets one upstream attempt (no retry inside its window).
+          if (!win && response.ok && data && !data.error && data.type !== "error" && data.status !== "failed" && spentOnReasoning(route, data)
               && limitAt - Date.now() > 8000) {
             // One extra call at <= 2x budget; the service absorbs the first attempt and any overrun.
             const field = Number.isInteger(body.max_output_tokens) ? "max_output_tokens" : "max_tokens";
@@ -339,6 +340,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
           // Not the seller's failure to count against it: the payment's window ran out. Nothing settles.
           observe({ ok: false, code: error.code, status: 503, retried });
           log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (solana exact window, ${error.phase})`);
+          try { app.locals?.healthStats?.recordWindowRefusal?.(error.phase); } catch {}
           return res.status(503).json({ ...refusal(route, 503, "The answer did not complete in time for this Solana exact payment. You were not charged; try again.", "no_billable_answer"),
             ...windowRefusal(res, `req_${randomUUID()}`) });
         }
