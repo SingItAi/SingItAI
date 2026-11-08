@@ -189,3 +189,16 @@ for (const route of ["/v1/messages", "/v1/responses"]) {
     assert.deepEqual(calls, { seller: 1, verify: 1, settle: 1 });
   });
 }
+
+test("a payment that cannot be keyed (malformed network) gets the middleware's usual 402, not a reservation error", async () => {
+  const s = setup();
+  const required = decode((await s.post({})).headers["payment-required"]);
+  const accepted = { ...required.accepts.find(a => a.network === BASE && a.scheme === "exact"), network: "eip155:not-a-chain-id" };
+  const header = { "payment-signature": encode({ x402Version: 2, resource: required.resource, accepted,
+    payload: { signature: "fake", authorization: { from: "0x" + "2".repeat(40), nonce: "0x" + "3".repeat(64) }, transaction: "fake" } }) };
+  const res = await s.post(header);
+  assert.equal(res.status, 402);
+  assert.notEqual(res.body?.error?.code, "upstream_unavailable");
+  assert.deepEqual([s.calls.verify, s.calls.model, s.calls.settle], [0, 0, 0]);
+  assert.equal(reservations.size, 0, "nothing reserved");
+});

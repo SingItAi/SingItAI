@@ -32,7 +32,10 @@ export function reserveChatPayment(req, res, route) {
   let payment;
   try { payment = JSON.parse(Buffer.from(header, "base64").toString()); } catch { return "none"; }
   if (!payment || typeof payment !== "object") return "none";
-  const key = chatPaymentKey(payment, route, req.body);
+  // A payment that cannot even be keyed (e.g. an unparseable network) is left to the x402 middleware, which refuses it
+  // with its usual 402: this guard never changes how a malformed payment is answered.
+  let key;
+  try { key = chatPaymentKey(payment, route, req.body); } catch { return "none"; }
   const result = reservePayment(key);
   if (result !== "reserved") return result;
   // Installed before the x402 middleware wraps res.end, so this runs when the final response is actually written:
