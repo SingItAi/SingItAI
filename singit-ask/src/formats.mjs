@@ -5,6 +5,8 @@ import { upstreamModelId } from "./model-aliases.mjs";
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
+import { randomUUID } from "node:crypto";
+import { solanaExactWindow, withinWindow, windowRefusal, WindowExceeded } from "./solana-exact-window.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
 // what Claude Code and the Anthropic SDK speak) and OpenAI's Responses (POST /v1/responses). Sold over x402 like the
 // chat route: the payer authorizes a ceiling with `upto`, worked out from the model's list price and the size of the
@@ -288,21 +290,28 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         // The price floor only when the model's list-price worst case would not fit what was paid (pricing.mjs).
         const minDiscount = minDiscountFor(req.format, terms);
         let body = withHeadroom(fitRequest(req.format.request, req.format.info?.params), req.format.info);
+        // Solana `exact`: the answer must be complete within the window from verification (solana-exact-window.mjs).
+        const win = solanaExactWindow(req, config);
+        const limitAt = Math.min(started + FORMAT_LIMITS.timeoutMs, win?.cutoff ?? Infinity);
         const send = () => fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                      ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify({ ...body, model: upstreamModelId(body.model) }), signal: AbortSignal.timeout(Math.max(1, started + FORMAT_LIMITS.timeoutMs - Date.now())) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
-        let response = await send();
-        // Read for every status: a long request can come back HTTP 200 with an error body.
-        let data = await response.json().catch(() => null);
-        if (response.ok && data && !data.error && data.type !== "error" && data.status !== "failed" && spentOnReasoning(route, data)
-            && started + FORMAT_LIMITS.timeoutMs - Date.now() > 8000) {
-          // One extra call at <= 2x budget; the service absorbs the first attempt and any overrun.
-          const field = Number.isInteger(body.max_output_tokens) ? "max_output_tokens" : "max_tokens";
-          body = { ...body, [field]: retryBudget(body[field]) }; retried = true;
-          response = await send(); data = await response.json().catch(() => null);
-        }
+          body: JSON.stringify({ ...body, model: upstreamModelId(body.model) }), signal: AbortSignal.timeout(Math.max(1, limitAt - Date.now())) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
+        const exchange = async () => {
+          let response = await send();
+          // Read for every status: a long request can come back HTTP 200 with an error body.
+          let data = await response.json().catch(() => null);
+          if (response.ok && data && !data.error && data.type !== "error" && data.status !== "failed" && spentOnReasoning(route, data)
+              && limitAt - Date.now() > 8000) {
+            // One extra call at <= 2x budget; the service absorbs the first attempt and any overrun.
+            const field = Number.isInteger(body.max_output_tokens) ? "max_output_tokens" : "max_tokens";
+            body = { ...body, [field]: retryBudget(body[field]) }; retried = true;
+            response = await send(); data = await response.json().catch(() => null);
+          }
+          return { response, data };
+        };
+        const { response, data } = win ? await withinWindow(win, exchange) : await exchange();
         if (!response.ok || !data || typeof data !== "object" || data.error || data.type === "error" || data.status === "failed") {
           const code = typeof data?.error?.code === "string" ? data.error.code
             : typeof data?.error?.type === "string" ? data.error.type : "upstream_error";
@@ -326,6 +335,13 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         observe({ ok: true, retried });
         res.json({ ...scrub(data), ...(retried ? { retried: true } : {}), billing });
       } catch (error) {
+        if (error instanceof WindowExceeded) {
+          // Not the seller's failure to count against it: the payment's window ran out. Nothing settles.
+          observe({ ok: false, code: error.code, status: 503, retried });
+          log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (solana exact window, ${error.phase})`);
+          return res.status(503).json({ ...refusal(route, 503, "The answer did not complete in time for this Solana exact payment. You were not charged; try again.", "no_billable_answer"),
+            ...windowRefusal(res, `req_${randomUUID()}`) });
+        }
         observe({ ok: false, code: error.code, status: error.status, retried });
         markUnservable(catalogue, req.format?.model, error, log);
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.

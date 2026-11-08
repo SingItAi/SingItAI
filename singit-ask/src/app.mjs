@@ -551,7 +551,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                                       url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
                                       suspensionsFile: config.suspensionsFile, guardSharesFile: config.guardSharesFile, neverHide: [config.model, ...Object.values(AUTO_CONFIG.tiers).flat(), ...freeTerms(config).models], unservableTtlMs: config.unservableTtlMs }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }),
-                                    spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
+                                    spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null,
+                                    clock }) {
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
   fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log, responseLimits: {
     [`${config.surplusUrl}/v1/music/generations`]: 256 * 1024,
@@ -570,7 +571,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");
   app.use(errorCodesMiddleware);
-  app.use(paymentCodesMiddleware({ stats: app.locals.healthStats, log }));
+  // `clock` (tests only) times the Solana exact window from verification (solana-exact-window.mjs).
+  app.use(paymentCodesMiddleware({ stats: app.locals.healthStats, log, clock }));
   app.use((req, res, next) => {
     res.on("finish", () => {
       try {

@@ -3,6 +3,8 @@ import { unsupportedCapability, capabilityError } from "./agent-chat.mjs";
 
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
+import { randomUUID } from "node:crypto";
+import { solanaExactWindow, withinWindow, windowRefusal, WindowExceeded } from "./solana-exact-window.mjs";
 // Pay for actual usage: the payer authorizes a ceiling with x402 `upto`, and CDP settles only what the
 // answer cost, after it came back. A request that ends in 400 or above is never charged.
 //
@@ -373,13 +375,17 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       const paid = paidTerms(req);
       if (!paid) throw new Error("payment on an unknown network");
       const exact = paid.scheme === "exact";
-      const deadline = started + 95_000;
+      // Solana `exact`: the answer must be complete within the window from verification (solana-exact-window.mjs).
+      const win = solanaExactWindow(req, config);
+      const deadline = Math.min(started + 95_000, win?.cutoff ?? Infinity);
+      const inWindow = work => win ? withinWindow(win, work) : work();
       const attempt = input => upstream(config, input.messages, input.maxTokens, fetchImpl, input.model,
         { ...(input.request ? { agent: input.request } : {}), minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: true,
           timeoutMs: Math.max(1, deadline - Date.now()), deadline });
       let answer;
-      try { answer = await attempt(req.askInput); }
+      try { answer = await inWindow(() => attempt(req.askInput)); }
       catch (error) {
+        if (error instanceof WindowExceeded) throw error;
         const bucket = exact ? "exact" : "upto";
         const alternate = !(req.askInput.request && error.status === 400) && error.name === "UpstreamError" && error.status >= 400  // refused before any answer; a 200 with no text (no_text, max_tokens_spent_reasoning) may already be billed
           && Date.now() < deadline && req.askInput.autoAlternates?.find(candidate =>
@@ -388,7 +394,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         markUnservable(catalogue, req.askInput.model, error, log);
         log(`singit-ask: auto fallback from=${req.askInput.model} to=${alternate.model} code=${error.code} status=${error.status}`);
         req.askInput = alternate;
-        answer = await attempt(alternate);
+        answer = await inWindow(() => attempt(alternate));
       }
       if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
       if (req.askInput.fallbackFrom) {
@@ -416,6 +422,13 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         ...(req.askInput.fallbackFrom ? { singit_fallback_from: req.askInput.fallbackFrom } : {}), choices: [{ index: 0, message: answer.message?.tool_calls ? answer.message : { role: "assistant", content: answer.content },
           finish_reason: answer.finishReason }], usage: answer.usage, billing });
     } catch (error) {
+      if (error instanceof WindowExceeded) {
+        // Not the seller's failure to count against it: the payment's window ran out. Nothing settles.
+        log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (solana exact window, ${error.phase})`);
+        return res.status(503).json({ error: { type: "upstream_error", code: "no_billable_answer",
+          message: "The answer did not complete in time for this Solana exact payment. You were not charged; try again." },
+          ...windowRefusal(res, `req_${randomUUID()}`) });
+      }
       if (req.askInput?.request && error.status === 400) return res.status(400).json({ error: {
         type: "invalid_request_error", code: "upstream_rejected_request",
         message: "The seller rejected this request (tools, images or length). You were not charged." } });
