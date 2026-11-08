@@ -77,15 +77,3 @@ Refused payments keep error: "payment_required" and add a specific code, action 
 | `payment_invalid` | `fix_payment` | Fix the payment before retrying. | Nothing was charged for this request. |
 
 Limits of the classification: a refusal is coded only when the facilitator reports it (verification refusal, or a settlement failure with a reason). A settlement that may have reached the chain (transaction hash present, pending, timeout, transport error) keeps the plain `payment_required` answer without an action, because it cannot be said that nothing was charged. A payment rejected before verification (malformed `PAYMENT-SIGNATURE`, or one that does not match an offer) also keeps the plain `payment_required` challenge.
-
-## Solana `exact`: answer window and blockhash
-
-On Solana `exact` the payment is verified before the model answers and settled after it. The transaction's blockhash
-is accepted by the chain for about 150 blocks (roughly 60–90 seconds from when the payer fetched it); the offer's
-`maxTimeoutSeconds` (300) does not extend that. So the model gets **20 seconds from successful verification**: an
-answer not complete by then is cut off and refused with 503 `no_billable_answer`, `Retry-After: 30`,
-`X-SingIt-Error` and a `request_id`, before any settlement. Nothing is charged; try again with a fresh signature.
-A stale blockhash at verification is a 402 `payment_blockhash_stale` (`sign_again`) before the model. This narrows the
-risk of a settlement refused after the answer; it does not rule it out (a payer may sign with an already old
-blockhash). Base and Solana `upto` have no such window: Solana `upto` settles its escrow deposit before the model.
-
