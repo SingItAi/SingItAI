@@ -12,6 +12,7 @@
 // supplied by the caller and is never logged or stored beyond a short in-memory cache.
 import { parseAbi } from "viem";
 import { SETTLEMENT_OVERRIDES_HEADER } from "@x402/core/server";
+import { randomUUID } from "node:crypto";
 
 export const LIMITER_HEADER = "x-singit-limiter";
 export const LIMIT_HEADER = "X-SingIt-Spend-Limit";
@@ -167,7 +168,10 @@ export function spendLimitMiddleware({ reader = null, log = () => {} } = {}) {
               ...(challenge?.accepts ? { x402Version: challenge.x402Version, accepts: challenge.accepts } : {}) };
             if (challenge?.error === "permit2_allowance_required") body = { ...body,
               error: "permit2_allowance_required", code: "permit2_allowance_required",
-              message: "Include an EIP-2612 permit or approve Permit2 for at least the ceiling. Nothing was charged." };
+              message: "Include an EIP-2612 permit or approve Permit2 for at least the ceiling. Nothing was charged.",
+              action: "use_exact_or_provide_permit",
+              details: { scheme: "upto", network: "eip155:8453", extension: "eip2612GasSponsoring" },
+              request_id: `req_${randomUUID()}` };
             if (limit) body = { ...body, singitSpendLimit: offersAgainstLimit(limit, seen ?? []) };
           } catch { /* keep the body */ }
         }

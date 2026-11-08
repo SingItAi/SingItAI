@@ -16,7 +16,7 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 | `not_found` | Route or price symbol is unavailable. |
 | `payment_required` | Payment challenge; select an offer and retry with a signature. |
 | `stale_payment_permit` | Your previous payment already spent this permit nonce. Wait for its transaction, then fetch a new 402 and sign again. Nothing was charged for this request. |
-| `payment_unfunded` | Fund the wallet and its token account. Nothing was charged for this request. |
+| `payment_unfunded` | On Base, fund the wallet with enough USDC; on Solana, fund the wallet and its token account. Nothing was charged for this request. |
 | `payment_blockhash_stale` | On Solana, sign again with a fresh blockhash. Nothing was charged for this request. |
 | `payment_replay` | Check the previous result before paying again. Nothing was charged for this request. |
 | `payment_invalid` | Fix the payment before retrying. Nothing was charged for this request. |
@@ -70,9 +70,22 @@ Refused payments keep error: "payment_required" and add a specific code, action 
 
 | Code | Action | What to do | Charged? |
 | --- | --- | --- | --- |
-| `payment_unfunded` | `fund_wallet` | Fund the wallet and its token account. | Nothing was charged for this request. |
+| `payment_unfunded` | `fund_wallet` | Base: fund the wallet with enough USDC on Base. Solana: fund the wallet and its token account. | Nothing was charged for this request. |
+| `permit2_allowance_required` | `use_exact_or_provide_permit` | Base `upto` only: sign an `eip2612GasSponsoring` permit, approve Permit2 for at least the ceiling, or pay the `exact` offer. `details` names the scheme, network and extension. | Nothing was charged; the model did not run. |
 | `payment_blockhash_stale` | `sign_again` | On Solana, sign again with a fresh blockhash. | Nothing was charged for this request. |
 | `payment_replay` | `check_previous_result` | Check the previous result before paying again. | Nothing was charged for this request. |
 | `payment_invalid` | `fix_payment` | Fix the payment before retrying. | Nothing was charged for this request. |
 
 Limits of the classification: a refusal is coded only when the facilitator reports it (verification refusal, or a settlement failure with a reason). A settlement that may have reached the chain (transaction hash present, pending, timeout, transport error) keeps the plain `payment_required` answer without an action, because it cannot be said that nothing was charged. A payment rejected before verification (malformed `PAYMENT-SIGNATURE`, or one that does not match an offer) also keeps the plain `payment_required` challenge.
+
+## Solana `exact`: answer window and blockhash
+
+On Solana `exact` the payment is verified before the model answers and settled after it. The transaction's blockhash
+is accepted by the chain for about 150 blocks (roughly 60–90 seconds from when the payer fetched it); the offer's
+`maxTimeoutSeconds` (300) does not extend that. So the model gets **20 seconds from successful verification**: an
+answer not complete by then is cut off and refused with 503 `no_billable_answer`, `Retry-After: 30`,
+`X-SingIt-Error` and a `request_id`, before any settlement. Nothing is charged; try again with a fresh signature.
+A stale blockhash at verification is a 402 `payment_blockhash_stale` (`sign_again`) before the model. This narrows the
+risk of a settlement refused after the answer; it does not rule it out (a payer may sign with an already old
+blockhash). Base and Solana `upto` have no such window: Solana `upto` settles its escrow deposit before the model.
+
