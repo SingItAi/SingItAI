@@ -220,7 +220,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
     const server = new x402ResourceServer(facilitatorClient)
       .register(BASE, new UptoEvmScheme())
       .register(BASE, new ExactEvmScheme())
-      .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
+      .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300, rpcUrl: config.solanaRpcUrl }))
       .register(SOLANA, new ExactSvmScheme());
     attachPaymentFailureCodes(server);
     // Discovery prices the example at list share by default; real POSTs below retain priceGuard.

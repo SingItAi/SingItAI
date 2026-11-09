@@ -320,7 +320,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new UptoEvmScheme())
     .register(BASE, new ExactEvmScheme())
-    .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300 }))
+    .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300, rpcUrl: config.solanaRpcUrl }))
     .register(SOLANA, new ExactSvmScheme());
   attachPaymentFailureCodes(server);
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.

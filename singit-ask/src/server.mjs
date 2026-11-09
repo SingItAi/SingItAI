@@ -1,6 +1,7 @@
 // Runs SingIt Ask on loopback, for the Cloudflare tunnel in front of it. Coinbase CDP settles every payment.
 //
 //   SINGIT_ASK_PAY_TO_SOLANA   where Solana payments go (its USDC account must exist)
+//   SINGIT_ASK_SOLANA_RPC_URL  HTTPS Solana RPC used to stamp recentSlot on upto 402s (default mainnet-beta)
 //   SINGIT_ASK_PAY_TO_BASE     where Base payments go
 //   SURPLUS_API_KEY            the inf_… buyer key the model is bought with
 //   CDP_API_KEY_ID, CDP_API_KEY_SECRET   the CDP facilitator's credentials
@@ -86,6 +87,8 @@ const config = {
   quoteToken: process.env.SINGIT_ASK_QUOTE_TOKEN,
   quoteDb: process.env.SINGIT_ASK_QUOTE_DB,
   payToSolana: required("SINGIT_ASK_PAY_TO_SOLANA"),
+  // Stamp Solana upto 402s with recentSlot/blockhash so the client openSlot cannot race the facilitator.
+  solanaRpcUrl: (process.env.SINGIT_ASK_SOLANA_RPC_URL || process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com").replace(/\/$/, ""),
   payToBase: required("SINGIT_ASK_PAY_TO_BASE"),
   surplusKey: required("SURPLUS_API_KEY"),
   maxEditImageBytes: byteLimit(process.env.SINGIT_ASK_MAX_EDIT_IMAGE_BYTES, 8 * 1024 * 1024),
