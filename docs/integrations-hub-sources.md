@@ -15,6 +15,8 @@ Live verification run on the build machine, 31 October 2026 (Europe/Prague), Nod
 | `openai-agents-py.py` | openai-agents 0.20.0; openai 2.54.0 | `python openai-agents-py.py` | pong | 2026-10-31 |
 | `openai-agents-js.mjs` | @openai/agents 0.21.0; openai 7.47.0 | `node openai-agents-js.mjs` | pong | 2026-10-31 |
 | `openai-agents-py-mcp.py` | openai-agents 0.20.0; mcp 1.30.0 | `python openai-agents-py-mcp.py` | 16 MCP tools | 2026-10-31 |
+| `openai-agents-py-hosted-mcp.py` | openai-agents HostedMCPTool | not run (needs an OpenAI Responses model; OpenAI would call SingIt's public MCP; no SingIt payment) | not run | 2026-11-09 |
+| `mastra-mcp.mjs` | @mastra/mcp MCPClient | not run from this page build; snippet matches Mastra `listTools()` + Streamable HTTP docs | not run | 2026-11-09 |
 | `litellm_example.py` | litellm 1.106.6; openai 2.54.0 | `python litellm_example.py` (run from a directory with the packages installed; the file is not named litellm.py because that would shadow the package) | pong | 2026-10-31 |
 
 The key-authenticated variant and paid x402 calls were not tested. Source copies: `website/data/integration-snippets/`; HTML preserves every byte after entity decoding.
@@ -38,6 +40,7 @@ Each URL returned HTTP 200 when fetched on 31 October 2026.
 | AgentKit repository | https://github.com/coinbase/agentkit |
 | AgentKit Python README | https://github.com/coinbase/agentkit/blob/master/python/coinbase-agentkit/README.md |
 | ElizaOS | https://docs.elizaos.ai/ |
+| Mastra MCPClient | https://mastra.ai/reference/tools/mcp-client |
 
 ## Claim sources
 
@@ -48,7 +51,7 @@ Each URL returned HTTP 200 when fetched on 31 October 2026.
 | AgentKit action names, confirmation behavior, Python x402 <2 constraint | coinbase-agentkit 0.7.4 PyPI README read on 2026-10-31; not run against SingIt |
 | TypeScript discover_x402_services, active Bazaar chat listing | Free Bazaar `validate_endpoint` check, 2026-10-31 (see docs/quickstart-sources.md in the quickstart PR); `docs/first-paid-call.md:113` onward for discovery recipe (older not-run status there is not today's evidence) |
 | SingIt chat route offers x402 v2 | `docs/first-paid-call.md:56` (decoded challenge shows `x402Version 2`); live unpaid POST to `https://ask.singitai.app/v1/chat/completions` on 2026-10-31 returned a challenge with `x402Version` 2 |
-| ElizaOS plugin name, unpublished status, installation | `docs/integrations/elizaos.md:3` onward |
+| ElizaOS plugin name and npm package | npm `@singitai/plugin-singit` 0.1.2 (checked 9 November 2026); `docs/integrations/elizaos.md` |
 | Existing examples and SDKs | `integrations/examples/langchain/README.md:1`, `integrations/examples/vercel-ai-sdk/README.md:1`, `sdk/typescript/README.md:1`, `sdk/python/README.md:1` |
 | Limits apply to allowance-granting wallets | `docs/trezor-allowance-v1.md:17`–20; no Solana limit behavior is claimed on this page |
 
@@ -59,4 +62,4 @@ Each URL returned HTTP 200 when fetched on 31 October 2026.
 - Website: `node --test website/tests/*.test.mjs` and `node scripts/generate-model-pages.mjs --check` pass on the build machine (Node 24.22.1).
 - Not tested: the key-authenticated variant (`https://app.singitai.app/v1` with an `sk_singit_` key), any paid x402 call from these libraries, AgentKit.
 
-Repository version: 19 MCP tools, including keyless chat_free, paid chat and get_allowance; served after the next gateway restart. The dated checks above observed the previous 16-tool server.
+Live server on 9 November 2026 (Europe/Prague): version 0.1.5, 19 MCP tools, including keyless chat_free, paid chat and get_allowance. The dated checks above observed the previous 16-tool server.

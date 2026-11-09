@@ -243,7 +243,8 @@ test("the listing tells agents what to send and what comes back, within Coinbase
   assert.ok(required.resource.description.length <= 160, `description is ${required.resource.description.length} characters`);
   assert.match(required.resource.description, /^OpenAI-compatible chat API/);
   const bazaar = required.extensions.bazaar;
-  const body = bazaar.schema.properties.input.properties.body;
+  const response = await fetch(`${url}${ROUTE}`);
+  const body = (await response.json()).extensions.bazaar.schema.properties.input.properties.body;
   assert.deepEqual(body.properties.messages.items.properties.role.enum, ["system", "developer", "user", "assistant", "tool"]);
   assert.equal(body.properties.max_tokens.maximum, AGENT_LIMITS.maxTokens);
   // The declared example must satisfy the declared schema, or the Bazaar rejects the listing.
@@ -344,6 +345,14 @@ test("/.well-known/x402 points to the paid route at its public URL", async () =>
     .handle({ protocol: 'https', get: name => name === 'host' ? 'ask.singitai.app' : undefined },
       { json(value) { doc = value; } });
   assert.equal(doc.version, 1);
+  assert.deepEqual(doc.documentation, {
+    mcp: 'https://singitai.app/docs/mcp-tools/',
+    spendingLimits: 'https://singitai.app/agent-spending-limits/',
+    llmsTxt: 'https://ask.singitai.app/llms.txt',
+  });
+  for (const term of ['Owner-set server-side', 'get_allowance', 'get_limits', 'get_receipts', 'Emergency stop', 'Revoke', 'Charged only when answered', 'not covered']) {
+    assert.ok(doc.instructions.includes(term), term);
+  }
   assert.deepEqual(doc.resources, ["https://ask.singitai.app/v1/chat/completions",
                                    "https://ask.singitai.app/v1/messages", "https://ask.singitai.app/v1/responses",
                                    "https://ask.singitai.app/v1/images/edits", "https://ask.singitai.app/v1/images/image2image",

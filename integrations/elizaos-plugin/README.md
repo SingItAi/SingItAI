@@ -6,7 +6,12 @@ An [ElizaOS](https://github.com/elizaOS/eliza) plugin that gives an agent [SingI
 - paid web search and page reading with a SingIt API key,
 - optional x402-paid chat on SingIt Ask, paid in USDC on **Base**, from an EVM key you provide.
 
-Requires Node >= 20 and `@elizaos/core` `^1.7.0` (tested with 1.7.2; the 2.x prereleases are not targeted).
+Requires Node >= 20 and `@elizaos/core` `^1.7.0` (tested with 1.7.2 on 9 November 2026; npm's latest `@elizaos/core` that day was still 1.7.2. 2.x prereleases such as `2.0.3-beta.7` exist and are not targeted).
+
+
+## Registry assets and agent settings
+
+Version 0.1.3 adds the images the elizaOS publish guide expects (`images/logo.jpg` 400×400 and `images/banner.jpg` 1280×640) and an `agentConfig` block in `package.json`. The CLI uses `agentConfig.pluginParameters` for settings: `SINGIT_API_KEY` and `SINGIT_EVM_PRIVATE_KEY` are marked `sensitive: true`. Paid chat still requires both `SINGIT_MAX_PER_CALL_USD` and `SINGIT_MAX_PER_DAY_USD`; those ceilings are checked in-process before anything is signed.
 
 ## Install
 
@@ -25,7 +30,7 @@ To enable paid chat, install it and force zod to a fixed version in **your** `pa
 ```json
 {
   "dependencies": {
-    "@singitai/plugin-singit": "^0.1.2",
+    "@singitai/plugin-singit": "^0.1.3",
     "@x402/evm": "^2.28.0"
   },
   "overrides": {

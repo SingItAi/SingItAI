@@ -1,3 +1,12 @@
+// Draft CDP/Growth propagation copy. Direct wallet calls require the buyer's signature.
+// Keep existing route/alias descriptions stable; long pinned names leave no room.
+export function bazaarLimitsBoilerplate(capability = 'AI chat, images and search') {
+  const description = `${capability}. Owner-set USDC limits via MCP/API keys; check allowance and receipts.`;
+  if (description.length > 160) throw new RangeError('Listing description exceeds 160 characters');
+  if (/ceiling|\bfees?\b|%/i.test(description)) throw new Error('Listing description contains banned wording');
+  return description;
+}
+
 // Listing copy changes metadata only; it does not add per-model resources.
 // Counts describe the D3 snapshot, not a live availability promise.
 export function listingCopy(catalog, modality, capability, { audioSold = false, videoSold = false } = {}) {

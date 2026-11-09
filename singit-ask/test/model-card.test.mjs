@@ -12,7 +12,7 @@ const fixture = { list: async () => [model], resolve: async () => model,
 };
 
 test('model cards and list share catalog membership, prices and safe examples without payment', async t => {
-  const { url, facilitator } = await serve(t, fixture);
+  const { url, facilitator } = await serve(t, fixture, { freeModels: [id] });
   const get = async path => {
     const response = await request(url + path);
     assert.equal(response.status, 200, path);
@@ -27,6 +27,22 @@ test('model cards and list share catalog membership, prices and safe examples wi
     const card = await get('/v1/models/' + encodeURIComponent(entry.id));
     assert.equal(card.id, entry.id);
     assert.deepEqual(card.price, entry.price);
+    assert.deepEqual(card.schemas, entry.schemas);
+    assert.equal(card.schemas.openapi, '/openapi.json');
+    assert.equal(card.schemas.route, entry.route);
+    const openapi = await get(card.schemas.openapi);
+    for (const field of ['input', 'output']) {
+      const pointer = card.schemas[field].split('#/')[1].split('/')
+        .map(part => part.replaceAll('~1', '/').replaceAll('~0', '~'));
+      assert.ok(pointer.reduce((value, key) => value?.[key], openapi), card.schemas[field]);
+    }
+    for (const field of ['usdPerMillionTokens', 'expectedUsdPerMillionTokens', 'singitUsdPerMillionTokens', 'savingsVsListPct']) {
+      assert.deepEqual(card[field], entry[field], field);
+    }
+    if (entry.modality === 'chat' && !entry.router) {
+      assert.deepEqual(card.usdPerMillionTokens, { input: model.promptUsdPerToken * 1e6, output: model.completionUsdPerToken * 1e6 });
+      assert.deepEqual(card.schemas.requiredBodyFields, ['messages']);
+    }
     assert.equal(card.modality, entry.modality);
     assert.ok(card.inputModalities.length);
     assert.ok(card.outputModalities.length);
@@ -54,6 +70,8 @@ test('model cards and list share catalog membership, prices and safe examples wi
   assert.equal(old.object, 'model');
   assert.deepEqual(old.usdPerMillionTokens, { input: 3, output: 12 });
   const op = (await get('/openapi.json')).paths['/v1/models/{id}'].get;
+  assert.match((await get('/.well-known/x402')).instructions, /\/v1\/models\/\{id\}/);
+  assert.ok(op.responses[200].content['application/json'].schema.properties.schemas);
   assert.deepEqual(op.security, []);
   assert.ok(!op.responses[402]);
   assert.equal(facilitator.calls.verify, 0);
@@ -66,6 +84,7 @@ test('unknown model returns the JSON API error envelope without payment', async 
   assert.equal(response.status, 404);
   assert.match(response.headers.get('content-type'), /application\/json/);
   const body = await response.json();
+  assert.deepEqual(facilitator.calls.settle, []);
   assert.equal(body.error.code, 'not_found');
   assert.equal(typeof body.error.message, 'string');
   assert.equal(typeof body.error.type, 'string');
@@ -86,4 +105,46 @@ test('unavailable media does not hide chat; retained models have no invented quo
   assert.equal(card.available, false);
   assert.equal(card.price.mode, 'unavailable');
   assert.equal(card.price.exact, undefined);
+});
+
+test('cards preserve known expected prices and savings from the list', async t => {
+  const { url, facilitator } = await serve(t, { ...fixture,
+    market: async () => new Map([[id, { trustedShare: 0.5 }]]),
+  }, { freeModels: [id] });
+  const list = await (await request(url + '/v1/models')).json();
+  for (const modelId of [id, 'free/' + id]) {
+    const card = await (await request(url + '/v1/models/' + encodeURIComponent(modelId))).json();
+    const entry = list.data.find(m => m.id === modelId);
+    assert.deepEqual(card.expectedUsdPerMillionTokens, { input: 1.5, output: 6, basis: 'trusted' });
+    for (const field of ['usdPerMillionTokens', 'expectedUsdPerMillionTokens', 'singitUsdPerMillionTokens', 'savingsVsListPct', 'schemas']) {
+      assert.deepEqual(card[field], entry[field], field);
+    }
+    assert.ok(card.singitUsdPerMillionTokens.input > 1.5);
+    assert.equal(typeof card.savingsVsListPct, 'number');
+  }
+  assert.equal(facilitator.calls.verify, 0);
+  assert.deepEqual(facilitator.calls.settle, []);
+});
+
+test('unlisted audio and API-key transcription cards retain usable schema definitions', async t => {
+  const { url } = await serve(t, { ...fixture, voiceModels: async () => ({
+    speech: new Map(), transcription: map({ id: 'vendor/transcribe', usdPerUnit: 0.02 }),
+  }) }, { audioDiscoverable: false });
+  const list = await (await request(url + '/v1/models')).json();
+  for (const entry of list.data.filter(m => ['music', 'sound_effects', 'transcription'].includes(m.modality))) {
+    const card = await (await request(url + '/v1/models/' + encodeURIComponent(entry.id))).json();
+    assert.deepEqual(card.schemas, entry.schemas);
+    if (entry.modality === 'transcription') {
+      const { readFile } = await import('node:fs/promises');
+      const spec = JSON.parse(await readFile(new URL('../../website/openapi-keys.json', import.meta.url)));
+      for (const field of ['input', 'output']) {
+        const pointer = card.schemas[field].split('#/')[1].split('/')
+          .map(part => part.replaceAll('~1', '/').replaceAll('~0', '~'));
+        assert.ok(pointer.reduce((value, key) => value?.[key], spec));
+      }
+    } else {
+      assert.ok(card.schemas.input.content['application/json'].schema);
+      assert.ok(card.schemas.output.description);
+    }
+  }
 });

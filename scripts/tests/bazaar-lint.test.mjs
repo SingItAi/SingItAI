@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { MAX_DESCRIPTION, lintApp, lintChallenge, summarize } from "../bazaar-lint.mjs";
+import { MAX_DESCRIPTION, lintApp, lintChallenge, lintPaymentRequiredHeader, challengeWithBodyExtensions, summarize } from "../bazaar-lint.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASK_MODULES = path.join(HERE, "..", "..", "singit-ask", "node_modules", "@x402", "express");
@@ -139,11 +139,24 @@ test("the example must only use schema fields and must carry every required one"
 });
 
 test("a non-JSON route may skip the output example if its mimeType says so", () => {
-  const speech = { ...good(), resource: { ...good().resource, url: "https://ask.singitai.app/v1/audio/speech", mimeType: "audio/mpeg" } };
-  delete speech.extensions.bazaar.info.output;
-  assert.deepEqual(lintChallenge(speech, { ...env, route: "/v1/audio/speech" }), []);
-  const wrong = { ...speech, resource: { ...speech.resource, mimeType: "application/json" } };
-  assert.deepEqual(checks(lintChallenge(wrong, { ...env, route: "/v1/audio/speech" })), ["bazaar.outputExample"]);
+  const sfx = { ...good(), resource: { ...good().resource, url: "https://ask.singitai.app/v1/audio/sound-effects", mimeType: "audio/mpeg" } };
+  delete sfx.extensions.bazaar.info.output;
+  assert.deepEqual(lintChallenge(sfx, { ...env, route: "/v1/audio/sound-effects" }), []);
+  const wrong = { ...sfx, resource: { ...sfx.resource, mimeType: "application/json" } };
+  assert.deepEqual(checks(lintChallenge(wrong, { ...env, route: "/v1/audio/sound-effects" })), ["bazaar.outputExample"]);
+});
+
+test("a slimmed header is linted against the 402 body's full extensions", () => {
+  const full = good();
+  const slim = structuredClone(full);
+  slim.extensions.bazaar.schema = { $schema: "https://json-schema.org/draft/2020-12/schema", type: "object" };
+  assert.deepEqual(checks(lintChallenge(slim, env)), ["bazaar.inputSchema"]);
+  assert.deepEqual(lintChallenge(challengeWithBodyExtensions(slim, { extensions: full.extensions }), env), []);
+  assert.deepEqual(lintPaymentRequiredHeader(Buffer.from(JSON.stringify(slim)).toString("base64"), slim, env), []);
+  const noInfo = structuredClone(slim);
+  delete noInfo.extensions.bazaar.info.input;
+  assert.deepEqual(checks(lintPaymentRequiredHeader("ok", noInfo, env)), ["bazaar"]);
+  assert.ok(checks(lintPaymentRequiredHeader("x".repeat(8193), slim, env)).includes("header-size"));
 });
 
 test("summarize counts findings and only --strict makes warnings fail", () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { listingCopy } from '../../singit-ask/src/listing-copy.mjs';
+import { listingCopy, bazaarLimitsBoilerplate } from '../../singit-ask/src/listing-copy.mjs';
 import { routeCopy } from '../../singit-ask/src/listing-snapshot.mjs';
 import { catalogResponse } from '../../singit-ask/src/catalog-shape.mjs';
 import { serve, request } from '../../singit-ask/test/fixtures/listing-harness.mjs';
@@ -136,4 +136,16 @@ test('copy enforces length and banned wording and only advertises actual free en
     ['/v1/images/edits', 'Image editing API: PNG, JPEG or WEBP input, optional mask'],
     ['/v1/images/image2image', 'Image editing API: PNG, JPEG or WEBP input, optional mask'],
   ]) assert.equal(routeCopy(path).description, `${lead}. ${TAIL}`);
+});
+
+test('draft limits boilerplate stays capability-first, bounded and free of banned wording', () => {
+  const copy = bazaarLimitsBoilerplate();
+  assert.ok(copy.startsWith('AI chat, images and search.'));
+  assert.match(copy, /Owner-set USDC limits via MCP\/API keys/);
+  assert.ok(copy.length <= 160);
+  assert.doesNotMatch(copy, /ceiling|\bfees?\b|%/i);
+  for (const word of ['ceiling', 'fee', 'fees', '%', 'CEILING']) {
+    assert.throws(() => bazaarLimitsBoilerplate(word), /banned wording/);
+  }
+  assert.throws(() => bazaarLimitsBoilerplate('x'.repeat(161)), /exceeds 160/);
 });

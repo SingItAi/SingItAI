@@ -14,7 +14,7 @@ import { Readable } from "node:stream";
 import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { declareDiscoveryExtension } from "./binary-discovery.mjs";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
@@ -23,7 +23,9 @@ export const SPEECH_ROUTE = "/v1/audio/speech";
 export const AUDIO_MODELS_ROUTE = "/v1/audio/models";
 export const SPEECH_TERMS = Object.freeze({ markupBps: 3000, maxChars: 4096 });
 export const ASYNC_SPEECH_TERMS = Object.freeze({ markupBps: 3000, maxChars: 4096, timeoutMs: 110_000, pollMs: 1000, maxBytes: 20 * 1024 * 1024 });
-const FORMATS = new Set(["mp3", "opus", "aac", "flac", "wav", "pcm"]);
+const AUDIO_FORMATS = new Set(["mp3", "opus", "aac", "flac", "wav", "pcm"]);
+const JSON_ENVELOPES = new Set(["json", "b64_json"]);
+const FORMATS = new Set([...AUDIO_FORMATS, ...JSON_ENVELOPES]);
 export const SPEECH_CONTENT_TYPES = Object.freeze({
   mp3: "audio/mpeg", wav: "audio/wav", flac: "audio/flac", opus: "audio/ogg", aac: "audio/aac", pcm: "audio/pcm",
 });
@@ -58,7 +60,9 @@ export function readSpeechRequest(body, model) {
   if (typeof body.input !== "string" || !body.input.trim() || body.input.length > SPEECH_TERMS.maxChars) {
     throw new SpeechError(400, `Send input text of up to ${SPEECH_TERMS.maxChars} characters.`);
   }
-  if (model.usdPerJob && (body.speed !== undefined || body.response_format !== undefined)) {
+  const envelope = JSON_ENVELOPES.has(body.response_format);
+  // json/b64_json only wrap the audio we already made; they are never sent upstream.
+  if (model.usdPerJob && (body.speed !== undefined || (body.response_format !== undefined && !envelope))) {
     throw new SpeechError(400, "Async speech returns the provider audio format; speed and response_format are not supported.");
   }
   const request = { model: model.id, input: body.input };
@@ -70,7 +74,8 @@ export function readSpeechRequest(body, model) {
   }
   if (body.response_format !== undefined) {
     if (!FORMATS.has(body.response_format)) throw new SpeechError(400, `response_format must be one of ${[...FORMATS].join(", ")}.`);
-    request.response_format = body.response_format;
+    if (envelope) request.envelope = "json";
+    else request.response_format = body.response_format;
   }
   if (body.speed !== undefined) {
     if (typeof body.speed !== "number" || body.speed < 0.25 || body.speed > 4) throw new SpeechError(400, "speed must be 0.25 to 4.");
@@ -96,12 +101,22 @@ const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["venice-kokoro-tts"], description: "A speech model id from GET /v1/audio/models, including elevenlabs/multilingual-v2, elevenlabs/v3, bytedance/seed-audio-1.0 (fixed per-job pricing; provider audio format; no speed/response_format)." },
   input: { type: "string", minLength: 1, maxLength: SPEECH_TERMS.maxChars, description: "The text to read aloud." },
   voice: { type: "string", maxLength: 60, examples: ["af_heart"], description: "A voice of the model; they are listed at GET /v1/audio/models." },
-  response_format: { type: "string", enum: [...FORMATS], default: "mp3", description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type." },
+  response_format: { type: "string", enum: [...FORMATS], default: "mp3", description: "mp3 (audio/mpeg) is the default; json and b64_json wrap that default mp3 as JSON with audio_base64; other values return their own Content-Type." },
   speed: { type: "number", minimum: 0.25, maximum: 4, description: "Speaking speed." },
 }, required: ["model", "input"] };
 
 // The example body declared to Bazaar, and what the discovery probes are priced as (see `probeList`).
-const EXAMPLE = Object.freeze({ model: "venice-kokoro-tts", input: "Hello from SingIt.", voice: "af_heart", response_format: "mp3" });
+const EXAMPLE = Object.freeze({ model: "venice-kokoro-tts", input: "Hello from SingIt.", voice: "af_heart", response_format: "b64_json" });
+export const SPEECH_JSON_EXAMPLE = Object.freeze({
+  object: "audio", model: "venice-kokoro-tts", voice: "af_heart", format: "mp3",
+  content_type: "audio/mpeg", audio_base64: "SUQzBA==", bytes: 4,
+});
+export const SPEECH_JSON_SCHEMA = { type: "object", required: ["object", "model", "format", "content_type", "audio_base64", "bytes"], properties: {
+  object: { type: "string", const: "audio" }, model: { type: "string" }, voice: { type: "string" },
+  format: { type: "string", enum: [...AUDIO_FORMATS] }, content_type: { type: "string" },
+  audio_base64: { type: "string", description: "The audio bytes, standard base64." },
+  bytes: { type: "integer", minimum: 1 },
+} };
 // The request body as openapi.json documents it: the schema and example the Bazaar listing declares.
 export const SPEECH_REQUEST_BODY = () => ({ required: true, content: { "application/json": {
   schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
@@ -172,14 +187,14 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
       { scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120, price: price(BASE) },
       { scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 120, price: price(SOLANA) },
     ],
-    mimeType: "audio/mpeg", description: DESCRIPTION, serviceName: SERVICE_NAMES[SPEECH_ROUTE], iconUrl: ICON_URL,
+    mimeType: "application/json", description: DESCRIPTION, serviceName: SERVICE_NAMES[SPEECH_ROUTE], iconUrl: ICON_URL,
     tags: discoveryTags("text-to-speech", ...routeCopy("/v1/audio/speech").tags, "tts", "speech", "audio", "openai-compatible", "pay-per-use", "solana", "base",
                         "singit"),
-    // The answer is audio bytes, not JSON, so there is no JSON output example to give.
+    // Advertised example opts into the JSON envelope so directories that require JSON on 2xx can verify delivery.
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
       inputSchema: INPUT_SCHEMA,
-      output: { type: "audio/mpeg", format: "binary" } }),
+      output: { example: SPEECH_JSON_EXAMPLE, schema: SPEECH_JSON_SCHEMA } }),
   } }, server, { log, publicClient });
   app.post(SPEECH_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
@@ -195,9 +210,10 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
       if (model.usdPerJob) {
         ({ response, audio, format: actualFormat } = await generateAsyncSpeech(config, model, request, { fetchImpl, resolveHostname }));
       } else {
+        const { envelope: _envelope, ...upstreamRequest } = request;
         response = await fetchImpl(`${config.surplusUrl}${SPEECH_ROUTE}`, { method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}` },
-        body: JSON.stringify(request), signal: AbortSignal.timeout(120_000) });
+        body: JSON.stringify(upstreamRequest), signal: AbortSignal.timeout(120_000) });
         audio = Buffer.from(await response.arrayBuffer());
       }
     } catch (error) {
@@ -215,8 +231,16 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);
     const billing = speechPrice(listAtomic, network);
     log(`singit-ask: ${request.input.length} characters read by ${request.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC (format ${format}, upstream content-type ${JSON.stringify(type)}, ${audio.length} bytes)`);
-    res.set({ "Content-Type": speechContentType(format, audio), "X-SingIt-Charged-Atomic": billing.totalAtomic, "X-SingIt-List-Atomic": billing.listAtomic,
+    const contentType = speechContentType(format, audio);
+    res.set({ "X-SingIt-Charged-Atomic": billing.totalAtomic, "X-SingIt-List-Atomic": billing.listAtomic,
               "Cache-Control": "no-store" });
+    if (request.envelope === "json") {
+      return res.json({
+        object: "audio", model: request.model, ...(request.voice ? { voice: request.voice } : {}),
+        format, content_type: contentType, audio_base64: audio.toString("base64"), bytes: audio.length,
+      });
+    }
+    res.set("Content-Type", contentType);
     res.send(audio);
   });
 }
