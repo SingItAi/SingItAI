@@ -34,6 +34,16 @@ import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceil
 // settles the actual amount and refunds the rest: two transactions, hence its higher fee.
 const TERMS_BY_NETWORK = { [BASE]: TERMS, [SOLANA]: SOLANA_TERMS };
 
+export function canRetryPaidFallback(error) {
+  if (error.name !== "UpstreamError") return false;
+  const { status, code } = error;
+  // A seller/catalogue 404 means the listed model is unavailable on our side.
+  if (status === 404 || status === 429 || (status >= 500 && status <= 599)) return true;
+  // Client/request failures must never be sent to a different model.
+  if (status >= 400 && status < 500) return false;
+  return code === "no_healthy_sellers";
+}
+
 // The ceiling is decided per question, from the model it asks for, so the offer's price is a function of the
 // request. `quotes` remembers what each parsed body was offered: the middleware asks again when the payment
 // arrives and must get the same answer.
@@ -434,14 +444,20 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         }
         observeWindow(req.askInput.model, { ok: false, code: error.code, status: error.status });
         const bucket = exact ? "exact" : "upto";
-        const alternate = !win && !(req.askInput.request && error.status === 400) && error.name === "UpstreamError" && error.status >= 400  // refused before any answer; a 200 with no text (no_text, max_tokens_spent_reasoning) may already be billed
-          && Date.now() < deadline && req.askInput.autoAlternates?.find(candidate =>
-            BigInt(ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network]) <= BigInt(paid.terms.maxChargeAtomic));
+        // Within the amount already signed, for this scheme and network.
+        const fits = candidate => BigInt(ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network]) <= BigInt(paid.terms.maxChargeAtomic);
+        const refused = !win && !(req.askInput.request && error.status === 400) && canRetryPaidFallback(error)
+          && Date.now() < deadline;
+        const auto = refused && req.askInput.autoAlternates?.find(fits);
+        const pinned = refused && !auto && req.askInput.paidAlternates?.find(fits);
+        const alternate = auto || pinned;
         if (!alternate) throw error;
         markUnservable(catalogue, req.askInput.model, error, log);
-        log(`singit-ask: auto fallback from=${req.askInput.model} to=${alternate.model} code=${error.code} status=${error.status}`);
-        req.askInput = alternate;
-        answer = await inWindow(() => attempt(alternate));
+        log(`singit-ask: ${auto ? "auto" : "paid"} fallback from=${req.askInput.model} to=${alternate.model} code=${error.code} status=${error.status}`);
+        // One retry, sequential: the alternates are dropped, so a second failure is final.
+        req.askInput = auto ? alternate
+          : { ...alternate, fallbackFrom: req.askInput.fallbackFrom ?? req.askInput.model, fallbackPolicy: "paid" };
+        answer = await inWindow(() => attempt(req.askInput));
       }
       if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
       if (req.askInput.fallbackFrom) {
