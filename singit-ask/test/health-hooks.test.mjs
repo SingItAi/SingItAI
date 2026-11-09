@@ -109,3 +109,29 @@ for (const route of ['/v1/messages', '/v1/responses']) {
     assert.equal(stats.attempts, 0); assert.equal(stats.reasoning422, 1); assert.equal(stats.failures, 0);
   });
 }
+
+
+test("settle failures distinguish unknown chain outcomes from determinate refusals", () => {
+  const app = express(), server = new x402ResourceServer({ getSupported: async () => ({ kinds: [], extensions: [], signers: {} }) });
+  const failed = [];
+  server.onSettleFailure = fn => { failed.push(fn); return server; };
+  const stats = app.locals.healthStats = new HealthStats({ ownPayers: ["own-test-payer"] });
+  addPaymentRoute(app, { "POST /chat": { accepts: [] } }, server,
+    { discoverable: false, permitGuard: { record() {}, middleware(_q, _s, next) { next(); } }, log() {} });
+  const event = error => ({ error, requirements: { network: "eip155:8453" },
+    transportContext: { request: { path: "/chat" } } });
+  const timeout = new Error("facilitator timed out"); timeout.name = "FacilitatorTimeoutError";
+  for (const fn of failed) fn(event(timeout));
+  let n = numbersBody(stats);
+  assert.equal(n.settlement_unknown.total, 1);
+  assert.equal(stats.rails().base.failed, 0);
+  assert.equal(n.settlement_failures.last_24h, 0);
+  assert.equal(n.charge_without_answer.total, 0);
+  assert.equal(n.paid_call_success.last_24h.base.answered, 0);
+  assert.equal(n.paid_calls.total, 0);
+  for (const fn of failed) fn(event({ errorReason: "insufficient_funds" }));
+  n = numbersBody(stats);
+  assert.equal(n.settlement_unknown.total, 1);
+  assert.equal(stats.rails().base.failed, 1);
+  assert.equal(n.settlement_failures.last_24h, 1);
+});
