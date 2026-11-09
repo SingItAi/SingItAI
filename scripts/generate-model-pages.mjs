@@ -57,18 +57,36 @@ export function truncateWords(text, max) {
   const boundary = cut.lastIndexOf(" ");
   return boundary > 0 ? cut.slice(0, boundary) : text.slice(0, max);
 }
+// Same rule the page tests enforce. Upstream names may contain these words; optional tags and blurbs may not.
+export const PAGE_COPY_FORBIDDEN = /0x[a-f\d]{40,}|\b[a-f\d]{64}\b|0xfa8f|\b(?:video|BlockRun|OpenRouter|Surplus|cheapest|best|guaranteed|audited|unlimited|revolutionary|hackathon|safe|secure)\b|run by bots|AI team|AI agents run SingIt|absolutely (?:safe|secure)|payments feed|Builder Code|(?:third.party|other people.s) agents/is;
+export function pageCopyAllowed(text) {
+  return typeof text === "string" && text.trim() !== "" && !PAGE_COPY_FORBIDDEN.test(text);
+}
+export function displayName(model) {
+  const record = model && typeof model === "object" ? model : { name: model };
+  const label = typeof record.name === "string" ? record.name.trim() : "";
+  if (label) return label;
+  const id = typeof record.id === "string" ? record.id.trim() : "";
+  if (id) return id;
+  throw new Error("Model has no display name");
+}
 export function modelTitle(name) {
-  const full = `${name} API via x402: pay per call in USDC | SingIt`;
+  const label = typeof name === "string" ? name.trim() : "";
+  if (!label) throw new Error("Model title needs a name");
+  const full = `${label} API via x402: pay per call in USDC | SingIt`;
   if (full.length <= 60) return full;
   const suffix = " x402 API | SingIt";
-  return truncateWords(name, 60 - suffix.length) + suffix;
+  const short = truncateWords(label, 60 - suffix.length).trim();
+  if (!short) throw new Error("Model title needs a name");
+  return short + suffix;
 }
 export function modelDescription(m) {
+  const label = displayName(m);
   const suffix = hasTokenPrice(m) ? ` Price: $${price(m.singitUsdPerMillionTokens.input)}/1M input, $${price(m.singitUsdPerMillionTokens.output)}/1M output tokens.` : "";
   const ending = " with no account or API key. Pay per request in USDC on Base via x402.";
-  const full = `Call ${m.name ?? m.id}${ending}${suffix}`;
+  const full = `Call ${label}${ending}${suffix}`;
   if (full.length <= 155) return full;
-  return `Call ${truncateWords(m.name ?? m.id, 155 - 5 - ending.length)}${ending}`;
+  return `Call ${truncateWords(label, 155 - 5 - ending.length)}${ending}`;
 }
 export function mergeBlock(text, content, before) {
   const start = "<!-- generated:model-pages:start -->";
@@ -89,12 +107,14 @@ export function mergeBlock(text, content, before) {
 const link = (url, text) => `<a href="${e(url)}">${e(text)}</a>`;
 const section = (title, body) => `<section class="lp-section"><div class="shell"><h2 class="section-title">${e(title)}</h2>\n${body}\n</div></section>`;
 const limitLinks = () => limits.map((p) => link(`/${p.slug}/`, p.title.replace(" | SingIt", ""))).join(" · ");
-const modelLink = (m) => link(`/models/${safeSlug(m.id)}/`, m.name ?? m.id);
+const modelLink = (m) => link(`/models/${safeSlug(m.id)}/`, displayName(m));
 function faqHtml(faq) {
   return section("FAQ", `<dl class="faq">${faq.map(([q, a]) => `<div class="faq-item"><dt><h3>${e(q)}</h3></dt><dd class="faq-answer">${e(a)}</dd></div>`).join("\n")}</dl>`);
 }
 function page(shell, { slug, title, h1, description, body, faq = [], nodes = [] }) {
+  if (typeof slug !== "string" || !slug.trim() || typeof title !== "string" || !title.trim()) throw new Error("Empty page title or address");
   const url = `${origin}/${slug}/`;
+  if (!url.startsWith(`${origin}/`) || url === `${origin}/`) throw new Error("Empty canonical URL");
   const head = `<title>${e(title)}</title>
 <meta name="description" content="${e(description)}">
 <link rel="canonical" href="${url}">
@@ -128,17 +148,18 @@ function table(headers, rows) {
   return `<div class="table-wrap"><table class="mtable"><thead><tr>${headers.map((v) => `<th scope="col">${e(v)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((v, i) => i ? `<td>${e(v)}</td>` : `<th scope="row">${e(v)}</th>`).join("")}</tr>`).join("\n")}</tbody></table></div>`;
 }
 function modelPage(shell, s, m) {
-  const name = m.name ?? m.id;
+  const name = displayName(m);
   const p = hasTokenPrice(m) ? m.singitUsdPerMillionTokens : null;
   const priceTable = m.priceBasis === "reference" ? table(["Conservative reference estimate per 1M tokens", "Input", "Output"], [
-    ["Surplus lists this model at 0; no list-price savings claimed", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
+    ["The published list price is 0; no list-price savings claimed", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
   ]) : p ? table(["USD per 1M tokens", "Input", "Output"], [
     ["SingIt price (expected, markup included)", `$${price(p.input)}`, `$${price(p.output)}`],
     ["List price of the model (for reference)", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
   ]) : "<p>No per-token price is listed for this model. A request costs the minimum request price below.</p>";
   const basis = m.expectedUsdPerMillionTokens?.basis;
   const basisText = basis === "observed" ? "based on what answers from this model have cost us" : "estimate from sellers' quotes, not yet confirmed by answers we paid for, so the real price can be higher";
-  const facts = [`Modality: ${e(m.modality ?? "chat")}`, m.owned_by !== undefined && `Provider: ${e(m.owned_by)}`, m.contextLength !== undefined && `Context window: ${m.contextLength.toLocaleString("en-US")} tokens`, m.tags?.filter((t) => t.toLowerCase() !== "video").length && `Tags: ${m.tags.filter((t) => t.toLowerCase() !== "video").map(e).join(", ")}`].filter(Boolean).join(" · ");
+  const tags = (m.tags ?? []).filter((tag) => pageCopyAllowed(tag));
+  const facts = [`Modality: ${e(m.modality ?? "chat")}`, m.owned_by !== undefined && pageCopyAllowed(m.owned_by) && `Provider: ${e(m.owned_by)}`, m.contextLength !== undefined && `Context window: ${m.contextLength.toLocaleString("en-US")} tokens`, tags.length && `Tags: ${tags.map(e).join(", ")}`].filter(Boolean).join(" · ");
   const date = new Date(s.fetchedAt).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
   const reasoning = m.tags?.includes("reasoning") || REASONING_BY_MEASUREMENT.has(m.id);
   const request = JSON.stringify({ model: m.id, max_tokens: reasoning ? 400 : 200, messages: [{ role: "user", content: reasoning ? "Say hello in one sentence." : "Hello" }] });
@@ -154,12 +175,12 @@ function modelPage(shell, s, m) {
 <h3>Per request, reference request</h3>
 <p>${s.referenceRequest.messages === 1 ? "One short message" : `${e(s.referenceRequest.messages)} messages`}, max_tokens ${e(s.referenceRequest.maxOutputTokens)}${s.referenceRequest.chars !== undefined ? ` (${e(s.referenceRequest.chars)} characters)` : ""}${s.referenceRequest.inputTokens !== undefined ? `, ${e(s.referenceRequest.inputTokens)} input tokens` : ""}. upto settles actual usage, so a real answer normally costs less; exact is flat, with no refund.</p>` +
     table(["Network", "upto ceiling (USD)", "exact flat price (USD)"], ["base", "solana"].map((n) => [n === "base" ? "Base" : "Solana", `$${price(m.upto[n].usd)}`, `$${price(m.exact[n].usd)}`])) +
-    (m.recommendedScheme === "upto" && m.recommendedSchemeWhy !== undefined ? `<p>Recommended: upto. ${e(m.recommendedSchemeWhy)}</p>` : "") +
+    (m.recommendedScheme === "upto" && pageCopyAllowed(m.recommendedSchemeWhy) ? `<p>Recommended: upto. ${e(m.recommendedSchemeWhy)}</p>` : "") +
     `<p>Prices as of ${date} (snapshot of ask.singitai.app/v1/models and /pricing.json). Live: ${link(s.sources[0], "/v1/models")} and ${link(s.sources[1], "/pricing.json")}. Live values are authoritative and the 402 response states the exact price.</p>`);
   body += section("Call it with x402", `<div class="code"><pre><code>${e(curl)}</code></pre></div>
 <p>The unpaid POST returns HTTP 402 and a PAYMENT-REQUIRED header: base64 JSON, x402 v2. Sign one offer (upto first, then exact; Base then Solana) and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200 returns choices[0].message.content and billing.totalAtomic.</p>
 <p>Follow the ${link("https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md", "first paid call walkthrough")}, ${link("/developers/", "developer guide")} and ${link("https://ask.singitai.app/llms.txt", "llms.txt")}.</p>` +
-    (s.free?.models?.length ? `<p>For a free try, choose from ${e(s.free.models.length)} free models, for example <code>${e("free/" + DEFAULT_FREE_EXAMPLE)}</code>: ${e(s.free.perVisitorPerDay)} answers a day per network, no wallet. The shared daily cost cap is $${e(s.free.budgetUsdPerDay)}; free answers may run out for the day (free_budget_exhausted) and return at midnight UTC.</p>` : ""));
+    (s.free?.models?.length ? `<p>For a free try, choose from ${e(s.free.models.length)} free models, for example <code>${e("free/" + DEFAULT_FREE_EXAMPLE)}</code>: ${e(s.free.perVisitorPerDay)} answers a day per network, no wallet.${typeof s.free.budgetUsdPerDay === "number" && s.free.budgetUsdPerDay > 0 ? ` The shared daily cost cap is $${e(s.free.budgetUsdPerDay)}; free answers may run out for the day (free_budget_exhausted) and return at midnight UTC.` : ""}</p>` : ""));
   body += section("Use it from an agent", `<p>MCP: ${link("https://app.singitai.app/mcp", "https://app.singitai.app/mcp")}. Free tools without a key: list_models, get_price, list_price_symbols.</p><p>The elizaOS plugin ${link("https://github.com/SingItAi/SingItAI/tree/main/integrations/elizaos-plugin", "@singitai/plugin-singit")} has a paid-chat action that pays on Base. Its per-call and per-day caps are held in the plugin's memory: in-process, reset on restart, not on-chain, not enforced by SingIt's servers. It does not use AgentAllowance.</p>`);
   body += section("Give your agent a budget", `<p>${limitLinks()}</p>`);
   const related = m.owned_by === undefined ? [] : s.models.filter((other) => other.id !== m.id && other.owned_by === m.owned_by).slice(0, 8);
@@ -222,7 +243,8 @@ export function renderPages(s, shell, hold = { hidden: [] }) {
     const curl = `curl -i -X POST https://ask.singitai.app${modelEndpoint(m)} -H 'Content-Type: application/json' -d '${JSON.stringify(request)}'`;
     const body = section("Model", `<p>Modality: ${e(m.modality)}</p><p>Snapshot price (USD): <code>${e(priceSummary(m.price))}</code></p><p>Prices as of ${e(catalogSnapshot.fetchedAt)}. The live response is authoritative.</p>`)
       + section("Call it", `<pre><code>${e(curl)}</code></pre><p>Unpaid demo; paid routes return HTTP 402. Free routes follow their published limits.</p>`);
-    files.set(file, page(shell, { slug: `models/${catalogSlug(m.id)}`, title: modelTitle(m.name ?? m.id), h1: m.name ?? m.id, description: `Call ${m.name ?? m.id} with SingIt. Modality: ${m.modality}. Snapshot prices and curl example.`, body }));
+    const catalogName = displayName(m);
+    files.set(file, page(shell, { slug: `models/${catalogSlug(m.id)}`, title: modelTitle(catalogName), h1: catalogName, description: `Call ${catalogName} with SingIt. Modality: ${m.modality}. Snapshot prices and curl example.`, body }));
   }
   const groups = new Map();
   for (const m of s.models) {

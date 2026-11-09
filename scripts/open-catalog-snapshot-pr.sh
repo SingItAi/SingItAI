@@ -75,10 +75,12 @@ if [ -n "$present" ]; then
   git checkout "$refresh_commit" -- $present
 fi
 
+need_ci=0
 if git diff --cached --quiet; then
   echo "Refresh branch already has this snapshot."
 else
   git -c commit.template=/dev/null commit -F "$commit_file"
+  need_ci=1
 fi
 
 git push origin "HEAD:${branch}"
@@ -88,4 +90,13 @@ if [ -n "$number" ]; then
   gh pr edit "$number" --repo "$repo" --title "Refresh website catalog snapshot" --body-file "$summary"
 else
   gh pr create --repo "$repo" --base "$base" --head "$branch" --title "Refresh website catalog snapshot" --body-file "$summary"
+  need_ci=1
+fi
+
+# pull_request events from GITHUB_TOKEN do not start other workflows. workflow_dispatch does.
+if [ "$need_ci" = 1 ]; then
+  if ! gh workflow run security-gate.yml --ref "$branch"; then
+    echo "Security gate was not dispatched. Reopen the pull request from a user account so the checks run." >&2
+    exit 1
+  fi
 fi

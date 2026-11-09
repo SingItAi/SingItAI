@@ -96,6 +96,8 @@ test('assessRefresh ignores capture time, reports ids, and refuses a sharp drop'
   assert.equal(edged.changed, true);
   const summary = formatSummary(edged);
   assert.match(summary, /does not merge/);
+  assert.match(summary, /Security gate/);
+  assert.match(summary, /reopen this pull request/);
   assert.match(summary, /Added: none/);
   assert.match(summary, /Removed: id-8, id-9/);
   assert.match(summary, /chat 10 -> 8/);
@@ -263,6 +265,7 @@ test('workflow refreshes on a daily schedule and does not publish or merge', asy
   assert.doesNotMatch(header, /pull_request|push:/);
   assert.match(header, /contents: write/);
   assert.match(header, /pull-requests: write/);
+  assert.match(header, /actions: write/);
   assert.match(header, /bot\/catalog-snapshot/);
   assert.match(opener, /branch="bot\/catalog-snapshot"/);
   assert.match(workflow, /refresh-catalog-snapshot\.mjs/);
@@ -270,6 +273,7 @@ test('workflow refreshes on a daily schedule and does not publish or merge', asy
   assert.doesNotMatch(workflow, /secrets\.|gh pr merge|workflow_dispatch:[\s\S]*push:/);
   assert.doesNotMatch(`${workflow}\n${opener}`, /--force|pull_request_target|x402\/invoice|PAYMENT-SIGNATURE/);
   assert.match(opener, /git push origin "HEAD:\$\{branch\}"/);
+  assert.match(opener, /gh workflow run security-gate\.yml --ref "\$branch"/);
   assert.match(opener, /No snapshot changes/);
 });
 
@@ -285,7 +289,7 @@ test('pull request script fast-forwards one branch and skips a clean tree', asyn
 printf '%s\\n' "$*" >> "$GH_LOG"
 case "$1 $2" in
   "pr list") printf '%s\\n' "\${FAKE_PR_NUMBER:-}" ;;
-  "pr close"|"pr create"|"pr edit") ;;
+  "pr close"|"pr create"|"pr edit"|"workflow run") ;;
   *) echo "unexpected gh: $*" >&2; exit 2 ;;
 esac
 `);

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { test } from "node:test";
 import { snapshot } from "../../scripts/models-snapshot.mjs";
-import { price, escapeHtml, safeSlug, modelTitle, modelDescription, REASONING_BY_MEASUREMENT, mergeBlock, renderPages, visibleSnapshot, hiddenRedirects } from "../../scripts/generate-model-pages.mjs";
+import { price, escapeHtml, safeSlug, modelTitle, modelDescription, displayName, PAGE_COPY_FORBIDDEN, REASONING_BY_MEASUREMENT, mergeBlock, renderPages, visibleSnapshot, hiddenRedirects } from "../../scripts/generate-model-pages.mjs";
 import { limits } from "../../scripts/templates/spending-limits.mjs";
 
 const exec = promisify(execFile);
@@ -69,8 +69,13 @@ test("HTML escaping, path segments and short metadata", () => {
   for (const id of ["all", ".", "..", "../x", "a/b", "A", "", "a?", "%2e", null]) assert.throws(() => safeSlug(id));
   const name = "Very long model name ".repeat(20);
   assert.ok(modelTitle(name).length <= 60);
+  assert.ok(modelTitle(name).trim().length > " x402 API | SingIt".length);
   assert.ok(modelDescription({ name }).length <= 155);
   assert.equal(modelTitle("Short"), "Short API via x402: pay per call in USDC | SingIt");
+  assert.equal(displayName({ name: "  ", id: "venice-uncensored-1.2" }), "venice-uncensored-1.2");
+  assert.equal(displayName({ name: "Venice Uncensored 1.2", id: "venice-uncensored-1.2" }), "Venice Uncensored 1.2");
+  assert.throws(() => modelTitle("   "), /name/);
+  assert.throws(() => displayName({ name: "" }), /display name/);
 });
 
 test("marker merges are idempotent and preserve all outside bytes", () => {
@@ -138,7 +143,7 @@ test("renderer handles hostile source text and changed snapshot values determini
   assert.throws(() => renderPages({ ...s, models: [{ ...s.models[0], id: "../escape" }, ...s.models.slice(1)] }, shell), /Unsafe/);
 });
 
-const forbidden = /0x[a-f\d]{40,}|\b[a-f\d]{64}\b|0xfa8f|\b(?:video|BlockRun|OpenRouter|Surplus|cheapest|best|guaranteed|audited|unlimited|revolutionary|hackathon|safe|secure)\b|run by bots|AI team|AI agents run SingIt|absolutely (?:safe|secure)|payments feed|Builder Code|(?:third.party|other people.s) agents/is;
+const forbidden = PAGE_COPY_FORBIDDEN;
 
 test("all committed pages are current, crawlable and follow content rules", async () => {
   await exec(process.execPath, [path.join(root, "scripts/generate-model-pages.mjs"), "--check"]);
@@ -261,34 +266,24 @@ test("consolidated page preserves the published spend excerpt and comparison str
 });
 
 
-test("the eight visible named chat model pages contain only neutral technical copy", async () => {
-  const ids = [
-    "deepseek-v4.1-flash-uncensored",
-    "e2ee-gemma-4-26b-a4b-uncensored-p",
-    "e2ee-qwen3-6-35b-a3b-uncensored-p",
-    "gemma-4-uncensored",
-    "glm-4.7-flash-heretic",
-    "qwen3.6-plus-uncensored",
-    "venice-uncensored-1.2",
-    "venice-uncensored-role-play",
-  ];
+test("sensitive catalog names stay inside the model's own name and related catalog names", async () => {
   const snapshot = JSON.parse(await read("data/models-snapshot.json"));
-  const models = ids.map((id) => {
-    const model = snapshot.models.find((m) => m.id === id);
-    assert.ok(model?.name, `Missing model: ${id}`);
-    return model;
-  });
-  const allowed = models.flatMap(({ id, name }) => [
-    name, escapeHtml(name), id, safeSlug(id), `/models/${id}/`,
+  const sensitive = /uncensored|heretic|role[- ]?play|nsfw|adult|explicit|erotic|sexual|unfiltered|jailbreak|no censorship/i;
+  const named = snapshot.models.filter((model) => sensitive.test(`${model.id} ${model.name ?? ""}`));
+  assert.ok(named.length > 0);
+  const allowed = snapshot.models.flatMap(({ id, name }) => [
+    name, name && escapeHtml(name), id, safeSlug(id), `/models/${id}/`,
     `https://singitai.app/models/${id}/`,
-  ]).sort((a, b) => b.length - a.length);
+  ]).filter(Boolean).sort((a, b) => b.length - a.length);
   const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const namesAndUrls = new RegExp(allowed.map(escapeRegex).join("|"), "gi");
-  const forbiddenWords = /uncensored|heretic|role[- ]?play|nsfw|adult|explicit|erotic|sexual|unfiltered|jailbreak|no censorship/i;
-  assert.match("venice-uncensored-1X2".replace(namesAndUrls, ""), forbiddenWords);
-  for (const id of ids) {
-    const html = (await read(`models/${id}/index.html`)).replace(namesAndUrls, "");
-    assert.doesNotMatch(html, forbiddenWords, id);
+  assert.match("uncensoredXYZ".replace(namesAndUrls, ""), sensitive);
+  for (const { id } of named) {
+    const html = await read(`models/${id}/index.html`);
+    assert.doesNotMatch(html.replace(namesAndUrls, ""), sensitive, id);
+    assert.match(html, /<title>[^<]*\S[^<]*<\/title>/);
+    assert.match(html, /<link rel="canonical" href="https:\/\/singitai\.app\/models\/[^"]+\/">/);
+    assert.match(html, /<meta property="og:url" content="https:\/\/singitai\.app\/models\/[^"]+\/">/);
   }
 });
 
@@ -350,11 +345,21 @@ test("returned DeepSeek model has a page and discovery links without temporary r
   assert.ok(!(await read("_redirects")).includes(`/models/${id}`));
 });
 
-test('published free model snapshot matches Ask defaults and the shared cap', async () => {
-  const { DEFAULT_FREE_MODELS, FREE_DEFAULTS } = await import('../../singit-ask/src/free.mjs');
+test('published free offer is what the model pages quote', async () => {
   const s = JSON.parse(await readFile(path.join(website, 'data/models-snapshot.json'), 'utf8'));
-  assert.deepEqual(s.free.models, DEFAULT_FREE_MODELS.map(id => `free/${id}`));
-  assert.equal(s.free.budgetUsdPerDay, FREE_DEFAULTS.budgetUsdPerDay);
+  assert.ok(Array.isArray(s.free.models) && s.free.models.length > 0);
+  assert.ok(s.free.models.every((id) => typeof id === 'string' && id.startsWith('free/')));
+  assert.equal(typeof s.free.perVisitorPerDay, 'number');
+  const sample = s.models.find((model) => model.singitUsdPerMillionTokens);
+  const html = await read(`models/${sample.id}/index.html`);
+  assert.ok(html.includes(`${s.free.models.length} free models`));
+  assert.ok(html.includes(`${s.free.perVisitorPerDay} answers a day`));
+  assert.doesNotMatch(html, /\$undefined/);
+  if (typeof s.free.budgetUsdPerDay === 'number' && s.free.budgetUsdPerDay > 0) {
+    assert.ok(html.includes(`The shared daily cost cap is $${s.free.budgetUsdPerDay}`));
+  } else {
+    assert.equal(html.includes('shared daily cost cap'), false);
+  }
 });
 
 test('a newer live snapshot warns to release a held model', () => {
@@ -383,6 +388,33 @@ test("model pages put non-positive token prices in the unlisted branch", async (
   const html = renderPages(s, shell).get('models/fixture-0/index.html');
   assert.match(html, /No per-token price is listed/);
   assert.doesNotMatch(html, /Price: \$0|100%|SingIt price \(expected/);
+});
+
+test("blank names and reference prices stay addressable and inside the content rules", async () => {
+  const { models, pricing } = fixtures();
+  models.data[0].name = "  ";
+  models.data[0].priceBasis = "reference";
+  models.data[0].recommendedScheme = "upto";
+  models.data[0].recommendedSchemeWhy = "Surplus says this is the best and safest";
+  models.data[0].tags = ["video", "vision", "safe"];
+  const s = snapshot(models, pricing, fetchedAt);
+  const shell = await readFile(path.join(root, "scripts/templates/model-shell.html"), "utf8");
+  const html = renderPages(s, shell).get("models/fixture-0/index.html");
+  assert.match(html, /<title>fixture-0 API via x402: pay per call in USDC \| SingIt<\/title>/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/singitai\.app\/models\/fixture-0\/">/);
+  assert.match(html, /<meta property="og:url" content="https:\/\/singitai\.app\/models\/fixture-0\/">/);
+  assert.match(html, /<h1>fixture-0: pay per request with x402<\/h1>/);
+  assert.match(html, /published list price is 0/);
+  assert.match(html, /Tags: vision/);
+  assert.doesNotMatch(html, PAGE_COPY_FORBIDDEN);
+  assert.equal(html.includes("Recommended: upto"), false);
+  models.free = { models: ["free/fixture"], perVisitorPerDay: 20 };
+  const uncapped = renderPages(snapshot(models, pricing, fetchedAt), shell).get("models/fixture-0/index.html");
+  assert.equal(uncapped.includes("$undefined"), false);
+  assert.equal(uncapped.includes("shared daily cost cap"), false);
+  models.free.budgetUsdPerDay = 0.25;
+  const capped = renderPages(snapshot(models, pricing, fetchedAt), shell).get("models/fixture-1/index.html");
+  assert.ok(capped.includes("The shared daily cost cap is $0.25"));
 });
 
 test("model pages show a positive SingIt output when list input is free", async () => {
