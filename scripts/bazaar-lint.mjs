@@ -4,6 +4,10 @@
 // network, no upstream, no payment, no secrets), asks every discoverable paid route for its 402 challenge three
 // ways (GET, HEAD, empty POST: the three probes a directory crawler uses) and checks what comes back.
 //
+// PAYMENT-REQUIRED carries slim extension schemas so the header stays under 8KiB; full schemas live in the
+// 402 JSON body. lintChallenge still expects those full extensions — lintApp merges the body before calling it
+// and separately checks that the encoded header stays small and still has bazaar.info.input/output.
+//
 //   node scripts/bazaar-lint.mjs            # prints findings; exit 1 on any FAIL
 //   node scripts/bazaar-lint.mjs --strict   # WARN also fails
 //   node scripts/bazaar-lint.mjs --json     # machine-readable result
@@ -14,6 +18,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
+import { MAX_PAYMENT_REQUIRED_HEADER_BYTES } from "../singit-ask/src/payment-required-header.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ASK = path.join(HERE, "..", "singit-ask", "src");
@@ -53,7 +58,42 @@ const strings = (value, out = []) => {
   return out;
 };
 
+// Detailed validation schemas travel in the 402 JSON body so PAYMENT-REQUIRED stays under 8KiB.
+// lintChallenge still expects full extensions (info + original schemas). Merge the body first.
+export function challengeWithBodyExtensions(headerChallenge, body) {
+  return body?.extensions ? { ...headerChallenge, extensions: body.extensions } : headerChallenge;
+}
+
+// What a directory reads from the encoded header itself: the 8KiB cap and bazaar info, not the slim schemas.
+export function lintPaymentRequiredHeader(header, challenge, env) {
+  const findings = [];
+  const bytes = Buffer.byteLength(String(header ?? ""), "utf8");
+  if (bytes > MAX_PAYMENT_REQUIRED_HEADER_BYTES) {
+    findings.push({
+      level: "FAIL",
+      check: "header-size",
+      message: `PAYMENT-REQUIRED is ${bytes} bytes, the limit is ${MAX_PAYMENT_REQUIRED_HEADER_BYTES}`,
+    });
+  }
+  const input = challenge?.extensions?.bazaar?.info?.input;
+  if (!input || input.type !== "http") {
+    findings.push({ level: "FAIL", check: "bazaar", message: "PAYMENT-REQUIRED header is missing bazaar.info.input" });
+  }
+  if (!NO_JSON_OUTPUT.has(env.route)) {
+    const example = challenge?.extensions?.bazaar?.info?.output?.example;
+    if (!example || typeof example !== "object") {
+      findings.push({
+        level: "FAIL",
+        check: "bazaar.outputExample",
+        message: "PAYMENT-REQUIRED header is missing bazaar.info.output.example",
+      });
+    }
+  }
+  return findings;
+}
+
 // Checks one decoded challenge. `env` = { route, networks: [..], payTo: { [network]: address } }.
+// When the live header is slimmed, pass challengeWithBodyExtensions(header, body) so schema checks see the originals.
 // Returns [{ level: "FAIL" | "WARN", check, message }].
 export function lintChallenge(challenge, env) {
   const findings = [];
@@ -191,13 +231,20 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
       const findings = [];
       const probes = {};
       const challenges = {};
+      const encoded = {};
+      const bodies = {};
       for (const method of ["GET", "HEAD", "POST"]) {
         const response = await request(base + route, { method, headers, redirect: "manual" });
         probes[method] = response.status;
         if (response.status !== 402) { findings.push({ level: "FAIL", check: "probe", message: `${method} answered ${response.status}, expected 402` }); continue; }
         const header = response.headers.get("payment-required");
         if (!header) { findings.push({ level: "FAIL", check: "probe", message: `${method}: no PAYMENT-REQUIRED header` }); continue; }
-        try { challenges[method] = decode(header); } catch { findings.push({ level: "FAIL", check: "probe", message: `${method}: PAYMENT-REQUIRED is not base64 JSON` }); }
+        encoded[method] = header;
+        try { challenges[method] = decode(header); } catch { findings.push({ level: "FAIL", check: "probe", message: `${method}: PAYMENT-REQUIRED is not base64 JSON` }); continue; }
+        if (method !== "HEAD") {
+          try { bodies[method] = await response.json(); }
+          catch { findings.push({ level: "FAIL", check: "probe", message: `${method}: 402 body is not JSON` }); }
+        }
       }
       const reference = challenges.POST ?? challenges.GET ?? challenges.HEAD;
       if (reference) {
@@ -206,8 +253,12 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
         }
         const baseOnly = route === "/v1/audio/sound-effects" || route === "/v1/audio/generations";
         // Music/SFX refuse Solana: a recent blockhash (~60–90 s) can expire before a ≤180 s music job settles.
-        findings.push(...lintChallenge(reference, { route, networks: baseOnly ? [BASE] : [BASE, SOLANA],
-          payTo: baseOnly ? { [BASE]: config.payToBase } : { [BASE]: config.payToBase, [SOLANA]: config.payToSolana } }));
+        const env = { route, networks: baseOnly ? [BASE] : [BASE, SOLANA],
+          payTo: baseOnly ? { [BASE]: config.payToBase } : { [BASE]: config.payToBase, [SOLANA]: config.payToSolana } };
+        findings.push(...lintPaymentRequiredHeader(encoded.POST ?? encoded.GET ?? encoded.HEAD, reference, env));
+        const body = bodies.POST ?? bodies.GET;
+        if (!body?.extensions) findings.push({ level: "FAIL", check: "bazaar", message: "402 JSON body is missing full extensions" });
+        findings.push(...lintChallenge(challengeWithBodyExtensions(reference, body), env));
       }
       results.push({ route, probes, findings });
     }

@@ -216,15 +216,18 @@ test("pinned route schemas exclude generic-only fields while generic chat retain
   const doc = await (await fetch(`${url}/openapi.json`)).json();
   for (const route of modelRoutePaths()) {
     const schema = doc.paths[route].post.requestBody.content["application/json"].schema;
-    const challenge = decode((await fetch(url + route)).headers.get("payment-required"));
+    const response = await fetch(url + route);
+    const challenge = await response.json();
     for (const fields of [schema.properties, challenge.extensions.bazaar.schema.properties.input.properties.body.properties]) {
       assert.ok(!Object.hasOwn(fields, "fallback_models"), route);
       assert.ok(!Object.hasOwn(fields, "min_tier"), route);
     }
   }
   assert.ok(doc.paths[ROUTE].post.requestBody.content["application/json"].schema.properties.fallback_models);
-  const generic = decode((await fetch(url + ROUTE)).headers.get("payment-required"));
-  assert.ok(generic.extensions.bazaar.schema.properties.input.properties.body.properties.fallback_models);
+  const genericResponse = await fetch(url + ROUTE);
+  const generic = decode(genericResponse.headers.get("payment-required"));
+  const genericBody = await genericResponse.json();
+  assert.ok(genericBody.extensions.bazaar.schema.properties.input.properties.body.properties.fallback_models);
   assert.ok(generic.resource.description.length <= 500);
   // D2 aggregate copy uses the 500-character policy; D4 alias copy has its own 160-character tests.
   assert.equal(generic.resource.description, routeCopy(ROUTE).description);
