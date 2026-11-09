@@ -143,6 +143,10 @@ export class HealthStats {
   isExternal(payer) {
     return this.own.size > 0 && typeof payer === "string" && payer.trim() !== "" && !this.own.has(normalize(payer));
   }
+  // Only a known payer on a non-empty own-payer list is own; unknown payers are not.
+  isOwn(payer) {
+    return this.own.size > 0 && typeof payer === "string" && payer.trim() !== "" && this.own.has(normalize(payer));
+  }
   // Attempt and answer go to the hour the paid handler started, so a window never has more answers than attempts.
   paidCounts(network, started) {
     const n = networkName(network);

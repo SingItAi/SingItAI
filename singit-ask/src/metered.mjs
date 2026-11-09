@@ -45,6 +45,16 @@ export function canRetryPaidFallback(error) {
   return code === "no_healthy_sellers";
 }
 
+// Test-only (R2): with SINGIT_ASK_TEST_FORCE_FAIL_A=1, a paid request from an own payer that sends
+// X-SingIt-Test-Force-Fail-A: 1 has its first model refused as unavailable, so the paid fallback runs.
+// External and unknown payers are never forced, whatever the env or header.
+export function forceFailA(req, env = process.env) {
+  return env.SINGIT_ASK_TEST_FORCE_FAIL_A === "1" && req?.singitOwnPayer === true
+    && req.get?.("X-SingIt-Test-Force-Fail-A") === "1";
+}
+const forcedFailure = () => Object.assign(new Error("model answered HTTP 503 (upstream_unavailable)"),
+  { name: "UpstreamError", status: 503, code: "upstream_unavailable", singitForced: true });
+
 // The ceiling is decided per question, from the model it asks for, so the offer's price is a function of the
 // request. `quotes` remembers what each parsed body was offered: the middleware asks again when the payment
 // arrives and must get the same answer.
@@ -291,11 +301,14 @@ export function addPaymentRoute(app, routes, server,
       } catch {}
     };
     server.onAfterSettle(record(true)); server.onSettleFailure(record(false));
-    // The verified payer is kept on the request only as an external/not flag, never as an address.
+    // The verified payer is kept on the request only as external/own flags, never as an address.
     server.onAfterVerify(ctx => {
       try {
         const req = ctx.transportContext?.request?.adapter?.req;
-        if (req && ctx.result?.isValid !== false) req.singitExternalPayer = app.locals?.healthStats?.isExternal(ctx.result?.payer) === true;
+        if (req && ctx.result?.isValid !== false) {
+          req.singitExternalPayer = app.locals?.healthStats?.isExternal(ctx.result?.payer) === true;
+          req.singitOwnPayer = app.locals?.healthStats?.isOwn(ctx.result?.payer) === true;
+        }
       } catch {}
     });
     // Express 2.28 settles after the handler only below 400; such a settlement without a 2xx, or without the paid
@@ -470,8 +483,11 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
           ...(win ? { windowObserved: true } : {}),
           timeoutMs: Math.max(1, deadline - Date.now()), deadline });
       let answer;
+      // Only the first model is forced; the alternate below is asked for real.
+      const forced = forceFailA(req);
+      if (forced) log(`singit-ask: test force-fail model=${req.askInput.model}`);
       try {
-        answer = await inWindow(() => attempt(req.askInput));
+        answer = await inWindow(() => forced ? Promise.reject(forcedFailure()) : attempt(req.askInput));
         observeWindow(req.askInput.model, { ok: true, retried: answer.retried });
       }
       catch (error) {
@@ -481,7 +497,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
             observeWindow(req.askInput.model, { ok: false, code: error.code, status: 503 });
           throw error;
         }
-        observeWindow(req.askInput.model, { ok: false, code: error.code, status: error.status });
+        if (!error.singitForced) observeWindow(req.askInput.model, { ok: false, code: error.code, status: error.status });
         const bucket = exact ? "exact" : "upto";
         // Within the amount already signed, for this scheme and network.
         const fits = candidate => fitsSignedCatalogCeiling(
@@ -501,7 +517,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
           log(`singit-ask: discount retry model=${req.askInput.model} minDiscount ${req.askInput.minDiscount} -> ${error.bestDiscountPct}`);
           req.askInput = discountRetry;
         } else {
-          markUnservable(catalogue, req.askInput.model, error, log);
+          if (!error.singitForced) markUnservable(catalogue, req.askInput.model, error, log);
           log(`singit-ask: ${auto ? "auto" : "paid"} fallback from=${req.askInput.model} to=${alternate.model} code=${error.code} status=${error.status}`);
           // One retry, sequential: the alternates are dropped, so a second failure is final.
           req.askInput = auto ? alternate
@@ -547,7 +563,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       if (req.askInput?.request && error.status === 400) return res.status(400).json({ error: {
         type: "invalid_request_error", code: "upstream_rejected_request",
         message: "The seller rejected this request (tools, images or length). You were not charged." } });
-      markUnservable(catalogue, req.askInput?.model, error, log);
+      if (!error.singitForced) markUnservable(catalogue, req.askInput?.model, error, log);
       // Not settled (status >= 400): on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
       // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
       log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
