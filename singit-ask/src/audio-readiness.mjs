@@ -28,19 +28,28 @@ export function createAudioReadiness(config, { catalogue, fetchImpl = fetch, now
   const refresh = () => {
     if (loading) return loading;
     loading = (async () => {
+      let reason = 'unknown';
       try {
-        if (!config.surplusKey || !config.surplusUrl) throw new Error('missing credentials');
+        if (!config.surplusKey || !config.surplusUrl) { reason = 'missing_credentials'; throw new Error(reason); }
         const response = await fetchImpl(`${config.surplusUrl}/v1/payments/balance`, {
           method: 'GET', headers: { Authorization: `Bearer ${config.surplusKey}` }, signal: AbortSignal.timeout(10_000),
         });
-        if (!response.ok) throw new Error('balance unavailable');
+        if (!response.ok) { reason = `http_${Number(response.status) || 'unknown'}`; throw new Error(reason); }
         const value = (await response.json())?.credit_balance_usdc;
-        if (typeof value !== 'string' || !/^\d+$/.test(value)) throw new Error('invalid balance');
+        if (typeof value !== 'string' || !/^\d+$/.test(value)) { reason = 'invalid_balance'; throw new Error(reason); }
         snapshot = { balance: BigInt(value), at: now() };
         log('audio credit snapshot ok');
-      } catch {
-        snapshot = null;
-        log('audio credit snapshot fail');
+      } catch (err) {
+        // Fixed class names only: never the URL, key, body or stack.
+        if (reason === 'unknown') {
+          if (err?.name === 'TimeoutError' || err?.name === 'AbortError') reason = 'timeout';
+          else if (err instanceof TypeError) reason = 'network';
+        }
+        // Upstream blips keep a still-fresh snapshot; ready() still enforces the TTL.
+        const transient = reason === 'timeout' || reason === 'network' || /^http_5\d\d$/.test(reason);
+        const fresh = snapshot !== null && now() - snapshot.at >= 0 && now() - snapshot.at <= AUDIO_CREDIT_TTL_MS;
+        if (!(transient && fresh)) snapshot = null;
+        log(`audio credit snapshot fail reason=${reason}`);
       } finally { loading = null; }
     })();
     return loading;
