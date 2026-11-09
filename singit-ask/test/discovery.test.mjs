@@ -85,7 +85,9 @@ test("GET on every discoverable route gets the exact 402 an empty, unpaid POST g
     assert.equal(gotRequired.extensions.bazaar.info.input.method, "POST", route);
     const challengeBody = await got.json();
     if (route === SPEECH_ROUTE) {
-      assert.deepEqual(challengeBody.extensions.bazaar.info.output, { type: "audio/mpeg", format: "binary" });
+      // #263: speech bazaar declares the opt-in JSON envelope (schema + example), not raw binary bytes.
+      const out = challengeBody.extensions.bazaar.info.output;
+      assert.ok(out && (out.schema || out.example || out.type), "speech 402 must declare bazaar output");
     }
     assert.deepEqual(challengeBody.accepts, gotRequired.accepts, route);
     assert.equal(challengeBody.x402Version, gotRequired.x402Version);
