@@ -28,13 +28,13 @@ test('integration metadata, structured data and sitemap', () => {
 test('every exact snippet has its own verification label', () => {
   const files = readdirSync(path.join(site,'data/integration-snippets')).sort();
   const blocks = [...page.matchAll(/<article data-snippet="([^"]+)">([\s\S]*?)<\/article>/g)];
-  assert.equal(blocks.length,10);
+  assert.equal(blocks.length,12);
   assert.deepEqual(blocks.map(m=>m[1]).sort(), files);
   assert.equal([...page.matchAll(/<code(?:\s[^>]*)?>/g)].length,files.length);
   for (const [,file,body] of blocks) {
     assert.match(body,/<strong>(?:Verified|Not tested)<\/strong>/);
-    assert.match(body,/31 October 2026/);
-    assert.match(body,/Result: (?:pong|16 MCP tools)/);
+    assert.match(body,/(?:31 October 2026|9 November 2026)/);
+    assert.match(body,/Result: (?:pong|16 MCP tools|not run)/);
     const code = unescape(body.match(/<pre><code>([\s\S]*?)<\/code><\/pre>/)[1]);
     assert.equal(code,readFileSync(path.join(site,'data/integration-snippets',file),'utf8'),file);
     for (const match of code.matchAll(/(?:apiKey|api_key)\s*[:=]\s*["']([^"']+)["']/g)) assert.equal(match[1],'unused');
@@ -44,7 +44,7 @@ test('every exact snippet has its own verification label', () => {
 test('links resolve and vendors use https', () => {
   const source = readFileSync(path.join(site,'../docs/integrations-hub-sources.md'),'utf8');
   const vendors = source.split('## Vendor URLs')[1].split('## Claim sources')[0].match(/https:\/\/[^\s|]+/g);
-  assert.equal(vendors.length,13);
+  assert.equal(vendors.length,14);
   for (const url of vendors) assert.ok(page.includes(`href="${url}"`));
   for (const [,raw] of page.matchAll(/href="([^"]+)"/g)) {
     const url = unescape(raw);
@@ -75,10 +75,10 @@ test('honest status and forbidden text', () => {
   }
   assert.match(page,/That exact variant was not run/);
   assert.match(page,/Not tested:<\/strong> paid x402 payment/);
-  assert.match(page,/Not published to npm; install from a Git checkout/);
+  assert.match(page,/Published on npm as/);
 });
 
  test("hub distinguishes prepared 19-tool catalogue from dated live checks", () => {
-  assert.match(page, /Repository version: 19 MCP tools, including keyless chat_free, paid chat and get_allowance/);
-  assert.match(page, /served after the next gateway restart/);
+  assert.match(page, /Live server on 9 November 2026 \(Europe\/Prague\): version 0.1.5, 19 MCP tools, including keyless chat_free, paid chat and get_allowance/);
+  assert.match(page, /The dated checks above observed the previous 16-tool server/);
 });
