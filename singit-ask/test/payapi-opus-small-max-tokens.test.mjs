@@ -140,7 +140,7 @@ test("all examples request one sentence and OpenAPI explains the cap without len
   const operation = doc.paths[routePath(PRICEY.id)].post;
   assert.ok(operation.description.length <= 160);
   const maxTokens = operation.requestBody.content["application/json"].schema.properties.max_tokens;
-  assert.match(maxTokens.description, /price cap you sign grows with it/);
+  assert.match(maxTokens.description, /ceiling grows with it/);
   assert.match(maxTokens.description, /larger value counts as 1200/);
   assert.equal(maxTokens.maximum, 1200);
 });

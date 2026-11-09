@@ -548,3 +548,14 @@ no Solana enablement, paid call, deployment or environment edit.
 Verification: focused audio tests 14/14; full singit-ask 755/756 (known solana-direct
 @solana/kit env miss on this worktree, same as main here). Production remains off
 pending operator OK, merge/deploy and SINGIT_ASK_AUDIO_SOLD=1.
+### November 9: model discovery prices and schema links
+
+Post-competition SingIt API work on `feat/discovery-price-schemas`, recorded by
+commit subject `feat(singit-ask): richer model cards with per-token price and schema links`.
+Cards and list entries share catalogue token prices, known expected prices and
+savings, and route input/output schema links or definitions. OpenAPI documents
+reference-request ceilings; the well-known instructions point to free model cards.
+Offline model-card, listing-price, discovery, free, catalog, OpenAPI lint/errors
+and model-route checks passed: 78/78. No paid calls, Solana execution changes,
+deployment or CDP refresh; stale directory descriptions require an owner-run paid
+settle refresh after deploy.

@@ -80,9 +80,9 @@ Registry still has 0.1.4 until the owner approves publishing 0.1.5; the live ser
 
 Where the "limits" fact is published, and what each place can say:
 
-- **Route descriptions stay as they are.** Every listed route keeps its description within 160 characters, capability
-  first (`singit-ask/test/app.test.mjs`, `discovery.test.mjs`, `free.test.mjs`); today they are 129 to 153 characters, so a
-  sentence about ceilings does not fit. The ceiling a buyer signs is already named in the text ("you sign a price cap").
+- **Route descriptions are capability-first and at most 160 characters.** `listing-copy.mjs` bans
+  ceiling, fee and percentage wording. Aliases use "owner-set USDC limits"; billing and limits
+  details live in OpenAPI, `/.well-known/x402` and `/llms.txt`, not in listing descriptions.
 - **`/llms.txt` on ask.singitai.app** has a "Spending limits" section: the 402 quotes the most you can be charged before
   you sign; `@singitai/sdk` and `singit` take required `maxPerCallUsd` and `maxPerDayUsd` (client-side, checked in the
   buyer's process before signing); through the MCP server or a SingIt API key the owner sets the key's limits and
@@ -92,3 +92,7 @@ Where the "limits" fact is published, and what each place can say:
 - **agentic.market** reads CDP's catalog: its card for ask.singitai.app shows `description: ""`, `category: ""` and
   `enriched: false`, so the text cannot be set from this repository. It is a provider-side step; proposed text
   (258 characters): "Pay-per-answer LLM chat (OpenAI, Anthropic and Responses formats), images, speech and Exa web search over x402 in USDC on Base or Solana, with no API key. The max charge is quoted before signing; the SingIt SDK adds client-side ceilings per call and per day.". Category: Inference.
+
+
+Stale CDP rows with "you sign a price cap" or the old long Grok text need a paid
+settle refresh after deploy (Kostya OK). No paid refresh is performed by this change.
