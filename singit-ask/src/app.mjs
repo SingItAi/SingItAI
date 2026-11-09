@@ -1313,7 +1313,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`,
         price: paths[path].post["x-payment-info"].price, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
         ...(!audioRoutes().includes(path) && path !== VIDEO_ROUTE ? routeCopy(path) : {}), ...(EXTRA_PAID.includes(path) ? { outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT } : {}) })),
-      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. Free single-model price and schemas: GET ${origin(req)}/v1/models/{id}. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
+      documentation: {
+        mcp: "https://singitai.app/docs/mcp-tools/",
+        spendingLimits: "https://singitai.app/agent-spending-limits/",
+        llmsTxt: `${origin(req)}/llms.txt`,
+      },
+      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. Free single-model price and schemas: GET ${origin(req)}/v1/models/{id}. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + " Owner-set server-side spend limits apply to MCP/API keys; check get_allowance or get_limits before spending and get_receipts for receipts. On Base, the owner can use Emergency stop / Revoke on their agent allowance. Charged only when answered; direct wallet payments here require your own signature and are not covered by those agent limits."
+        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
   // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
@@ -1371,6 +1377,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + "(max_per_call_usd and max_per_day_usd in Python) are required, and they are checked in your own process "
         + "before anything is signed. These are client-side ceilings.",
       `- Through the MCP server (${MCP_URL}) or a SingIt API key, the owner sets the key's limits at https://app.singitai.app/app/; SingIt's server enforces them.`, "",
+      "- MCP: check get_allowance or get_limits before spending and get_receipts for receipts. On Base, Emergency stop / Revoke controls the owner's agent allowance; direct wallet payments here are not covered by those agent limits.", "",
       "## Model selection", "", AUTO_GUIDE, "", FALLBACK_GUIDE, "",
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `
