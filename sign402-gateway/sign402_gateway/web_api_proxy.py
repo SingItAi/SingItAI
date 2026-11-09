@@ -442,9 +442,14 @@ class Proxy:
         else:
             likely, most = estimate(model_id, request, HOLD_OUTPUT_TOKENS), estimate(model_id, request)
         if likely is not None and likely > per:
+            try:
+                remaining = {"remainingTodayUsd": self.keys.remaining_today_atomic(row) / 1e6}
+            except Exception:  # noqa: BLE001 - the refusal must go out even if today's spend is unreadable
+                remaining = {}
             raise error(400, f"This request may cost up to {likely / 1e6:.4f} USDC, above this key's limit of "
                         f"{per / 1e6:g} USDC per request. Ask for less, or make a key with a higher limit.",
-                        code="over_request_limit")
+                        code="over_request_limit", details={"limitHit": "per_request", "perRequestCapUsd": per / 1e6,
+                                                            "estimatedCostUsd": likely / 1e6, **remaining})
         hold = likely if likely is not None else per
         ceiling = min(per, most) if most is not None else per  # the most this request is ever charged
         self.check_stop(account, error)  # before anything is reserved, held or topped up

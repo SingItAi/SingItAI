@@ -615,6 +615,10 @@ class ProxyTests(ProxyFixture):
             self.send("/chat/completions", {"model": "claude-opus-5.5", "max_tokens": 10,
                                             "messages": [{"role": "user", "content": "x" * 500_000}]})
         self.assertEqual(caught.exception.code, "over_request_limit")
+        error = caught.exception.body()["error"]
+        self.assertEqual((error["limitHit"], error["perRequestCapUsd"]), ("per_request", 1.0))
+        self.assertGreater(error["estimatedCostUsd"], error["perRequestCapUsd"])
+        self.assertIn("remainingTodayUsd", error)
         self.assertEqual((self.topups, self.surplus.sent), ([], []))
 
     def test_an_answer_dearer_than_its_hold_is_charged_the_hold(self):

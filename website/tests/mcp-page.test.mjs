@@ -17,8 +17,8 @@ test('MCP snapshot has exactly the served and Start here tool names', () => {
   const start = read('website/llms.txt').split('## Start here: free, then a key, then MCP\n')[1].split(/\n## /)[0];
   const listed = [...start.matchAll(/^\s+- [^:]+: (.+)$/gm)].filter(([line]) => !/Claude Code|Install guide/.test(line)).flatMap(([, names]) => names.replace(/\.$/, '').split(/[,;]\s*|\s+/)).filter(word => /^(?:chat|[a-z]+(_[a-z0-9]+)+)$/.test(word));
   const names = data.result.tools.map(t => t.name);
-  assert.equal(names.length, 18);
-  assert.equal(new Set(names).size, 18);
+  assert.equal(names.length, 19);
+  assert.equal(new Set(names).size, 19);
   assert.deepEqual([...names].sort(), [...served].sort());
   assert.deepEqual([...names].sort(), [...new Set(listed)].sort());
   assert.ok(Number.isFinite(Date.parse(data.fetchedAt)), 'local snapshot generation timestamp');
@@ -31,7 +31,7 @@ test('MCP snapshot has exactly the served and Start here tool names', () => {
 test('MCP generator check and schema-derived table', async () => {
   await generate(true);
   assert.ok(html.includes(renderTools(data)));
-  assert.equal((html.match(/<th scope="row">/g) ?? []).length, 18);
+  assert.equal((html.match(/<th scope="row">/g) ?? []).length, 19);
   for (const t of data.result.tools) {
     assert.ok(html.includes(`<code>${t.name}</code>`));
     for (const [name, schema] of Object.entries(t.inputSchema.properties ?? {})) {
@@ -48,7 +48,7 @@ test('MCP generator check and schema-derived table', async () => {
     const name = text.match(/<code>(\w+)<\/code>/)[1];
     if (['web_search', 'read_page'].includes(name)) assert.match(text, /search<\/td><td>USDC on Base or Solana/);
     else if (name === 'chat') assert.match(text, /No extra scope<\/td><td>USDC on Base or Solana/);
-    else if (!['chat_free', 'get_price', 'list_price_symbols', 'list_models', 'get_balance', 'get_limits', 'get_receipts'].includes(name)) assert.match(text, /tools<\/td><td>USDC on Base only for now/);
+    else if (!['chat_free', 'get_price', 'list_price_symbols', 'list_models', 'get_balance', 'get_limits', 'get_allowance', 'get_receipts'].includes(name)) assert.match(text, /tools<\/td><td>USDC on Base only for now/);
   }
 });
 test('MCP metadata, sitemap and public content constraints', () => {
@@ -94,6 +94,6 @@ test('Every snippet has verification status and required client configuration', 
 });
 
 test('MCP initialize expectation is independent of the deployed version', () => {
-  assert.ok(html.includes('Expected: initialize returns serverInfo name singit and title SingIt x402; tools/list returns 18 tools.'));
+  assert.ok(html.includes('Expected: initialize returns serverInfo name singit and title SingIt x402; tools/list returns 19 tools.'));
   assert.doesNotMatch(html, /Expected: initialize returns serverInfo\.version/);
 });

@@ -59,17 +59,26 @@ class ApiError(Exception):
     """An error in OpenAI's shape, so SDKs show its message as it is."""
 
     def __init__(self, status: int, message: str, *, type_: str = "invalid_request_error", code: str | None = None,
-                 retry_after: int | None = None):
+                 retry_after: int | None = None, details: Mapping[str, Any] | None = None):
         super().__init__(message)
         self.status, self.message, self.type, self.code = status, message, type_, code
         self.retry_after = retry_after  # seconds, sent as Retry-After
+        # Machine-readable extras next to message/type/code (OpenAI's error object allows them), e.g. which of the
+        # key's caps refused the request: {"limitHit": "daily" | "per_request", "remainingTodayUsd", ...}.
+        self.details = dict(details or {})
         self.anthropic = False  # set for /v1/messages: Anthropic's SDK and Claude Code read their own shape
 
     def body(self) -> dict[str, Any]:
         if self.anthropic:
             return {"type": "error", "error": {"type": ANTHROPIC_TYPES.get(self.status, "api_error"),
                                                "message": self.message}}
-        return {"error": {"message": self.message, "type": self.type, "code": self.code}}
+        return {"error": {"message": self.message, "type": self.type, "code": self.code, **self.details}}
+
+
+def cap_details(limit_hit: str, row: Any, *, remaining_atomic: int) -> dict[str, Any]:
+    """Which of a key's caps refused a request, and what is left: the structured part of a cap refusal."""
+    return {"limitHit": limit_hit, "remainingTodayUsd": max(0, remaining_atomic) / 1e6,
+            "dailyCapUsd": int(row["daily_cap_atomic"]) / 1e6, "perRequestCapUsd": int(row["per_request_cap_atomic"]) / 1e6}
 
 
 ANTHROPIC_TYPES = {400: "invalid_request_error", 401: "authentication_error", 402: "billing_error",
@@ -135,6 +144,11 @@ class ApiKeys:
 
     def _day(self) -> int:
         return int(self.now()) // 86400
+
+    def remaining_today_atomic(self, row) -> int:
+        """What the key's daily cap still allows today, counting requests still running. Read-only."""
+        spent, _ = self.store.key_spent(row["key_id"], self._day())
+        return max(0, int(row["daily_cap_atomic"]) - spent - int(self._reserved.get(row["key_id"], 0)))
 
     # -- the web app (session + CSRF, behind WebApi.handle) --
 
@@ -414,7 +428,8 @@ class ApiKeys:
             if spent + self._reserved[key_id] + amount > daily:
                 raise ApiError(429, f"This key's daily limit of {daily / 1e6:g} USDC is used up, counting requests "
                                "still running. It starts again at 00:00 UTC, or raise it with a new key.",
-                               type_="insufficient_quota", code="insufficient_quota")
+                               type_="insufficient_quota", code="insufficient_quota",
+                               details=cap_details("daily", row, remaining_atomic=daily - spent - self._reserved[key_id]))
             self._reserved[key_id] += amount
         settled = []
 
@@ -493,7 +508,8 @@ class ApiKeys:
             if spent + self._reserved[key_id] + per > daily:
                 raise ApiError(429, f"This key's daily limit of {daily / 1e6:g} USDC is used up, counting answers "
                                "still running. It starts again at 00:00 UTC, or raise it with a new key.",
-                               type_="insufficient_quota", code="insufficient_quota")
+                               type_="insufficient_quota", code="insufficient_quota",
+                               details=cap_details("daily", row, remaining_atomic=daily - spent - self._reserved[key_id]))
             self._reserved[key_id] += per
         try:
             tokens = body.get("max_tokens", body.get("max_completion_tokens"))

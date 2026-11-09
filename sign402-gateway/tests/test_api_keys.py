@@ -170,6 +170,10 @@ class PublicApiTests(Fixture):
         with self.assertRaises(ApiError) as caught:
             self.ask(made["key"])
         self.assertEqual((caught.exception.status, caught.exception.code), (429, "insufficient_quota"))
+        error = caught.exception.body()["error"]
+        self.assertIn("daily limit of 0.5 USDC is used up", error["message"])
+        self.assertEqual((error["limitHit"], error["remainingTodayUsd"], error["dailyCapUsd"], error["perRequestCapUsd"]),
+                         ("daily", 0.24, 0.5, 0.25))
         self.assertEqual(self.shop.calls, [])
         self.clock[0] += 86400  # a new UTC day
         self.assertEqual(self.ask(made["key"])[0], 200)

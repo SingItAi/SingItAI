@@ -62,14 +62,15 @@ Verification: configuration from the repository; not run live for this guide.
 | MCP tools | Access | Scope / network |
 | --- | --- | --- |
 | get_price, list_price_symbols, list_models, chat_free | Free without a key | No paid scope |
-| get_balance, get_limits, get_receipts | Free with a key, read-only | Account data |
+| get_balance, get_limits, get_allowance, get_receipts | Free with a key, read-only | Account data |
 | chat | Paid from the key’s limits, Base or Solana | No extra scope |
 | web_search, read_page | Paid per call within key caps | search; Base or Solana |
 | get_x_profile, get_crypto_news, get_hyperliquid_market, get_funding_rates, resolve_ens, get_token_price | Paid per call within key caps | tools; Base only for now |
 | get_weather, get_singit_risk_check | Paid demo calls within key caps | tools; Base only for now |
 
 New keys include search and tools scopes. Keys made before data tools existed
-need a new key. Call get_limits before spending. Report spend with get_limits
+need a new key. Call get_allowance (or get_limits) before spending: it shows what is
+left and which cap would refuse the call. Report spend with get_limits
 and get_receipts. Without an allowance, paid search/data calls say
 “Set up your allowance first.” Wrong or revoked keys return HTTP 401.
 MCP allows 60 requests per minute per key.

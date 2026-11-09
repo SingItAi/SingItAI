@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-11-02T17:12:16Z",
+  "fetchedAt": "2026-11-09T17:25:43Z",
   "source": "generated from the repository's web_mcp.tools(); the live server serves these after the next gateway restart",
   "result": {
     "tools": [
@@ -146,7 +146,7 @@
       },
       {
         "name": "chat",
-        "description": "Paid per call from your key's SingIt balance and limits in USDC. The server enforces per-request and daily caps; a call over a cap is refused before anything is charged. Use list_models for model ids and prices, get_limits for what remains, and get_receipts for the charge. Pass max_tokens high enough for reasoning models: thinking uses the same budget.",
+        "description": "Paid per call from your key's SingIt balance and limits in USDC. The server enforces per-request and daily caps; a call over a cap is refused before anything is charged. Use list_models for model ids and prices, get_allowance (or get_limits) for what remains and which cap would refuse a call, and get_receipts for the charge. Pass max_tokens high enough for reasoning models: thinking uses the same budget.",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -224,7 +224,7 @@
       },
       {
         "name": "get_limits",
-        "description": "What your API key may still spend: its daily and per-request caps, spent and remaining today, scopes and expiry, plus your account's balance and, on Base, your allowance limiter (caps, left today, approved from your wallet, paused = emergency stop, expired). Read-only: it cannot change a limit. Use before a paid call to see whether it fits. Free, but needs your API key.",
+        "description": "What your API key may still spend: its daily and per-request caps, spent and remaining today, scopes and expiry, plus your account's balance and your allowance limits on Base or Solana (caps, left today, approved from your wallet, paused = emergency stop, expired). Read-only: it cannot change a limit. Use before a paid call to see whether it fits. Free, but needs your API key.",
         "inputSchema": {
           "type": "object",
           "properties": {}
@@ -232,6 +232,22 @@
         "title": "Get limits",
         "annotations": {
           "title": "Get limits",
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "idempotentHint": true,
+          "openWorldHint": false
+        }
+      },
+      {
+        "name": "get_allowance",
+        "description": "How much you can still spend right now, before you pay: your API key's remaining today and per-request cap, and your wallet allowance's remaining today, per-purchase cap and approval on Base or Solana, each with spendableNowUsd and bindingLimit (the limit that would refuse a larger call). Read-only: it cannot change a limit. Free, but needs your API key.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        },
+        "title": "Get allowance",
+        "annotations": {
+          "title": "Get allowance",
           "readOnlyHint": true,
           "destructiveHint": false,
           "idempotentHint": true,

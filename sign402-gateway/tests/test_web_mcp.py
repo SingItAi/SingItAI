@@ -103,26 +103,28 @@ class InitializeAndListTests(Fixture):
         self.assertEqual(status, 200)
         tools = out["result"]["tools"]
         names = {t["name"] for t in tools}
-        expected = {"get_price", "list_price_symbols", "list_models", "get_balance", "get_limits", "get_receipts",
-                    "web_search", "read_page", "chat_free", "chat"} | PAID_TOOL_NAMES
+        expected = {"get_price", "list_price_symbols", "list_models", "get_balance", "get_limits", "get_allowance",
+                    "get_receipts", "web_search", "read_page", "chat_free", "chat"} | PAID_TOOL_NAMES
         self.assertEqual(names, expected)
         for tool in tools:
             self.assertEqual(tool["inputSchema"]["type"], "object")
             for keyword in ("oneOf", "anyOf", "allOf", "not", "enum"):
                 self.assertNotIn(keyword, tool["inputSchema"], "top-level "+keyword+" is refused by some clients")
-        self.assertFalse(any(re.search(r"bitrefill|withdraw|allowance|\bbuy\b", n, re.I) for n in names))
+        # get_allowance only reads what is left; no tool may buy, withdraw or manage an allowance.
+        self.assertFalse(any(re.search(r"bitrefill|withdraw|allowance|\bbuy\b", n, re.I) for n in names - {"get_allowance"}))
+        self.assertTrue(tools[[t["name"] for t in tools].index("get_allowance")]["annotations"]["readOnlyHint"])
 
     def test_ping(self):
         key = self.make_key()["key"]
         status, out, _ = self.rpc(key, "ping")
         self.assertEqual((status, out["result"]), (200, {}))
 
-    def test_every_tool_has_a_title_and_boolean_annotations_and_there_are_exactly_eighteen(self):
+    def test_every_tool_has_a_title_and_boolean_annotations_and_there_are_exactly_nineteen(self):
         key = self.make_key()["key"]
         status, out, _ = self.rpc(key, "tools/list")
         listed = out["result"]["tools"]
         self.assertEqual(len(listed), len(OWN_TOOLS) + len(PAID_TOOL_NAMES))
-        self.assertEqual(len(listed), 18)
+        self.assertEqual(len(listed), 19)
         for tool in listed:
             self.assertTrue(tool.get("title"), tool["name"])
             annotations = tool["annotations"]
@@ -201,7 +203,7 @@ class LimitsAndReceiptsTests(Fixture):
 
     def test_both_tools_are_listed_read_only_and_idempotent_with_schemas(self):
         tools = {t["name"]: t for t in self.rpc(None, "tools/list")[1]["result"]["tools"]}
-        for name in ("get_limits", "get_receipts"):
+        for name in ("get_limits", "get_allowance", "get_receipts"):
             annotations = tools[name]["annotations"]
             self.assertTrue(annotations["readOnlyHint"])
             self.assertFalse(annotations["destructiveHint"])
@@ -210,7 +212,7 @@ class LimitsAndReceiptsTests(Fixture):
         self.assertEqual(tools["get_receipts"]["inputSchema"]["properties"]["limit"]["maximum"], 50)
 
     def test_both_need_a_key_and_touch_nothing_without_one(self):
-        for name in ("get_limits", "get_receipts"):
+        for name in ("get_limits", "get_allowance", "get_receipts"):
             status, out, _ = self.call_tool(None, name)
             self.assertTrue(out["result"]["isError"])
             self.assertIn("needs your API key", out["result"]["content"][0]["text"])
@@ -273,6 +275,102 @@ class LimitsAndReceiptsTests(Fixture):
             status, out, _ = self.call_tool(made["key"], "get_limits")
         self.assertEqual(out["result"]["structuredContent"]["allowance"]["chain"], "solana")
         self.assertFalse(out["result"]["structuredContent"]["allowance"]["configured"])
+
+    def base_limiter(self, **over):
+        seen = {"limiter": "0x" + "ab" * 20, "owner": "0xOWNER", "agent": "0xAGENT", "guardian": "0xGUARD",
+                "dailyCapAtomic": 5_000_000, "perPurchaseCapAtomic": 2_000_000, "expiry": NOW + 86400,
+                "remainingTodayAtomic": 1_500_000, "allowanceAtomic": 3_000_000, "paused": False, "floatAtomic": 7,
+                "ownerUsdcAtomic": 9, "state": "granted", "telegramText": "x", **over}
+        self.api.allowance.store.active_limiter.return_value = {"limiter": "0xLIMITER"}
+        self.api.allowance._describe.return_value = seen
+
+    def test_get_allowance_reports_what_is_left_like_get_limits_and_the_binding_cap(self):
+        made = self.make_key(dailyUsd=3, perRequestUsd=0.5)
+        row = self.store.api_key(made["key"], NOW)
+        self.store.record_key_spend(row["key_id"], NOW // 86400, 2_750_000, NOW)
+        self.api.keys.proxy = None
+        self.api.allowance.store.active_limiter.return_value = None
+        data = self.call_tool(made["key"], "get_allowance")[1]["result"]["structuredContent"]
+        limits = self.call_tool(made["key"], "get_limits")[1]["result"]["structuredContent"]
+        self.assertEqual(data["object"], "allowance")
+        key = data["key"]
+        for field in ("dailyCapUsd", "perRequestCapUsd", "spentTodayUsd", "heldNowUsd", "remainingTodayUsd", "resetsAt"):
+            self.assertEqual(key[field], limits["key"][field], field)
+        self.assertEqual((key["remainingTodayUsd"], key["spendableNowUsd"], key["bindingLimit"]), (0.25, 0.25, "daily"))
+        self.assertEqual(data["allowance"], {"configured": False, "chain": "base"})
+        self.assertNotIn(made["key"], json.dumps(data), "the secret key is never echoed")
+        fresh = self.make_key(dailyUsd=3, perRequestUsd=0.5)
+        key = self.call_tool(fresh["key"], "get_allowance")[1]["result"]["structuredContent"]["key"]
+        self.assertEqual((key["spendableNowUsd"], key["bindingLimit"]), (0.5, "per_request"))
+
+    def test_get_allowance_never_writes_or_advances_the_allowance(self):
+        made = self.make_key()
+        self.api.keys.proxy = None
+        self.base_limiter()
+        self.api.solana = Mock()
+        self.call_tool(made["key"], "get_allowance")
+        self.api.allowance.advance.assert_not_called()
+        self.api.allowance.status.assert_not_called()
+        self.assertEqual([c for c in self.api.allowance.mock_calls if not c[0].startswith(("store.active_limiter", "_describe"))], [])
+        self.api.solana.status.assert_not_called()  # a Base account never reads the Solana lane
+        self.assertEqual(self.shop.calls, [])
+
+    def test_get_allowance_shows_the_base_limiter_without_owner_agent_or_guardian_addresses(self):
+        made = self.make_key()
+        self.api.keys.proxy = None
+        self.base_limiter()
+        allowance = self.call_tool(made["key"], "get_allowance")[1]["result"]["structuredContent"]["allowance"]
+        self.assertEqual((allowance["chain"], allowance["state"], allowance["remainingTodayUsd"], allowance["perPurchaseCapUsd"]),
+                         ("base", "granted", 1.5, 2.0))
+        self.assertEqual((allowance["spendableNowUsd"], allowance["bindingLimit"]), (1.5, "remaining_today"))
+        text = json.dumps(allowance)
+        for hidden in ("0xOWNER", "0xAGENT", "0xGUARD", "ownerUsdc", "float", "telegram"):
+            self.assertNotIn(hidden, text)
+        self.base_limiter(paused=True, state="paused")
+        allowance = self.call_tool(made["key"], "get_allowance")[1]["result"]["structuredContent"]["allowance"]
+        self.assertEqual((allowance["spendableNowUsd"], allowance["bindingLimit"]), (0.0, "paused"))
+
+    def test_get_allowance_shows_solana_remaining_without_addresses_or_balances(self):
+        made = self.make_key()
+        self.api.keys.proxy = None
+        self.api.solana = Mock()
+        self.api.solana.status.return_value = {
+            "configured": True, "chain": "solana", "state": "granted", "owner": "OWNERsoLaNa111", "paused": False,
+            "pausedAt": None, "limiter": "AGENTdeLeGaTe222", "dailyCapAtomic": 4_000_000, "perPurchaseCapAtomic": 1_000_000,
+            "remainingTodayAtomic": 2_500_000, "allowanceAtomic": 600_000, "floatAtomic": 11, "ownerUsdcAtomic": 12,
+            "agentSolLamports": "13", "ownerSolLamports": "14", "expiry": NOW + 86400}
+        with patch.object(wm, "chain_of_account", return_value="solana"):
+            data = self.call_tool(made["key"], "get_allowance")[1]["result"]["structuredContent"]
+            limits = self.call_tool(made["key"], "get_limits")[1]["result"]["structuredContent"]
+        allowance = data["allowance"]
+        self.assertEqual(limits["allowance"], allowance, "get_limits shows the same Solana limits")
+        self.assertEqual(allowance, {"configured": True, "chain": "solana", "state": "granted", "dailyCapUsd": 4.0,
+                                     "perPurchaseCapUsd": 1.0, "remainingTodayUsd": 2.5, "approvedUsd": 0.6, "paused": False,
+                                     "expiresAt": NOW + 86400, "spendableNowUsd": 0.6, "bindingLimit": "allowance_left"})
+        text = json.dumps(data)
+        for hidden in ("OWNERsoLaNa111", "AGENTdeLeGaTe222", "ownerUsdc", "float", "SolLamports", "owner\""):
+            self.assertNotIn(hidden, text)
+        self.api.solana.status.return_value = {"configured": False, "chain": "solana", "owner": "OWNERsoLaNa111"}
+        with patch.object(wm, "chain_of_account", return_value="solana"):
+            allowance = self.call_tool(made["key"], "get_allowance")[1]["result"]["structuredContent"]["allowance"]
+        self.assertEqual(allowance, {"configured": False, "chain": "solana"})
+
+    def test_get_allowance_fails_open_when_solana_is_unreadable_or_off(self):
+        made = self.make_key()
+        self.api.keys.proxy = None
+        self.api.solana = Mock()
+        self.api.solana.status.side_effect = RuntimeError("rpc down")
+        with patch.object(wm, "chain_of_account", return_value="solana"):
+            status, out, _ = self.call_tool(made["key"], "get_allowance")
+        self.assertFalse(out["result"].get("isError"))
+        data = out["result"]["structuredContent"]
+        self.assertEqual((data["allowance"]["available"], data["allowance"]["chain"]), (False, "solana"))
+        self.assertIn("remainingTodayUsd", data["key"], "the key's own limits still show")
+        self.api.solana = None
+        with patch.object(wm, "chain_of_account", return_value="solana"):
+            allowance = self.call_tool(made["key"], "get_allowance")[1]["result"]["structuredContent"]["allowance"]
+        self.assertFalse(allowance["configured"])
+        self.assertNotIn("remainingTodayUsd", allowance, "no service, no invented numbers")
 
     def test_get_receipts_lists_only_this_keys_charges_newest_first(self):
         made = self.make_key()
@@ -339,7 +437,7 @@ class KeylessTests(Fixture):
         self.assertEqual(self.rpc(None, "ping")[:2], (200, {"jsonrpc": "2.0", "id": 1, "result": {}}))
         status, out, _ = self.rpc(None, "tools/list")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 18)  # the full catalogue, paid tools included
+        self.assertEqual(len(out["result"]["tools"]), 19)  # the full catalogue, paid tools included
         self.assertEqual(self.shop.calls, [])
 
     def test_free_tools_work_without_a_key_and_touch_no_account(self):
@@ -450,7 +548,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
                 self.assertEqual(status, 200)
                 status, out, _ = self.raw_rpc("tools/list", authorization=header)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 18)
+                self.assertEqual(len(out["result"]["tools"]), 19)
                 status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
                                               authorization=header)
                 self.assertFalse(out["result"].get("isError"))
@@ -465,7 +563,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
             with self.subTest(api_key=repr(header)):
                 status, out, _ = self.raw_rpc("tools/list", api_key=header)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 18)
+                self.assertEqual(len(out["result"]["tools"]), 19)
 
     def test_unexpanded_template_placeholder_in_authorization_is_served_keyless(self):
         self.api.mcp.fetch_json = lambda url: {"ok": True}
@@ -474,7 +572,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
             with self.subTest(authorization=placeholder):
                 status, out, _ = self.raw_rpc("tools/list", authorization=placeholder)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 18)
+                self.assertEqual(len(out["result"]["tools"]), 19)
                 status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
                                               authorization=placeholder)
                 self.assertFalse(out["result"].get("isError"))
@@ -487,7 +585,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
     def test_unexpanded_template_placeholder_in_x_api_key_is_served_keyless(self):
         status, out, _ = self.raw_rpc("tools/list", api_key="${SINGIT_API_KEY}")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 18)
+        self.assertEqual(len(out["result"]["tools"]), 19)
 
     def test_a_real_but_wrong_key_still_gets_401(self):
         status, out, _ = self.raw_rpc("tools/list", authorization=f"Bearer {BAD_KEY}")
@@ -558,7 +656,7 @@ class TrustedOriginTests(Fixture):
     def test_a_trusted_scanner_origin_without_a_key_reads_the_catalogue(self):
         status, out, headers = self.rpc(None, "tools/list", origin="https://glama.ai")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 18)
+        self.assertEqual(len(out["result"]["tools"]), 19)
         self.assertEqual(headers["Access-Control-Allow-Origin"], "https://glama.ai")
 
     def test_a_trusted_scanner_origin_with_a_valid_key_gets_cors_headers_back(self):
@@ -742,6 +840,11 @@ class KeyLimitRefusalTests(Fixture):
         if daily:
             self.assertIn("This key's daily limit of 0.01 USDC is used up", text)
             self.assertIn("00:00 UTC", text)
+            details = out["result"]["structuredContent"]
+            self.assertEqual((details["code"], details["limitHit"], details["dailyCapUsd"]), ("insufficient_quota", "daily", 0.01))
+            self.assertIn("remainingTodayUsd", details)
+            for private in (made["key"], self.user.address, self.account, self.limiter):
+                self.assertTrue(private not in json.dumps(details), "refusal exposed private account data")
         return text
 
     def test_daily_cap_refuses_search_page_and_data_without_another_charge(self):
@@ -1122,7 +1225,7 @@ class HttpTests(Fixture):
             {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode(), headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(request, timeout=10) as response:
             self.assertEqual(response.status, 200)
-            self.assertEqual(len(json.loads(response.read())["result"]["tools"]), 18)
+            self.assertEqual(len(json.loads(response.read())["result"]["tools"]), 19)
 
         request = urllib.request.Request(self.base, data=json.dumps(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize"}).encode(),
@@ -1182,7 +1285,7 @@ class HttpTests(Fixture):
         self.assertEqual(card["transport"], {"type": "streamable-http", "url": URI + "/mcp"})
         self.assertFalse(card["authentication"]["required"])  # free tools work keyless; paid ones need a key
         self.assertEqual(card["authentication"]["schemes"], ["bearer"])
-        self.assertEqual(len(card["tools"]), 18)
+        self.assertEqual(len(card["tools"]), 19)
         self.assertLessEqual(len(card["description"]), 200)
         self.assertEqual(card["serverInfo"]["version"], SERVER_INFO["version"])
         self.assertEqual(SERVER_INFO["version"], "0.1.5")

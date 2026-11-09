@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SingIt MCP: setup and tool reference | SingIt</title>
-<meta name="description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 18 tools, and troubleshoot keys, scopes and spending limits.">
+<meta name="description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 19 tools, and troubleshoot keys, scopes and spending limits.">
 <link rel="canonical" href="https://singitai.app/docs/mcp/">
 <meta property="og:title" content="SingIt MCP: setup and tool reference | SingIt">
-<meta property="og:description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 18 tools, and troubleshoot keys, scopes and spending limits.">
+<meta property="og:description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 19 tools, and troubleshoot keys, scopes and spending limits.">
 <meta property="og:url" content="https://singitai.app/docs/mcp/">
 <meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
 <meta property="og:type" content="website">
@@ -29,7 +29,7 @@
       "@id": "https://singitai.app/docs/mcp/#webpage",
       "url": "https://singitai.app/docs/mcp/",
       "name": "SingIt MCP: setup and tool reference | SingIt",
-      "description": "Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 18 tools, and troubleshoot keys, scopes and spending limits.",
+      "description": "Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 19 tools, and troubleshoot keys, scopes and spending limits.",
       "inLanguage": "en",
       "breadcrumb": {
         "@id": "https://singitai.app/docs/mcp/#breadcrumb"
@@ -163,11 +163,11 @@ bearer_token_env_var = "SINGIT_API_KEY"</code></pre></div>
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'</code></pre></div>
-<p class="lp-text">Expected: initialize returns serverInfo name singit and title SingIt x402; tools/list returns 18 tools. Both requests are free and need no key. A missing, empty or unexpanded-variable header behaves like no key. A wrong or revoked key gets HTTP 401 (verified 31 October 2026 with an invalid key).</p></div></section>
+<p class="lp-text">Expected: initialize returns serverInfo name singit and title SingIt x402; tools/list returns 19 tools. Both requests are free and need no key. A missing, empty or unexpanded-variable header behaves like no key. A wrong or revoked key gets HTTP 401 (verified 31 October 2026 with an invalid key).</p></div></section>
 <section class="lp-section" id="tools"><div class="shell"><h2 class="section-title">Tools</h2><p class="lp-text">Snapshot fetched 31 October 2026. Read-only and idempotent values below are server annotation hints. Read-only paid calls still charge; repeating a non-idempotent call charges again. Account-read tools require a key but no paid-tool scope. See the <a href="/docs/mcp-tools/">full parameters and allowed values</a> for every tool.</p>
 <!-- generated:mcp-tools:start -->
 <div class="table-wrap"><table class="mtable">
-<caption>18 tools generated from repository web_mcp.tools(). Paid tools are paid per call within the key's caps; get_limits shows spent and remaining today.</caption>
+<caption>19 tools generated from repository web_mcp.tools(). Paid tools are paid per call within the key's caps; get_limits and get_allowance show spent and remaining today.</caption>
 <thead><tr><th>Tool</th><th>What it does</th><th>Parameters</th><th>Needs a key?</th><th>Scope</th><th>Network</th><th>Annotation hints</th></tr></thead>
 <tbody>
 <tr><th scope="row"><code>get_price</code></th><td>Current price of a major cryptocurrency, gold or silver (Chainlink on Base), or an exchange rate between two currencies.</td><td><code>kind</code>: string, required<br><code>symbol</code>: string, optional<br><code>base</code>: string, optional<br><code>quote</code>: string, optional</td><td>No</td><td>Free; none</td><td>No payment</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
@@ -176,7 +176,8 @@ bearer_token_env_var = "SINGIT_API_KEY"</code></pre></div>
 <tr><th scope="row"><code>chat_free</code></th><td>Free model answers, no key needed.</td><td><code>prompt</code>: string, optional<br><code>messages</code>: array, optional<br><code>model</code>: string, optional<br><code>max_tokens</code>: integer, optional</td><td>No</td><td>Free; none</td><td>No payment</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>chat</code></th><td>Paid per call from your key&#39;s SingIt balance and limits in USDC.</td><td><code>prompt</code>: string, optional<br><code>messages</code>: array, optional<br><code>model</code>: string, optional<br><code>max_tokens</code>: integer, optional<br><code>system</code>: string, optional</td><td>Yes; paid</td><td>No extra scope</td><td>USDC on Base or Solana</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>get_balance</code></th><td>Your SingIt API balance: available and held USDC, auto top-up and pending top-ups.</td><td>None</td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
-<tr><th scope="row"><code>get_limits</code></th><td>What your API key may still spend: its daily and per-request caps, spent and remaining today, scopes and expiry, plus your account&#39;s balance and, on Base, your allowance limiter (caps, left today, approved from your wallet, paused = emergency stop, expired).</td><td>None</td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
+<tr><th scope="row"><code>get_limits</code></th><td>What your API key may still spend: its daily and per-request caps, spent and remaining today, scopes and expiry, plus your account&#39;s balance and your allowance limits on Base or Solana (caps, left today, approved from your wallet, paused = emergency stop, expired).</td><td>None</td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
+<tr><th scope="row"><code>get_allowance</code></th><td>How much you can still spend right now, before you pay: your API key&#39;s remaining today and per-request cap, and your wallet allowance&#39;s remaining today, per-purchase cap and approval on Base or Solana, each with spendableNowUsd and bindingLimit (the limit that would refuse a larger call).</td><td>None</td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
 <tr><th scope="row"><code>get_receipts</code></th><td>Your recent receipts, newest first: for each, its id, time, model, USDC charged, tokens and the upstream reference (kind charge, this key only), or the account&#39;s top-ups and refunds with their transaction and network.</td><td><code>limit</code>: integer, optional<br><code>kind</code>: string, optional<br><code>before</code>: integer, optional</td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
 <tr><th scope="row"><code>web_search</code></th><td>Searches the web through Exa and returns titles, URLs and snippets of matching pages.</td><td><code>query</code>: string, required<br><code>numResults</code>: integer, optional<br><code>type</code>: string, optional</td><td>Yes; paid</td><td>search</td><td>USDC on Base or Solana</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>read_page</code></th><td>The readable text of one web page (up to 8000 characters), through Exa.</td><td><code>url</code>: string, required</td><td>Yes; paid</td><td>search</td><td>USDC on Base or Solana</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
