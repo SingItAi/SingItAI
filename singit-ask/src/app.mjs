@@ -938,7 +938,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
-          ...(config.audioSold ? { ...audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))),
+          ...(config.audioSold && config.audioDiscoverable ? audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))) : {}),
+          ...(config.audioSold ? {
           [MEDIA_MODELS_ROUTE]: { get: { operationId: "listGenerationAudioModels", security: [], summary: "List music and sound effect models with exact prices", responses: { 200: { description: "Pinned per-job prices and model metadata" } } } } } : {}),
           [SPEECH_ROUTE]: { post: {
             operationId: "createSpeech", summary: "Generate speech with any listed voice model",
@@ -951,7 +952,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           } },
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "List speech and transcription models with prices",
             responses: { 200: { description: "Model list" } }, security: [] } },
-          ...(config.videoSold ? {
+          ...(config.videoSold && config.videoDiscoverable ? {
           [VIDEO_ROUTE]: { post: {
             operationId: "createVideo", summary: "Generate a video clip with any of 30+ text-to-video models",
             description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio, fallback. "

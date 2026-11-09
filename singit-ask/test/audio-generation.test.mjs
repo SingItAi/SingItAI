@@ -167,9 +167,9 @@ test('official Surplus fields and limits', () => {
 
 test('sold and discovery switches are independent of ready models', async () => {
   const { createApp } = await import('../src/app.mjs');
-  for (const sold of [undefined, true]) for (const discoverable of [undefined, true]) {
+  for (const sold of [undefined, false, true]) for (const discoverable of [undefined, false, true]) {
     const app = createApp({ ...config, audioSold: sold, audioDiscoverable: discoverable }, {
-      catalogue: { async list() { return []; }, served: new Set(['chat-only']) },
+      catalogue: { async list() { return []; }, async resolve() { throw new Error('unavailable'); }, served: new Set(['chat-only']) },
       facilitatorClient: fixture().facilitatorClient, log: () => {}, fetchImpl: () => { throw new Error('no network'); },
     });
     let result;
@@ -177,6 +177,12 @@ test('sold and discovery switches are independent of ready models', async () => 
     await layer.route.stack.at(-1).handle({ protocol: 'https', get: () => 'ask.singitai.app' }, { json(v) { result = v; } });
     assert.equal(result.resources.some(r => AUDIO_ROUTES.some(p => r.endsWith(p))), sold === true && discoverable === true);
     assert.equal(availableAudioPrices({ ...config, audioSold: sold }).length, sold ? 5 : 0);
+    let doc;
+    await app.router.stack.find(l => l.route?.path === '/openapi.json').route.stack.at(-1).handle(
+      { protocol: 'https', get: () => 'ask.singitai.app' }, { json(v) { doc = v; } });
+    for (const route of AUDIO_ROUTES) assert.equal(Boolean(doc.paths[route]), sold === true && discoverable === true);
+    assert.equal(Boolean(doc.paths['/v1/audio/generation-models']), sold === true);
+    if (sold) assert.deepEqual(doc.paths['/v1/audio/generation-models'].get.security, []);
     if (!sold) {
       for (const route of AUDIO_ROUTES) {
         const gate = app.router.stack.find(l => !l.route && l.handle.toString().includes('availableAudioPrices')).handle;
@@ -220,4 +226,24 @@ test('sold audio model list explicitly has free OpenAPI security', async t => {
   const doc = await response.json();
   assert.ok(doc.paths['/v1/audio/generation-models']);
   assert.deepEqual(doc.paths['/v1/audio/generation-models'].get.security, []);
+});
+
+test('video OpenAPI paid path follows sold and discoverable switches', async () => {
+  const { createApp } = await import('../src/app.mjs');
+  for (const sold of [undefined, false, true]) for (const discoverable of [undefined, false, true]) {
+    const app = createApp({ ...config, videoSold: sold, videoDiscoverable: discoverable }, {
+      catalogue: { async list() { return []; }, async resolve() { throw new Error('unavailable'); } }, facilitatorClient: fixture().facilitatorClient, log: () => {},
+    });
+    const invoke = async path => {
+      let result;
+      await app.router.stack.find(l => l.route?.path === path).route.stack.at(-1).handle(
+        { protocol: 'https', get: () => 'ask.singitai.app' }, { json(v) { result = v; } });
+      return result;
+    };
+    const doc = await invoke('/openapi.json');
+    const discovery = await invoke('/.well-known/x402');
+    const advertised = sold === true && discoverable === true;
+    assert.equal(Boolean(doc.paths['/v1/video/generations']), advertised);
+    assert.equal(discovery.resources.some(r => r.endsWith('/v1/video/generations')), advertised);
+  }
 });
