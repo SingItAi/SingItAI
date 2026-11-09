@@ -23,6 +23,7 @@ const EXTRA_PAID = ["/v1/images/edits", "/v1/images/image2image", "/v1/embedding
 
 import { parseBestDiscount } from "./reject-log.mjs";
 import express from "express";
+import { readFile } from "node:fs/promises";
 import { addAgentFiles } from "./agent-files.mjs";
 import { AUTO_CONFIG, AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback, attachPaidAlternates } from "./auto-router.mjs";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -700,6 +701,16 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
   });
   app.get("/favicon.ico", open, (_req, res) => res.redirect(302, ICON_URL));
+  app.get("/.well-known/x402list.txt", open, async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (!config.x402listProofFile) return res.sendStatus(404);
+    try {
+      const proof = await readFile(config.x402listProofFile, "utf8");
+      res.type("text/plain").send(proof);
+    } catch {
+      res.sendStatus(404);
+    }
+  });
   app.get("/v1/catalog", open, async (req, res) => {
     try {
       const data = await buildCatalog({ catalogue, config, free, searchEnabled: !!exaKey,
@@ -1027,6 +1038,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           } },
         "/favicon.ico": { get: { operationId: "getFavicon", security: [], summary: "Get the SingIt icon redirect",
           responses: { 302: { description: "Redirect to the public SingIt icon" } } } },
+        "/.well-known/x402list.txt": { get: { operationId: "getX402listProof", security: [], summary: "Get x402-list ownership proof (plain text)",
+          responses: {
+            200: { description: "Ownership proof", content: { "text/plain": { schema: { type: "string" } } } },
+            404: { description: "Ownership proof unavailable" },
+          } } },
         "/v1/catalog": { get: {
           operationId: "listCatalog", security: [], summary: "List all currently sold modalities, payment access and prices",
           parameters: [{ name: "modality", in: "query", schema: { type: "string", enum: [...MODALITIES, ...new Set(availableAudioPrices(config, catalogue).map(m => m.kind === 'music' ? 'music' : 'sound_effects')), ...(config.videoSold === true ? ['video'] : [])] } }],

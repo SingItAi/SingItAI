@@ -23,6 +23,7 @@
 //                              ~/.config/singit-ask/guard-shares.json
 //   SINGIT_ASK_STATS_FILE      persistent private counters, default ~/.config/singit-ask/health-stats.json
 //   SINGIT_ASK_OWN_PAYERS_FILE optional own payers, one per line with # comments
+//   SINGIT_ASK_X402LIST_PROOF_FILE optional x402-list ownership proof file, read on each request
 //   SINGIT_ASK_FREE_MODELS     models answered free as "free/<id>" (comma-separated); unset means six default free models,
 //                              empty turns free answers off
 //   SINGIT_ASK_FREE_PER_VISITOR, SINGIT_ASK_FREE_PER_DAY  free answers a day per visitor and for everyone together
@@ -125,6 +126,7 @@ config.suspensionsFile = process.env.SINGIT_ASK_SUSPENSIONS_FILE || `${process.e
 config.guardSharesFile = process.env.SINGIT_ASK_GUARD_SHARES_FILE || `${process.env.HOME}/.config/singit-ask/guard-shares.json`;
 config.statsFile = process.env.SINGIT_ASK_STATS_FILE || `${process.env.HOME}/.config/singit-ask/health-stats.json`;
 config.statsToken = process.env.SINGIT_ASK_STATS_TOKEN;
+config.x402listProofFile = process.env.SINGIT_ASK_X402LIST_PROOF_FILE?.trim() || null;
 try {
   config.ownPayers = process.env.SINGIT_ASK_OWN_PAYERS_FILE
     ? parseOwnPayers(readFileSync(process.env.SINGIT_ASK_OWN_PAYERS_FILE, "utf8")) : [];
