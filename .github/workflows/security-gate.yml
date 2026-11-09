@@ -49,7 +49,8 @@ jobs:
       fail-fast: false
       matrix:
         component: [cdp-x402-service, singit-risk-check, tools/ledger-approve, sdk/typescript,
-          integrations/elizaos-plugin, integrations/examples/langchain, integrations/examples/vercel-ai-sdk]
+          integrations/elizaos-plugin, integrations/examples/langchain, integrations/examples/vercel-ai-sdk,
+          singit-ask]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,6 +59,11 @@ jobs:
       - name: Install test dependencies
         working-directory: ${{ matrix.component }}
         # Unit tests mock hardware; native USB install scripts are unnecessary.
+        run: npm ci --ignore-scripts
+      - name: Install solana-x402-service dependencies (imported by singit-ask/test/solana-direct.test.mjs)
+        if: matrix.component == 'singit-ask'
+        working-directory: solana-x402-service
+        # Its engines field asks for Node 24; npm only warns, and the one test that imports it runs on 22.
         run: npm ci --ignore-scripts
       - name: Unit tests
         working-directory: ${{ matrix.component }}
