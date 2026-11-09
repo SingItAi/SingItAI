@@ -8,6 +8,7 @@ import { AUTO_CONFIG } from '../src/auto-router.mjs';
 import { createApp, UpstreamError, ROUTE } from '../src/app.mjs';
 import { BASE } from '../src/pricing.mjs';
 import { reservations } from '../src/media-payment-replay.mjs';
+import { canRetryPaidFallback } from '../src/metered.mjs';
 
 const [CHEAP, PINNED, DEAR] = AUTO_CONFIG.tiers.eco;  // deepseek-v4.1-flash, claude-haiku-5.5, gemini-3.8-flash
 const OUTSIDE = 'mistral-outside-1';
@@ -36,6 +37,18 @@ const pay = (required, network, scheme, signature = '0xsigned') => ({ 'PAYMENT-S
 const body = (model, extra = {}) => ({ model, messages: [{ role: 'user', content: 'hi' }], max_tokens: 32, ...extra });
 const answer = model => ({ content: model, finishReason: 'stop', usage: { buyer_cost_micro: 100 } });
 const refused = (status = 503, code = 'upstream_error') => new UpstreamError('refused', { status, code });
+
+test('paid fallback allowlist accepts availability failures only', () => {
+  for (const status of [404, 429, 500, 503, 599]) assert.equal(canRetryPaidFallback(refused(status)), true);
+  assert.equal(canRetryPaidFallback(refused(404, 'minimum_discount_not_met')), true);
+  assert.equal(canRetryPaidFallback(refused(0, 'no_healthy_sellers')), true);
+  for (const status of [0, 200, 400, 401, 403, 409, 413, 422, 600]) {
+    assert.equal(canRetryPaidFallback(refused(status)), false);
+  }
+  for (const status of [400, 413, 422]) assert.equal(canRetryPaidFallback(refused(status, 'no_healthy_sellers')), false);
+  assert.equal(canRetryPaidFallback({ name: 'Error', status: 503, code: 'no_healthy_sellers' }), false);
+});
+
 // Quote, then pay that quote.
 async function paid(url, request, { network = BASE, scheme = 'upto', headers = {}, signature } = {}) {
   const challenge = await post(url, request, headers);
@@ -65,6 +78,24 @@ for (const scheme of ['upto', 'exact']) for (const status of [404, 503]) {
     assert.equal(result.singit_fallback_from, PINNED);
     assert.ok(BigInt(result.billing.totalAtomic) <= BigInt(signed));
     assert.ok(BigInt(facilitator.calls.settle[0][1]) <= BigInt(signed));
+  });
+}
+
+for (const scheme of ['upto', 'exact']) for (const status of [400, 413, 422]) {
+  test(`pinned ${scheme}: HTTP ${status} never reaches the cheaper same-tier alternate`, async t => {
+    const asked = [];
+    const { url, facilitator } = await serve(t, { upstream: async (_c, _m, _n, _f, model) => {
+      asked.push(model);
+      if (asked.length === 1) throw refused(status);
+      return answer(model);
+    } });
+    const { response } = await paid(url, body(PINNED), { scheme });
+    assert.ok(response.status >= 400);
+    assert.deepEqual(asked, [PINNED]);
+    assert.equal(facilitator.calls.settle.length, 0);
+    assert.equal(response.headers.get('x-singit-fallback-from'), null);
+    assert.equal(response.headers.get('x-singit-fallback-policy'), null);
+    assert.equal((await response.json()).singit_fallback_from, undefined);
   });
 }
 

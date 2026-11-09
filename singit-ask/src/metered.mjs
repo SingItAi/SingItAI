@@ -33,6 +33,16 @@ import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceil
 // settles the actual amount and refunds the rest: two transactions, hence its higher fee.
 const TERMS_BY_NETWORK = { [BASE]: TERMS, [SOLANA]: SOLANA_TERMS };
 
+export function canRetryPaidFallback(error) {
+  if (error.name !== "UpstreamError") return false;
+  const { status, code } = error;
+  // A seller/catalogue 404 means the listed model is unavailable on our side.
+  if (status === 404 || status === 429 || (status >= 500 && status <= 599)) return true;
+  // Client/request failures must never be sent to a different model.
+  if (status >= 400 && status < 500) return false;
+  return code === "no_healthy_sellers";
+}
+
 // The ceiling is decided per question, from the model it asks for, so the offer's price is a function of the
 // request. `quotes` remembers what each parsed body was offered: the middleware asks again when the payment
 // arrives and must get the same answer.
@@ -409,7 +419,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         const bucket = exact ? "exact" : "upto";
         // Within the amount already signed, for this scheme and network.
         const fits = candidate => BigInt(ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network]) <= BigInt(paid.terms.maxChargeAtomic);
-        const refused = !win && !(req.askInput.request && error.status === 400) && error.name === "UpstreamError" && error.status >= 400  // refused before any answer; a 200 with no text (no_text, max_tokens_spent_reasoning) may already be billed
+        const refused = !win && !(req.askInput.request && error.status === 400) && canRetryPaidFallback(error)
           && Date.now() < deadline;
         const auto = refused && req.askInput.autoAlternates?.find(fits);
         const pinned = refused && !auto && req.askInput.paidAlternates?.find(fits);
