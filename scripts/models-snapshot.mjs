@@ -32,6 +32,12 @@ export function snapshot(models, pricing, fetchedAt) {
     requireShape(object(m) && typeof m.id === "string" && !seen.has(m.id), "unique model ids");
     seen.add(m.id);
     if (!Object.hasOwn(m, "usdPerMillionTokens") || !byId.has(m.id)) continue;
+    // Embeddings publish one finite rate per million tokens, not an input/output pair.
+    // Those entries stay on the catalog snapshot. Any other price shape still rejects the response.
+    if (typeof m.usdPerMillionTokens === "number") {
+      requireShape(number(m.usdPerMillionTokens), "embedding rate");
+      continue;
+    }
     const result = { id: m.id };
     for (const key of ["priceBasis", "priceDescription", "name", "owned_by", "contextLength", "tags", "recommendedScheme", "recommendedSchemeWhy"]) {
       if (!Object.hasOwn(m, key)) continue;

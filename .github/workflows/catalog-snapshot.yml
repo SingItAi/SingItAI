@@ -1,0 +1,51 @@
+name: Catalog snapshot
+
+# Daily refresh of the committed website catalog from the public unpaid ask
+# endpoints. Dispatch and schedule only, so a run cannot publish the site or
+# react to a request it opened. Content changes update bot/catalog-snapshot.
+# It never merges.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: catalog-snapshot
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Fetch the refresh branch
+        run: git fetch origin bot/catalog-snapshot || true
+
+      - name: Guard tests
+        run: node --test scripts/tests/refresh-catalog-snapshot.test.mjs scripts/tests/catalog-snapshot.test.mjs scripts/tests/models-snapshot.test.mjs
+
+      - name: Refresh snapshots and pages
+        run: node scripts/refresh-catalog-snapshot.mjs --summary-out "${{ runner.temp }}/catalog-refresh-summary.md" --commit-message-out "${{ runner.temp }}/catalog-refresh-commit.txt"
+
+      - name: Open or update the refresh pull request
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          SUMMARY_FILE: ${{ runner.temp }}/catalog-refresh-summary.md
+          COMMIT_FILE: ${{ runner.temp }}/catalog-refresh-commit.txt
+        run: sh scripts/open-catalog-snapshot-pr.sh
