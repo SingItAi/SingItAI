@@ -1,0 +1,225 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { privateKeyToAccount } from "viem/accounts";
+import { HealthStats, numbersBody, HOUR, LATENCY_CAP } from "../src/health-stats.mjs";
+import express from "express";
+import { x402ResourceServer } from "@x402/express";
+import { createApp } from "../src/app.mjs";
+import { addPaymentRoute } from "../src/metered.mjs";
+import { BASE, PAY_TO, METERED_ROUTE } from "../src/pricing.mjs";
+const SOLANA = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+const own = "0x" + "a".repeat(40), external = "0x" + "b".repeat(40);
+const start = Date.UTC(2026, 10, 9, 10, 30);
+// What the paid handler and settlement hook pass for one call by `payer` that answered in `ms` (or did not).
+function call(s, { payer = external, network = BASE, ms, started = s.now() } = {}) {
+  const tally = { network, external: s.isExternal(payer), started };
+  s.recordPaidAttempt(tally);
+  if (ms !== undefined) s.recordPaidAnswer({ ...tally, ms });
+}
+
+test("without an own-payer list success and latency are null, nothing is recorded, no payer leaks", () => {
+  const s = new HealthStats({ now: () => start });
+  call(s, { ms: 100 }); call(s, { payer: own, ms: 200 });
+  assert.equal(s.isExternal(external), false);
+  const n = numbersBody(s), json = JSON.stringify(n);
+  for (const w of ["last_24h", "last_7d"]) for (const net of ["base", "solana"]) {
+    assert.deepEqual(n.paid_call_success[w][net], { attempts: null, answered: null, success_pct: null, reason: "own_payers_not_configured" });
+    assert.deepEqual(n.paid_answer_latency_ms[w][net], { samples: null, p50: null, p95: null, reason: "own_payers_not_configured" });
+  }
+  assert.equal(Object.values(s.state.buckets).some(b => b.paid), false);
+  assert.ok(!json.toLowerCase().includes(external.slice(2)) && !json.toLowerCase().includes(own.slice(2)));
+  assert.deepEqual(n.payment_overhead_ms, { p50: null, p95: null, reason: "not_measured" });
+  assert.deepEqual(n.e2e_ms, { p50: null, p95: null, reason: "not_measured" });
+  for (const key of ["paid_call_success", "paid_answer_latency_ms", "payment_overhead_ms", "e2e_ms", "charge_without_answer"])
+    assert.equal(typeof n.definitions[key], "string");
+  assert.match(n.definitions.paid_call_success, /own_payers_not_configured/);
+});
+
+test("own payers are excluded, unknown payers are not external, the rate is answered / attempts", () => {
+  const s = new HealthStats({ now: () => start, ownPayers: [own] });
+  call(s, { ms: 100 }); call(s, { ms: 300 }); call(s);
+  call(s, { payer: own.toUpperCase().replace("0X", "0x"), ms: 5 }); call(s, { payer: own });
+  call(s, { payer: null, ms: 7 }); call(s, { payer: " " });
+  call(s, { network: SOLANA, ms: 50 }); call(s, { network: "eip155:1", ms: 9 });
+  const n = numbersBody(s);
+  assert.deepEqual(n.paid_call_success.last_24h.base, { attempts: 3, answered: 2, success_pct: 66.7, reason: null });
+  assert.deepEqual(n.paid_call_success.last_7d.solana, { attempts: 1, answered: 1, success_pct: 100, reason: null });
+  assert.deepEqual(n.paid_answer_latency_ms.last_24h.base, { samples: 2, p50: 100, p95: 300, reason: null });
+  assert.ok(!JSON.stringify(n).toLowerCase().includes(own.slice(2)));
+});
+
+test("zero attempts is insufficient_data, never 100%, and windows expire", () => {
+  let now = start;
+  const s = new HealthStats({ now: () => now, ownPayers: [own] });
+  const empty = numbersBody(s);
+  assert.deepEqual(empty.paid_call_success.last_24h.base, { attempts: 0, answered: 0, success_pct: null, reason: "insufficient_data" });
+  assert.deepEqual(empty.paid_answer_latency_ms.last_7d.solana, { samples: 0, p50: null, p95: null, reason: "insufficient_data" });
+  call(s);
+  assert.deepEqual(numbersBody(s).paid_call_success.last_24h.base, { attempts: 1, answered: 0, success_pct: 0, reason: null });
+  assert.equal(numbersBody(s).paid_answer_latency_ms.last_24h.base.reason, "insufficient_data");
+  now += 25 * HOUR;
+  assert.equal(numbersBody(s).paid_call_success.last_24h.base.reason, "insufficient_data");
+  assert.equal(numbersBody(s).paid_call_success.last_7d.base.attempts, 1);
+});
+
+test("an answer lands in the hour its attempt started, so answers never exceed attempts", () => {
+  let now = start + 59 * 60000;
+  const s = new HealthStats({ now: () => now, ownPayers: [own] });
+  const tally = { network: BASE, external: true, started: now };
+  s.recordPaidAttempt(tally); now += 2 * 60000; s.recordPaidAnswer({ ...tally, ms: 120000 });
+  assert.equal(Object.keys(s.state.buckets).length, 1);
+  assert.equal(numbersBody(s).paid_call_success.last_24h.base.success_pct, 100);
+  for (const ms of [-1, 1.5, "10", undefined]) s.recordPaidAnswer({ ...tally, ms });
+  assert.equal(numbersBody(s).paid_call_success.last_24h.base.answered, 1);
+});
+
+test("nearest-rank percentiles over a known list, capped per hour", () => {
+  const s = new HealthStats({ now: () => start, ownPayers: [own] });
+  for (const ms of [...Array(100).keys()].map(i => 100 - i)) call(s, { ms });
+  assert.deepEqual(numbersBody(s).paid_answer_latency_ms.last_24h.base, { samples: 100, p50: 50, p95: 95, reason: null });
+  const t = new HealthStats({ now: () => start, ownPayers: [own] });
+  for (const ms of [10, 20, 30, 40]) call(t, { ms });
+  assert.deepEqual(numbersBody(t).paid_answer_latency_ms.last_24h.base, { samples: 4, p50: 20, p95: 40, reason: null });
+  for (let i = 0; i < LATENCY_CAP; i++) call(t, { ms: 1 });
+  const capped = numbersBody(t);
+  assert.equal(capped.paid_answer_latency_ms.last_24h.base.samples, LATENCY_CAP);
+  assert.equal(capped.paid_call_success.last_24h.base.answered, LATENCY_CAP + 4);
+});
+
+test("charge_without_answer counts every payer, by window and network, from its own start", () => {
+  let now = start;
+  const s = new HealthStats({ now: () => now });
+  const n0 = numbersBody(s).charge_without_answer;
+  assert.deepEqual(n0, { since: new Date(start).toISOString(), total: 0, last_24h: 0, last_7d: 0, by_network: { base: 0, solana: 0 } });
+  s.recordChargeWithoutAnswer(BASE); now += 30 * HOUR; s.recordChargeWithoutAnswer(SOLANA); s.recordChargeWithoutAnswer("eip155:1");
+  assert.deepEqual(numbersBody(s).charge_without_answer, { since: new Date(start).toISOString(),
+    total: 3, last_24h: 2, last_7d: 3, by_network: { base: 1, solana: 1 } });
+  assert.match(numbersBody(s).definitions.charge_without_answer, /only since/);
+});
+
+test("old files without the new fields load; new counters round trip; bad new fields reject the file", t => {
+  const dir = mkdtempSync(join(tmpdir(), "paid-metrics-")); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "stats.json");
+  let now = start;
+  const old = new HealthStats({ now: () => now });
+  old.recordSettlement({ route: "/r", network: BASE, ok: true, amount: "1000", payer: external });
+  delete old.state.cwaSince; delete old.state.cwa;
+  writeFileSync(file, JSON.stringify(old.state));
+  now += HOUR;
+  const loaded = new HealthStats({ file, now: () => now, ownPayers: [own] });
+  assert.equal(loaded.numbers().total.calls, 1);
+  assert.equal(numbersBody(loaded).charge_without_answer.since, new Date(now).toISOString());
+  call(loaded, { ms: 42 }); call(loaded); loaded.recordChargeWithoutAnswer(SOLANA); loaded.flush();
+  assert.ok(!readFileSync(file, "utf8").includes(external));
+  const reloaded = new HealthStats({ file, now: () => now, ownPayers: [own] });
+  for (const key of ["paid_call_success", "paid_answer_latency_ms", "charge_without_answer"])
+    assert.deepEqual(numbersBody(reloaded)[key], numbersBody(loaded)[key]);
+  assert.equal(numbersBody(reloaded).paid_call_success.last_24h.base.success_pct, 50);
+  const saved = JSON.parse(readFileSync(file, "utf8")), key = Object.keys(saved.buckets).at(-1);
+  for (const bad of [{ base: { attempts: -1, answered: 0, ms: [] } }, { base: { attempts: 1, answered: 0, ms: [1.5] } },
+    { base: { attempts: 1, answered: 0, ms: Array(LATENCY_CAP + 1).fill(1) } }, { mainnet: { attempts: 0, answered: 0, ms: [] } }]) {
+    writeFileSync(file, JSON.stringify({ ...saved, buckets: { ...saved.buckets, [key]: { ...saved.buckets[key], paid: bad } } }));
+    assert.equal(new HealthStats({ file }).numbers().total.calls, 0);
+  }
+  for (const bad of [{ cwa: { base: -1 } }, { cwaSince: "never" }]) {
+    writeFileSync(file, JSON.stringify({ ...saved, ...bad })); assert.equal(new HealthStats({ file }).numbers().total.calls, 0);
+  }
+});
+
+test("recording failures never throw into an answer", () => {
+  const s = new HealthStats({ ownPayers: [own] });
+  s.bucket = () => { throw new Error("broken"); };
+  assert.doesNotThrow(() => { call(s, { ms: 1 }); s.recordChargeWithoutAnswer(BASE); });
+});
+
+test("settle hook counts a charge without an answer only when the invariant breaks", () => {
+  const app = express(), server = new x402ResourceServer({ getSupported: async () => ({ kinds: [], extensions: [], signers: {} }) });
+  const after = [], verified = [];
+  server.onAfterSettle = fn => { after.push(fn); return server; };
+  server.onAfterVerify = fn => { verified.push(fn); return server; };
+  const stats = app.locals.healthStats = new HealthStats({ now: () => start, ownPayers: [own] });
+  addPaymentRoute(app, { "POST /chat": { accepts: [] } }, server,
+    { discoverable: false, permitGuard: { record() {}, middleware(_q, _s, next) { next(); } }, log() {} });
+  const req = {}, ctx = (statusCode, locals, success = true, phase) => {
+    const req = { res: { statusCode, locals } };
+    return { phase, transportContext: { request: { path: "/chat", adapter: { req } } }, requirements: { network: BASE, scheme: "exact", amount: "1" },
+      result: { success, payer: external } };
+  };
+  for (const fn of verified) fn({ transportContext: { request: { adapter: { req } } }, result: { isValid: true, payer: external } });
+  assert.equal(req.singitExternalPayer, true);
+  const tally = { network: BASE, external: true, started: start };
+  stats.recordPaidAttempt(tally);
+  // Answered and settled; a non-chat route with a 2xx; a failed settlement; a Solana deposit or refund: none is a charge without an answer.
+  for (const c of [ctx(200, { singitPaid: tally, singitAnswered: 12 }), ctx(201, {}), ctx(500, { singitPaid: tally }, false),
+    ctx(200, { singitPaid: tally }, true, "before-handler"), ctx(503, { singitPaid: tally }, true, "cancel")])
+    for (const fn of after) fn(c);
+  assert.equal(numbersBody(stats).charge_without_answer.total, 0);
+  assert.equal(numbersBody(stats).paid_call_success.last_24h.base.answered, 1);
+  for (const c of [ctx(200, { singitPaid: tally }), ctx(400, {}), ctx(503, { singitPaid: tally, singitAnswered: 3 })])
+    for (const fn of after) fn(c);
+  assert.equal(numbersBody(stats).charge_without_answer.total, 3);
+  assert.equal(numbersBody(stats).paid_call_success.last_24h.base.answered, 1);
+  stats.recordChargeWithoutAnswer = () => { throw new Error("stats offline"); };
+  for (const fn of after) assert.doesNotThrow(() => fn(ctx(500, {})));
+});
+
+// End to end through the real x402 middleware with a fake facilitator: the verify hook classifies the payer,
+// the handler records the attempt, the settle hook records the answer; an unanswered call never settles.
+const encode = v => Buffer.from(JSON.stringify(v)).toString("base64");
+const decode = v => JSON.parse(Buffer.from(v, "base64").toString());
+const account = privateKeyToAccount("0x" + "11".repeat(32)); // Public unfunded test fixture.
+const CDP_SIGNER = "0x2A89407a98A0732b7fD578c4E156B7166540EB5A";
+const kinds = [{ x402Version: 2, scheme: "exact", network: BASE }, { x402Version: 2, scheme: "exact", network: SOLANA, extra: { feePayer: "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu" } },
+  { x402Version: 2, scheme: "upto", network: BASE, extra: { facilitatorAddress: CDP_SIGNER } },
+  { x402Version: 2, scheme: "upto", network: SOLANA, extra: { feePayer: "Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88", receiverAuthorizer: "9dpHxn3XFZMZv59vE5MKxhfwGUCCgkcCUzYZLpdEm7ox" } }];
+async function paidApp(t, { ownPayers, payer = account.address, settleSuccess = true }) {
+  let fail = false;
+  const facilitator = { getSupported: async () => ({ kinds, extensions: ["eip2612GasSponsoring"], signers: {} }),
+    verify: async () => ({ isValid: true, payer }),
+    settle: async () => ({ success: settleSuccess, network: BASE, transaction: "0x" + "aa".repeat(32), payer }) };
+  const app = createApp({ payToBase: PAY_TO, payToSolana: "4an2sqamWWhny9mjLsMtGXCDXakeNtg6vSLq4QvhdmQu", model: "test", ownPayers },
+    { facilitatorClient: facilitator, log: () => {}, upstream: async () => {
+      if (fail) throw new Error("model answered HTTP 503");
+      return { content: "Hello", finishReason: "stop", usage: { buyer_cost_micro: 100 } };
+    } });
+  const listener = await new Promise(resolve => { const l = app.listen(0, "127.0.0.1", () => resolve(l)); }); t.after(() => listener.close());
+  const url = `http://127.0.0.1:${listener.address().port}${METERED_ROUTE}`;
+  const send = headers => fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify({ messages: [{ role: "user", content: "Hi" }] }) });
+  const pay = async () => {
+    const q = decode((await send({})).headers.get("payment-required"));
+    const exact = q.accepts.find(a => a.scheme === "exact" && a.network === BASE);
+    return send({ "PAYMENT-SIGNATURE": encode({ x402Version: 2, resource: q.resource, accepted: exact, payload: { signature: "0xsigned" }, extensions: q.extensions }) });
+  };
+  return { stats: app.locals.healthStats, pay, failNext: v => { fail = v; } };
+}
+
+test("paid route: an external answered call and an unanswered call give 50%, no charge without answer", async t => {
+  const { stats, pay, failNext } = await paidApp(t, { ownPayers: [own] });
+  assert.equal((await pay()).status, 200);
+  failNext(true); assert.equal((await pay()).status, 503);
+  const n = numbersBody(stats);
+  assert.deepEqual(n.paid_call_success.last_24h.base, { attempts: 2, answered: 1, success_pct: 50, reason: null });
+  assert.equal(n.paid_answer_latency_ms.last_24h.base.samples, 1);
+  assert.equal(n.charge_without_answer.total, 0);
+  assert.ok(!JSON.stringify(n).toLowerCase().includes(account.address.slice(2).toLowerCase()));
+});
+
+test("paid route: our own payer and an unconfigured list record nothing", async t => {
+  for (const ownPayers of [[account.address], []]) {
+    const { stats, pay } = await paidApp(t, { ownPayers });
+    assert.equal((await pay()).status, 200);
+    assert.equal(Object.values(stats.state.buckets).some(b => b.paid), false);
+    assert.equal(numbersBody(stats).charge_without_answer.total, 0);
+  }
+});
+
+test("paid route: a failed settlement records an attempt but no answer", async t => {
+  const { stats, pay } = await paidApp(t, { ownPayers: [own], settleSuccess: false });
+  assert.notEqual((await pay()).status, 200);
+  assert.deepEqual(numbersBody(stats).paid_call_success.last_24h.base, { attempts: 1, answered: 0, success_pct: 0, reason: null });
+  assert.equal(numbersBody(stats).charge_without_answer.total, 0);
+});

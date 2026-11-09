@@ -10,6 +10,8 @@ import { PAYMENT_ERROR_CODES } from "./payment-codes.mjs";
 // Hourly buckets are retained for 30 days (720 hours); model ids are capped at 300, payer hashes at
 // 20,000 overall and 500 per hourly bucket. Totals remain since `since`; capped unique counts are marked.
 // Stats are observational only: recording or persistence failures can never affect an answer or a payment.
+// Paid-call success and answer latency are recorded only for payers known not to be ours, so nothing is
+// recorded while the own-payer list is empty. Latency keeps up to 200 integer ms samples per network and hour.
 
 import { randomBytes, createHmac } from "node:crypto";
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
@@ -23,7 +25,7 @@ export const networkName = n => n === "eip155:8453" ? "base"
 const REASONS = ["no_healthy_sellers", "minimum_discount_not_met", "other"];
 const failureReason = code => REASONS.includes(code) ? code : "other";
 const challengeCounts = () => ({ post: 0, probe: 0, refused: 0, routes: Object.create(null) });
-export const ROUTE_CAP = 100;
+export const ROUTE_CAP = 100, LATENCY_CAP = 200;
 const minute = t => Number.isFinite(t) ? new Date(Math.floor(t / 60000) * 60000).toISOString() : null;
 const empty = () => ({ calls: 0, atomic: "0", noAmount: 0, own: 0, fail: 0 });
 export function outcomeStatus(ok, fail, lastFailed) {
@@ -56,13 +58,16 @@ function validState(s) {
     && Object.entries(o.routes).every(([key, n]) => (key === "other" || /^\/[^\s]{0,200}$/.test(key)) && count(n));
   const refusals = o => object(o) && Object.entries(o).every(([k, n]) => PAYMENT_ERROR_CODES.includes(k) && count(n));
   const phases = o => o === undefined || (object(o) && Object.entries(o).every(([k, v]) => ["verify", "settle"].includes(k) && refusals(v)));
+  const paid = o => o === undefined || networks(o, c => object(c) && count(c.attempts) && count(c.answered)
+    && Array.isArray(c.ms) && c.ms.length <= LATENCY_CAP && c.ms.every(count));
+  const cwa = o => o === undefined || networks(o, count);
   const windows = o => o === undefined || (object(o) && Object.entries(o).every(([k, n]) => ["unverified", "budget", "timeout", "late"].includes(k) && count(n)));
-  return object(s) && phases(s.paymentFailurePhases) && windows(s.windowRefusals) && (s.agent_traffic === undefined || validTraffic(s.agent_traffic)) && (s.paymentFailures === undefined || refusals(s.paymentFailures)) && (s.c402 === undefined || c402(s.c402)) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
+  return object(s) && cwa(s.cwa) && (s.cwaSince === undefined || Number.isFinite(Date.parse(s.cwaSince))) && phases(s.paymentFailurePhases) && windows(s.windowRefusals) && (s.agent_traffic === undefined || validTraffic(s.agent_traffic)) && (s.paymentFailures === undefined || refusals(s.paymentFailures)) && (s.c402 === undefined || c402(s.c402)) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
     && hashes(s.payers, PAYER_CAP) && typeof s.capped === "boolean" && totals(s.totals)
     && models(s.models, modelLast) && networks(s.networks, last) && object(s.buckets)
     && Object.keys(s.buckets).length <= RETENTION_HOURS
     && Object.entries(s.buckets).every(([key, b]) => Number.isFinite(Date.parse(key)) && object(b)
-      && (b.agent_traffic === undefined || validTraffic(b.agent_traffic)) && (b.paymentFailures === undefined || refusals(b.paymentFailures)) && phases(b.paymentFailurePhases) && windows(b.windowRefusals) && (b.c402 === undefined || c402(b.c402)) && models(b.models, modelCounts) && networks(b.networks, counts) && totals(b.totals)
+      && paid(b.paid) && cwa(b.cwa) && (b.agent_traffic === undefined || validTraffic(b.agent_traffic)) && (b.paymentFailures === undefined || refusals(b.paymentFailures)) && phases(b.paymentFailurePhases) && windows(b.windowRefusals) && (b.c402 === undefined || c402(b.c402)) && models(b.models, modelCounts) && networks(b.networks, counts) && totals(b.totals)
       && hashes(b.payers, BUCKET_PAYER_CAP) && typeof b.capped === "boolean");
 }
 export class HealthStats {
@@ -76,6 +81,8 @@ export class HealthStats {
       // Reject incomplete files as a unit: retaining totals without their salt would silently break deduplication.
       if (validState(s)) this.state = s;
     } catch {}
+    // Files from before this counter existed start it now; it is never backdated to `since`.
+    this.state.cwaSince ??= new Date(now()).toISOString();
     // A loaded JSON object has a prototype; dictionaries must not interpret valid model ids such as
     // "constructor" as inherited entries. Every dictionary is rebuilt before it can observe an event.
     this.state.models = Object.assign(Object.create(null), this.state.models);
@@ -113,11 +120,50 @@ export class HealthStats {
       if (!this.writeFailed) { this.writeFailed = true; try { this.log(e.code || "STATS_WRITE"); } catch {} }
     }
   }
-  bucket() {
-    const key = new Date(Math.floor(this.now() / HOUR) * HOUR).toISOString();
+  bucket(t = this.now()) {
+    const key = new Date(Math.floor(t / HOUR) * HOUR).toISOString();
     return this.state.buckets[key] ??= {
       models: Object.create(null), networks: {}, totals: {}, payers: [], capped: false, c402: challengeCounts(), paymentFailures: {} };
 
+  }
+  // Only a payer that is known and not on a non-empty own-payer list is external; unknown payers are not.
+  isExternal(payer) {
+    return this.own.size > 0 && typeof payer === "string" && payer.trim() !== "" && !this.own.has(normalize(payer));
+  }
+  // Attempt and answer go to the hour the paid handler started, so a window never has more answers than attempts.
+  paidCounts(network, started) {
+    const n = networkName(network);
+    if (n === "other") return null;
+    const b = this.bucket(Number.isFinite(started) ? started : this.now());
+    return (b.paid ??= {})[n] ??= { attempts: 0, answered: 0, ms: [] };
+  }
+  recordPaidAttempt({ network, external, started } = {}) {
+    try {
+      if (external !== true || this.own.size === 0) return;
+      const c = this.paidCounts(network, started);
+      if (c) { c.attempts++; this.changed(); }
+    } catch {}
+  }
+  recordPaidAnswer({ network, external, started, ms } = {}) {
+    try {
+      if (external !== true || this.own.size === 0 || !Number.isSafeInteger(ms) || ms < 0) return;
+      const c = this.paidCounts(network, started);
+      if (!c) return;
+      c.answered++;
+      if (c.ms.length < LATENCY_CAP) c.ms.push(ms);
+      this.changed();
+    } catch {}
+  }
+  // A successful settlement without a 2xx answer: an integrity break whoever paid, so it counts every payer.
+  recordChargeWithoutAnswer(network) {
+    try {
+      const n = networkName(network);
+      for (const target of [this.state, this.bucket()]) {
+        target.cwa ??= {};
+        target.cwa[n] = (target.cwa[n] || 0) + 1;
+      }
+      this.changed();
+    } catch {}
   }
   recordAgent(req) { try { recordTraffic(this, req); } catch {} }
 
@@ -350,6 +396,22 @@ export function numbersBody(stats) {
     [code, entries.reduce((sum, b) => sum + (b.paymentFailures?.[code] || 0), 0)]));
   const byNetwork = key => Object.fromEntries(["base", "solana"].map(n =>
     [n, key === "atomic" ? volume(total.byNetwork[n]?.atomic) : total.byNetwork[n]?.calls || 0]));
+  // Published only with a non-empty own-payer list (only then is anything recorded); zero attempts is no rate.
+  const configured = stats.own.size > 0, NETWORKS = ["base", "solana"];
+  const paidWindow = (h, measure) => Object.fromEntries(NETWORKS.map(n => {
+    const c = { attempts: 0, answered: 0, ms: [] };
+    for (const b of stats.window(h)) {
+      const p = b.paid?.[n];
+      if (p) { c.attempts += p.attempts; c.answered += p.answered; c.ms.push(...p.ms); }
+    }
+    return [n, measure(c)];
+  }));
+  const paidWindows = (measure, unpublished) => Object.fromEntries([["last_24h", 24], ["last_7d", 168]].map(([k, h]) =>
+    [k, configured ? paidWindow(h, measure) : Object.fromEntries(NETWORKS.map(n => [n, { ...unpublished, reason: "own_payers_not_configured" }]))]));
+  // Nearest rank: the smallest sample with at least p% of samples at or below it.
+  const rank = (sorted, p) => sorted[Math.ceil(p / 100 * sorted.length) - 1];
+  const cwa = entries => entries.reduce((sum, b) => sum + Object.values(b.cwa ?? {}).reduce((a, n) => a + n, 0), 0);
+  const notMeasured = { p50: null, p95: null, reason: "not_measured" };
   return { schema: 1, agent_traffic: trafficNumbers(stats), generated_at: new Date(stats.now()).toISOString(), since,
     scope: "Settled payments on publicly listed x402 routes; own payers are excluded only once an own-payer list is configured (see counts_basis).",
     settlement_failures_by_code: { total: refusals([stats.state]), last_24h: refusals(stats.window(24)), last_7d: refusals(stats.window(168)) },
@@ -363,6 +425,18 @@ export function numbersBody(stats) {
       : "Excludes configured own payers from now on; calls and volume recorded before the list was configured still include our own payments.",
     own_payments_excluded: total.own,
     settlement_failures: { last_24h: day.fail, last_7d: week.fail },
+    paid_call_success: paidWindows(c => c.attempts
+      ? { attempts: c.attempts, answered: c.answered, success_pct: Math.round(c.answered / c.attempts * 1000) / 10, reason: null }
+      : { attempts: 0, answered: 0, success_pct: null, reason: "insufficient_data" },
+    { attempts: null, answered: null, success_pct: null }),
+    paid_answer_latency_ms: paidWindows(c => {
+      const sorted = c.ms.sort((a, b) => a - b);
+      return sorted.length ? { samples: sorted.length, p50: rank(sorted, 50), p95: rank(sorted, 95), reason: null }
+        : { samples: 0, p50: null, p95: null, reason: "insufficient_data" };
+    }, { samples: null, p50: null, p95: null }),
+    payment_overhead_ms: notMeasured, e2e_ms: notMeasured,
+    charge_without_answer: { since: stats.state.cwaSince, total: cwa([stats.state]), last_24h: cwa(stats.window(24)),
+      last_7d: cwa(stats.window(168)), by_network: Object.fromEntries(NETWORKS.map(n => [n, stats.state.cwa?.[n] || 0])) },
     definitions: {
       schema: "Version of this response format.", generated_at: "Time this response was generated.",
       scope: "Only settled payments on publicly listed x402 routes count; internal web-app routes are excluded; own payers are excluded only once an own-payer list is configured (see counts_basis).",
@@ -384,6 +458,14 @@ export function numbersBody(stats) {
 
       settlement_failures_by_code: "Refused payments, verification or settlement, with a code, across all routes with the hooks; does not replace settlement_failures.",
       settlement_failures: "Failed facilitator settlements across all routes during each window.",
+      paid_call_success: "Per network and window: attempts are paid chat requests whose payment passed verification and reached the answer handler; answered are those that returned HTTP 200 with an answer and then settled; success_pct = answered / attempts, to one decimal. "
+        + "Recorded only for payers known not to be ours, and only while an own-payer list is configured: otherwise values are null with reason own_payers_not_configured. A window with no attempts is null with reason insufficient_data, never 100%. Measured only since this counter started; not backfilled from settlements.",
+      paid_answer_latency_ms: "Milliseconds from the start of the paid answer handler (after payment verification) to the answer being ready, for answered calls in paid_call_success; nearest-rank p50 and p95 of up to 200 samples per network per UTC hour. "
+        + "Not the client's 402-to-200 round trip and excludes verification and settlement. Same own-payer publication rule as paid_call_success.",
+      payment_overhead_ms: "Time added by the 402 challenge and payment; not measured, so null with reason not_measured.",
+      e2e_ms: "Verification, answer and settlement end to end; not measured, so null with reason not_measured.",
+      charge_without_answer: "Successful settlements observed where the response was not 2xx, or where the paid chat handler had not marked an answer as sent; any payer, including ours. Should stay 0. "
+        + "Counted only since `since` in this field, when this counter started; it says nothing about earlier payments. by_network is since then.",
       availability: "External availability is published separately at https://app.singitai.app/status.json."
     } };
 }

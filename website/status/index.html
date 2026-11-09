@@ -147,6 +147,16 @@
     </table></div>
   </div></section>
   <section class="lp-section"><div class="shell">
+    <h2 class="section-title">Paid calls</h2>
+    <p class="lp-text">Success is answered calls out of paid calls that passed payment verification. Latency is from the start of the paid answer handler to the answer being ready, not the client's full round trip. Both count only payers known not to be ours. A charge without an answer is a settlement without a successful answer, for any payer; it should stay 0 and is counted only since that counter started.</p>
+    <p id="cwa-total" class="lp-text">Loading paid-call measurements…</p>
+    <div class="table-wrap"><table class="mtable">
+      <caption>Paid-call success, answer latency and charges without an answer, by network.</caption>
+      <thead><tr><th scope="col">Measurement</th><th scope="col">Last 24 hours</th><th scope="col">Last 7 days</th></tr></thead>
+      <tbody id="paid"><tr><td colspan="3">Loading paid-call measurements…</td></tr></tbody>
+    </table></div>
+  </div></section>
+  <section class="lp-section"><div class="shell">
     <h2 class="section-title">Definitions</h2>
 
     <div class="table-wrap"><table class="mtable">
@@ -183,7 +193,7 @@
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
 <script src="/app.js?v=bb7061fc"></script>
-<script type="module" src="/status.mjs?v=2"></script>
+<script type="module" src="/status.mjs?v=3"></script>
 
 </body>
 </html>

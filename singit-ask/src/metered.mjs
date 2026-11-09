@@ -239,6 +239,26 @@ export function addPaymentRoute(app, routes, server,
       } catch {}
     };
     server.onAfterSettle(record(true)); server.onSettleFailure(record(false));
+    // The verified payer is kept on the request only as an external/not flag, never as an address.
+    server.onAfterVerify(ctx => {
+      try {
+        const req = ctx.transportContext?.request?.adapter?.req;
+        if (req && ctx.result?.isValid !== false) req.singitExternalPayer = app.locals?.healthStats?.isExternal(ctx.result?.payer) === true;
+      } catch {}
+    });
+    // Express 2.28 settles after the handler only below 400; such a settlement without a 2xx, or without the paid
+    // chat handler's answer mark, is a charge without an answer. Deposits before the handler and refunds on
+    // cancel (Solana upto) settle in their own phases and are not answers.
+    server.onAfterSettle(ctx => {
+      try {
+        const res = ctx.transportContext?.request?.adapter?.req?.res;
+        if (!res || ctx.result?.success === false || (ctx.phase ?? "after-handler") !== "after-handler") return;
+        const tally = res.locals?.singitPaid, ms = res.locals?.singitAnswered;
+        if (res.statusCode < 200 || res.statusCode > 299 || (tally && !Number.isSafeInteger(ms)))
+          app.locals?.healthStats?.recordChargeWithoutAnswer(ctx.requirements?.network);
+        else if (tally) app.locals?.healthStats?.recordPaidAnswer({ ...tally, ms });
+      } catch {}
+    });
   }
   server.onAfterSettle(ctx => { permitGuard.record(ctx.paymentPayload, ctx.requirements, ctx.result); });
   const failure = phase => ctx => {
@@ -382,6 +402,8 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     try {
       const paid = paidTerms(req);
       if (!paid) throw new Error("payment on an unknown network");
+      res.locals.singitPaid = { network: paid.network, external: req.singitExternalPayer === true, started };
+      try { app.locals?.healthStats?.recordPaidAttempt(res.locals.singitPaid); } catch {}
       const exact = paid.scheme === "exact";
       // Solana `exact`: the answer must be complete within the window from verification (solana-exact-window.mjs).
       const win = solanaExactWindow(req, config);
@@ -436,6 +458,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });
       log(`singit-ask: answer ready in ${Date.now() - started} ms, isDefault=${req.askInput.modelOmitted == null ? null : req.askInput.modelOmitted === true}, settling ${billing.totalAtomic} micro-USDC`);
       res.locals.singitReceipt = { ref: `singit-ask-${started}`, chargedAtomic: billing.totalAtomic };
+      res.locals.singitAnswered = Date.now() - started;
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: req.askInput.fallbackFrom ? req.askInput.model : "singit-ask",
         ...(answer.retried ? { retried: true } : {}),

@@ -53,6 +53,37 @@ export function numberRows(numbers) {
     ["Unique payer wallets", numbers.unique_payers]].map(([label, values]) =>
     [label, ...["total", "last_24h", "last_7d"].map(k => values[k] ?? "Not measurable")]);
 }
+// Per-network paid-call measurements; a withheld value shows why, never a guessed number.
+const NOT_PUBLISHED = {
+  own_payers_not_configured: "Not published: own-payer list is not configured, so this would include our own payments.",
+  insufficient_data: "Not enough data", not_measured: "Not measured" };
+const published = (entry, value) => entry && typeof entry === "object" && entry.reason == null && Number.isFinite(value);
+const withheld = entry => typeof entry?.reason === "string" && Object.hasOwn(NOT_PUBLISHED, entry.reason)
+  ? NOT_PUBLISHED[entry.reason] : "Not available";
+export function paidCallRows(numbers) {
+  const success = numbers?.paid_call_success, latency = numbers?.paid_answer_latency_ms, cwa = numbers?.charge_without_answer;
+  if (!success || !latency || !cwa) throw new Error("Could not load paid-call measurements.");
+  const rows = [];
+  for (const n of ["base", "solana"]) {
+    const name = n === "base" ? "Base" : "Solana";
+    rows.push([`${name} paid-call success`, ...["last_24h", "last_7d"].map(w => {
+      const e = success[w]?.[n];
+      return published(e, e.success_pct) ? `${e.success_pct}% (${e.answered} of ${e.attempts})` : withheld(e);
+    })]);
+    rows.push([`${name} answer latency p50 / p95`, ...["last_24h", "last_7d"].map(w => {
+      const e = latency[w]?.[n];
+      return published(e, e.p50) && Number.isFinite(e.p95) ? `${e.p50} ms / ${e.p95} ms (${e.samples} samples)` : withheld(e);
+    })]);
+  }
+  rows.push(["Charge without answer", ...[cwa.last_24h, cwa.last_7d].map(v => Number.isInteger(v) ? v : "Not available")]);
+  return rows;
+}
+export function chargeWithoutAnswerText(numbers) {
+  const cwa = numbers?.charge_without_answer;
+  return Number.isInteger(cwa?.total) && typeof cwa.since === "string"
+    ? `Charges without an answer since this counter started at ${cwa.since}: ${cwa.total}. Earlier payments are not covered.`
+    : "Charges without an answer: not available.";
+}
 export function countsLabel(numbers) {
   return typeof numbers?.counts_label === "string" ? numbers.counts_label : "These counts may include our own payments.";
 }
@@ -82,7 +113,7 @@ if (typeof document !== "undefined") {
   const states = {
     models: [6, "No model answers recorded in the last 24 hours."],
     rails: [6, "No payment status recorded."], numbers: [4, "No measured numbers recorded."],
-    definitions: [2, "No definitions available."], availability: [5, "No availability recorded."]
+    definitions: [2, "No definitions available."], paid: [3, "No paid-call measurements."], availability: [5, "No availability recorded."]
   };
   const table = (id, rows, message = states[id][1]) => {
     const body = document.getElementById(id); body.replaceChildren();
@@ -109,6 +140,8 @@ if (typeof document !== "undefined") {
         .catch(() => table("availability", [], "Could not load availability.")),
       loadJson(NUMBERS_URL).then(n => {
         table("numbers", numberRows(n));
+        try { table("paid", paidCallRows(n)); } catch { table("paid", [], "Could not load paid-call measurements."); }
+        text("cwa-total", chargeWithoutAnswerText(n));
         text("counts-label", countsLabel(n));
         text("since", `Measured since ${n.since}. History before the counters existed is not included.`);
         const rows = Object.entries(n.definitions).map(([k, v]) => [k, v]);
@@ -123,6 +156,7 @@ if (typeof document !== "undefined") {
         text("counts-label", countsLabel(null));
         text("since", "Could not load measured numbers."); table("numbers", [], "Could not load measured numbers.");
         table("definitions", [], "Could not load definitions.");
+        table("paid", [], "Could not load paid-call measurements."); text("cwa-total", chargeWithoutAnswerText(null));
       })
     ]);
   }
