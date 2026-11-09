@@ -43,7 +43,7 @@ import { CREDIT_ROUTE, addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody, exaPriceRange } from "./search.mjs";
 import { IMAGE_ROUTE, IMAGE_REQUEST_BODY, addImageRoutes } from "./images.mjs";
 import { MEDIA_MODELS_ROUTE, availableAudioPrices, audioExample, audioOpenapi, addAudioGenerationRoutes } from "./audio-generation.mjs";
-import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, SPEECH_REQUEST_BODY, SPEECH_TERMS, addSpeechRoutes } from "./speech.mjs";
+import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, SPEECH_REQUEST_BODY, SPEECH_TERMS, SPEECH_JSON_EXAMPLE, SPEECH_JSON_SCHEMA, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
@@ -1014,7 +1014,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             description: routeCopy(SPEECH_ROUTE).description,
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.001", max: "0.336" }, protocols: [{ x402: {} }] },
             requestBody: SPEECH_REQUEST_BODY(),
-            responses: { 200: { description: "mp3 (audio/mpeg) is the default; other response_format values return their own Content-Type.", content: Object.fromEntries([...Object.values(SPEECH_CONTENT_TYPES), "audio/mp4"].map((type) => [type, {}])) },
+            responses: { 200: { description: "mp3 (audio/mpeg) is the default; json and b64_json wrap that default mp3 as JSON with audio_base64; other response_format values return their own Content-Type.", content: {
+              ...Object.fromEntries([...Object.values(SPEECH_CONTENT_TYPES), "audio/mp4"].map((type) => [type, {}])),
+              "application/json": { schema: SPEECH_JSON_SCHEMA, example: SPEECH_JSON_EXAMPLE },
+            } },
                          ...paidErrors({ exactTimeout: 120, exampleMessage: "No audio was made. You were not charged.", exampleCode: "no_billable_answer", notFound: "No such voice model; nothing was charged", duplicate: true, noAnswer: "No audio; nothing charged" }) },
             security: [{ x402: [] }],
           } },

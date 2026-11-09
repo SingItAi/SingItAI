@@ -79,7 +79,11 @@ test("speech is offered at the list price for its text + 30% + the network's fee
   // 2000 characters at $0.0035 per 1000 = 7000, + 2100 markup, + the fee. exact on Base leads (SI-61).
   assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[BASE, "10100"], [SOLANA, "11100"]]);
   assert.ok(required.extensions?.bazaar);
-  assert.deepEqual(required.extensions.bazaar.info.output, { type: "audio/mpeg", format: "binary" });
+  assert.equal(required.resource.mimeType, "application/json");
+  assert.equal(required.extensions.bazaar.info.input.body.response_format, "b64_json");
+  assert.equal(required.extensions.bazaar.info.output.type, "json");
+  assert.equal(required.extensions.bazaar.info.output.example.audio_base64, "SUQzBA==");
+  assert.equal(required.extensions.bazaar.info.output.example.bytes, 4);
   assert.deepEqual(surplus.calls, []);
 });
 
@@ -96,6 +100,36 @@ test("paid speech comes back as audio, made once with this service's key, then t
   assert.deepEqual(facilitator.calls.settle, [[BASE, "10100"]]);
   assert.equal((await post(`${url}${SPEECH_ROUTE}`, SPEECH, pay(required, BASE))).status, 409);
 });
+
+test("Accept: application/json without response_format still returns binary audio", async (t) => {
+  const { url, surplus, facilitator } = await serve(t);
+  const required = decode((await post(`${url}${SPEECH_ROUTE}`, SPEECH)).headers.get("payment-required"));
+  const paid = await post(`${url}${SPEECH_ROUTE}`, SPEECH, { ...pay(required, BASE), Accept: "application/json" });
+  assert.equal(paid.status, 200);
+  assert.equal(paid.headers.get("content-type"), "audio/mpeg");
+  assert.deepEqual(Buffer.from(await paid.arrayBuffer()), AUDIO);
+  assert.deepEqual(surplus.calls.map((c) => c.body), [{ model: "venice-kokoro-tts", input: TEXT, voice: "af_heart" }]);
+  assert.equal(facilitator.calls.settle.length, 1);
+});
+
+for (const envelope of ["json", "b64_json"]) {
+  test(`paid speech with response_format ${envelope} returns a JSON envelope and settles once`, async (t) => {
+    const { url, surplus, facilitator } = await serve(t);
+    const body = { ...SPEECH, response_format: envelope };
+    const required = decode((await post(`${url}${SPEECH_ROUTE}`, body)).headers.get("payment-required"));
+    assert.equal(required.resource.mimeType, "application/json");
+    const paid = await post(`${url}${SPEECH_ROUTE}`, body, pay(required, BASE));
+    assert.equal(paid.status, 200);
+    assert.match(paid.headers.get("content-type"), /^application\/json/);
+    assert.equal(paid.headers.get("x-singit-charged-atomic"), "10100");
+    assert.deepEqual(await paid.json(), {
+      object: "audio", model: "venice-kokoro-tts", voice: "af_heart", format: "mp3",
+      content_type: "audio/mpeg", audio_base64: AUDIO.toString("base64"), bytes: AUDIO.length,
+    });
+    assert.deepEqual(surplus.calls.map((c) => c.body), [{ model: "venice-kokoro-tts", input: TEXT, voice: "af_heart" }]);
+    assert.equal(facilitator.calls.settle.length, 1);
+  });
+}
 
 test("no audio, no charge", async (t) => {
   for (const surplus of [fakeSurplus({ status: 500 }), fakeSurplus({ type: "application/json", body: "{}" }), fakeSurplus({ body: "" })]) {
@@ -143,6 +177,15 @@ test("prices, and the free list of voice models", async (t) => {
   assert.deepEqual(speechPrice(200, SOLANA), { listAtomic: "200", markupAtomic: "60", feeAtomic: "2000", totalAtomic: "2260" });
   assert.deepEqual(readSpeechRequest({ input: "hi", response_format: "wav", speed: 1.5 }, kokoro),
     { model: "venice-kokoro-tts", input: "hi", response_format: "wav", speed: 1.5 });
+  assert.deepEqual(readSpeechRequest({ input: "hi", response_format: "b64_json" }, kokoro),
+    { model: "venice-kokoro-tts", input: "hi", envelope: "json" });
+  assert.deepEqual(readSpeechRequest({ input: "hi", response_format: "json" }, kokoro),
+    { model: "venice-kokoro-tts", input: "hi", envelope: "json" });
+  const asyncModel = { id: "elevenlabs/v3", usdPerJob: 0.12, voices: ["Aria"] };
+  assert.deepEqual(readSpeechRequest({ input: "Hello", voice: "Aria", response_format: "b64_json" }, asyncModel),
+    { model: "elevenlabs/v3", input: "Hello", voice: "Aria", envelope: "json" });
+  assert.throws(() => readSpeechRequest({ input: "Hello", response_format: "wav" }, asyncModel), /not supported/);
+  assert.throws(() => readSpeechRequest({ input: "Hello", speed: 1 }, asyncModel), /not supported/);
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/audio/models`)).json();
   assert.deepEqual(list.data.map((m) => [m.id, m.kind]), [["venice-kokoro-tts", "speech"],
@@ -207,7 +250,7 @@ for (const [format, type] of [["mp3", "audio/mp3"], ["mp3", "application/octet-s
     const { url, facilitator, logs } = await serve(t, { surplus: fakeSurplus({ type, body: FORMAT_BODIES[format] }) });
     const body = format === "mp3" ? SPEECH : { ...SPEECH, response_format: format };
     const required = decode((await post(`${url}${SPEECH_ROUTE}`, body)).headers.get("payment-required"));
-    assert.equal(required.resource.mimeType, "audio/mpeg");
+    assert.equal(required.resource.mimeType, "application/json");
     assert.match(required.resource.description, /OpenAI-compatible text-to-speech API/);
     const paid = await post(`${url}${SPEECH_ROUTE}`, body, pay(required, BASE));
     assert.equal(paid.status, 200);
@@ -308,3 +351,27 @@ for (const price of [undefined, 'not-a-price', 'Infinity', '0', '-1', '2']) {
     assert.deepEqual(facilitator.calls.settle, []);
   });
 }
+
+test("async speech with b64_json returns a JSON envelope and does not send response_format upstream", async t => {
+  const model = { id: "elevenlabs/v3", upstreamId: "venice-elevenlabs-tts-v3", usdPerJob: 0.12, voices: ["Aria"] };
+  VOICE.speech.set(model.id, model);
+  t.after(() => VOICE.speech.delete(model.id));
+  const surplus = { fetchImpl: async (url, init) => {
+    if (url.endsWith("/v1/music/generations")) {
+      assert.deepEqual(JSON.parse(init.body), { model: model.upstreamId, prompt: "Hello", voice: "Aria" });
+      return Response.json({ id: "job_123", status: "succeeded", results: [{}] });
+    }
+    return new Response(AUDIO);
+  } };
+  const { url, facilitator } = await serve(t, { surplus });
+  const body = { model: model.id, input: "Hello", voice: "Aria", response_format: "b64_json" };
+  const required = decode((await post(`${url}${SPEECH_ROUTE}`, body)).headers.get("payment-required"));
+  const paid = await post(`${url}${SPEECH_ROUTE}`, body, pay(required, BASE));
+  assert.equal(paid.status, 200);
+  assert.match(paid.headers.get("content-type"), /^application\/json/);
+  assert.deepEqual(await paid.json(), {
+    object: "audio", model: model.id, voice: "Aria", format: "mp3",
+    content_type: "audio/mpeg", audio_base64: AUDIO.toString("base64"), bytes: AUDIO.length,
+  });
+  assert.equal(facilitator.calls.settle.length, 1);
+});
