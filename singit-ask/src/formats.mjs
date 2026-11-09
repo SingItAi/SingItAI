@@ -1,3 +1,4 @@
+import { isFable52, samplingAllowed, forcedToolError } from "./model-policy.mjs";
 import { routeCopy } from "./listing-snapshot.mjs";
 import { validateStream } from './agent-stream.mjs';
 import { upstreamModelId } from "./model-aliases.mjs";
@@ -51,9 +52,13 @@ class NoAnswer extends Error {
 // it; a model with no list keeps the request as it came.
 const FILTERED_PARAMS = ["temperature", "top_p", "top_k", "frequency_penalty", "presence_penalty", "reasoning_effort"];
 export function fitRequest(request, params) {
-  if (!Array.isArray(params)) return request;
+  if (!Array.isArray(params) && samplingAllowed(request.model, "temperature")) return request;
   const fitted = { ...request };
-  for (const name of FILTERED_PARAMS) if (name in fitted && !params.includes(name)) delete fitted[name];
+  for (const name of FILTERED_PARAMS) if (name in fitted && (!samplingAllowed(request.model, name) || (Array.isArray(params) && !params.includes(name)))) delete fitted[name];
+  if (isFable52(request.model) && fitted.reasoning_effort === undefined && fitted.reasoning === undefined) {
+    if (!Array.isArray(params) || params.includes("reasoning_effort")) fitted.reasoning_effort = "low";
+    else if (params.includes("reasoning")) fitted.reasoning = { effort: "low" };
+  }
   return fitted;
 }
 
@@ -109,6 +114,8 @@ export function readFormatRequest(route, body) {
     throw new FormatError(400, "Name a model from GET /v1/models.");
   }
   const request = { ...body, stream: false, stream_options: undefined, model: surplusModel(body.model.trim()) };
+  const forced = forcedToolError(request.model, body.tool_choice);
+  if (forced) throw new FormatError(forced.status, forced.message);
   let maxTokens, sized, messageCount;
   if (route === "/v1/messages") {
     if (!Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > 200) {

@@ -132,6 +132,7 @@ export const retryBudget = b1 => Math.min(2 * b1, b1 + 2048);
 export const REASONING_HEADROOM = Object.freeze({
   "gemini-3.1-pro-preview": 1024,
   "claude-opus-5.5": 256,
+  "claude-fable-5.2": 256,
   "openai-gpt-oss-20b": 256,
   // Audit: these untagged models spent about 193 / 146 tokens thinking at effort none.
   "qwen3.5-plus": 256,

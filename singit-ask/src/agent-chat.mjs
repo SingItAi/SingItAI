@@ -23,6 +23,7 @@ export function normalizeAgent(body, ErrorClass) {
   if (body.tool_choice != null) {
     if (!tools?.length) fail('tool_choice requires tools.');
     if (['none', 'auto', 'required'].includes(body.tool_choice)) toolChoice = body.tool_choice;
+    else if (['auto', 'none'].includes(body.tool_choice?.type)) toolChoice = body.tool_choice.type;
     else if (body.tool_choice?.type === 'function' && tools.some(t => t.function.name === body.tool_choice.function?.name)) toolChoice = { type: 'function', function: { name: body.tool_choice.function.name } };
     else fail('Invalid tool_choice; the function must be one of tools.');
   }
