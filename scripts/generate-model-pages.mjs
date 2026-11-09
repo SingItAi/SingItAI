@@ -19,10 +19,12 @@ import { limits } from "./templates/spending-limits.mjs";
 // Audit measured thinking at effort none despite missing catalogue tags (193 / 146 tokens).
 export const REASONING_BY_MEASUREMENT = new Set(["qwen3.5-plus", "qwen3.5-flash"]);
 
-const hasTokenPrice = (m) => ["input", "output"].every((key) => {
-  const v = m.singitUsdPerMillionTokens?.[key];
-  return Number.isFinite(v) && v >= 0 && (v > 0 || m.usdPerMillionTokens?.[key] === 0);
-}) && ["input", "output"].some((key) => m.singitUsdPerMillionTokens?.[key] > 0);
+export function hasTokenPrice(m) {
+  return ["input", "output"].every((key) => {
+    const v = m.singitUsdPerMillionTokens?.[key];
+    return Number.isFinite(v) && v >= 0 && (v > 0 || m.usdPerMillionTokens?.[key] === 0);
+  }) && ["input", "output"].some((key) => m.singitUsdPerMillionTokens?.[key] > 0);
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const origin = "https://singitai.app";
