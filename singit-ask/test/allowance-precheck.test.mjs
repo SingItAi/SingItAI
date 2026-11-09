@@ -127,6 +127,13 @@ test("HTTP: a payment whose allowance is below the ceiling is refused before the
   const body = await response.json();
   assert.equal(body.code, "permit2_allowance_required");
   assert.match(body.message, /Nothing was charged/);
+  // D-PERMIT2: what to do next, machine-readable, with the old fields kept.
+  assert.equal(body.error, "permit2_allowance_required");
+  assert.equal(body.action, "use_exact_or_provide_permit");
+  assert.deepEqual(body.details, { scheme: "upto", network: "eip155:8453", extension: "eip2612GasSponsoring" });
+  assert.match(body.request_id, /^req_[0-9a-f-]{36}$/);
+  assert.equal(response.headers.get("x-singit-error"), "permit2_allowance_required");
+  assert.ok(Array.isArray(body.accepts) && body.accepts.length > 0);
   assert.equal(calls.upstream, 0);
   assert.equal(calls.verify, 0);
   assert.equal(calls.settle, 0);
