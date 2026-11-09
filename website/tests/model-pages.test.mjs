@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { test } from "node:test";
 import { snapshot } from "../../scripts/models-snapshot.mjs";
-import { price, escapeHtml, safeSlug, modelTitle, modelDescription, displayName, PAGE_COPY_FORBIDDEN, REASONING_BY_MEASUREMENT, mergeBlock, renderPages, visibleSnapshot, hiddenRedirects } from "../../scripts/generate-model-pages.mjs";
+import { price, escapeHtml, safeSlug, modelTitle, modelDescription, displayName, hasTokenPrice, PAGE_COPY_FORBIDDEN, REASONING_BY_MEASUREMENT, mergeBlock, renderPages, visibleSnapshot, hiddenRedirects } from "../../scripts/generate-model-pages.mjs";
 import { limits } from "../../scripts/templates/spending-limits.mjs";
 
 const exec = promisify(execFile);
@@ -182,17 +182,22 @@ test("all committed pages are current, crawlable and follow content rules", asyn
     const model = s.models.find((m) => dir === `models/${m.id}`);
     if (model) {
       const product = graph.find((n) => n["@type"] === "Product");
-      assert.ok(product);
-      if (model.singitUsdPerMillionTokens) {
-        assert.deepEqual(product.offers.map((o) => o.priceSpecification.price), [price(model.singitUsdPerMillionTokens.input), price(model.singitUsdPerMillionTokens.output)]);
+      assert.ok(product, dir);
+      if (hasTokenPrice(model)) {
+        assert.deepEqual(product.offers.map((o) => o.priceSpecification.price), [price(model.singitUsdPerMillionTokens.input), price(model.singitUsdPerMillionTokens.output)], dir);
         for (const offer of product.offers) {
           assert.equal(offer.priceSpecification["@type"], "UnitPriceSpecification");
           assert.equal(offer.priceSpecification.priceCurrency, "USD");
         }
       } else {
-        assert.equal(product.offers, undefined);
-        assert.ok(html.includes("No per-token price is listed for this model."));
-        assert.doesNotMatch(html, /\$0(?:[^.\d]|\.0+(?:[^\d]|$))/);
+        assert.equal(product.offers, undefined, dir);
+        if (model.priceBasis === "reference") {
+          assert.ok(html.includes("The published list price is 0; no list-price savings claimed"), dir);
+          for (const key of ["input", "output"]) assert.ok(html.includes(`$${price(model.usdPerMillionTokens[key])}`), `${dir} ${key}`);
+        } else {
+          assert.ok(html.includes("No per-token price is listed for this model."), dir);
+          assert.doesNotMatch(html, /\$0(?:[^.\d]|\.0+(?:[^\d]|$))/);
+        }
       }
       for (const scheme of ["upto", "exact"]) for (const network of ["base", "solana"]) assert.ok(html.includes(`$${price(model[scheme][network].usd)}`));
       const reasoning = model.tags?.includes("reasoning") || REASONING_BY_MEASUREMENT.has(model.id);
@@ -399,12 +404,15 @@ test("blank names and reference prices stay addressable and inside the content r
   models.data[0].tags = ["video", "vision", "safe"];
   const s = snapshot(models, pricing, fetchedAt);
   const shell = await readFile(path.join(root, "scripts/templates/model-shell.html"), "utf8");
-  const html = renderPages(s, shell).get("models/fixture-0/index.html");
+  const pages = renderPages(s, shell);
+  const html = pages.get("models/fixture-0/index.html");
+  assert.match(pages.get("models/fixture-1/index.html"), /No per-token price is listed for this model\./);
   assert.match(html, /<title>fixture-0 API via x402: pay per call in USDC \| SingIt<\/title>/);
   assert.match(html, /<link rel="canonical" href="https:\/\/singitai\.app\/models\/fixture-0\/">/);
   assert.match(html, /<meta property="og:url" content="https:\/\/singitai\.app\/models\/fixture-0\/">/);
   assert.match(html, /<h1>fixture-0: pay per request with x402<\/h1>/);
   assert.match(html, /published list price is 0/);
+  assert.equal(html.includes("No per-token price is listed for this model."), false);
   assert.match(html, /Tags: vision/);
   assert.doesNotMatch(html, PAGE_COPY_FORBIDDEN);
   assert.equal(html.includes("Recommended: upto"), false);
