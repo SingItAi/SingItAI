@@ -764,8 +764,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       ...(limits ? { limits } : {}), ...(source?.sizes ? { sizes: source.sizes } : {}),
       exampleCall: { method: 'POST', path: entry.route, body } };
   };
-  app.get(/^\/v1\/models\/(.+)$/, open, async (req, res) => {
+  app.get(/^\/v1\/models\/(.+)$/, open, async (req, res, next) => {
     const entry = (await discoveryCatalog()).find(m => m.id === req.params[0]);
+    // Paid aliases share this prefix; let their GET discovery challenges handle them.
+    if (!entry && aliasPaths(catalogue).includes(req.path)) return next();
     if (!entry) return res.status(404).json({ error: { message: 'Unknown model', type: 'invalid_request_error', code: 'not_found' } });
     res.json(await modelCard(entry));
   });
