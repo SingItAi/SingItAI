@@ -27,6 +27,16 @@ function priced(extra) {
   return { models: { object: 'list', data, fees: { markupPct: 30, perAnswerUsd: { base: 0.001, solana: 0.002 } } }, pricing };
 }
 
+test('snapshot keeps a free daily budget from the payload', () => {
+  const offer = priced([]);
+  offer.models.free = { models: ['free/a'], perVisitorPerDay: 20, budgetUsdPerDay: 0.25 };
+  assert.equal(snapshot(offer.models, offer.pricing, '2026-11-01T00:00:00Z').free.budgetUsdPerDay, 0.25);
+  delete offer.models.free.budgetUsdPerDay;
+  assert.equal(Object.hasOwn(snapshot(offer.models, offer.pricing, '2026-11-01T00:00:00Z').free, 'budgetUsdPerDay'), false);
+  offer.models.free.budgetUsdPerDay = -1;
+  assert.throws(() => snapshot(offer.models, offer.pricing, '2026-11-01T00:00:00Z'), /free budget/);
+});
+
 test('snapshot skips an embedding rate and still rejects a broken token pair', () => {
   const scalar = priced([{ id: 'venice-embed-1', usdPerMillionTokens: 0.1625 }]);
   scalar.pricing.models = scalar.pricing.models.filter(m => m.id !== 'venice-embed-1').concat([{ id: 'venice-embed-1' }]);

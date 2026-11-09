@@ -194,6 +194,8 @@ export function formatSummary(plan) {
     '',
     'Automated refresh of the committed website catalog from the public unpaid endpoints. This pull request does not merge.',
     '',
+    'After the push, this workflow dispatches the Security gate on `bot/catalog-snapshot`. A pull request opened by GITHUB_TOKEN does not start that workflow by itself. If the checks do not appear, reopen this pull request from a user account.',
+    '',
     `- GET ${ENDPOINTS.catalog}`,
     `- GET ${ENDPOINTS.models}`,
     `- GET ${ENDPOINTS.pricing}`,

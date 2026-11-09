@@ -76,6 +76,10 @@ export function snapshot(models, pricing, fetchedAt) {
   if (models.free !== undefined) {
     requireShape(Array.isArray(models.free.models) && models.free.models.every((v) => typeof v === "string") && number(models.free.perVisitorPerDay), "free offer");
     result.free = { models: models.free.models, perVisitorPerDay: models.free.perVisitorPerDay };
+    if (Object.hasOwn(models.free, "budgetUsdPerDay")) {
+      requireShape(number(models.free.budgetUsdPerDay), "free budget");
+      result.free.budgetUsdPerDay = models.free.budgetUsdPerDay;
+    }
   }
   return result;
 }
