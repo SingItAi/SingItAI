@@ -549,7 +549,7 @@ const paidErrors = ({ notFound, duplicate, noAnswer, unavailable, reasoning, sch
     errorExample(schema === ANTHROPIC_ERROR_SCHEMA ? "api_error" : "upstream_error", exampleMessage, exampleCode, schema)), headers: RETRY_AFTER },
 });
 
-export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, resolveHostname, log = console.error,
+export function createApp(config, { facilitatorClient, upstream = askSurplus, fetchImpl = fetch, resolveHostname, ffmpeg, log = console.error,
                                     agentFilesDir, exaKey = config.exaKey ?? null, exaFetch = fetchImpl, priceBook = null,
                                     catalogue = config.surplusUrl ? new ModelCatalogue({
                                       url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
@@ -738,29 +738,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }
   });
 
-  const VIDEO_REQUEST_BODY = { required: true, content: { "application/json": { schema: {
-    type: "object", required: ["model", "prompt"],
-    properties: { model: { type: "string" }, prompt: { type: "string", maxLength: 2000 },
-      duration_seconds: { type: "integer" }, resolution: { type: "string" },
-      aspect_ratio: { type: "string" }, audio: { type: "boolean" },
-      fallback: { type: "boolean", default: true,
-        description: "Set false to refuse a substitute model when the chosen one has no healthy seller; "
-          + "the price never rises." } },
-  } } } };
-  const chatTokenPrices = (model, market) => {
-    const price = displayPrice(model, observed, market);
-    return {
-      usdPerMillionTokens: { input: model.promptUsdPerToken * 1e6, output: model.completionUsdPerToken * 1e6 },
-      ...(price ? {
-        expectedUsdPerMillionTokens: { input: model.promptUsdPerToken * 1e6 * price.share,
-          output: model.completionUsdPerToken * 1e6 * price.share, basis: price.basis },
-        singitUsdPerMillionTokens: { input: model.promptUsdPerToken * 1e6 * price.ours,
-          output: model.completionUsdPerToken * 1e6 * price.ours },
-        savingsVsListPct: savingsFor(price.ours),
-      } : {}),
-    };
-  };
-  const modelCard = async (entry, listed = null, market = null) => {
+  const modelCard = async (entry, listed = null) => {
     listed ??= await catalogue?.list() ?? [];
     let source = listed.find(m => m.id === entry.id || FREE_PREFIX + m.id === entry.id);
     const method = { image: 'imageModels', image_edit: 'editModels', embeddings: 'embeddingModels', video: 'videoModels' }[entry.modality];
@@ -794,31 +772,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     if (entry.free) body.max_tokens = Math.min(body.max_tokens, limits.maxTokens);
     if (entry.modality === 'speech' && source?.voices?.length) body.voice = source.voices[0];
     if (entry.modality === 'image' && source?.sizes?.length && !source.sizes.includes(body.size)) body.size = source.sizes[0];
-    const operation = '/openapi.json#/paths/' + entry.route.replaceAll('~', '~0').replaceAll('/', '~1') + '/post';
-    const schemas = { openapi: '/openapi.json', route: entry.route,
-      input: operation + '/requestBody', output: operation + '/responses/200',
-      ...(entry.modality === 'chat' ? { requiredBodyFields: INPUT_SCHEMA.required } : {}) };
-    // Transcription is served by the API-key gateway, whose OpenAPI uses paths relative to /v1.
-    if (entry.modality === 'transcription') {
-      schemas.openapi = 'https://singitai.app/openapi-keys.json';
-      schemas.input = schemas.openapi + '#/paths/~1audio~1transcriptions/post/requestBody';
-      schemas.output = schemas.openapi + '#/paths/~1audio~1transcriptions/post/responses/200';
-    }
-    // Sold audio can remain unlisted in x402 OpenAPI; reuse its actual operation definitions inline.
-    if (['music', 'sound_effects'].includes(entry.modality) && !config.audioDiscoverable) {
-      const post = audioOpenapi(() => ({}), {})[entry.route].post;
-      schemas.input = post.requestBody;
-      schemas.output = post.responses[200];
-    }
-    if (entry.modality === 'video' && !config.videoDiscoverable) {
-      schemas.input = VIDEO_REQUEST_BODY;
-      schemas.output = { description: "The finished clip, its file URLs, token and billing" };
-    }
-    const tokenPrices = entry.modality === 'chat' && source && !entry.router
-      ? chatTokenPrices(source, market ?? await catalogue?.market?.().catch(() => new Map()) ?? new Map())
-      : entry.modality === 'embeddings' && source?.usdPerMillionTokens !== undefined
-        ? { usdPerMillionTokens: source.usdPerMillionTokens } : {};
-    return { ...entry, price, schemas, ...tokenPrices, inputModalities: source?.inputs ?? io[0], outputModalities: io[1],
+    return { ...entry, price, inputModalities: source?.inputs ?? io[0], outputModalities: io[1],
       ...(source?.contextLength ? { contextLength: source.contextLength, context: { length: source.contextLength } } : {}),
       ...(limits ? { limits } : {}), ...(source?.sizes ? { sizes: source.sizes } : {}),
       exampleCall: { method: 'POST', path: entry.route, body } };
@@ -855,18 +809,26 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         ...(catalogue ? availableAudioPrices(config, catalogue).map(m => ({ ...m, object: "model", tags: [m.kind, "audio"] })) : []),
         ...[...((await catalogue?.embeddingModels?.().catch(() => new Map()))?.values() ?? [])].map(m => ({ ...m, object: "model", tags: ["embedding"] })),
         ...models.map(m => {
+          const price = displayPrice(m, observed, market);
+          const { share = null, basis, ours = null } = price ?? {};
           return { id: m.id, object: "model", owned_by: m.provider || "surplus", name: m.name, contextLength: m.contextLength,
             tags: m.tags ?? [],
             ...(config.defaultFallbacks !== false && Object.hasOwn(AUTO_CONFIG.pinnedDefaultFallbacks, m.id) ? { defaultFallback: AUTO_CONFIG.pinnedDefaultFallbacks[m.id] } : {}),
             ...(m.priceBasis === "reference" ? { priceBasis: "reference", priceDescription: "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0" } : {}),
             ...schemeAdvice(m.id),
-            ...chatTokenPrices(m, market) };
+            usdPerMillionTokens: { input: m.promptUsdPerToken * 1e6, output: m.completionUsdPerToken * 1e6 },
+            ...(share === null || !basis ? {} : { expectedUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * share,
+              output: m.completionUsdPerToken * 1e6 * share, basis } }),
+            // Savings need the same expected price and source shown above.
+            ...(ours === null ? {} : {
+              singitUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * ours, output: m.completionUsdPerToken * 1e6 * ours },
+              ...(share !== null && basis ? { savingsVsListPct: savingsFor(ours) } : {}) }) };
         })] };
     const previous = new Map(legacy.data.map(m => [m.id, m]));
     const order = new Map(legacy.data.map((m, i) => [m.id, i]));
     entries.sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
     const data = await Promise.all(entries.map(async entry => {
-      const card = await modelCard(entry, listed, market);
+      const card = await modelCard(entry, listed);
       return { ...card, ...previous.get(entry.id), price: card.price, object: 'model' };
     }));
     res.json({ ...legacy, data });
@@ -1075,7 +1037,12 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               + "with header X-Job-Token for free, then GET /v1/video/generations/{id}/content. Models: GET /v1/video/models. "
               + "Returns 503 no_healthy_sellers before any 402 when neither the requested model nor a compatible substitute is healthy.",
             "x-payment-info": { price: { mode: "dynamic", currency: "USD", min: "0.261", max: "1.302" }, protocols: [{ x402: {} }] },
-            requestBody: VIDEO_REQUEST_BODY,
+            requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["model", "prompt"],
+              properties: { model: { type: "string" }, prompt: { type: "string", maxLength: 2000 }, duration_seconds: { type: "integer" },
+                            resolution: { type: "string" }, aspect_ratio: { type: "string" }, audio: { type: "boolean" },
+                            fallback: { type: "boolean", default: true,
+                              description: "Set false to refuse a substitute model when the chosen one has no healthy seller; "
+                                + "the price never rises." } } } } } },
             responses: { 200: { description: "The finished clip, its file URLs, token and billing" },
                          ...paidErrors({ exactTimeout: 150, notFound: "No such video model; nothing was charged", duplicate: true,
                            noAnswer: "video_failed, video_timeout or no_healthy_sellers; nothing charged" }) },
@@ -1145,24 +1112,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           responses: { 200: { description: "Catalog entries and global per-modality counts" }, 400: { description: "Unknown modality" }, 503: { description: "Catalog unavailable" } },
         } },
         "/v1/models/{id}": { get: {
-          operationId: "getModelCard", security: [], summary: "Get model prices, typical call ceilings and schema links",
-          description: "Free, no payment required. Chat models include catalogue USD per million input/output tokens when known. price.upto and price.exact are the typical per-call ceilings for the reference request, not fixed token rates. schemas links to the executing POST operation requestBody and successful response in /openapi.json; chat also summarizes required body fields.",
+          operationId: "getModelCard", security: [], summary: "Get a model card with prices and example call",
           parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Model id; slashes may be percent-encoded." }],
-          responses: { 200: { description: "Model card with prices, schema links, input/output modalities and example call",
-            content: { "application/json": { schema: { type: "object", required: ["id", "price", "schemas", "exampleCall"],
-              properties: {
-                id: { type: "string" },
-                price: { type: "object", description: "Existing modality price. upto/exact are typical per-call ceilings for the reference request.", additionalProperties: true },
-                usdPerMillionTokens: { description: "Catalogue USD per million tokens: input/output for chat, existing scalar rate for embeddings; absent for virtual routers.",
-                  oneOf: [{ type: "object", required: ["input", "output"], properties: { input: { type: "number" }, output: { type: "number" } } }, { type: "number" }] },
-                schemas: { type: "object", required: ["openapi", "route", "input", "output"], properties: {
-                  openapi: { type: "string" }, route: { type: "string" },
-                  input: { oneOf: [{ type: "string" }, { type: "object" }], description: "OpenAPI link or inline POST requestBody." },
-                  output: { oneOf: [{ type: "string" }, { type: "object" }], description: "OpenAPI link or inline POST successful response." },
-                  requiredBodyFields: { type: "array", items: { type: "string" } },
-                } },
-                exampleCall: { type: "object", additionalProperties: true },
-              }, additionalProperties: true } } } }, 404: errorBody("Unknown model") },
+          responses: { 200: { description: "Model card with price, input/output modalities and example call" }, 404: errorBody("Unknown model") },
         } },
         "/v1/models": { get: {
           operationId: "listModels", summary: "List models that can be asked for now, with prices",
@@ -1313,13 +1265,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`,
         price: paths[path].post["x-payment-info"].price, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
         ...(!audioRoutes().includes(path) && path !== VIDEO_ROUTE ? routeCopy(path) : {}), ...(EXTRA_PAID.includes(path) ? { outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT } : {}) })),
-      documentation: {
-        mcp: "https://singitai.app/docs/mcp-tools/",
-        spendingLimits: "https://singitai.app/agent-spending-limits/",
-        llmsTxt: `${origin(req)}/llms.txt`,
-      },
-      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. Free single-model price and schemas: GET ${origin(req)}/v1/models/{id}. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + " Owner-set server-side spend limits apply to MCP/API keys; check get_allowance or get_limits before spending and get_receipts for receipts. On Base, the owner can use Emergency stop / Revoke on their agent allowance. Charged only when answered; direct wallet payments here require your own signature and are not covered by those agent limits."
-        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
+      instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
   // built from the same flags addFormatRoutes/addImageRoutes/addSpeechRoutes/addSearchRoutes are gated on, so the
@@ -1377,7 +1323,6 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + "(max_per_call_usd and max_per_day_usd in Python) are required, and they are checked in your own process "
         + "before anything is signed. These are client-side ceilings.",
       `- Through the MCP server (${MCP_URL}) or a SingIt API key, the owner sets the key's limits at https://app.singitai.app/app/; SingIt's server enforces them.`, "",
-      "- MCP: check get_allowance or get_limits before spending and get_receipts for receipts. On Base, Emergency stop / Revoke controls the owner's agent allowance; direct wallet payments here are not covered by those agent limits.", "",
       "## Model selection", "", AUTO_GUIDE, "", FALLBACK_GUIDE, "",
       ...(freeOffer ? ["## Free to try", "",
         `Model ${freeOffer.models.map((m) => `"${m}"`).join(", ")} on POST ${base}${ROUTE} answers with no payment: `
@@ -1469,7 +1414,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (catalogue) addImageRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, open });
   // Speech from Surplus's voice models, the same way.
   if (catalogue) addAudioGenerationRoutes(app, config, { publicClient, facilitatorClient, fetchImpl, log, open, catalogue });
-  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, resolveHostname, log, open });
+  if (catalogue) addSpeechRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, resolveHostname, ffmpeg, log, open });
   // Anthropic's Messages and OpenAI's Responses, paid like the chat route.
   if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
