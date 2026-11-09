@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { statusLabel, countsLabel, summaryText, modelRows, railRows, numberRows, availabilityRows, tableRows, loadJson,
-  paidCallRows, chargeWithoutAnswerText } from "../status.mjs";
+  paidCallRows, chargeWithoutAnswerText, settlementUnknownText } from "../status.mjs";
 const read = p => readFile(new URL(`../${p}`, import.meta.url), "utf8");
 test("status labels and measured fixture rows", () => {
   assert.equal(statusLabel("down"), "Down"); assert.equal(statusLabel("bad"), "Unknown");
@@ -18,7 +18,7 @@ test("fetch errors never become numbers", async () => {
 });
 test("static status page and discovery are safe", async () => {
   const page = await read("status/index.html"), script = await read("status.mjs");
-  assert.match(page, /<script type="module" src="\/status\.mjs\?v=3"><\/script>/);
+  assert.match(page, /<script type="module" src="\/status\.mjs\?v=4"><\/script>/);
   assert.match(page, /rel="canonical" href="https:\/\/singitai.app\/status\/"/);
   assert.doesNotMatch(page, /video|0x[a-f0-9]{40}/i);
   assert.doesNotMatch(script, /innerHTML/); assert.match(script, /textContent/);
@@ -163,6 +163,7 @@ test("counts basis is visible with a fallback for older responses", async () => 
 const unpublished = reason => ({ base: { reason }, solana: { reason } });
 const paidFixture = (success, latency) => ({ paid_call_success: { last_24h: success, last_7d: success },
   paid_answer_latency_ms: { last_24h: latency, last_7d: latency },
+  settlement_unknown: { since: "2026-11-09T10:00:00.000Z", total: 0, last_24h: 0, last_7d: 0, by_network: { base: 0, solana: 0 } },
   charge_without_answer: { since: "2026-11-09T10:00:00.000Z", total: 0, last_24h: 0, last_7d: 0, by_network: { base: 0, solana: 0 } } });
 
 test("paid-call rows say why a value is withheld and never invent a rate", () => {
@@ -171,11 +172,11 @@ test("paid-call rows say why a value is withheld and never invent a rate", () =>
   assert.deepEqual(withheld, [
     ["Base paid-call success", notConfigured, notConfigured], ["Base answer latency p50 / p95", notConfigured, notConfigured],
     ["Solana paid-call success", notConfigured, notConfigured], ["Solana answer latency p50 / p95", notConfigured, notConfigured],
-    ["Charge without answer", 0, 0]]);
+    ["Charge without answer", 0, 0], ["Settlement unknown", 0, 0]]);
   const empty = paidCallRows(paidFixture(
     { base: { attempts: 0, answered: 0, success_pct: null, reason: "insufficient_data" }, solana: { reason: "constructor" } },
     { base: { samples: 0, p50: null, p95: null, reason: "insufficient_data" }, solana: { reason: null, p50: "1", p95: 2 } }));
-  assert.deepEqual(empty.slice(0, 4).map(r => r[1]), ["Not enough data", "Not enough data", "Not available", "Not available"]);
+  assert.deepEqual(empty.slice(0, 4).map(r => r[1]), ["Not enough data (0 attempts)", "Not enough data (0 samples)", "Not available", "Not available"]);
   const measured = paidCallRows(paidFixture(
     { base: { attempts: 3, answered: 2, success_pct: 66.7, reason: null }, solana: { attempts: 1, answered: 0, success_pct: 0, reason: null } },
     { base: { samples: 2, p50: 100, p95: 300, reason: null }, solana: unpublished("insufficient_data").solana }));
@@ -194,4 +195,27 @@ test("charge without answer is labelled as measured only since its counter start
   assert.match(page, /id="cwa-total"/); assert.match(page, /<h2 class="section-title">Paid calls<\/h2>/);
   assert.match(script, /table\("paid", paidCallRows\(n\)\)/);
   assert.doesNotMatch(page, /\d+(\.\d+)?%|\d+ ms/);
+});
+
+
+test("unknown settlements have a separate counter caption and required row", async () => {
+  const fixture = paidFixture({}, {});
+  assert.equal(settlementUnknownText(fixture),
+    "Unknown settlements since this counter started at 2026-11-09T10:00:00.000Z: 0. Earlier payments are not covered.");
+  for (const bad of [null, {}, { settlement_unknown: { total: "0", since: "x" } }])
+    assert.equal(settlementUnknownText(bad), "Unknown settlements: not available.");
+  delete fixture.settlement_unknown;
+  assert.throws(() => paidCallRows(fixture), /paid-call/);
+  const page = await read("status/index.html"), script = await read("status.mjs");
+  assert.match(page, /id="su-total"/);
+  assert.match(page, /20-sample minimum/);
+  assert.match(script, /text\("su-total", settlementUnknownText\(n\)\)/);
+});
+
+test("withheld paid measurements retain raw counts", () => {
+  const rows = paidCallRows(paidFixture(
+    { base: { attempts: 19, answered: 18, success_pct: null, reason: "insufficient_data" } },
+    { base: { samples: 19, p50: null, p95: null, reason: "insufficient_data" } }));
+  assert.equal(rows[0][1], "Not enough data (19 attempts)");
+  assert.equal(rows[1][1], "Not enough data (19 samples)");
 });

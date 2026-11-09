@@ -1,3 +1,4 @@
+import { isIndeterminateSettlement } from "./health-stats.mjs";
 import { LIMITS } from "./limits.mjs";
 import { unsupportedCapability, capabilityError } from "./agent-chat.mjs";
 
@@ -221,6 +222,10 @@ export function addPaymentRoute(app, routes, server,
     statsServers.add(server);
     const record = ok => ctx => {
       try {
+        if (!ok && isIndeterminateSettlement(ctx.error)) {
+          app.locals?.healthStats?.recordSettlementUnknown(ctx.requirements?.network);
+          return;
+        }
         let route = null;
         try { const path = ctx.transportContext?.request?.path;
           if (statsRoutes.get(server).has(path)) route = path; } catch {}
