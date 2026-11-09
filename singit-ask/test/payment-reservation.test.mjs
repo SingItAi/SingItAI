@@ -7,8 +7,9 @@ import { request } from "./helpers/http-request.mjs";
 import { withFacilitatorHints } from "../src/facilitator-hints.mjs";
 import { createApp, BASE, SOLANA } from "../src/app.mjs";
 import { parseModels } from "../src/catalogue.mjs";
-import { reservations } from "../src/media-payment-replay.mjs";
-import { chatPaymentKey, bodyHash } from "../src/payment-reservation.mjs";
+import { reservations, paymentDigest } from "../src/media-payment-replay.mjs";
+import { chatPaymentKey } from "../src/payment-reservation.mjs";
+import { MODEL_ROUTES, routePath } from "../src/model-routes.mjs";
 
 const payer = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
 const config = { model: "test", payToBase: "0x" + "1".repeat(40), payToSolana: payer, exaKey: "fake-test" };
@@ -23,15 +24,20 @@ const supported = async () => ({ kinds: [BASE, SOLANA].flatMap(n => ["upto", "ex
 function gate() { let open; const opened = new Promise(r => { open = r; }); return { opened, open }; }
 
 function setup({ upstream } = {}) {
-  const calls = { model: 0, verify: 0, settle: 0 };
+  const calls = { model: 0, verify: 0, settle: 0, settledOk: 0 }, settled = new Set();
   const facilitatorClient = withFacilitatorHints({ getSupported: supported,
     verify: async () => { calls.verify++; return { isValid: true, payer }; },
-    settle: async (_p, req) => { calls.settle++; return { success: true, transaction: `tx${calls.settle}`, network: req.network, payer, amount: req.amount }; } });
+    // Like a real facilitator, one signed authorization settles at most once: a second settlement of the same payment fails.
+    settle: async (p, req) => { calls.settle++;
+      const id = JSON.stringify(p.payload?.authorization?.nonce ?? p.payload?.transaction);
+      if (settled.has(id)) return { success: false, errorReason: "invalid_transaction_state", transaction: "", network: req.network, payer };
+      settled.add(id); calls.settledOk++;
+      return { success: true, transaction: `tx${calls.settle}`, network: req.network, payer, amount: req.amount }; } });
   const app = createApp(config, { facilitatorClient, log() {},
     catalogue: { resolve: async () => info, list: async () => [info], canAnswer: async () => true },
     upstream: async () => { calls.model++; return upstream ? upstream(calls) : { content: "ANSWER", usage: { buyer_cost_micro: 100 } }; },
     fetchImpl: async () => { throw new Error("unexpected fetch"); } });
-  const post = (headers, body = BODY) => request(app, "/v1/chat/completions", { method: "POST", body: JSON.stringify(body),
+  const post = (headers, body = BODY, path = "/v1/chat/completions") => request(app, path, { method: "POST", body: JSON.stringify(body),
     headers: { "content-type": "application/json", ...headers } });
   const sign = async ({ network = SOLANA, scheme = "exact", tx = "signed-1", body = BODY } = {}) => {
     const required = decode((await post({}, body)).headers["payment-required"]);
@@ -90,32 +96,88 @@ test("B1-UPSTREAM-NO-CHARGE-FAIL: a no-charge failure releases the payment; the 
   assert.equal(s.calls.model, 2);
 });
 
-test("B1-SAME-PAYMENT-DIFFERENT-BODY: no shared reservation between different requests", async () => {
+// One signed payment is one purchase: while it is in flight, the same payment is refused whatever the body or route.
+// Before this, the key also bound the route and the body, so the same payment with a different body of the same
+// price (or on another chat route) reached the model a second time; the facilitator settled only one of them, so the
+// seller was paid twice for one settlement.
+const slow = g => async () => { await g.opened; return { content: "ANSWER", usage: { buyer_cost_micro: 100 } }; };
+const tick = () => new Promise(r => setImmediate(r));
+// Sends a copy while the first request is held at the seller, and settles it either way: refused, or (the defect)
+// held at the seller as a second model call. Then lets the seller answer.
+async function copyWhileHeld(s, g, send) {
+  let copy; const sent = send().then(r => { copy = r; });
+  while (!copy && s.calls.model < 2) await tick();
+  g.open(); await sent;
+  return copy;
+}
+// Same length, so the same price: the one signed payment fits both bodies.
+const OTHER = { ...BODY, messages: [{ role: "user", content: "jello" }] };
+for (const [network, scheme] of [[BASE, "exact"], [SOLANA, "exact"], [BASE, "upto"]]) {
+  test(`B2-SAME-PAYMENT-DIFFERENT-BODY ${network} ${scheme}: one model call, one settlement; the other body gets 409 before verification`, async () => {
+    const g = gate();
+    const s = setup({ upstream: slow(g) });
+    const header = await s.sign({ network, scheme });
+    const first = s.post(header);
+    while (s.calls.model < 1) await new Promise(r => setImmediate(r));
+    const other = await copyWhileHeld(s, g, () => s.post(header, OTHER));
+    assert.equal((await first).status, 200);
+    assert.deepEqual([s.calls.model, s.calls.settledOk], [1, 1], "one model call for one settled payment");
+    assertDuplicate(other);
+    assert.deepEqual([s.calls.verify, s.calls.settle], [1, 1], "the other body is refused before verification");
+    assert.equal(reservations.size, 0, "released once answered");
+  });
+}
+
+test("B2-SAME-PAYMENT-DIFFERENT-BODY, sent together: exactly one of them reaches the model", async () => {
   const g = gate();
-  const s = setup({ upstream: async () => { await g.opened; return { content: "ANSWER", usage: { buyer_cost_micro: 100 } }; } });
-  const header = await s.sign();
-  // Same length, so the same price: the one signed payment fits both, and only the reservation could tell them apart.
-  const other = { ...BODY, messages: [{ role: "user", content: "jello" }] };
-  const a = s.post(header), b = s.post(header, other);
-  while (s.calls.model < 2) await new Promise(r => setImmediate(r));
+  const s = setup({ upstream: slow(g) });
+  const header = await s.sign({ network: BASE, scheme: "exact" });
+  const all = [s.post(header), s.post(header, OTHER), s.post(header, { ...BODY, messages: [{ role: "user", content: "mello" }] })];
+  const done = [];
+  for (const p of all) p.then(r => done.push(r));
+  while (done.length < 2 && s.calls.model < 2) await tick();
   g.open();
-  const [ra, rb] = await Promise.all([a, b]);
-  assert.notEqual(ra.status, 409);
-  assert.notEqual(rb.status, 409);
-  assert.equal(s.calls.model, 2);
+  const res = await Promise.all(all);
+  assert.equal(res.filter(r => r.status === 200).length, 1);
+  for (const r of res.filter(r => r.status !== 200)) assertDuplicate(r);
+  assert.deepEqual([s.calls.model, s.calls.verify, s.calls.settle], [1, 1, 1]);
 });
 
-test("B1-SAME-PAYMENT-DIFFERENT-ROUTE/NETWORK: the key binds the route, the network and the canonical body", () => {
+test("B2-SAME-PAYMENT-OTHER-ROUTE: a chat payment in flight is refused on a per-model chat route", async () => {
+  const g = gate();
+  const s = setup({ upstream: slow(g) });
+  const header = await s.sign({ network: SOLANA, scheme: "exact" });
+  const first = s.post(header);
+  while (s.calls.model < 1) await new Promise(r => setImmediate(r));
+  const other = await copyWhileHeld(s, g, () => s.post(header, { ...BODY, model: MODEL_ROUTES[0].id }, routePath(MODEL_ROUTES[0].id)));
+  assert.equal((await first).status, 200);
+  assert.deepEqual([s.calls.model, s.calls.settledOk], [1, 1]);
+  assertDuplicate(other);
+  assert.equal(s.calls.verify, 1);
+});
+
+test("B2-DIFFERENT-PAYMENTS: two different payments with the same body are not blocked", async () => {
+  const g = gate();
+  const s = setup({ upstream: slow(g) });
+  const a = s.post(await s.sign({ tx: "signed-a" })), b = s.post(await s.sign({ tx: "signed-b" }));
+  while (s.calls.model < 2) await tick();
+  g.open();
+  assert.deepEqual((await Promise.all([a, b])).map(r => r.status), [200, 200]);
+  assert.equal(s.calls.settledOk, 2);
+});
+
+test("B2-KEY: the key is the payment's identity only, the same one image edits and embeddings reserve", () => {
   const payment = { x402Version: 2, accepted: { network: SOLANA, scheme: "exact" }, payload: { transaction: "signed-1" } };
-  const k = chatPaymentKey(payment, "/v1/chat/completions", BODY);
-  assert.notEqual(chatPaymentKey(payment, "/v1/messages", BODY), k);
-  assert.notEqual(chatPaymentKey(payment, "/v1/chat/claude-haiku-5.5", BODY), k);
-  assert.notEqual(chatPaymentKey({ ...payment, accepted: { network: BASE, scheme: "exact" } }, "/v1/chat/completions", BODY), k);
-  assert.notEqual(chatPaymentKey(payment, "/v1/chat/completions", { ...BODY, max_tokens: 101 }), k);
-  assert.equal(chatPaymentKey(payment, "/v1/chat/completions", { max_tokens: 100, messages: BODY.messages, model: "test" }), k,
-    "object key order does not matter (RFC 8785)");
-  assert.notEqual(bodyHash({ a: [1, 2] }), bodyHash({ a: [2, 1] }), "array order does");
-  assert.ok(!k.includes("signed-1") && /^chat:[0-9a-f]{64}$/.test(k), "only a hash is kept");
+  const k = chatPaymentKey(payment);
+  assert.equal(k, paymentDigest(payment), "one table, one identity for every paid route");
+  assert.notEqual(chatPaymentKey({ ...payment, payload: { transaction: "signed-2" } }), k, "another payment, another key");
+  const base = { x402Version: 2, accepted: { network: BASE, scheme: "exact", asset: "0xA" },
+    payload: { signature: "s", authorization: { from: "0x" + "2".repeat(40), nonce: "0x" + "3".repeat(64) } } };
+  assert.equal(chatPaymentKey({ ...base, accepted: { ...base.accepted, scheme: "upto" } }), chatPaymentKey(base),
+    "the same authorization is one payment whichever offer it claims");
+  assert.notEqual(chatPaymentKey({ ...base, payload: { ...base.payload, authorization: { ...base.payload.authorization, nonce: "0x" + "4".repeat(64) } } }),
+    chatPaymentKey(base));
+  assert.ok(!k.includes("signed-1") && /^[0-9a-f]{64}$/.test(k), "only a hash is kept");
 });
 
 test("B1-TOPOLOGY: one process shares one reservation table across app instances", async () => {

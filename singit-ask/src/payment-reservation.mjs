@@ -1,32 +1,27 @@
 // One payment, one answer at a time: chat completions, Messages and Responses reserve the signed payment before the
-// x402 middleware verifies it, so an identical copy that arrives while the first is still being answered is refused
-// with 409 payment_duplicate before any verification, model call or settlement. Without this, two copies of one
-// payment sent together both reached the model (the seller was paid twice; the facilitator settled once).
+// x402 middleware verifies it, so the same payment arriving again while the first request is still being answered is
+// refused with 409 payment_duplicate before any verification, model call or settlement. Without this, two copies of
+// one payment sent together both reached the model (the seller was paid twice; the facilitator settled once).
+//
+// The key is the payment alone, not the request: the same signed payment with a different body of the same price, or
+// on another chat route, is the same purchase and is refused too. (A key that also bound the route and the body let
+// exactly that through: two model calls for one settlement.) It is paymentDigest, the identity image edits and
+// embeddings already reserve, so one payment is in flight on at most one paid route.
 //
 // The reservation is released when the first request's response is written, whatever its outcome: payment_duplicate
 // means only "this payment is in flight". A later replay of a payment that already settled is refused by the
 // facilitator, as before. The reservations live in this process's memory (shared with image edits and embeddings,
 // media-payment-replay.mjs): not across processes and not across a restart. The service runs as one process
 // (deploy/singit-ask.service).
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { paymentDigest, reservePayment, releasePayment } from "./media-payment-replay.mjs";
 
-// RFC 8785-style canonical JSON for values parsed from JSON: object keys sorted, arrays in order.
-export function canonicalJson(value) {
-  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  return `{${Object.keys(value).sort().filter(k => value[k] !== undefined)
-    .map(k => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(",")}}`;
-}
-export const bodyHash = body => createHash("sha256").update(canonicalJson(body ?? null), "utf8").digest("hex");
-
-// (paymentDigest, route, network, bodyHash). The digest identifies a repeat of the payment; it proves nothing else.
-export const chatPaymentKey = (payment, route, body) => "chat:" + createHash("sha256").update(JSON.stringify(
-  [paymentDigest(payment), route, String(payment?.accepted?.network ?? ""), bodyHash(body)])).digest("hex");
+// The payment's identity (network, asset, signer and nonce on EVM; the signed transaction on Solana), hashed.
+export const chatPaymentKey = payment => paymentDigest(payment);
 
 // Reserves this request's payment. Returns "none" (no readable payment: the x402 middleware answers it), "reserved",
 // "duplicate" or "full". A reservation is released when the response is written.
-export function reserveChatPayment(req, res, route) {
+export function reserveChatPayment(req, res) {
   const header = req.get("payment-signature") ?? req.get("x-payment");
   if (!header) return "none";
   let payment;
@@ -35,7 +30,7 @@ export function reserveChatPayment(req, res, route) {
   // A payment that cannot even be keyed (e.g. an unparseable network) is left to the x402 middleware, which refuses it
   // with its usual 402: this guard never changes how a malformed payment is answered.
   let key;
-  try { key = chatPaymentKey(payment, route, req.body); } catch { return "none"; }
+  try { key = chatPaymentKey(payment); } catch { return "none"; }
   const result = reservePayment(key);
   if (result !== "reserved") return result;
   // Installed before the x402 middleware wraps res.end, so this runs when the final response is actually written:
@@ -49,7 +44,7 @@ export function reserveChatPayment(req, res, route) {
   return "reserved";
 }
 
-// The refusal for an identical payment still in flight, or for a full reservation table.
+// The refusal for a payment still in flight, or for a full reservation table.
 export function reservationRefusal(res, result, envelope) {
   res.set("Cache-Control", "no-store");
   const request_id = `req_${randomUUID()}`;
