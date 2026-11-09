@@ -64,6 +64,7 @@ for (const route of AUDIO_ROUTES) for (const network of [BASE]) test(`${route} x
     const post = headers => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
     const challenge = await post({}); assert.equal(challenge.status, 402);
     const required = decode(challenge.headers.get('payment-required'));
+    assert.deepEqual(required.extensions.bazaar.info.output, { type: 'audio/mpeg', format: 'binary' });
     assert.ok(required.accepts.every(a => a.scheme === 'exact'));
     const expected = audioPrices().find(m => m.route === route).exact[network === BASE ? 'base' : 'solana'].ceilingAtomic;
     assert.equal(required.accepts.find(a => a.network === network).amount, expected);
@@ -207,4 +208,16 @@ for (const route of AUDIO_ROUTES) for (const mode of ['failed', 'unavailable']) 
     ? /code=submit_failed job=unknown last=unknown http=503 upstream=no_healthy_sellers ms=\d+$/
     : /code=(?:job_failed|timeout) job=job123 last=failed http=unknown upstream=unknown ms=\d+$/);
   for (const secret of ['secret Surplus error message', 'our-key', 'secret-job-token', 'secret-payment', header, config.payToBase, 'secret prompt']) assert.ok(!logs[0].includes(secret));
+});
+
+test('sold audio model list explicitly has free OpenAPI security', async t => {
+  const { createApp } = await import('../src/app.mjs');
+  const app = createApp({ ...config, model: 'default' }, { facilitatorClient: fixture().facilitatorClient, catalogue: { async list() { return []; }, async resolve() { throw new Error('unavailable'); } }, log: () => {} });
+  const listener = await new Promise(resolve => { const l = app.listen(0, '127.0.0.1', () => resolve(l)); });
+  t.after(() => listener.close());
+  const response = await fetch(`http://127.0.0.1:${listener.address().port}/openapi.json`);
+  assert.equal(response.status, 200);
+  const doc = await response.json();
+  assert.ok(doc.paths['/v1/audio/generation-models']);
+  assert.deepEqual(doc.paths['/v1/audio/generation-models'].get.security, []);
 });

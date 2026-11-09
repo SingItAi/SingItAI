@@ -285,6 +285,10 @@ test("the OpenAPI document lists the gateway's owner-only wallet report with its
   assert.equal(item.get.operationId, "walletReconciliation");
   assert.deepEqual(item.get.security, [{ singitApiKey: [] }]);
   assert.match(item.get.description, /401/);
+  assert.match(item.get.description, /Served only at https:\/\/app\.singitai\.app/);
+  assert.match(item.get.description, /not an x402 paid route/);
+  assert.match(item.get.description, /ask\.singitai\.app does not mount it/);
+  assert.equal((await fetch(`${url}/v1/wallet/0x${"1".repeat(40)}/reconciliation`)).status, 404);
   assert.equal(doc.components.securitySchemes.singitApiKey.scheme, "bearer");
   assert.equal(item.get["x-payment-info"], undefined);
   assert.equal(item.get.responses[402], undefined);
@@ -1255,4 +1259,16 @@ test("zero observations retain main's free-answer list-price budget debit", asyn
   assert.equal(freeAnswerCost(usage, model, input, 400, observed.share("m")), 500);
   assert.equal(freeAnswerCost(usage, model, input, 400, observed.share("m")),
     freeAnswerCost(usage, model, input, 400));
+});
+
+test("catalog and favicon are explicitly free; favicon redirects with open CORS", async t => {
+  const { url } = await serve(t);
+  const doc = await (await fetch(`${url}/openapi.json`)).json();
+  assert.deepEqual(doc.paths["/v1/catalog"].get.security, []);
+  assert.deepEqual(doc.paths["/favicon.ico"].get.security, []);
+  assert.ok(doc.paths["/favicon.ico"].get.responses[302]);
+  const response = await fetch(`${url}/favicon.ico`, { redirect: "manual" });
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "https://singitai.app/assets/icons/icon-512.png");
+  assert.equal(response.headers.get("access-control-allow-origin"), "*");
 });

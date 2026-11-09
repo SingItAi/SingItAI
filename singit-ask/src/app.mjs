@@ -693,6 +693,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.get("/numbers.json", open, (_req, res) => {
     res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
   });
+  app.get("/favicon.ico", open, (_req, res) => res.redirect(302, ICON_URL));
   app.get("/v1/catalog", open, async (req, res) => {
     try {
       const data = await buildCatalog({ catalogue, config, free, searchEnabled: !!exaKey,
@@ -932,7 +933,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
           ...(config.audioSold ? { ...audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))),
-          [MEDIA_MODELS_ROUTE]: { get: { operationId: "listGenerationAudioModels", summary: "List music and sound effect models with exact prices", responses: { 200: { description: "Pinned per-job prices and model metadata" } } } } } : {}),
+          [MEDIA_MODELS_ROUTE]: { get: { operationId: "listGenerationAudioModels", security: [], summary: "List music and sound effect models with exact prices", responses: { 200: { description: "Pinned per-job prices and model metadata" } } } } } : {}),
           [SPEECH_ROUTE]: { post: {
             operationId: "createSpeech", summary: "Generate speech with any listed voice model",
             description: routeCopy(SPEECH_ROUTE).description,
@@ -1001,7 +1002,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           get: {
             operationId: "walletReconciliation", security: [{ singitApiKey: [] }],
             summary: "Get a wallet's SingIt spend and allowance (owner only)",
-            description: "No payment, but private: send a SingIt API key (Authorization: Bearer sk_singit_...) of the account "
+            description: "Served only at https://app.singitai.app; not an x402 paid route. ask.singitai.app does not mount it; "
+              + "scanners ignoring servers see 404 on ask, which is expected. Requires the SingIt API key of the wallet’s account. "
+              + "No payment, but private: send a SingIt API key (Authorization: Bearer sk_singit_...) of the account "
               + "that signs in with this wallet; no key or a wrong key is 401, another account's key is 403. Settled spend "
               + "by category (chat_answer, data_tool, gift_card, other), by day, credit top-ups apart, and the owner's daily "
               + "and per-purchase limits with what is left today. Categories only: no purchase details. 30 requests a minute per IP.",
@@ -1016,8 +1019,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               400: { description: "Not an address, or days out of range" },
               429: { description: "Too many requests; see Retry-After" } },
           } },
+        "/favicon.ico": { get: { operationId: "getFavicon", security: [], summary: "Get the SingIt icon redirect",
+          responses: { 302: { description: "Redirect to the public SingIt icon" } } } },
         "/v1/catalog": { get: {
-          operationId: "listCatalog", summary: "List all currently sold modalities, payment access and prices",
+          operationId: "listCatalog", security: [], summary: "List all currently sold modalities, payment access and prices",
           parameters: [{ name: "modality", in: "query", schema: { type: "string", enum: [...MODALITIES, ...new Set(availableAudioPrices(config, catalogue).map(m => m.kind === 'music' ? 'music' : 'sound_effects')), ...(config.videoSold === true ? ['video'] : [])] } }],
           responses: { 200: { description: "Catalog entries and global per-modality counts" }, 400: { description: "Unknown modality" }, 503: { description: "Catalog unavailable" } },
         } },
