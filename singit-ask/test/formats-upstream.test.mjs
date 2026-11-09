@@ -11,6 +11,8 @@ const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
   model: "deepseek-v4.1-flash" };
 const MODELS = {
+  // Assumed Surplus id, mirroring 5.1; intentionally wrong sampling metadata exercises the hard guard.
+  "claude-fable-5.2": { promptUsdPerToken: 8e-6, completionUsdPerToken: 40e-6, tags: ["reasoning"], params: ["max_tokens", "reasoning", "tools", "temperature", "top_p", "top_k"] },
   "kimi-k3": { promptUsdPerToken: 0.24e-6, completionUsdPerToken: 10.8e-6, params: ["max_tokens", "reasoning_effort", "reasoning"] },
   "claude-opus-5.5": { promptUsdPerToken: 4e-6, completionUsdPerToken: 20e-6, params: ["max_tokens", "reasoning_effort"] },
   "gpt-5.5": { promptUsdPerToken: 1.25e-6, completionUsdPerToken: 10e-6 },  // no list: request kept as it came
@@ -62,6 +64,17 @@ const MSG_OK = [200, { type: "message", role: "assistant", content: [{ type: "te
 const RESP_OK = [200, { object: "response", status: "completed", error: null, output: [{ type: "message", content: [{ type: "output_text", text: "Hi" }] }], usage: { buyer_cost_micro: 3 } }];
 
 for (const [route, body, ok] of [["/v1/messages", message, MSG_OK], ["/v1/responses", response, RESP_OK]]) {
+  test(`${route}: Fable 5.2 strips sampling despite incorrect Surplus metadata`, async t => {
+    const s = await serve(t, () => ok);
+    assert.equal((await payExact(s.url, route, body("claude-fable-5-2", 16, { temperature: 1, top_p: 1, top_k: 1, tool_choice: "auto" }))).status, 200);
+    const sent = s.calls.at(-1).body;
+    assert.equal(sent.model, "claude-fable-5.2");
+    for (const knob of ["temperature", "top_p", "top_k"]) assert.equal(knob in sent, false);
+    assert.equal(sent.max_tokens ?? sent.max_output_tokens, 272);
+    assert.equal(sent.tool_choice, "auto");
+    assert.deepEqual(sent.reasoning, { effort: "low" });
+  });
+
   test(`${route}: no price floor when list price fits what was paid; the floor stays for a large request`, async (t) => {
     const s = await serve(t, () => ok);
     assert.equal((await payExact(s.url, route, body("kimi-k3"))).status, 200);

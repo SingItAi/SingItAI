@@ -1,3 +1,4 @@
+import { forcedToolError } from "./model-policy.mjs";
 import { isIndeterminateSettlement } from "./health-stats.mjs";
 import { LIMITS } from "./limits.mjs";
 import { unsupportedCapability, capabilityError } from "./agent-chat.mjs";
@@ -417,6 +418,8 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       // A standing fallback cannot safely price a larger request without model prices.
       if (req.askInput.request && !legacyEnvelope(req.askInput) && !req.askInput.info)
         throw Object.assign(new Error("Model prices are unavailable; try again shortly. You were not charged."), { status: 503, code: "quote_unavailable" });
+      const forced = forcedToolError(req.askInput.model, req.body?.tool_choice);
+      if (forced) throw forced;
       const unsupported = unsupportedCapability(req.askInput.info, req.askInput.flags);
       if (unsupported) throw capabilityError(unsupported, req.askInput.model);
       if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);

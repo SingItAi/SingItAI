@@ -1,3 +1,4 @@
+import { samplingAllowed } from "./model-policy.mjs";
 import { MODEL_ALIAS_ROUTES, aliasPath, aliasDescription, aliasPaths, aliasCopy } from "./model-alias-routes.mjs";
 import { routeCopy as baseRouteCopy } from "./listing-snapshot.mjs";
 const routeCopy = path => aliasCopy(path) ?? baseRouteCopy(path);
@@ -200,7 +201,7 @@ export const REASONING_OFF = Object.freeze({
 // effort changes: the price formulas and REASONING_HEADROOM do not. Not yet measured on real Opus answers (the
 // thinking is in each answer's reasoning_tokens, see answer-log.mjs); SINGIT_ASK_REASONING_EFFORT="claude-opus-5.5=none"
 // restores the old request.
-export const REASONING_DEFAULT_EFFORT = Object.freeze({ "claude-opus-5.5": "low" });
+export const REASONING_DEFAULT_EFFORT = Object.freeze({ "claude-opus-5.5": "low", "claude-fable-5.2": "low" });
 // REASONING_EFFORTS: what SINGIT_ASK_REASONING_EFFORT="claude-opus-5.5=medium" (server.mjs, config.reasoningEffort) may
 // ask a model for instead of its default above.
 export const REASONING_EFFORTS = Object.freeze(["none", "minimal", "low", "medium", "high"]);
@@ -231,7 +232,7 @@ const defaultFallbackNote = (config) => {
 };
 
 export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs, agent } = {}) {
-  const sends = (name) => !params || params.includes(name);
+  const sends = (name) => samplingAllowed(model, name) && (!params || params.includes(name));
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
   const off = Object.hasOwn(REASONING_OFF, model) ? REASONING_OFF[model] : null;
   // The process override (config.reasoningEffort, even "none") wins over the model's default.
