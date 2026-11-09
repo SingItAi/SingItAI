@@ -174,7 +174,8 @@ test("the model list shows our price, the saving against list price, the fees an
   const plain = list.data.find((m) => m.id === "deepseek-v4.1-flash");
   assert.equal(plain.singitUsdPerMillionTokens, undefined, "no price is claimed before one is known");
   const listedFree = list.data.filter((m) => String(m.id).startsWith("free/"));
-  assert.deepEqual(listedFree, [{ id: "free/deepseek-v4.1-flash", object: "model", owned_by: "singit", free: true,
+  assert.deepEqual(listedFree.map(({ id, object, owned_by, free, limits }) => ({ id, object, owned_by, free, limits })),
+    [{ id: "free/deepseek-v4.1-flash", object: "model", owned_by: "singit", free: true,
     limits: { perVisitorPerDay: 2, maxTokens: 400, maxChars: 4000 } }]);
   assert.ok(!list.data.some((m) => m.free && !String(m.id).startsWith("free/")), "paid models are not marked free");
 });

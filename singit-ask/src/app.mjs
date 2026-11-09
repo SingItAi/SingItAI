@@ -23,6 +23,7 @@ const EXTRA_PAID = ["/v1/images/edits", "/v1/images/image2image", "/v1/embedding
 
 import { parseBestDiscount } from "./reject-log.mjs";
 import express from "express";
+import { readFile } from "node:fs/promises";
 import { addAgentFiles } from "./agent-files.mjs";
 import { AUTO_CONFIG, AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback, attachPaidAlternates } from "./auto-router.mjs";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -41,8 +42,8 @@ import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { CREDIT_ROUTE, addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody, exaPriceRange } from "./search.mjs";
 import { IMAGE_ROUTE, IMAGE_REQUEST_BODY, addImageRoutes } from "./images.mjs";
-import { MEDIA_MODELS_ROUTE, availableAudioPrices, audioOpenapi, addAudioGenerationRoutes } from "./audio-generation.mjs";
-import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, SPEECH_REQUEST_BODY, addSpeechRoutes } from "./speech.mjs";
+import { MEDIA_MODELS_ROUTE, availableAudioPrices, audioExample, audioOpenapi, addAudioGenerationRoutes } from "./audio-generation.mjs";
+import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, SPEECH_REQUEST_BODY, SPEECH_TERMS, addSpeechRoutes } from "./speech.mjs";
 import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
@@ -700,9 +701,17 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
   });
   app.get("/favicon.ico", open, (_req, res) => res.redirect(302, ICON_URL));
-  app.get("/v1/catalog", open, async (req, res) => {
+  app.get("/.well-known/x402list.txt", open, async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (!config.x402listProofFile) return res.sendStatus(404);
     try {
-      const data = await buildCatalog({ catalogue, config, free, searchEnabled: !!exaKey,
+      const proof = await readFile(config.x402listProofFile, "utf8");
+      res.type("text/plain").send(proof);
+    } catch {
+      res.sendStatus(404);
+    }
+  });
+  const discoveryCatalog = () => buildCatalog({ catalogue, config, free, searchEnabled: !!exaKey,
         chatPrice: m => pricingFor(config, catalogue, m.id),
         extraPrice: async (model, modality) => {
           const embedding = modality === 'embeddings';
@@ -714,6 +723,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             return [name, { ceilingAtomic: p.totalAtomic, usd: Number(usd(p.totalAtomic)) }];
           })) };
         } });
+  app.get("/v1/catalog", open, async (req, res) => {
+    try {
+      const data = await discoveryCatalog();
       try { res.json(catalogResponse(data, req.query.modality)); }
       catch (error) {
         if (!(error instanceof RangeError)) throw error;
@@ -724,14 +736,61 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     }
   });
 
+  const modelCard = async (entry, listed = null) => {
+    listed ??= await catalogue?.list() ?? [];
+    let source = listed.find(m => m.id === entry.id || FREE_PREFIX + m.id === entry.id);
+    const method = { image: 'imageModels', image_edit: 'editModels', embeddings: 'embeddingModels', video: 'videoModels' }[entry.modality];
+    if (method) source = (await catalogue?.[method]?.())?.get(entry.id);
+    if (['speech', 'transcription'].includes(entry.modality)) {
+      source = (await catalogue?.voiceModels?.())?.[entry.modality]?.get(entry.id);
+    }
+    const io = { chat: [['text'], ['text']], image: [['text'], ['image']],
+      image_edit: [['text', 'image'], ['image']], embeddings: [['text'], ['embedding']],
+      speech: [['text'], ['audio']], transcription: [['audio'], ['text']],
+      music: [['text'], ['audio']], sound_effects: [['text'], ['audio']],
+      video: [['text'], ['video']], search: [['text'], ['text']] }[entry.modality];
+    const bodies = { image: IMAGE_REQUEST_BODY, speech: SPEECH_REQUEST_BODY,
+      image_edit: EDIT_BODY, embeddings: EMBEDDING_BODY };
+    let body = bodies[entry.modality]?.().content['application/json'].example;
+    if (entry.modality === 'chat') body = EXAMPLE.input;
+    if (['music', 'sound_effects'].includes(entry.modality)) body = audioExample(entry.modality === 'music' ? 'music' : 'sound-effects');
+    if (entry.modality === 'search') body = exaRequestBody(entry.route).content['application/json'].example;
+    if (entry.modality === 'video') body = { prompt: 'A quiet sunrise over the sea' };
+    if (entry.modality === 'transcription') body = { file: '<audio file>' };
+    const price = { currency: 'USD', unit: ({ chat: 'reference request', image: 'image', image_edit: 'image', music: 'job', sound_effects: 'job', video: 'job' }[entry.modality] ?? 'request'), ...entry.price };
+    if (entry.router) {
+      try { Object.assign(price, await pricingFor(config, catalogue, entry.id)); } catch { Object.assign(price, { upto: null, exact: null }); }
+    }
+    if (entry.modality === 'chat' && !entry.free && price.exact) {
+      price.referenceRequest = { messages: [{ role: 'user', content: PRICING_REFERENCE.content }], max_tokens: PRICING_REFERENCE.maxTokens };
+    }
+    const limits = entry.free ? entry.price.limits : entry.modality === 'speech'
+      ? { ...source?.limits, maxChars: SPEECH_TERMS.maxChars } : source?.limits;
+    body = { ...body, model: entry.id };
+    if (entry.free) body.max_tokens = Math.min(body.max_tokens, limits.maxTokens);
+    if (entry.modality === 'speech' && source?.voices?.length) body.voice = source.voices[0];
+    if (entry.modality === 'image' && source?.sizes?.length && !source.sizes.includes(body.size)) body.size = source.sizes[0];
+    return { ...entry, price, inputModalities: source?.inputs ?? io[0], outputModalities: io[1],
+      ...(source?.contextLength ? { contextLength: source.contextLength, context: { length: source.contextLength } } : {}),
+      ...(limits ? { limits } : {}), ...(source?.sizes ? { sizes: source.sizes } : {}),
+      exampleCall: { method: 'POST', path: entry.route, body } };
+  };
+  app.get(/^\/v1\/models\/(.+)$/, open, async (req, res, next) => {
+    const entry = (await discoveryCatalog()).find(m => m.id === req.params[0]);
+    // Paid aliases share this prefix; let their GET discovery challenges handle them.
+    if (!entry && aliasPaths(catalogue).includes(req.path)) return next();
+    if (!entry) return res.status(404).json({ error: { message: 'Unknown model', type: 'invalid_request_error', code: 'not_found' } });
+    res.json(await modelCard(entry));
+  });
+
   // Free: the default and every other model that can be asked for, with the list prices its ceiling is built from.
   app.get("/v1/models", open, async (_req, res) => {
-    // Only models that can be answered now, including the default after a routing rejection.
+    const entries = await discoveryCatalog();
     const listed = catalogue ? await catalogue.list().catch(() => []) : [];
-    const answerable = await Promise.all(listed.map((m) => (catalogue.listable ? catalogue.listable(m.id) : catalogue.canAnswer ? catalogue.canAnswer(m.id) : true)));
-    const models = listed.filter((m, i) => answerable[i] || catalogue.neverHide?.has(m.id) || m.id === config.model);
+    const chatIds = new Set(entries.filter(m => m.modality === 'chat' && m.kind === 'model').map(m => m.id));
+    const models = listed.filter(m => chatIds.has(m.id));
     const market = catalogue?.market ? await catalogue.market().catch(() => new Map()) : new Map();
-    res.json({ object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
+    const legacy = { object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       savings: {
         field: "savingsVsListPct",
         definition: "How far SingIt's expected price per million tokens (expected price plus the 30% markup, "
@@ -762,7 +821,15 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
             ...(ours === null ? {} : {
               singitUsdPerMillionTokens: { input: m.promptUsdPerToken * 1e6 * ours, output: m.completionUsdPerToken * 1e6 * ours },
               ...(share !== null && basis ? { savingsVsListPct: savingsFor(ours) } : {}) }) };
-        })] });
+        })] };
+    const previous = new Map(legacy.data.map(m => [m.id, m]));
+    const order = new Map(legacy.data.map((m, i) => [m.id, i]));
+    entries.sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
+    const data = await Promise.all(entries.map(async entry => {
+      const card = await modelCard(entry, listed);
+      return { ...card, ...previous.get(entry.id), price: card.price, object: 'model' };
+    }));
+    res.json({ ...legacy, data });
   });
 
   // Free: the same per-model ceilings the 402 challenge offers, computed by the same chooseModel/ceilingAtomic
@@ -832,7 +899,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   });
 
   // Free: how directories (x402scan, agents) find the paid route. x402scan reads this first, then /.well-known/x402.
-  app.get("/openapi.json", open, async (req, res) => {
+  // Both discovery documents use this builder so per-model and media prices cannot drift.
+  async function openapiDocument(req) {
     const price = await priceRange(catalogue);
     const editMax = usd(imagePrice(await editCeiling(catalogue), SOLANA).totalAtomic);
     const embeddingMax = usd(imagePrice(await embeddingCeiling(catalogue, config), SOLANA).totalAtomic);
@@ -938,7 +1006,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
-          ...(config.audioSold ? { ...audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))),
+          ...(config.audioSold && config.audioDiscoverable ? audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))) : {}),
+          ...(config.audioSold ? {
           [MEDIA_MODELS_ROUTE]: { get: { operationId: "listGenerationAudioModels", security: [], summary: "List music and sound effect models with exact prices", responses: { 200: { description: "Pinned per-job prices and model metadata" } } } } } : {}),
           [SPEECH_ROUTE]: { post: {
             operationId: "createSpeech", summary: "Generate speech with any listed voice model",
@@ -951,7 +1020,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           } },
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "List speech and transcription models with prices",
             responses: { 200: { description: "Model list" } }, security: [] } },
-          ...(config.videoSold ? {
+          ...(config.videoSold && config.videoDiscoverable ? {
           [VIDEO_ROUTE]: { post: {
             operationId: "createVideo", summary: "Generate a video clip with any of 30+ text-to-video models",
             description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio, fallback. "
@@ -1027,10 +1096,20 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           } },
         "/favicon.ico": { get: { operationId: "getFavicon", security: [], summary: "Get the SingIt icon redirect",
           responses: { 302: { description: "Redirect to the public SingIt icon" } } } },
+        "/.well-known/x402list.txt": { get: { operationId: "getX402listProof", security: [], summary: "Get x402-list ownership proof (plain text)",
+          responses: {
+            200: { description: "Ownership proof", content: { "text/plain": { schema: { type: "string" } } } },
+            404: { description: "Ownership proof unavailable" },
+          } } },
         "/v1/catalog": { get: {
           operationId: "listCatalog", security: [], summary: "List all currently sold modalities, payment access and prices",
           parameters: [{ name: "modality", in: "query", schema: { type: "string", enum: [...MODALITIES, ...new Set(availableAudioPrices(config, catalogue).map(m => m.kind === 'music' ? 'music' : 'sound_effects')), ...(config.videoSold === true ? ['video'] : [])] } }],
           responses: { 200: { description: "Catalog entries and global per-modality counts" }, 400: { description: "Unknown modality" }, 503: { description: "Catalog unavailable" } },
+        } },
+        "/v1/models/{id}": { get: {
+          operationId: "getModelCard", security: [], summary: "Get a model card with prices and example call",
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" }, description: "Model id; slashes may be percent-encoded." }],
+          responses: { 200: { description: "Model card with price, input/output modalities and example call" }, 404: errorBody("Unknown model") },
         } },
         "/v1/models": { get: {
           operationId: "listModels", summary: "List models that can be asked for now, with prices",
@@ -1164,11 +1243,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       document.paths[aliasPath(model)] = { post: { ...base, operationId: `aliasImage${model.id.replace(/[^a-zA-Z0-9]/g, "_")}`,
         summary: `Generate images with ${model.name}`, description: aliasDescription(model), requestBody } };
     }
-    res.json(document);
-  });
+    return document;
+  }
+  app.get("/openapi.json", open, async (req, res) => res.json(await openapiDocument(req)));
   const audioRoutes = () => config.audioSold && config.audioDiscoverable
     ? [...new Set(availableAudioPrices(config, catalogue).map(m => m.route))] : [];
-  app.get("/.well-known/x402", open, (req, res) => {
+  app.get("/.well-known/x402", open, async (req, res) => {
+    const { paths } = await openapiDocument(req);
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
                          ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, ...audioRoutes().map(path => `${origin(req)}${path}`),
@@ -1176,7 +1257,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                          ...aliasPaths(catalogue).map((route) => `${origin(req)}${route}`),
                          ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
-      resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
+      resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`,
+        price: paths[path].post["x-payment-info"].price, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
         ...(!audioRoutes().includes(path) && path !== VIDEO_ROUTE ? routeCopy(path) : {}), ...(EXTRA_PAID.includes(path) ? { outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT } : {}) })),
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });

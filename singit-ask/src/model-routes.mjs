@@ -121,7 +121,9 @@ export function operationId(model) {
 // answer this service takes, on Solana's terms. `null` when the model cannot be resolved right now; the caller
 // falls back to the generic price range, same as app.mjs's priceRange does for an unlisted model.
 export async function modelPriceRange(catalogue, model) {
-  const info = await catalogue.resolve(model.id).catch(() => null);
+  const info = typeof catalogue?.resolve === "function"
+    ? await catalogue.resolve(model.id).catch(() => null)
+    : null;
   if (!info) return null;
   const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 };
   return { min: usd(TERMS.settlementFeeAtomic), max: usd(ceilingAtomic(info, size, SOLANA_TERMS)) };
