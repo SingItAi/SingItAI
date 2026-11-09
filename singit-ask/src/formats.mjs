@@ -25,7 +25,7 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { markUnservable, unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { acceptedOf, answerLogFor, recordWhenSettled } from "./answer-log.mjs";
 import { probeInput, probeNote } from "./metered.mjs";
-import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, solanaOffer } from "./metered.mjs";
+import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, relaxMinDiscount, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, retryBudget, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
@@ -295,7 +295,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         const terms = TERMS_BY_NETWORK[accepted.network] && bucket && { ...TERMS_BY_NETWORK[accepted.network], maxChargeAtomic: bucket[accepted.network] };
         if (!terms) throw new Error("payment on an unknown network");
         // The price floor only when the model's list-price worst case would not fit what was paid (pricing.mjs).
-        const minDiscount = minDiscountFor(req.format, terms);
+        let minDiscount = minDiscountFor(req.format, terms);
         let body = withHeadroom(fitRequest(req.format.request, req.format.info?.params), req.format.info);
         // Solana `exact`: the answer must be complete within the window from verification (solana-exact-window.mjs).
         const win = solanaExactWindow(req, config);
@@ -316,6 +316,20 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
             const field = Number.isInteger(body.max_output_tokens) ? "max_output_tokens" : "max_tokens";
             body = { ...body, [field]: retryBudget(body[field]) }; retried = true;
             response = await send(); data = await response.json().catch(() => null);
+          }
+          const code = typeof data?.error?.code === "string" ? data.error.code : null;
+          if (!win && code === "minimum_discount_not_met" && limitAt - Date.now() > 1000) {
+            const discountError = Object.assign(new NoAnswer(response.status, code), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
+            const relaxed = relaxMinDiscount(req.format, discountError, {
+              exact, network: accepted.network, maxChargeAtomic: terms.maxChargeAtomic, exactOutputFraction,
+            });
+            if (relaxed) {
+              try { catalogue?.markPriceRejected?.(req.format.model, { bestDiscountPct: discountError.bestDiscountPct }); } catch {}
+              log(`singit-ask: discount retry ${route} model=${req.format.model} minDiscount ${req.format.minDiscount} -> ${discountError.bestDiscountPct}`);
+              req.format = relaxed;
+              minDiscount = minDiscountFor(req.format, terms);
+              response = await send(); data = await response.json().catch(() => null);
+            }
           }
           return { response, data };
         };
