@@ -113,6 +113,25 @@ export function ceilings(info, input, exactOutputFraction = DEFAULT_EXACT_OUTPUT
   return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction), undefined, exactReserveTokens(info?.id, input.maxTokens, info)) };
 }
 
+// Surplus answered 404 minimum_discount_not_met: the floor we sent is above every live seller.
+// Retry the same model at the best discount they reported, only when that share still fits what was signed.
+// Never raise the floor, and never retry when we did not send one (any seller was already allowed).
+export function relaxMinDiscount(input, error, { exact, network, maxChargeAtomic, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION } = {}) {
+  if (error?.code !== "minimum_discount_not_met") return null;
+  const best = error.bestDiscountPct;
+  if (typeof best !== "number" || !Number.isFinite(best) || best < 0 || best > 100) return null;
+  if (input?.minDiscount == null || !(best < input.minDiscount)) return null;
+  if (!input.info || !network || maxChargeAtomic == null) return null;
+  const relaxed = { ...input, share: (100 - best) / 100, minDiscount: best };
+  const bucket = exact ? "exact" : "upto";
+  try {
+    if (BigInt(ceilings(relaxed.info, relaxed, exactOutputFraction)[bucket][network]) > BigInt(maxChargeAtomic)) return null;
+  } catch {
+    return null;
+  }
+  return relaxed;
+}
+
 // The terms of the network the payer chose, with the ceiling this question was offered for the scheme they
 // signed, and that scheme. The middleware has already matched the payment to an offer, so the network is one of
 // ours; the ceiling is ours, never the payer's.
@@ -446,17 +465,26 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         const bucket = exact ? "exact" : "upto";
         // Within the amount already signed, for this scheme and network.
         const fits = candidate => BigInt(ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network]) <= BigInt(paid.terms.maxChargeAtomic);
-        const refused = !win && !(req.askInput.request && error.status === 400) && canRetryPaidFallback(error)
+        const discountRetry = !win && Date.now() < deadline && relaxMinDiscount(req.askInput, error, {
+          exact, network: paid.network, maxChargeAtomic: paid.terms.maxChargeAtomic, exactOutputFraction,
+        });
+        const refused = !discountRetry && !win && !(req.askInput.request && error.status === 400) && canRetryPaidFallback(error)
           && Date.now() < deadline;
         const auto = refused && req.askInput.autoAlternates?.find(fits);
         const pinned = refused && !auto && req.askInput.paidAlternates?.find(fits);
-        const alternate = auto || pinned;
+        const alternate = discountRetry || auto || pinned;
         if (!alternate) throw error;
-        markUnservable(catalogue, req.askInput.model, error, log);
-        log(`singit-ask: ${auto ? "auto" : "paid"} fallback from=${req.askInput.model} to=${alternate.model} code=${error.code} status=${error.status}`);
-        // One retry, sequential: the alternates are dropped, so a second failure is final.
-        req.askInput = auto ? alternate
-          : { ...alternate, fallbackFrom: req.askInput.fallbackFrom ?? req.askInput.model, fallbackPolicy: "paid" };
+        if (discountRetry) {
+          try { catalogue?.markPriceRejected?.(req.askInput.model, { bestDiscountPct: error.bestDiscountPct }); } catch {}
+          log(`singit-ask: discount retry model=${req.askInput.model} minDiscount ${req.askInput.minDiscount} -> ${error.bestDiscountPct}`);
+          req.askInput = discountRetry;
+        } else {
+          markUnservable(catalogue, req.askInput.model, error, log);
+          log(`singit-ask: ${auto ? "auto" : "paid"} fallback from=${req.askInput.model} to=${alternate.model} code=${error.code} status=${error.status}`);
+          // One retry, sequential: the alternates are dropped, so a second failure is final.
+          req.askInput = auto ? alternate
+            : { ...alternate, fallbackFrom: req.askInput.fallbackFrom ?? req.askInput.model, fallbackPolicy: "paid" };
+        }
         answer = await inWindow(() => attempt(req.askInput));
       }
       if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);

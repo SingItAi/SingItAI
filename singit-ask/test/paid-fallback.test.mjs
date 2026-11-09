@@ -8,7 +8,7 @@ import { AUTO_CONFIG } from '../src/auto-router.mjs';
 import { createApp, UpstreamError, ROUTE } from '../src/app.mjs';
 import { BASE } from '../src/pricing.mjs';
 import { reservations } from '../src/media-payment-replay.mjs';
-import { canRetryPaidFallback } from '../src/metered.mjs';
+import { canRetryPaidFallback, relaxMinDiscount } from '../src/metered.mjs';
 
 const [CHEAP, PINNED, DEAR] = AUTO_CONFIG.tiers.eco;  // deepseek-v4.1-flash, claude-haiku-5.5, gemini-3.8-flash
 const OUTSIDE = 'mistral-outside-1';
@@ -285,4 +285,84 @@ test('RACE: two different payments fall back independently, each settles once', 
   assert.deepEqual(asked.filter(m => m === CHEAP).length, 2);
   assert.equal(facilitator.calls.settle.length, 2);
   assert.equal(reservations.size, 0);
+});
+
+
+function guardedCatalogue(learned = []) {
+  return {
+    ...catalogue,
+    guardShare: () => 0.01,
+    markPriceRejected(id, info) { learned.push([id, info]); },
+  };
+}
+
+test('relaxMinDiscount only lowers a floor that was actually sent', () => {
+  const input = { minDiscount: 98, share: 0.02, info: models.find(m => m.id === CHEAP), chars: 2, maxTokens: 800, messageCount: 1 };
+  assert.equal(relaxMinDiscount(input, refused(404, 'minimum_discount_not_met'), { exact: true, network: BASE, maxChargeAtomic: '1500' }), null);
+  assert.equal(relaxMinDiscount({ ...input, minDiscount: null }, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 91.3189 }),
+    { exact: true, network: BASE, maxChargeAtomic: '1500' }), null);
+  const ok = relaxMinDiscount(input, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 91.3189 }),
+    { exact: true, network: BASE, maxChargeAtomic: '1500' });
+  assert.equal(ok.minDiscount, 91.3189);
+  assert.equal(ok.share, (100 - 91.3189) / 100);
+  const tooDear = relaxMinDiscount(input, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 0 }),
+    { exact: false, network: BASE, maxChargeAtomic: '1500' });
+  assert.equal(tooDear, null);
+});
+
+for (const scheme of ['upto', 'exact']) {
+  test(`default model ${scheme}: minimum_discount_not_met retries the same model at the live discount`, async t => {
+    const learned = [];
+    const asked = [];
+    const { url, facilitator } = await serve(t, {
+      cat: guardedCatalogue(learned),
+      upstream: async (_c, _m, _n, _f, model, options) => {
+        asked.push({ model, minDiscount: options?.minDiscount });
+        if (asked.length === 1) throw Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 91.3189 });
+        return answer(model);
+      },
+    });
+    const { response } = await paid(url, body(CHEAP, { max_tokens: 800 }), { scheme });
+    assert.equal(response.status, 200);
+    assert.deepEqual(asked.map(a => a.model), [CHEAP, CHEAP]);
+    assert.equal(asked[0].minDiscount, 98);
+    assert.equal(asked[1].minDiscount, 91.3189);
+    assert.equal(facilitator.calls.settle.length, 1);
+    assert.equal(response.headers.get('x-singit-fallback-from'), null);
+    assert.deepEqual(learned, [[CHEAP, { bestDiscountPct: 91.3189 }]]);
+  });
+}
+
+test('default model: a live discount whose ceiling exceeds the signed amount is not retried', async t => {
+  const learned = [];
+  let calls = 0;
+  const { url, facilitator } = await serve(t, {
+    cat: guardedCatalogue(learned),
+    upstream: async () => {
+      calls++;
+      throw Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 0 });
+    },
+  });
+  const { response } = await paid(url, body(CHEAP, { max_tokens: 800 }), { scheme: 'upto' });
+  assert.equal(response.status, 503);
+  assert.equal(calls, 1);
+  assert.equal(facilitator.calls.settle.length, 0);
+  assert.deepEqual(learned, [[CHEAP, { bestDiscountPct: 0 }]]);
+});
+
+test('pinned: a fitting live discount is preferred over switching models', async t => {
+  const asked = [];
+  const { url, facilitator } = await serve(t, {
+    cat: guardedCatalogue(),
+    upstream: async (_c, _m, _n, _f, model) => {
+      asked.push(model);
+      if (asked.length === 1) throw Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 91.3189 });
+      return answer(model);
+    },
+  });
+  const { response } = await paid(url, body(PINNED, { max_tokens: 800 }), { scheme: 'exact' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(asked, [PINNED, PINNED]);
+  assert.equal(response.headers.get('x-singit-fallback-from'), null);
+  assert.equal(facilitator.calls.settle.length, 1);
 });
