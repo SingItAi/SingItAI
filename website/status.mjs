@@ -57,10 +57,14 @@ export function numberRows(numbers) {
 const NOT_PUBLISHED = {
   own_payers_not_configured: "Not published: own-payer list is not configured, so this would include our own payments.",
   insufficient_data: "Not enough data", not_measured: "Not measured" };
-const published = (entry, value) => entry && typeof entry === "object" && entry.reason == null && Number.isFinite(value);
-const withheld = (entry, key) => typeof entry?.reason === "string" && Object.hasOwn(NOT_PUBLISHED, entry.reason)
-  ? NOT_PUBLISHED[entry.reason] + (entry.reason === "insufficient_data" && Number.isInteger(entry[key])
-    ? ` (${entry[key]} ${key})` : "") : "Not available";
+const published = (entry, value) => entry && typeof entry === "object" && entry.reason == null && entry.suppressed !== true && Number.isFinite(value);
+const withheld = (entry, key) => {
+  const hidden = entry?.suppressed === true || entry?.reason === "below_minimum_n";
+  const label = hidden ? "Hidden (too little data)"
+    : typeof entry?.reason === "string" && Object.hasOwn(NOT_PUBLISHED, entry.reason) ? NOT_PUBLISHED[entry.reason] : "Not available";
+  return label + ((hidden || entry?.reason === "insufficient_data") && Number.isInteger(entry[key])
+    ? ` (${entry[key]} ${key})` : "");
+};
 export function paidCallRows(numbers) {
   const success = numbers?.paid_call_success, latency = numbers?.paid_answer_latency_ms, cwa = numbers?.charge_without_answer;
   if (!success || !latency || !cwa || !numbers.settlement_unknown) throw new Error("Could not load paid-call measurements.");

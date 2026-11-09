@@ -449,13 +449,13 @@ export function numbersBody(stats) {
     own_payments_excluded: total.own,
     settlement_failures: { last_24h: day.fail, last_7d: week.fail },
     paid_call_success: paidWindows(c => c.attempts >= MIN_SAMPLES
-      ? { attempts: c.attempts, answered: c.answered, success_pct: Math.round(c.answered / c.attempts * 1000) / 10, reason: null }
-      : { attempts: c.attempts, answered: c.answered, success_pct: null, reason: "insufficient_data" },
+      ? { attempts: c.attempts, answered: c.answered, success_pct: Math.round(c.answered / c.attempts * 1000) / 10, reason: null, suppressed: false }
+      : { attempts: c.attempts, answered: c.answered, success_pct: null, reason: c.attempts ? "below_minimum_n" : "insufficient_data", suppressed: c.attempts > 0 },
     { attempts: null, answered: null, success_pct: null }),
     paid_answer_latency_ms: paidWindows(c => {
       const sorted = c.ms.sort((a, b) => a - b);
-      return sorted.length >= MIN_SAMPLES ? { samples: sorted.length, p50: rank(sorted, 50), p95: rank(sorted, 95), reason: null }
-        : { samples: sorted.length, p50: null, p95: null, reason: "insufficient_data" };
+      return sorted.length >= MIN_SAMPLES ? { samples: sorted.length, p50: rank(sorted, 50), p95: rank(sorted, 95), reason: null, suppressed: false }
+        : { samples: sorted.length, p50: null, p95: null, reason: sorted.length ? "below_minimum_n" : "insufficient_data", suppressed: sorted.length > 0 };
     }, { samples: null, p50: null, p95: null }),
     payment_overhead_ms: notMeasured, e2e_ms: notMeasured,
     charge_without_answer: { since: stats.state.cwaSince, total: integrity([stats.state], "cwa"), last_24h: integrity(stats.window(24), "cwa"),
@@ -483,10 +483,10 @@ export function numbersBody(stats) {
 
       settlement_failures_by_code: "Refused payments, verification or settlement, with a code, across all routes with the hooks; does not replace settlement_failures.",
       settlement_failures: "Failed facilitator settlements across all routes during each window.",
-      paid_call_success: "Per network and window: attempts are paid chat requests whose payment passed verification and reached the answer handler; answered are those that returned HTTP 200 with an answer and then settled; success_pct = answered / attempts, to one decimal. "
-        + `Recorded only for payers known not to be ours, and only while an own-payer list is configured: otherwise values are null with reason own_payers_not_configured. A window with fewer than ${MIN_SAMPLES} attempts is null with reason insufficient_data, with raw counts visible, never a guessed rate. Measured only since this counter started; not backfilled from settlements.`,
+      paid_call_success: "Per network and window: attempts are paid chat requests whose signed payment passed verification and reservation as a non-duplicate and reached the answer handler; answered are those that returned HTTP 200 with an answer and then settled; success_pct = answered / attempts, to one decimal. "
+        + `Recorded only for payers known not to be ours, and only while an own-payer list is configured: otherwise values are null with reason own_payers_not_configured. MIN_SAMPLES = ${MIN_SAMPLES}: 0 < N < ${MIN_SAMPLES} attempts yields null with reason below_minimum_n and suppressed: true; an empty window yields null with reason insufficient_data and suppressed: false. At least ${MIN_SAMPLES} attempts publishes the figure with reason null and suppressed: false. Raw counts remain visible. Measured only since this counter started; not backfilled from settlements.`,
       paid_answer_latency_ms: "Milliseconds from the start of the paid answer handler (after payment verification) to the answer being ready, for answered calls in paid_call_success; nearest-rank p50 and p95 of up to 200 samples per network per UTC hour. "
-        + `Not the client's 402-to-200 round trip and excludes verification and settlement. Same own-payer publication rule as paid_call_success; fewer than ${MIN_SAMPLES} samples in a window withholds p50/p95 with reason insufficient_data and keeps samples visible.`,
+        + `Not the client's 402-to-200 round trip and excludes verification and settlement. Same own-payer publication rule as paid_call_success; MIN_SAMPLES = ${MIN_SAMPLES}: 0 < N < ${MIN_SAMPLES} samples withholds p50/p95 with reason below_minimum_n and suppressed: true; an empty window has reason insufficient_data and suppressed: false. At least ${MIN_SAMPLES} samples publishes p50/p95 with reason null and suppressed: false. Raw samples remain visible.`,
       payment_overhead_ms: "Time added by the 402 challenge and payment; not measured, so null with reason not_measured.",
       e2e_ms: "Verification, answer and settlement end to end; not measured, so null with reason not_measured.",
       charge_without_answer: "Successful settlements observed where the response was not 2xx, or where the paid chat handler had not marked an answer as sent; any payer, including ours. Should stay 0. "

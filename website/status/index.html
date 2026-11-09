@@ -148,7 +148,7 @@
   </div></section>
   <section class="lp-section"><div class="shell">
     <h2 class="section-title">Paid calls</h2>
-    <p class="lp-text">Success is answered calls out of paid calls that passed payment verification. Latency is from the start of the paid answer handler to the answer being ready, not the client's full round trip. Percentages and percentiles require at least 20 attempts or latency samples per network and window; raw counts remain visible below this gate. Both count only payers known not to be ours. A charge without an answer is a settlement without a successful answer, for any payer; it should stay 0 and is counted only since that counter started. Unknown settlements are timeout or other indeterminate facilitator results: whether anything moved on chain is unknown, so they count separately from success, failure and charges without an answer.</p>
+    <p class="lp-text">Success is answered calls out of paid calls that passed payment verification. Latency is from the start of the paid answer handler to the answer being ready, not the client's full round trip. Percentages and percentiles require at least 20 attempts or latency samples per network and window; non-empty windows below this gate are suppressed (hidden for too little data), with raw counts still visible. Empty windows show not enough data. Both count only payers known not to be ours. A charge without an answer is a settlement without a successful answer, for any payer; it should stay 0 and is counted only since that counter started. Unknown settlements are timeout or other indeterminate facilitator results: whether anything moved on chain is unknown, so they count separately from success, failure and charges without an answer.</p>
     <p id="su-total" class="lp-text">Loading unknown settlements…</p>
     <p id="cwa-total" class="lp-text">Loading paid-call measurements…</p>
     <div class="table-wrap"><table class="mtable">
@@ -194,7 +194,7 @@
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
 <script src="/app.js?v=bb7061fc"></script>
-<script type="module" src="/status.mjs?v=4"></script>
+<script type="module" src="/status.mjs?v=5"></script>
 
 </body>
 </html>

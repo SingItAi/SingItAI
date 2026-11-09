@@ -18,7 +18,7 @@ test("fetch errors never become numbers", async () => {
 });
 test("static status page and discovery are safe", async () => {
   const page = await read("status/index.html"), script = await read("status.mjs");
-  assert.match(page, /<script type="module" src="\/status\.mjs\?v=4"><\/script>/);
+  assert.match(page, /<script type="module" src="\/status\.mjs\?v=5"><\/script>/);
   assert.match(page, /rel="canonical" href="https:\/\/singitai.app\/status\/"/);
   assert.doesNotMatch(page, /video|0x[a-f0-9]{40}/i);
   assert.doesNotMatch(script, /innerHTML/); assert.match(script, /textContent/);
@@ -174,8 +174,8 @@ test("paid-call rows say why a value is withheld and never invent a rate", () =>
     ["Solana paid-call success", notConfigured, notConfigured], ["Solana answer latency p50 / p95", notConfigured, notConfigured],
     ["Charge without answer", 0, 0], ["Settlement unknown", 0, 0]]);
   const empty = paidCallRows(paidFixture(
-    { base: { attempts: 0, answered: 0, success_pct: null, reason: "insufficient_data" }, solana: { reason: "constructor" } },
-    { base: { samples: 0, p50: null, p95: null, reason: "insufficient_data" }, solana: { reason: null, p50: "1", p95: 2 } }));
+    { base: { attempts: 0, answered: 0, success_pct: null, reason: "insufficient_data", suppressed: false }, solana: { reason: "constructor" } },
+    { base: { samples: 0, p50: null, p95: null, reason: "insufficient_data", suppressed: false }, solana: { reason: null, p50: "1", p95: 2 } }));
   assert.deepEqual(empty.slice(0, 4).map(r => r[1]), ["Not enough data (0 attempts)", "Not enough data (0 samples)", "Not available", "Not available"]);
   const measured = paidCallRows(paidFixture(
     { base: { attempts: 3, answered: 2, success_pct: 66.7, reason: null }, solana: { attempts: 1, answered: 0, success_pct: 0, reason: null } },
@@ -214,8 +214,21 @@ test("unknown settlements have a separate counter caption and required row", asy
 
 test("withheld paid measurements retain raw counts", () => {
   const rows = paidCallRows(paidFixture(
-    { base: { attempts: 19, answered: 18, success_pct: null, reason: "insufficient_data" } },
-    { base: { samples: 19, p50: null, p95: null, reason: "insufficient_data" } }));
-  assert.equal(rows[0][1], "Not enough data (19 attempts)");
-  assert.equal(rows[1][1], "Not enough data (19 samples)");
+    { base: { attempts: 19, answered: 18, success_pct: null, reason: "below_minimum_n", suppressed: true } },
+    { base: { samples: 19, p50: null, p95: null, reason: "below_minimum_n", suppressed: true } }));
+  assert.equal(rows[0][1], "Hidden (too little data) (19 attempts)");
+  assert.equal(rows[1][1], "Hidden (too little data) (19 samples)");
+});
+
+
+test("suppressed marker and below_minimum_n each hide figures and retain counts", () => {
+  for (const state of [{ suppressed: true, reason: null }, { reason: "below_minimum_n" }]) {
+    const rows = paidCallRows(paidFixture(
+      { base: { attempts: 19, answered: 18, success_pct: 95, ...state } },
+      { base: { samples: 19, p50: 10, p95: 20, ...state } }));
+    for (const column of [1, 2]) {
+      assert.equal(rows[0][column], "Hidden (too little data) (19 attempts)");
+      assert.equal(rows[1][column], "Hidden (too little data) (19 samples)");
+    }
+  }
 });
