@@ -24,7 +24,7 @@ const EXTRA_PAID = ["/v1/images/edits", "/v1/images/image2image", "/v1/embedding
 import { parseBestDiscount } from "./reject-log.mjs";
 import express from "express";
 import { addAgentFiles } from "./agent-files.mjs";
-import { AUTO_CONFIG, AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback } from "./auto-router.mjs";
+import { AUTO_CONFIG, AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback, attachPaidAlternates } from "./auto-router.mjs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } from "./errors.mjs";
 import { HealthStats, FacilitatorCheck, healthBody, numbersBody, privateStatsBody } from "./health-stats.mjs";
@@ -218,12 +218,14 @@ export function parseReasoningEffort(text) {
 const defaultFallbackNote = (config) => {
   const pairs = Object.entries(AUTO_CONFIG.pinnedDefaultFallbacks ?? {});
   if (!pairs.length || config?.defaultFallbacks === false) return "";
-  return " Reviewed default fallback, only on POST /v1/chat/completions and only before payment: "
+  return " Reviewed default fallback, only on POST /v1/chat/completions: "
     + pairs.map(([id, ids]) => `a pinned ${id} may be answered by ${ids.join(" or ")}`).join("; ")
     + ", when the pinned model has no usable seller, quoted at its own ceiling, never above the pinned model's on any scheme or network, and in the same auto tier when applicable. "
     + "The 402 and the answer carry X-SingIt-Model, X-SingIt-Fallback-From and X-SingIt-Fallback-Policy: default, and the "
-    + "answer's model field names the model that answered. Send fallback_models to choose your own list, or the header "
-    + "X-SingIt-Fallback: off to stay strictly pinned.";
+    + "answer's model field names the model that answered. After payment, if the paid model is refused without a billable "
+    + "result, one equivalent model (a reviewed default, else another model of the same auto tier) no dearer than the amount "
+    + "signed may answer once, disclosed by X-SingIt-Fallback-From and X-SingIt-Fallback-Policy: paid; one payment settles at "
+    + "most once. Send fallback_models to choose your own list, or the header X-SingIt-Fallback: off to stay strictly pinned.";
 };
 
 export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs, agent } = {}) {
@@ -296,7 +298,7 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
 // Directories rank a listing by how completely it says what to send and what comes back (Coinbase's Bazaar:
 // docs.cdp.coinbase.com/x402/seller/get-discovered), so every field an agent fills in is described.
 const autoHeaders = Object.fromEntries(["X-SingIt-Model", "X-SingIt-Tier", "X-SingIt-Fallback-From", "X-SingIt-Fallback-Policy"].map(name => [name,
-  { description: "Model actually selected, auto tier, or original pinned model when pre-payment fallback was used.", schema: { type: "string" } }]));
+  { description: "Model actually selected, auto tier, original pinned model when a fallback answered, or the fallback policy (request, default, or paid when the paid model was refused after payment).", schema: { type: "string" } }]));
 const INPUT_SCHEMA = {
   properties: {
     messages: { type: "array", minItems: 1, maxItems: LIMITS.messages, description: "The conversation, oldest first.",
@@ -309,7 +311,7 @@ const INPUT_SCHEMA = {
     model: { type: "string", examples: ["deepseek-v4.1-flash", "claude-opus-5.5", "gpt-5.5", "gemini-3.8-flash"],
       description: "Any model id from GET /v1/models; the ceiling follows its price. Omit for the default model." },
     fallback_models: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string" },
-      description: "Optional on paid /v1/chat/completions only: 1–3 trimmed unique model ids, excluding the pinned model and singit/auto. Before payment, an unavailable pinned model may use the first healthy priced candidate whose Base upto maximum price is no higher than the pinned model's, and in the same auto tier if the pinned model has one. The chosen model determines the quote and usage charge." },
+      description: "Optional on paid /v1/chat/completions only: 1–3 trimmed unique model ids, excluding the pinned model and singit/auto. Before payment, an unavailable pinned model may use the first healthy priced candidate whose Base upto maximum price is no higher than the pinned model's, and in the same auto tier if the pinned model has one. The chosen model determines the quote and usage charge. After payment, if that model is refused without a billable result, one further listed model may answer once, only within the amount signed (X-SingIt-Fallback-Policy: paid)." },
     stream_options: { type: "object", additionalProperties: false, properties: { include_usage: { type: "boolean" } }, description: "Only with stream:true." },
     stream: { type: "boolean", enum: [false, true], description: "Buffered SSE: the complete answer is released after settlement, not token by token." },
   },
@@ -683,7 +685,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     + "model ids (not the pinned model, not singit/auto). If the pinned model is unavailable before "
     + "payment, the first healthy priced candidate whose Base upto maximum price is no higher than the pinned "
     + "model's answers (same auto tier if the pinned model has one). X-SingIt-Model and "
-    + "X-SingIt-Fallback-From identify which model answered and which was replaced.";
+    + "X-SingIt-Fallback-From identify which model answered and which was replaced. After payment, if the paid model is "
+    + "refused without a billable result, one equivalent model no dearer than the amount signed may answer once (a listed "
+    + "one, else a reviewed default or another model of the pinned model's auto tier); X-SingIt-Fallback-From and "
+    + "X-SingIt-Fallback-Policy: paid disclose it, and at most one payment settles. The header X-SingIt-Fallback: off "
+    + "disables automatic substitution; fallback_models still apply.";
   app.get("/health", open, (_req, res) => {
     res.set("Cache-Control", "no-store");
     res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model, catalogue?.unservableSnapshot?.(), catalogue?.suspensionSnapshot?.()),
@@ -1260,18 +1266,20 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
 
   const choose = input => input.model === AUTO_ID
     ? chooseAuto(config, catalogue, input, RequestError, log) : chooseModel(config, catalogue, input);
-  const chooseChat = (input, req) => {
+  const chooseChat = async (input, req) => {
     if (!input.model || input.model === AUTO_ID) return choose(input);
-    if (input.fallbackModels) return choosePinnedFallback(config, catalogue,
-      { ...input, fallbackPolicy: "request" }, chooseModel, RequestError, log);
+    // Server-chosen substitutes (reviewed defaults before payment, same-tier equivalents after it): never for the
+    // default model, and off with the operator switch or X-SingIt-Fallback: off. A request's fallback_models always apply.
+    const automatic = input.model !== config.model && config.defaultFallbacks !== false
+      && !String(req?.get("X-SingIt-Fallback") ?? "").split(",").some(value => value.trim().toLowerCase() === "off");
     const defaults = Object.hasOwn(AUTO_CONFIG.pinnedDefaultFallbacks, input.model)
       ? AUTO_CONFIG.pinnedDefaultFallbacks[input.model] : undefined;
-    if (input.model !== config.model && defaults && config.defaultFallbacks !== false
-      && !String(req?.get("X-SingIt-Fallback") ?? "").split(",").some(value => value.trim().toLowerCase() === "off")) {
-      return choosePinnedFallback(config, catalogue,
-        { ...input, fallbackModels: defaults, fallbackPolicy: "default" }, chooseModel, RequestError, log);
-    }
-    return choose(input);
+    const chosen = input.fallbackModels ? await choosePinnedFallback(config, catalogue,
+      { ...input, fallbackPolicy: "request" }, chooseModel, RequestError, log)
+      : automatic && defaults ? await choosePinnedFallback(config, catalogue,
+        { ...input, fallbackModels: defaults, fallbackPolicy: "default" }, chooseModel, RequestError, log)
+      : await choose(input);
+    return attachPaidAlternates(config, catalogue, input, chosen, { automatic });
   };
   const readOtherRequest = body => readRequest(body, { allowFallback: false });
   // Every answer that came back teaches the price shown for its model. It never delays or fails the answer.
