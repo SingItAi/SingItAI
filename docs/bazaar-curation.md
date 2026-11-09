@@ -92,3 +92,17 @@ Where the "limits" fact is published, and what each place can say:
 - **agentic.market** reads CDP's catalog: its card for ask.singitai.app shows `description: ""`, `category: ""` and
   `enriched: false`, so the text cannot be set from this repository. It is a provider-side step; proposed text
   (258 characters): "Pay-per-answer LLM chat (OpenAI, Anthropic and Responses formats), images, speech and Exa web search over x402 in USDC on Base or Solana, with no API key. The max charge is quoted before signing; the SingIt SDK adds client-side ceilings per call and per day.". Category: Inference.
+
+### L1 draft boilerplate (SI-287)
+
+`bazaarLimitsBoilerplate()` in `singit-ask/src/listing-copy.mjs` exports capability-first
+CDP description copy (at most 160 characters), mentioning owner-set USDC limits via
+MCP/API keys. It rejects ceiling, fee and percentage wording. Existing route and
+pinned alias descriptions remain unchanged: long names leave little room; WK
+`documentation`/`instructions` and MCP carry the limits message. Direct wallet
+payments are not covered by the owner's agent limits.
+
+This is draft metadata only, gated after R1/R2 reliability work. Growth listings
+are a separate later step. CDP refresh still needs paid settles after deploy,
+performed by Kostya; this change makes no calls or submissions. Merge/deploy
+requires Kostya's own OK in Dev/Ops chat.

@@ -345,6 +345,14 @@ test("/.well-known/x402 points to the paid route at its public URL", async () =>
     .handle({ protocol: 'https', get: name => name === 'host' ? 'ask.singitai.app' : undefined },
       { json(value) { doc = value; } });
   assert.equal(doc.version, 1);
+  assert.deepEqual(doc.documentation, {
+    mcp: 'https://singitai.app/docs/mcp-tools/',
+    spendingLimits: 'https://singitai.app/agent-spending-limits/',
+    llmsTxt: 'https://ask.singitai.app/llms.txt',
+  });
+  for (const term of ['Owner-set server-side', 'get_allowance', 'get_limits', 'get_receipts', 'Emergency stop', 'Revoke', 'Charged only when answered', 'not covered']) {
+    assert.ok(doc.instructions.includes(term), term);
+  }
   assert.deepEqual(doc.resources, ["https://ask.singitai.app/v1/chat/completions",
                                    "https://ask.singitai.app/v1/messages", "https://ask.singitai.app/v1/responses",
                                    "https://ask.singitai.app/v1/images/edits", "https://ask.singitai.app/v1/images/image2image",

@@ -1376,3 +1376,14 @@ def tearDownModule():
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LimitsDiscoveryCopyTest(unittest.TestCase):
+    def test_limits_first_descriptions(self):
+        descriptions = {tool["name"]: tool["description"] for tool in OWN_TOOLS}
+        for name in ("list_models", "chat"):
+            self.assertIn("owner-set", descriptions[name])
+            self.assertIn("get_allowance", descriptions[name])
+        self.assertIn("refused before anything is charged", descriptions["chat"])
+        for term in ("Emergency stop", "Revoke", "Base AgentAllowance is on-chain", "Solana daily and per-purchase limits are server-checked", "Read-only"):
+            self.assertIn(term, descriptions["get_allowance"])

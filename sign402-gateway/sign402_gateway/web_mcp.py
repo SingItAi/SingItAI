@@ -375,10 +375,10 @@ OWN_TOOLS: list[dict[str, Any]] = [_annotated(entry) for entry in (
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "list_models", "description": "The AI models (chat, images or audio) available through SingIt, with "
      "their prices. Chat models can be called with chat or through SingIt's OpenAI-compatible API at "
-     "https://app.singitai.app/v1. Free, no key needed.",
+     "https://app.singitai.app/v1. Search the returned list by id for models and prices. Paid calls stay inside owner-set key/allowance limits; check get_allowance before spending. Free, no key needed.",
      "inputSchema": LIST_MODELS_SCHEMA},
     {"name": "chat_free", "description": "Free model answers, no key needed. Answers are short (400 tokens), with a small daily allowance shared per network and a shared daily budget that can run out. To pay for a model answer with your key use chat with the same model without the free/ prefix.", "inputSchema": _chat_schema(True)},
-    {"name": "chat", "description": "Paid per call from your key's SingIt balance and limits in USDC. The server enforces per-request and daily caps; a call over a cap is refused before anything is charged. Use list_models for model ids and prices, get_allowance (or get_limits) for what remains and which cap would refuse a call, and get_receipts for the charge. Pass max_tokens high enough for reasoning models: thinking uses the same budget.", "inputSchema": _chat_schema(False)},
+    {"name": "chat", "description": "Paid per call from your key's SingIt balance and owner-set limits in USDC. The server enforces per-request and daily caps; a call over a cap is refused before anything is charged. Use list_models for model ids and prices, get_allowance (or get_limits) for what remains and which cap would refuse a call, and get_receipts for the charge. Pass max_tokens high enough for reasoning models: thinking uses the same budget.", "inputSchema": _chat_schema(False)},
     {"name": "get_balance", "description": "Your SingIt API balance: available and held USDC, auto top-up and "
      "pending top-ups. Use to check funds before paid calls. Free, but needs your API key.",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -390,7 +390,7 @@ OWN_TOOLS: list[dict[str, Any]] = [_annotated(entry) for entry in (
     {"name": "get_allowance", "description": "How much you can still spend right now, before you pay: your API key's "
      "remaining today and per-request cap, and your wallet allowance's remaining today, per-purchase cap and approval "
      "on Base or Solana, each with spendableNowUsd and bindingLimit (the limit that would refuse a larger call). "
-     "Read-only: it cannot change a limit. Free, but needs your API key.",
+     "Owner can pause (Emergency stop) or Revoke the allowance: Base AgentAllowance is on-chain; Solana daily and per-purchase limits are server-checked. Read-only: it cannot change a limit. Free, but needs your API key.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_receipts", "description": "Your recent receipts, newest first: for each, its id, time, model, USDC "
      "charged, tokens and the upstream reference (kind charge, this key only), or the account's top-ups and refunds "
