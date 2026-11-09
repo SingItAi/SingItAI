@@ -95,8 +95,9 @@ test('catalog content follows a changed snapshot without pinned totals or model 
   assert.deepEqual([...page.matchAll(/<tr id="([^"]+)"/g)].map(m => m[1]), changed.data.map(m => encodeURIComponent(m.id)));
 });
 
- test('published catalog includes captured image, editing, embeddings and speech entries', () => {
-  assert.equal(snapshot.fetchedAt, '2026-11-05T17:25:00Z');
+test('published catalog includes captured image, editing, embeddings and speech entries', () => {
+  assert.ok(Number.isFinite(Date.parse(snapshot.fetchedAt)));
+  assert.ok(html.includes(snapshot.fetchedAt));
   for (const modality of ['image', 'image_edit', 'embeddings', 'speech']) {
     const entries = snapshot.data.filter(e => e.modality === modality);
     assert.ok(entries.length > 0, modality);
