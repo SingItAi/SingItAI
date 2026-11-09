@@ -139,11 +139,11 @@ test("the example must only use schema fields and must carry every required one"
 });
 
 test("a non-JSON route may skip the output example if its mimeType says so", () => {
-  const speech = { ...good(), resource: { ...good().resource, url: "https://ask.singitai.app/v1/audio/speech", mimeType: "audio/mpeg" } };
-  delete speech.extensions.bazaar.info.output;
-  assert.deepEqual(lintChallenge(speech, { ...env, route: "/v1/audio/speech" }), []);
-  const wrong = { ...speech, resource: { ...speech.resource, mimeType: "application/json" } };
-  assert.deepEqual(checks(lintChallenge(wrong, { ...env, route: "/v1/audio/speech" })), ["bazaar.outputExample"]);
+  const sfx = { ...good(), resource: { ...good().resource, url: "https://ask.singitai.app/v1/audio/sound-effects", mimeType: "audio/mpeg" } };
+  delete sfx.extensions.bazaar.info.output;
+  assert.deepEqual(lintChallenge(sfx, { ...env, route: "/v1/audio/sound-effects" }), []);
+  const wrong = { ...sfx, resource: { ...sfx.resource, mimeType: "application/json" } };
+  assert.deepEqual(checks(lintChallenge(wrong, { ...env, route: "/v1/audio/sound-effects" })), ["bazaar.outputExample"]);
 });
 
 test("a slimmed header is linted against the 402 body's full extensions", () => {
