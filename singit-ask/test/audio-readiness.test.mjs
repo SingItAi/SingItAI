@@ -62,3 +62,62 @@ test('standard catalogue snapshot rejects price drift, duration billing and stal
   entry.supported_parameters = ['async', 'sound-effects']; time += 360001;
   await helper.refresh(); assert.equal(check(), false);
 });
+
+
+test('timeout keeps a fresh snapshot and logs reason=timeout; TTL still gates', async () => {
+  let time = 1000, calls = 0;
+  const logs = [];
+  const model = AUDIO_MODELS[0];
+  const helper = createAudioReadiness({ audioSold: true, surplusKey: 'k', surplusUrl: 'https://surplus.test' }, {
+    now: () => time, log: (m) => logs.push(m),
+    fetchImpl: async () => {
+      calls++;
+      if (calls === 1) return Response.json({ credit_balance_usdc: '999999' });
+      const err = new Error('aborted'); err.name = 'TimeoutError'; throw err;
+    },
+  });
+  await helper.refresh();
+  assert.equal(helper.ready(model.upstream, model), true);
+  await helper.refresh();
+  assert.ok(logs.some(l => l === 'audio credit snapshot fail reason=timeout'));
+  assert.equal(helper.ready(model.upstream, model), true, 'fresh snapshot kept through timeout');
+  time += AUDIO_CREDIT_TTL_MS + 1;
+  assert.equal(helper.ready(model.upstream, model), false, 'TTL still enforced');
+});
+
+test('http_401 and invalid_balance clear the snapshot; http_503 keeps a fresh one', async () => {
+  let time = 5000, mode = 'ok';
+  const logs = [];
+  const model = AUDIO_MODELS[0];
+  const helper = createAudioReadiness({ audioSold: true, surplusKey: 'k', surplusUrl: 'https://surplus.test' }, {
+    now: () => time, log: (m) => logs.push(m),
+    fetchImpl: async () => {
+      if (mode === 'ok') return Response.json({ credit_balance_usdc: '999999' });
+      if (mode === '401') return new Response('no', { status: 401 });
+      if (mode === '503') return new Response('no', { status: 503 });
+      if (mode === 'bad') return Response.json({ credit_balance_usdc: '12.3' });
+      return Response.json({ credit_balance_usdc: '999999' });
+    },
+  });
+  await helper.refresh();
+  assert.equal(helper.ready(model.upstream, model), true);
+  mode = '503'; await helper.refresh();
+  assert.ok(logs.at(-1).includes('reason=http_503'));
+  assert.equal(helper.ready(model.upstream, model), true, '5xx keeps fresh snapshot');
+  mode = '401'; await helper.refresh();
+  assert.ok(logs.at(-1).includes('reason=http_401'));
+  assert.equal(helper.ready(model.upstream, model), false);
+  mode = 'ok'; await helper.refresh();
+  assert.equal(helper.ready(model.upstream, model), true);
+  mode = 'bad'; await helper.refresh();
+  assert.ok(logs.at(-1).includes('reason=invalid_balance'));
+  assert.equal(helper.ready(model.upstream, model), false);
+});
+
+test('missing credentials log reason=missing_credentials and clear', async () => {
+  const logs = [];
+  const helper = createAudioReadiness({ audioSold: true }, { log: (m) => logs.push(m), fetchImpl: async () => { throw new Error('should not fetch'); } });
+  await helper.refresh();
+  assert.equal(logs.at(-1), 'audio credit snapshot fail reason=missing_credentials');
+  assert.equal(helper.ready(AUDIO_MODELS[0].upstream, AUDIO_MODELS[0]), false);
+});
