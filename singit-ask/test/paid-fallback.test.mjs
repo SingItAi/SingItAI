@@ -126,6 +126,7 @@ for (const [failure, error, expected] of [
 
 test('pinned: an alternate whose ceiling is far above the signed amount is skipped (over-signed → 503, no charge)', async t => {
   // The alternate's price rises after the quote: the paid route checks it against what was actually signed.
+  // Strictly dearer on the signed path must not run. 503 must not settle or emit a charge receipt (R1).
   const cheap = { ...models.find(m => m.id === CHEAP) };
   const cat = { ...catalogue, resolve: async id => id === CHEAP ? cheap : catalogue.resolve(id) };
   let calls = 0;
@@ -137,6 +138,9 @@ test('pinned: an alternate whose ceiling is far above the signed amount is skipp
     const { response } = await paid(url, body(PINNED), { scheme, signature: `0x${scheme}` });
     assert.equal(response.status, 503, scheme);
     assert.equal(calls, 1, scheme);
+    assert.equal(response.headers.get('x-singit-receipt'), null, scheme);
+    const payload = await response.json();
+    assert.equal(payload.error?.code, 'no_billable_answer', scheme);
   }
   assert.equal(facilitator.calls.settle.length, 0);
 });
@@ -182,6 +186,9 @@ const SLACK_INPUT = { chars: 2, messageCount: 1, maxTokens: 32 };
 test('pinned: a catalog ceiling 3 atomic above the signed amount still answers once (2006 vs 2003)', async t => {
   const cheap = { ...models.find(m => m.id === CHEAP) };
   const cat = { ...catalogue, resolve: async id => id === CHEAP ? cheap : catalogue.resolve(id) };
+  // Answer-once is exercised on Base upto and exact (same fits() path for every rail).
+  // Solana selection math is in the unit test above: this stub cannot open a Solana upto
+  // escrow, and Solana exact disables paid fallback for the remaining window (`!win`).
   for (const scheme of ['upto', 'exact']) {
     cheap.completionUsdPerToken = models.find(m => m.id === CHEAP).completionUsdPerToken;
     const asked = [];
