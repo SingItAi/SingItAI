@@ -1,4 +1,4 @@
-import { lintChallenge } from '../../scripts/bazaar-lint.mjs';
+import { lintChallenge, challengeWithBodyExtensions } from '../../scripts/bazaar-lint.mjs';
 import { BASE, SOLANA, MIN_CEILING_ATOMIC } from '../src/pricing.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -44,7 +44,8 @@ test('list probes bound every audit mismatch across live shares, verbs, networks
       assert.equal(response.status, 402);
       const challenge = decode(response);
       assert.ok(challenge.resource.description.length <= 160);
-      assert.match(challenge.extensions.bazaar.schema.properties.input.properties.body.description, /Listed price = ceiling for the example/);
+      const full = await (method === "HEAD" ? await fetch(url + path) : response).json();
+      assert.match(full.extensions.bazaar.schema.properties.input.properties.body.description, /Listed price = ceiling for the example/);
       probes.push(buckets(challenge));
     }
     assert.deepEqual(probes[0], probes[1]); assert.deepEqual(probes[0], probes[2]);
@@ -142,10 +143,11 @@ test('all 22 audit route probe prices match the comparison fixture and pass Baza
   for (const policy of ['live', 'list']) {
     const { url, facilitator } = await serve(t, catalogue, { probeShare: policy });
     for (const row of rows) {
-      const challenge = decode(await fetch(url + row.route, { headers: { host: 'ask.singitai.app', 'x-forwarded-proto': 'https' } }));
+      const response = await fetch(url + row.route, { headers: { host: 'ask.singitai.app', 'x-forwarded-proto': 'https' } });
+      const challenge = decode(response);
       const amount = challenge.accepts.find(a => a.network === BASE).amount;
       assert.equal(Number(amount), policy === 'live' ? row.before : row.after, row.route);
-      const findings = lintChallenge(challenge, { route: row.route, networks: [BASE, SOLANA],
+      const findings = lintChallenge(challengeWithBodyExtensions(challenge, await response.json()), { route: row.route, networks: [BASE, SOLANA],
         payTo: { [BASE]: CONFIG.payToBase, [SOLANA]: CONFIG.payToSolana } });
       assert.deepEqual(findings.filter(f => f.level === 'FAIL').map(f => f.check), [], row.route);
     }

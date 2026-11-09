@@ -243,7 +243,8 @@ test("the listing tells agents what to send and what comes back, within Coinbase
   assert.ok(required.resource.description.length <= 160, `description is ${required.resource.description.length} characters`);
   assert.match(required.resource.description, /^OpenAI-compatible chat API/);
   const bazaar = required.extensions.bazaar;
-  const body = bazaar.schema.properties.input.properties.body;
+  const response = await fetch(`${url}${ROUTE}`);
+  const body = (await response.json()).extensions.bazaar.schema.properties.input.properties.body;
   assert.deepEqual(body.properties.messages.items.properties.role.enum, ["system", "developer", "user", "assistant", "tool"]);
   assert.equal(body.properties.max_tokens.maximum, AGENT_LIMITS.maxTokens);
   // The declared example must satisfy the declared schema, or the Bazaar rejects the listing.

@@ -319,7 +319,7 @@ for (const code of ["max_tokens_spent_reasoning", "no_text"]) {
 
 test("all 23 directory descriptions fit 160 characters and model operations agree", async () => {
   const { modelRoutePaths } = await import("../src/model-routes.mjs");
-  const { lintChallenge } = await import("../../scripts/bazaar-lint.mjs");
+  const { lintChallenge, challengeWithBodyExtensions } = await import("../../scripts/bazaar-lint.mjs");
   const app = createApp(CONFIG, { facilitatorClient: facilitator(), log: () => {}, exaKey: "exa_test",
     catalogue: { ...catalogue, async imageModels() { return new Map(); },
       async voiceModels() { return { speech: new Map(), transcription: new Map() }; } },
@@ -333,7 +333,7 @@ test("all 23 directory descriptions fit 160 characters and model operations agre
     assert.equal(result.status, 402, route);
     const challenge = JSON.parse(Buffer.from(result.headers["payment-required"], "base64"));
     const { resource } = challenge;
-    assert.deepEqual(lintChallenge(challenge, { route, networks: [BASE, SOLANA] }).filter(f => f.level === "FAIL"), [], route);
+    assert.deepEqual(lintChallenge(challengeWithBodyExtensions(challenge, result.body), { route, networks: [BASE, SOLANA] }).filter(f => f.level === "FAIL"), [], route);
     assert.ok(resource.description.length <= 160, route);
     assert.doesNotMatch(resource.description, /\b(fee|markup|ceiling|settlement)\b|%/i, route);
     assert.ok(!resource.description.startsWith("SingIt "), route);
