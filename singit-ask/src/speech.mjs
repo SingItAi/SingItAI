@@ -51,6 +51,7 @@ export function matchesSpeechFormat(audio, format = "mp3") {
   }
 }
 // Pipes keep audio out of temporary files; cap both runtime and buffered output.
+// CI: keep system ffmpeg optional; delivery paths covered by injected ffmpeg.
 export function transcodeWavToMp3(wavBuffer) {
   return new Promise((resolve, reject) => {
     const child = execFile("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "wav", "-i", "pipe:0",
