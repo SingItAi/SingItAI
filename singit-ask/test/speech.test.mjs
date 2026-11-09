@@ -457,3 +457,4 @@ test("system ffmpeg helper converts PCM WAV and rejects malformed WAV", async (t
   assert.ok(matchesSpeechFormat(mp3, "mp3"));
   await assert.rejects(transcodeWavToMp3(Buffer.from("RIFF0000WAVE")), /transcoding/);
 });
+
