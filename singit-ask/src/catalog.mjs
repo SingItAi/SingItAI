@@ -25,7 +25,7 @@ export async function buildCatalog({ catalogue, config = {}, free, searchEnabled
     const eligible = catalogue.listable ? await catalogue.listable(m.id) : catalogue.canAnswer ? await catalogue.canAnswer(m.id) : true;
     if (!eligible && !catalogue.neverHide?.has(m.id) && m.id !== config.model) continue;
     let price;
-    try { price = await chatPrice(m); } catch { continue; }
+    try { price = await chatPrice(m); } catch { price = { mode: 'unavailable' }; }
     add(m, 'chat', MODEL_ROUTES.some(r => r.id === m.id) ? routePath(m.id) : '/v1/chat/completions', price, 'x402', 'model',
       { available: catalogue.canAnswer ? Boolean(await catalogue.canAnswer(m.id)) : Boolean(eligible),
         ...(config.defaultFallbacks !== false && AUTO_CONFIG.pinnedDefaultFallbacks[m.id] ? { defaultFallback: AUTO_CONFIG.pinnedDefaultFallbacks[m.id] } : {}) });
@@ -34,14 +34,14 @@ export async function buildCatalog({ catalogue, config = {}, free, searchEnabled
   // The default alias can use configured fallback routing; it has no independent model price.
   add({ id: 'singit-ask', name: 'SingIt Ask default / fallback' }, 'chat', '/v1/chat/completions', { mode: 'selected_model', upstream: config.model }, 'x402', 'router');
   for (const id of free?.models ?? []) add({ id: FREE_PREFIX + id }, 'chat', '/v1/chat/completions', { usd: 0, limits: { perVisitorPerDay: free.perVisitorPerDay, maxTokens: free.maxTokens, maxChars: free.chars } }, 'free', 'free', { available: catalogue?.canAnswer ? Boolean(await catalogue.canAnswer(id)) : true });
-  for (const m of (await catalogue?.imageModels?.() ?? new Map()).values()) {
+  for (const m of (await catalogue?.imageModels?.().catch(() => new Map()) ?? new Map()).values()) {
     const amount = imageListAtomic(m, { prompt: '', n: 1, size: !m.sizes || m.sizes.includes('1024x1024') ? '1024x1024' : m.sizes[0] });
     add(m, 'image', IMAGE_ROUTE, { reference: 'one image', exact: Object.fromEntries([['base', BASE], ['solana', SOLANA]].map(([n, chain]) => [n, { usd: Number(imagePrice(amount, chain).totalAtomic) / 1e6 }])) });
   }
   for (const [method, modality, route] of [['editModels', 'image_edit', EDIT_ROUTE], ['embeddingModels', 'embeddings', EMBEDDING_ROUTE]]) {
-    for (const m of (await catalogue?.[method]?.() ?? new Map()).values()) add(m, modality, route, await extraPrice(m, modality));
+    for (const m of (await catalogue?.[method]?.().catch(() => new Map()) ?? new Map()).values()) add(m, modality, route, await extraPrice(m, modality));
   }
-  const voice = await catalogue?.voiceModels?.() ?? { speech: new Map(), transcription: new Map() };
+  const voice = await catalogue?.voiceModels?.().catch(() => ({ speech: new Map(), transcription: new Map() })) ?? { speech: new Map(), transcription: new Map() };
   for (const modality of ['speech', 'transcription']) for (const m of voice[modality].values()) {
     add(m, modality, modality === 'speech' ? SPEECH_ROUTE : '/v1/audio/transcriptions', {
       currency: 'USD', unit: modality === 'speech' ? '1000 characters' : 'minute', list: m.usdPerUnit,
