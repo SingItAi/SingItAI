@@ -52,6 +52,8 @@ Use the model `free/deepseek-v4.1-flash` in the same request to get an answer wi
 claude mcp add --transport http singit https://app.singitai.app/mcp
 ```
 
+Cline defaults to SSE and this endpoint rejects `GET` (405). Use the `type: streamableHttp` block in [`llms-install.md`](llms-install.md).
+
 **3. Install the ElizaOS plugin** ([`integrations/elizaos-plugin`](integrations/elizaos-plugin)):
 
 ```bash
