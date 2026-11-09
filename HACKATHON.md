@@ -568,3 +568,8 @@ Offline model-card, listing-price, discovery, free, catalog, OpenAPI lint/errors
 and model-route checks passed: 78/78. No paid calls, Solana execution changes,
 deployment or CDP refresh; stale directory descriptions require an owner-run paid
 settle refresh after deploy.
+
+Post-competition speech delivery fix (2026-11-09), branch `fix/speech-wav-mp3-transcode`:
+synchronous speech requests for default/explicit MP3, including json/b64_json envelopes,
+convert upstream WAV to MP3 via system ffmpeg before validation and settlement.
+Conversion failure keeps 503/no-charge. Discovery stays b64_json/mp3.
