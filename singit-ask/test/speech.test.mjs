@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { ModelCatalogue, UnknownModel, parseVoiceModels } from "../src/catalogue.mjs";
-import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, speechContentType, matchesSpeechFormat, readSpeechRequest, speechListAtomic, speechPrice } from "../src/speech.mjs";
+import { SPEECH_ROUTE, SPEECH_CONTENT_TYPES, speechContentType, transcodeWavToMp3, matchesSpeechFormat, readSpeechRequest, speechListAtomic, speechPrice } from "../src/speech.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -53,10 +53,10 @@ function fakeSurplus({ status = 200, type = "audio/mpeg", body = AUDIO, cost = "
   return { calls, fetchImpl };
 }
 
-async function serve(t, { surplus = fakeSurplus(), modelCatalogue = catalogue } = {}) {
+async function serve(t, { surplus = fakeSurplus(), modelCatalogue = catalogue, ffmpeg } = {}) {
   const facilitator = fakeFacilitator();
   const logs = [];
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue: modelCatalogue, fetchImpl: surplus.fetchImpl, resolveHostname: async () => [{ address: "93.184.216.34", family: 4 }],
+  const app = createApp(CONFIG, { facilitatorClient: facilitator, catalogue: modelCatalogue, ffmpeg, fetchImpl: surplus.fetchImpl, resolveHostname: async () => [{ address: "93.184.216.34", family: 4 }],
     log: (line) => logs.push(line), upstream: async () => { throw new Error("no answer is asked"); } });
   const listener = await new Promise((resolve, reject) => { const l = app.listen(0, "127.0.0.1", error => error ? reject(error) : resolve(l)); l.once("error", reject); });
   t.after(() => listener.close());
@@ -375,3 +375,86 @@ test("async speech with b64_json returns a JSON envelope and does not send respo
   });
   assert.equal(facilitator.calls.settle.length, 1);
 });
+
+for (const response_format of [undefined, "mp3", "json", "b64_json"]) {
+  test(`WAV upstream is transcoded before settlement: ${response_format ?? "default"}`, async t => {
+    const wav = Buffer.from("RIFF0000WAVE");
+    let calls = 0;
+    const { url, facilitator, logs } = await serve(t, {
+      surplus: fakeSurplus({ body: wav, type: "audio/wav" }),
+      ffmpeg: async audio => { calls++; assert.deepEqual(audio, wav); return AUDIO; },
+    });
+    const body = { ...SPEECH, ...(response_format ? { response_format } : {}) };
+    const required = decode((await post(`${url}${SPEECH_ROUTE}`, body)).headers.get("payment-required"));
+    const paid = await post(`${url}${SPEECH_ROUTE}`, body, pay(required, BASE));
+    assert.equal(paid.status, 200);
+    let audio;
+    if (["json", "b64_json"].includes(response_format)) {
+      assert.match(paid.headers.get("content-type"), /^application\/json/);
+      const envelope = await paid.json();
+      assert.equal(envelope.format, "mp3");
+      assert.equal(envelope.content_type, "audio/mpeg");
+      audio = Buffer.from(envelope.audio_base64, "base64");
+    } else {
+      assert.equal(paid.headers.get("content-type"), "audio/mpeg");
+      audio = Buffer.from(await paid.arrayBuffer());
+    }
+    assert.deepEqual(audio, AUDIO);
+    assert.ok(matchesSpeechFormat(audio, "mp3"));
+    assert.equal(calls, 1);
+    assert.equal(facilitator.calls.settle.length, 1);
+    assert.ok(logs.some(line => line.includes(SPEECH.model) && line.includes("transcoded WAV to mp3")
+      && line.includes(`${wav.length} in bytes`) && line.includes(`${AUDIO.length} out bytes`)));
+  });
+}
+
+for (const outcome of ["failure", "garbage", "empty"]) {
+  test(`transcoding ${outcome} never settles`, async t => {
+    const { url, facilitator } = await serve(t, {
+      surplus: fakeSurplus({ body: Buffer.from("RIFF0000WAVE") }),
+      ffmpeg: async () => {
+        if (outcome === "failure") throw new Error("ffmpeg failed");
+        return Buffer.from(outcome === "empty" ? "" : "garbage");
+      },
+    });
+    const required = decode((await post(`${url}${SPEECH_ROUTE}`, SPEECH)).headers.get("payment-required"));
+    const refused = await post(`${url}${SPEECH_ROUTE}`, SPEECH, pay(required, BASE));
+    assert.equal(refused.status, 503);
+    assert.equal((await refused.json()).error.code, "no_billable_answer");
+    assert.equal(refused.headers.get("x-singit-charged-atomic"), null);
+    assert.equal(facilitator.calls.settle.length, 0);
+  });
+}
+
+test("real MP3 skips transcoding", async t => {
+  let calls = 0;
+  const { url, facilitator } = await serve(t, { ffmpeg: async () => { calls++; throw new Error("unexpected"); } });
+  const required = decode((await post(`${url}${SPEECH_ROUTE}`, SPEECH)).headers.get("payment-required"));
+  const paid = await post(`${url}${SPEECH_ROUTE}`, SPEECH, pay(required, BASE));
+  assert.equal(paid.status, 200);
+  assert.deepEqual(Buffer.from(await paid.arrayBuffer()), AUDIO);
+  assert.equal(calls, 0);
+  assert.equal(facilitator.calls.settle.length, 1);
+});
+
+test("system ffmpeg helper converts PCM WAV and rejects malformed WAV", async (t) => {
+  // Injected-ffmpeg tests above cover delivery. This optional check needs a working
+  // system ffmpeg with an MP3 encoder (present on the VPS; often missing in CI).
+  const wav = Buffer.alloc(44 + 1600);
+  wav.write("RIFF", 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(8000, 24); wav.writeUInt32LE(16000, 28);
+  wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write("data", 36); wav.writeUInt32LE(1600, 40);
+  let mp3;
+  try {
+    mp3 = await transcodeWavToMp3(wav);
+  } catch (error) {
+    t.skip(`system ffmpeg unavailable here (${error.message})`);
+    return;
+  }
+  assert.ok(mp3.length > 0);
+  assert.ok(matchesSpeechFormat(mp3, "mp3"));
+  await assert.rejects(transcodeWavToMp3(Buffer.from("RIFF0000WAVE")), /transcoding/);
+});
+
