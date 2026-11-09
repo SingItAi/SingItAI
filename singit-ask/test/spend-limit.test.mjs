@@ -234,6 +234,24 @@ test("receiptFor ignores a failed settlement", () => {
   assert.equal(receiptFor({ get: () => undefined }, { locals: {} }, { success: false }), null);
 });
 
+test("receiptFor ignores a successful settlement header on a 4xx/5xx response", () => {
+  const payment = encode({ accepted: { amount: "2003", scheme: "upto", network: SOLANA } });
+  const req = { get: (k) => String(k).toLowerCase() === "payment-signature" ? payment : undefined };
+  const res = { statusCode: 503, locals: {} };
+  assert.equal(receiptFor(req, res, { success: true, transaction: "sig", payer: "payer", network: SOLANA }), null);
+});
+
+test("a 503 that still carries PAYMENT-RESPONSE (Solana upto deposit or refund) has no X-SingIt-Receipt", async () => {
+  const payment = encode({ accepted: { amount: "2003", scheme: "upto", network: SOLANA } });
+  const settled = encode({ success: true, transaction: "sig", payer: "payer", network: SOLANA });
+  const headers = {};
+  const req = { method: "POST", get: (k) => String(k).toLowerCase() === "payment-signature" ? payment : undefined };
+  const res = { statusCode: 503, locals: {}, setHeader: (k, v) => { headers[k] = v; } };
+  await spendLimitMiddleware({ reader: null })(req, res, () => {});
+  res.setHeader("PAYMENT-RESPONSE", settled);
+  assert.equal(headers[RECEIPT_HEADER], undefined);
+});
+
 test("a route that only sets x402's settlement override (formats.mjs, Messages) still reports the amount actually billed", async (t) => {
   const fetchImpl = async () => new Response(JSON.stringify({ id: "msg_1", type: "message", role: "assistant",
     content: [{ type: "text", text: "hi" }], usage: { input_tokens: 12, output_tokens: 30, buyer_cost_micro: 2000, is_byok: true } }),
