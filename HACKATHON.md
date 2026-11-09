@@ -556,3 +556,15 @@ Verification: 126 Node tests and 105 gateway tests (65 subtests) passed.
 Acceptance mapping and draft PR body: `docs/pr-si-287-l1.md`. This is SingIt discovery
 metadata work, not new Solana payment functionality. No paid call, external listing
 refresh, merge or deployment; gated after R1/R2 and Kostya's Dev/Ops approval.
+
+### November 9: model discovery prices and schema links
+
+Post-competition SingIt API work on `feat/discovery-price-schemas`, recorded by
+commit subject `feat(singit-ask): richer model cards with per-token price and schema links`.
+Cards and list entries share catalogue token prices, known expected prices and
+savings, and route input/output schema links or definitions. OpenAPI documents
+reference-request ceilings; the well-known instructions point to free model cards.
+Offline model-card, listing-price, discovery, free, catalog, OpenAPI lint/errors
+and model-route checks passed: 78/78. No paid calls, Solana execution changes,
+deployment or CDP refresh; stale directory descriptions require an owner-run paid
+settle refresh after deploy.

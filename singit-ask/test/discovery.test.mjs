@@ -84,6 +84,11 @@ test("GET on every discoverable route gets the exact 402 an empty, unpaid POST g
     // The extension and resource always describe the route as POST, which is how it is actually called.
     assert.equal(gotRequired.extensions.bazaar.info.input.method, "POST", route);
     const challengeBody = await got.json();
+    if (route === SPEECH_ROUTE) {
+      // #263: speech bazaar declares the opt-in JSON envelope (schema + example), not raw binary bytes.
+      const out = challengeBody.extensions.bazaar.info.output;
+      assert.ok(out && (out.schema || out.example || out.type), "speech 402 must declare bazaar output");
+    }
     assert.deepEqual(challengeBody.accepts, gotRequired.accepts, route);
     assert.equal(challengeBody.x402Version, gotRequired.x402Version);
     assert.equal(challengeBody.code, "payment_required");

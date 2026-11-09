@@ -139,7 +139,7 @@ const modelInputSchema = (schema, config = {}) => ({ ...schema, description: pro
   properties: Object.fromEntries(Object.entries(schema.properties).filter(([name]) => !["fallback_models", "min_tier"].includes(name))
     .map(([name, property]) => [name, name !== "max_tokens" ? property : { ...property,
       description: `The longest answer, in tokens; ${LIMITS.maxTokens} is the most, and a larger value counts as ${LIMITS.maxTokens}. `
-        + "The price cap you sign grows with it (the 402 states the exact amount for your request); the charge follows what was used." }])),
+        + "The ceiling grows with it (the 402 states the amount to sign for your request); the charge follows what was used." }])),
 });
 
 // An alias answers what POST /v1/chat/completions answers for that model (agent limits, tools, content blocks), with
