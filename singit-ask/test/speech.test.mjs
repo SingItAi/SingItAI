@@ -79,6 +79,7 @@ test("speech is offered at the list price for its text + 30% + the network's fee
   // 2000 characters at $0.0035 per 1000 = 7000, + 2100 markup, + the fee. exact on Base leads (SI-61).
   assert.deepEqual(required.accepts.map((a) => [a.network, a.amount]), [[BASE, "10100"], [SOLANA, "11100"]]);
   assert.ok(required.extensions?.bazaar);
+  assert.deepEqual(required.extensions.bazaar.info.output, { type: "audio/mpeg", format: "binary" });
   assert.deepEqual(surplus.calls, []);
 });
 

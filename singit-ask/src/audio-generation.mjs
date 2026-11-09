@@ -1,6 +1,6 @@
 import { x402ResourceServer } from '@x402/express';
 import { ExactEvmScheme } from '@x402/evm/exact/server';
-import { declareDiscoveryExtension } from '@x402/extensions/bazaar';
+import { declareDiscoveryExtension } from './binary-discovery.mjs';
 import { attachPaymentFailureCodes } from './payment-failure-hooks.mjs';
 import { addPaymentRoute, isDiscoveryProbe } from './metered.mjs';
 import { ASSET, BASE, ICON_URL, discoveryTags } from './pricing.mjs';
@@ -128,7 +128,7 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
       accepts: [BASE].map(network => ({ scheme: 'exact', network, payTo: config.payToBase, maxTimeoutSeconds: i ? 240 : 120, price: price(network) })),
       mimeType: 'audio/mpeg', description: i ? 'Music generation API: MiniMax songs or instrumental audio. USDC on Base only, no key.' : 'Sound effects API: ElevenLabs or Sonilo audio from text. USDC on Base only, no key.',
       serviceName: i ? 'SingIt Music' : 'SingIt Sound Effects', iconUrl: ICON_URL, tags: discoveryTags(kind, 'audio', 'base'),
-      extensions: declareDiscoveryExtension({ bodyType: 'json', input: audioExample(kind), inputSchema: audioSchema(kind) }),
+      extensions: declareDiscoveryExtension({ bodyType: 'json', input: audioExample(kind), inputSchema: audioSchema(kind), output: { type: "audio/mpeg", format: "binary" } }),
     } }, server, { log, publicClient });
     app.post(route, async (req, res) => {
       const payment = JSON.parse(Buffer.from(req.get('payment-signature') ?? req.get('x-payment'), 'base64').toString());

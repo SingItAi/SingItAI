@@ -14,7 +14,7 @@ import { Readable } from "node:stream";
 import { x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import { declareDiscoveryExtension } from "./binary-discovery.mjs";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
@@ -178,7 +178,8 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
     // The answer is audio bytes, not JSON, so there is no JSON output example to give.
     extensions: declareDiscoveryExtension({ bodyType: "json",
       input: EXAMPLE,
-      inputSchema: INPUT_SCHEMA }),
+      inputSchema: INPUT_SCHEMA,
+      output: { type: "audio/mpeg", format: "binary" } }),
   } }, server, { log, publicClient });
   app.post(SPEECH_ROUTE, async (req, res) => {
     const header = req.get("payment-signature") ?? req.get("x-payment");
