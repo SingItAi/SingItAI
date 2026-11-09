@@ -113,6 +113,23 @@ export function ceilings(info, input, exactOutputFraction = DEFAULT_EXACT_OUTPUT
   return { upto: build(input.maxTokens, 1), exact: build(Math.ceil(input.maxTokens * exactOutputFraction), undefined, exactReserveTokens(info?.id, input.maxTokens, info)) };
 }
 
+// Catalog ceilings can differ by a few micro-USDC of network fee/slot noise
+// (live example: Solana upto 2006 vs 2003). Post-payment selection may keep
+// such a B; settlement is still min(actual, signed amount) and never above
+// the signed amount. If the bill cannot fit, the route returns 503 and does
+// not charge.
+export const CATALOG_CEILING_SLACK_ATOMIC = 100n;
+
+export function catalogCeilingsDearer(candidate, pinned, slack = CATALOG_CEILING_SLACK_ATOMIC) {
+  return Object.entries(pinned).some(([scheme, byNetwork]) =>
+    Object.entries(byNetwork).some(([network, amount]) =>
+      BigInt(candidate[scheme][network]) > BigInt(amount) + slack));
+}
+
+export function fitsSignedCatalogCeiling(candidateCeiling, signedAtomic, slack = CATALOG_CEILING_SLACK_ATOMIC) {
+  return BigInt(candidateCeiling) <= BigInt(signedAtomic) + slack;
+}
+
 // Surplus answered 404 minimum_discount_not_met: the floor we sent is above every live seller.
 // Retry the same model at the best discount they reported, only when that share still fits what was signed.
 // Never raise the floor, and never retry when we did not send one (any seller was already allowed).
@@ -464,7 +481,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         observeWindow(req.askInput.model, { ok: false, code: error.code, status: error.status });
         const bucket = exact ? "exact" : "upto";
         // Within the amount already signed, for this scheme and network.
-        const fits = candidate => BigInt(ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network]) <= BigInt(paid.terms.maxChargeAtomic);
+        const fits = candidate => fitsSignedCatalogCeiling(
+          ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network],
+          paid.terms.maxChargeAtomic);
         const discountRetry = !win && Date.now() < deadline && relaxMinDiscount(req.askInput, error, {
           exact, network: paid.network, maxChargeAtomic: paid.terms.maxChargeAtomic, exactOutputFraction,
         });

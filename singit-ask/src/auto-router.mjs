@@ -5,7 +5,7 @@ import { unsupportedCapability, capabilityError } from "./agent-chat.mjs";
 // network fees are constant across candidates. Escalation is upward only; alternates stay in the chosen tier.
 import { readFileSync } from "node:fs";
 import { UnknownModel, priceGuard, unservableError } from "./catalogue.mjs";
-import { ceilings } from "./metered.mjs";
+import { ceilings, catalogCeilingsDearer } from "./metered.mjs";
 import { BASE, TERMS, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 export const AUTO_ID = "singit/auto";
 export const AUTO_DESCRIPTION = "Picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets the minimum tier. X-SingIt-Model and X-SingIt-Tier report the choice. Only POST /v1/chat/completions. If the chosen model's seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered. A pinned model (not singit/auto) may likewise be answered once after payment by an equivalent model no dearer than the amount signed, if it is refused without a billable result; X-SingIt-Fallback-From and X-SingIt-Fallback-Policy: paid disclose it, and X-SingIt-Fallback: off disables automatic substitution.";
@@ -141,8 +141,9 @@ export async function choosePinnedFallback(config, catalogue, input, choosePinne
 // Equivalents for one retry after payment, when the paid model is refused without a billable result (metered.mjs).
 // The request's fallback_models when given (never switched off); otherwise, when `automatic`, the reviewed defaults,
 // or the other models of the pinned model's auto tier cheapest first. Nothing else is invented. Each candidate is
-// healthy, priced, able to take the request and no dearer than the quoted model on any scheme or network; the paid
-// route still checks it against the amount actually signed.
+// healthy, priced and able to take the request. A catalog ceiling only slightly above the quoted model
+// (fee/slot noise, e.g. 2006 vs 2003) is kept; a much dearer model is not. The paid route still checks the
+// alternate against the signed amount (with the same slack) and never charges more than was signed.
 export async function attachPaidAlternates(config, catalogue, input, chosen, { automatic }) {
   if (!catalogue || !chosen.info || chosen.autoTier || input.model === AUTO_ID) return chosen;
   const tiers = TIERS.filter(tier => AUTO_CONFIG.tiers[tier].includes(input.model));
@@ -159,7 +160,7 @@ export async function attachPaidAlternates(config, catalogue, input, chosen, { a
     if (unsupportedCapability(next, input.flags)) continue;
     const candidate = { ...input, model: next.id, info: next, isDefault: false,
       ...priceGuard(catalogue, next.id, config.priceBufferPp ?? 1) };
-    if (await signalFor(catalogue, candidate).catch(() => "unhealthy") || dearer(ceilings(next, candidate, fraction), quoted)) continue;
+    if (await signalFor(catalogue, candidate).catch(() => "unhealthy") || catalogCeilingsDearer(ceilings(next, candidate, fraction), quoted)) continue;
     paidAlternates.push(candidate);
   }
   if (!input.fallbackModels && !reviewed) paidAlternates.sort((a, b) => {
