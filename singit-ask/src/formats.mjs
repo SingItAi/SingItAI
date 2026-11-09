@@ -255,8 +255,8 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         req.format = { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) };
         req.askCeilings = ceilings(info, req.format, exactOutputFraction);
         quotes.set(req.body, req.askCeilings);
-        // One payment, one answer at a time: an identical copy in flight is refused before verification.
-        const reserved = reserveChatPayment(req, res, route);
+        // One payment, one answer at a time: the same payment in flight, whatever the body or route, is refused before verification.
+        const reserved = reserveChatPayment(req, res);
         if (reserved === "duplicate" || reserved === "full") {
           const { status, body } = reservationRefusal(res, reserved, (s, message, code) => refusal(route, s, message, code));
           return res.status(status).json(body);
