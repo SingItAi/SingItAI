@@ -46,9 +46,11 @@
   <url><loc>https://singitai.app/models/claude-fable-5.1/</loc></url>
   <url><loc>https://singitai.app/models/claude-haiku-4.5/</loc></url>
   <url><loc>https://singitai.app/models/claude-haiku-5.5/</loc></url>
+  <url><loc>https://singitai.app/models/claude-opus-4-7-fast/</loc></url>
   <url><loc>https://singitai.app/models/claude-opus-4-8-fast/</loc></url>
   <url><loc>https://singitai.app/models/claude-opus-4.5/</loc></url>
   <url><loc>https://singitai.app/models/claude-opus-4.6/</loc></url>
+  <url><loc>https://singitai.app/models/claude-opus-4.6-fast/</loc></url>
   <url><loc>https://singitai.app/models/claude-opus-4.7/</loc></url>
   <url><loc>https://singitai.app/models/claude-opus-4.8/</loc></url>
   <url><loc>https://singitai.app/models/claude-opus-5/</loc></url>
@@ -59,7 +61,6 @@
   <url><loc>https://singitai.app/models/claude-sonnet-5/</loc></url>
   <url><loc>https://singitai.app/models/claude-sonnet-5.5/</loc></url>
   <url><loc>https://singitai.app/models/command-a-plus/</loc></url>
-  <url><loc>https://singitai.app/models/deepseek-r1/</loc></url>
   <url><loc>https://singitai.app/models/deepseek-v3.1/</loc></url>
   <url><loc>https://singitai.app/models/deepseek-v3.2/</loc></url>
   <url><loc>https://singitai.app/models/deepseek-v4-flash/</loc></url>
@@ -115,6 +116,7 @@
   <url><loc>https://singitai.app/models/glm-5.3/</loc></url>
   <url><loc>https://singitai.app/models/glm-5.3-flash/</loc></url>
   <url><loc>https://singitai.app/models/glm-5.3-flashx/</loc></url>
+  <url><loc>https://singitai.app/models/glm-5.3-flashx-legal/</loc></url>
   <url><loc>https://singitai.app/models/glm-5.3-prime/</loc></url>
   <url><loc>https://singitai.app/models/glm-5v-turbo/</loc></url>
   <url><loc>https://singitai.app/models/gpt-4o/</loc></url>
@@ -152,8 +154,9 @@
   <url><loc>https://singitai.app/models/grok-4.6/</loc></url>
   <url><loc>https://singitai.app/models/grok-4.7/</loc></url>
   <url><loc>https://singitai.app/models/grok-build-0-1/</loc></url>
-  <url><loc>https://singitai.app/models/hermes-3-llama-3.1-405b/</loc></url>
   <url><loc>https://singitai.app/models/hy3/</loc></url>
+  <url><loc>https://singitai.app/models/hy4/</loc></url>
+  <url><loc>https://singitai.app/models/hy4-preview/</loc></url>
   <url><loc>https://singitai.app/models/kimi-k2/</loc></url>
   <url><loc>https://singitai.app/models/kimi-k2-thinking/</loc></url>
   <url><loc>https://singitai.app/models/kimi-k2.5/</loc></url>
@@ -167,15 +170,11 @@
   <url><loc>https://singitai.app/models/llama-3.2-3b-instruct/</loc></url>
   <url><loc>https://singitai.app/models/llama-3.3-70b-instruct/</loc></url>
   <url><loc>https://singitai.app/models/magistral-small-2509/</loc></url>
-  <url><loc>https://singitai.app/models/mercury-2/</loc></url>
-  <url><loc>https://singitai.app/models/mercury-2.5/</loc></url>
-  <url><loc>https://singitai.app/models/mercury-3/</loc></url>
   <url><loc>https://singitai.app/models/mimo-v2.5-pro/</loc></url>
   <url><loc>https://singitai.app/models/mimo-v2.6-flash/</loc></url>
   <url><loc>https://singitai.app/models/mimo-v2.6-pro/</loc></url>
   <url><loc>https://singitai.app/models/mimo-v2.6-pro-ultraspeed/</loc></url>
   <url><loc>https://singitai.app/models/minimax-m2/</loc></url>
-  <url><loc>https://singitai.app/models/minimax-m2.1/</loc></url>
   <url><loc>https://singitai.app/models/minimax-m2.5/</loc></url>
   <url><loc>https://singitai.app/models/minimax-m2.7/</loc></url>
   <url><loc>https://singitai.app/models/minimax-m2.7-highspeed/</loc></url>
@@ -244,6 +243,7 @@
   <url><loc>https://singitai.app/models/qwen3.8-omni-flash/</loc></url>
   <url><loc>https://singitai.app/models/seed-2-1-turbo/</loc></url>
   <url><loc>https://singitai.app/models/seed-2.0-code/</loc></url>
+  <url><loc>https://singitai.app/models/venice-uncensored/</loc></url>
   <url><loc>https://singitai.app/models/venice-uncensored-1.2/</loc></url>
   <url><loc>https://singitai.app/models/venice-uncensored-role-play/</loc></url>
   <url><loc>https://singitai.app/models/xiaomi-mimo-v2-5/</loc></url>
@@ -253,10 +253,8 @@
   <url><loc>https://singitai.app/models/free/mistral-small-3.2-24b-instruct/</loc></url>
   <url><loc>https://singitai.app/models/free/openai-gpt-oss-20b/</loc></url>
   <url><loc>https://singitai.app/models/free/qwen3-coder-30b-a3b-instruct/</loc></url>
-  <url><loc>https://singitai.app/models/glm-5.3-flashx-legal/</loc></url>
   <url><loc>https://singitai.app/models/singit-ask/</loc></url>
   <url><loc>https://singitai.app/models/singit/auto/</loc></url>
-  <url><loc>https://singitai.app/models/venice-uncensored/</loc></url>
   <url><loc>https://singitai.app/models/venice-embed-1/</loc></url>
   <url><loc>https://singitai.app/models/flux.2-flex/</loc></url>
   <url><loc>https://singitai.app/models/flux.2-klein-4b/</loc></url>

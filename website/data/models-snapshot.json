@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-10-30T19:50:05.166Z",
+  "fetchedAt": "2026-11-09T11:27:29.231Z",
   "sources": [
     "https://ask.singitai.app/v1/models",
     "https://ask.singitai.app/pricing.json"
@@ -43,30 +43,30 @@
         "output": 6
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.3568100000000003,
-        "output": 2.7136200000000006
+        "input": 2.21754,
+        "output": 4.43508
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "3613",
-          "usd": 0.003613
+          "priceAtomic": "5270",
+          "usd": 0.00527
         },
         "solana": {
-          "priceAtomic": "4613",
-          "usd": 0.004613
+          "priceAtomic": "6270",
+          "usd": 0.00627
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1788",
-          "usd": 0.001788
+          "ceilingAtomic": "2775",
+          "usd": 0.002775
         },
         "solana": {
-          "ceilingAtomic": "2788",
-          "usd": 0.002788
+          "ceilingAtomic": "3775",
+          "usd": 0.003775
         }
       }
     },
@@ -83,20 +83,20 @@
         "output": 1.4
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.364,
-        "output": 0.728
+        "input": 0.22749999999999998,
+        "output": 0.45499999999999996
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1610",
-          "usd": 0.00161
+          "priceAtomic": "1509",
+          "usd": 0.001509
         },
         "solana": {
-          "priceAtomic": "2610",
-          "usd": 0.00261
+          "priceAtomic": "2509",
+          "usd": 0.002509
         }
       },
       "exact": {
@@ -105,8 +105,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2185",
-          "usd": 0.002185
+          "ceilingAtomic": "2212",
+          "usd": 0.002212
         }
       }
     },
@@ -123,20 +123,20 @@
         "output": 1.5999999999999999
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.416,
-        "output": 0.832
+        "input": 0.8839999999999999,
+        "output": 1.7679999999999998
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1697",
-          "usd": 0.001697
+          "priceAtomic": "2139",
+          "usd": 0.002139
         },
         "solana": {
-          "priceAtomic": "2697",
-          "usd": 0.002697
+          "priceAtomic": "3139",
+          "usd": 0.003139
         }
       },
       "exact": {
@@ -145,8 +145,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2211",
-          "usd": 0.002211
+          "ceilingAtomic": "2474",
+          "usd": 0.002474
         }
       }
     },
@@ -159,24 +159,24 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.25,
+        "input": 0.3,
         "output": 1
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0975,
-        "output": 0.39
+        "input": 0.33540000000000003,
+        "output": 1.118
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1611",
+          "usd": 0.001611
         },
         "solana": {
-          "priceAtomic": "2327",
-          "usd": 0.002327
+          "priceAtomic": "2611",
+          "usd": 0.002611
         }
       },
       "exact": {
@@ -185,8 +185,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2099",
-          "usd": 0.002099
+          "ceilingAtomic": "2255",
+          "usd": 0.002255
         }
       }
     },
@@ -204,30 +204,30 @@
         "output": 50
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.7589000000000001,
-        "output": 8.794500000000001
+        "input": 4.420000000000001,
+        "output": 22.1
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "8867",
-          "usd": 0.008867
+          "priceAtomic": "25179",
+          "usd": 0.025179
         },
         "solana": {
-          "priceAtomic": "9867",
-          "usd": 0.009867
+          "priceAtomic": "26179",
+          "usd": 0.026179
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "3364",
-          "usd": 0.003364
+          "ceilingAtomic": "11065",
+          "usd": 0.011065
         },
         "solana": {
-          "ceilingAtomic": "4364",
-          "usd": 0.004364
+          "ceilingAtomic": "12065",
+          "usd": 0.012065
         }
       }
     },
@@ -245,30 +245,30 @@
         "output": 50
       },
       "singitUsdPerMillionTokens": {
-        "input": 6.37,
-        "output": 31.85
+        "input": 4.420000000000001,
+        "output": 22.1
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "27221",
-          "usd": 0.027221
+          "priceAtomic": "25179",
+          "usd": 0.025179
         },
         "solana": {
-          "priceAtomic": "28221",
-          "usd": 0.028221
+          "priceAtomic": "26179",
+          "usd": 0.026179
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "8878",
-          "usd": 0.008878
+          "ceilingAtomic": "11065",
+          "usd": 0.011065
         },
         "solana": {
-          "ceilingAtomic": "9878",
-          "usd": 0.009878
+          "ceilingAtomic": "12065",
+          "usd": 0.012065
         }
       }
     },
@@ -285,20 +285,20 @@
         "output": 5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.9099999999999999,
-        "output": 4.55
+        "input": 0.086515,
+        "output": 0.432575
       },
       "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
+        "basis": "observed"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1631",
-          "usd": 0.001631
+          "priceAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2631",
-          "usd": 0.002631
+          "priceAtomic": "2474",
+          "usd": 0.002474
         }
       },
       "exact": {
@@ -307,8 +307,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2190",
-          "usd": 0.00219
+          "ceilingAtomic": "2143",
+          "usd": 0.002143
         }
       }
     },
@@ -326,8 +326,8 @@
         "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.09645999999999999,
-        "output": 0.4823
+        "input": 0.06509100000000001,
+        "output": 0.32545500000000005
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
@@ -338,8 +338,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2080",
-          "usd": 0.00208
+          "priceAtomic": "2223",
+          "usd": 0.002223
         }
       },
       "exact": {
@@ -348,8 +348,45 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2025",
-          "usd": 0.002025
+          "ceilingAtomic": "2093",
+          "usd": 0.002093
+        }
+      }
+    },
+    {
+      "id": "claude-opus-4-7-fast",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
+      "name": "Claude Opus 4.7 Fast",
+      "owned_by": "Anthropic",
+      "contextLength": 1000000,
+      "tags": [
+        "vision"
+      ],
+      "recommendedScheme": "upto",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "usdPerMillionTokens": {
+        "input": 39.60000000000001,
+        "output": 198.00000000000003
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "208672",
+          "usd": 0.208672
+        },
+        "solana": {
+          "priceAtomic": "209672",
+          "usd": 0.209672
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "63395",
+          "usd": 0.063395
+        },
+        "solana": {
+          "ceilingAtomic": "64395",
+          "usd": 0.064395
         }
       }
     },
@@ -368,30 +405,30 @@
         "output": 50
       },
       "singitUsdPerMillionTokens": {
-        "input": 9.192300000000001,
-        "output": 45.96150000000001
+        "input": 7.7766,
+        "output": 38.883
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "41906",
-          "usd": 0.041906
+          "priceAtomic": "32991",
+          "usd": 0.032991
         },
         "solana": {
-          "priceAtomic": "42906",
-          "usd": 0.042906
+          "priceAtomic": "33991",
+          "usd": 0.033991
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "13291",
-          "usd": 0.013291
+          "ceilingAtomic": "10613",
+          "usd": 0.010613
         },
         "solana": {
-          "ceilingAtomic": "14291",
-          "usd": 0.014291
+          "ceilingAtomic": "11613",
+          "usd": 0.011613
         }
       }
     },
@@ -411,30 +448,30 @@
         "output": 25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.65,
-        "output": 3.25
+        "input": 1.9500000000000002,
+        "output": 9.75
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "3624",
-          "usd": 0.003624
+          "priceAtomic": "4110",
+          "usd": 0.00411
         },
         "solana": {
-          "priceAtomic": "4624",
-          "usd": 0.004624
+          "priceAtomic": "5110",
+          "usd": 0.00511
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1790",
-          "usd": 0.00179
+          "ceilingAtomic": "2295",
+          "usd": 0.002295
         },
         "solana": {
-          "ceilingAtomic": "2790",
-          "usd": 0.00279
+          "ceilingAtomic": "3295",
+          "usd": 0.003295
         }
       }
     },
@@ -454,30 +491,68 @@
         "output": 25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.8450000000000001,
-        "output": 4.2250000000000005
+        "input": 2.5993500000000003,
+        "output": 12.996750000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1526",
-          "usd": 0.001526
+          "priceAtomic": "2382",
+          "usd": 0.002382
         },
         "solana": {
-          "priceAtomic": "2526",
-          "usd": 0.002526
+          "priceAtomic": "3382",
+          "usd": 0.003382
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1576",
+          "usd": 0.001576
         },
         "solana": {
-          "ceilingAtomic": "2159",
-          "usd": 0.002159
+          "ceilingAtomic": "2576",
+          "usd": 0.002576
+        }
+      }
+    },
+    {
+      "id": "claude-opus-4.6-fast",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
+      "name": "Claude Opus 4.6 Fast",
+      "owned_by": "Anthropic",
+      "contextLength": 1000000,
+      "tags": [
+        "vision",
+        "reasoning"
+      ],
+      "recommendedScheme": "upto",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "usdPerMillionTokens": {
+        "input": 35.64000000000001,
+        "output": 178.20000000000002
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "247209",
+          "usd": 0.247209
+        },
+        "solana": {
+          "priceAtomic": "248209",
+          "usd": 0.248209
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "103487",
+          "usd": 0.103487
+        },
+        "solana": {
+          "ceilingAtomic": "104487",
+          "usd": 0.104487
         }
       }
     },
@@ -496,30 +571,30 @@
         "output": 25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.2840500000000003,
-        "output": 1.4202500000000016
+        "input": 2.07935,
+        "output": 10.396749999999999
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2312",
-          "usd": 0.002312
+          "priceAtomic": "3361",
+          "usd": 0.003361
         },
         "solana": {
-          "priceAtomic": "3312",
-          "usd": 0.003312
+          "priceAtomic": "4361",
+          "usd": 0.004361
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1710",
+          "usd": 0.00171
         },
         "solana": {
-          "ceilingAtomic": "2396",
-          "usd": 0.002396
+          "ceilingAtomic": "2710",
+          "usd": 0.00271
         }
       }
     },
@@ -547,22 +622,22 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "3099",
-          "usd": 0.003099
+          "priceAtomic": "3764",
+          "usd": 0.003764
         },
         "solana": {
-          "priceAtomic": "4099",
-          "usd": 0.004099
+          "priceAtomic": "4764",
+          "usd": 0.004764
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1631",
-          "usd": 0.001631
+          "ceilingAtomic": "2151",
+          "usd": 0.002151
         },
         "solana": {
-          "ceilingAtomic": "2631",
-          "usd": 0.002631
+          "ceilingAtomic": "3151",
+          "usd": 0.003151
         }
       }
     },
@@ -582,30 +657,30 @@
         "output": 25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.8450000000000001,
-        "output": 4.2250000000000005
+        "input": 2.07935,
+        "output": 10.396749999999999
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2312",
-          "usd": 0.002312
+          "priceAtomic": "2728",
+          "usd": 0.002728
         },
         "solana": {
-          "priceAtomic": "3312",
-          "usd": 0.003312
+          "priceAtomic": "3728",
+          "usd": 0.003728
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1719",
+          "usd": 0.001719
         },
         "solana": {
-          "ceilingAtomic": "2396",
-          "usd": 0.002396
+          "ceilingAtomic": "2719",
+          "usd": 0.002719
         }
       }
     },
@@ -626,30 +701,30 @@
         "output": 50
       },
       "singitUsdPerMillionTokens": {
-        "input": 6.630000000000001,
-        "output": 33.15
+        "input": 6.448,
+        "output": 32.24
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "28271",
-          "usd": 0.028271
+          "priceAtomic": "36233",
+          "usd": 0.036233
         },
         "solana": {
-          "priceAtomic": "29271",
-          "usd": 0.029271
+          "priceAtomic": "37233",
+          "usd": 0.037233
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "9194",
-          "usd": 0.009194
+          "ceilingAtomic": "15667",
+          "usd": 0.015667
         },
         "solana": {
-          "ceilingAtomic": "10194",
-          "usd": 0.010194
+          "ceilingAtomic": "16667",
+          "usd": 0.016667
         }
       }
     },
@@ -669,30 +744,30 @@
         "output": 20
       },
       "singitUsdPerMillionTokens": {
-        "input": 2.19908,
-        "output": 10.9954
+        "input": 1.9697600000000002,
+        "output": 9.8488
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
       },
       "upto": {
         "base": {
-          "priceAtomic": "5422",
-          "usd": 0.005422
+          "priceAtomic": "8186",
+          "usd": 0.008186
         },
         "solana": {
-          "priceAtomic": "6422",
-          "usd": 0.006422
+          "priceAtomic": "9186",
+          "usd": 0.009186
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2841",
-          "usd": 0.002841
+          "ceilingAtomic": "3992",
+          "usd": 0.003992
         },
         "solana": {
-          "ceilingAtomic": "3841",
-          "usd": 0.003841
+          "ceilingAtomic": "4992",
+          "usd": 0.004992
         }
       }
     },
@@ -710,30 +785,30 @@
         "output": 15
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.585,
-        "output": 2.9250000000000003
+        "input": 0.7944300000000002,
+        "output": 3.9721500000000005
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "3519",
-          "usd": 0.003519
+          "priceAtomic": "5561",
+          "usd": 0.005561
         },
         "solana": {
-          "priceAtomic": "4519",
-          "usd": 0.004519
+          "priceAtomic": "6561",
+          "usd": 0.006561
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1757",
-          "usd": 0.001757
+          "ceilingAtomic": "2898",
+          "usd": 0.002898
         },
         "solana": {
-          "ceilingAtomic": "2757",
-          "usd": 0.002757
+          "ceilingAtomic": "3898",
+          "usd": 0.003898
         }
       }
     },
@@ -751,8 +826,8 @@
         "output": 15
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.5846099999999999,
-        "output": 2.923049999999999
+        "input": 0.9730500000000001,
+        "output": 4.8652500000000005
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -763,8 +838,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2316",
-          "usd": 0.002316
+          "priceAtomic": "2415",
+          "usd": 0.002415
         }
       },
       "exact": {
@@ -773,8 +848,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2095",
-          "usd": 0.002095
+          "ceilingAtomic": "2173",
+          "usd": 0.002173
         }
       }
     },
@@ -792,20 +867,20 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.1500199999999999,
-        "output": 0.7500999999999995
+        "input": 0.8317399999999999,
+        "output": 4.1587
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1735",
-          "usd": 0.001735
+          "priceAtomic": "1830",
+          "usd": 0.00183
         },
         "solana": {
-          "priceAtomic": "2735",
-          "usd": 0.002735
+          "priceAtomic": "2830",
+          "usd": 0.00283
         }
       },
       "exact": {
@@ -814,8 +889,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2221",
-          "usd": 0.002221
+          "ceilingAtomic": "2346",
+          "usd": 0.002346
         }
       }
     },
@@ -833,30 +908,30 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.8272800000000002,
-        "output": 9.136400000000002
+        "input": 1.4024400000000001,
+        "output": 7.012200000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
       },
       "upto": {
         "base": {
-          "priceAtomic": "3728",
-          "usd": 0.003728
+          "priceAtomic": "5836",
+          "usd": 0.005836
         },
         "solana": {
-          "priceAtomic": "4728",
-          "usd": 0.004728
+          "priceAtomic": "6836",
+          "usd": 0.006836
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1821",
-          "usd": 0.001821
+          "ceilingAtomic": "3014",
+          "usd": 0.003014
         },
         "solana": {
-          "ceilingAtomic": "2821",
-          "usd": 0.002821
+          "ceilingAtomic": "4014",
+          "usd": 0.004014
         }
       }
     },
@@ -874,20 +949,20 @@
         "output": 1.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.11699999999999999,
-        "output": 0.585
+        "input": 0.33540000000000003,
+        "output": 1.677
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "2059",
+          "usd": 0.002059
         },
         "solana": {
-          "priceAtomic": "2489",
-          "usd": 0.002489
+          "priceAtomic": "3059",
+          "usd": 0.003059
         }
       },
       "exact": {
@@ -896,41 +971,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2147",
-          "usd": 0.002147
-        }
-      }
-    },
-    {
-      "id": "deepseek-r1",
-      "name": "DeepSeek R1",
-      "owned_by": "DeepSeek",
-      "contextLength": 160000,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "2441",
+          "usd": 0.002441
         }
       }
     },
@@ -981,297 +1023,15 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.28,
-        "output": 0.42
+        "input": 0.26,
+        "output": 0.38
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0033852000000000257,
-        "output": 0.005077800000000038
+        "input": 0.0033800000000000006,
+        "output": 0.004940000000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2010",
-          "usd": 0.00201
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2004",
-          "usd": 0.002004
-        }
-      }
-    },
-    {
-      "id": "deepseek-v4-flash",
-      "name": "DeepSeek V4 Flash",
-      "owned_by": "DeepSeek",
-      "contextLength": 1000000,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0.091,
-        "output": 0.182
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.016905070000000005,
-        "output": 0.03381014000000001
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2032",
-          "usd": 0.002032
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2011",
-          "usd": 0.002011
-        }
-      }
-    },
-    {
-      "id": "deepseek-v4-flash-0731",
-      "name": "DeepSeek V4 Flash 0731",
-      "owned_by": "DeepSeek",
-      "contextLength": 1048576,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0.119,
-        "output": 0.238
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.0075803000000000086,
-        "output": 0.015160600000000017
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2006",
-          "usd": 0.002006
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2003",
-          "usd": 0.002003
-        }
-      }
-    },
-    {
-      "id": "deepseek-v4-flash-0731-fast",
-      "name": "DeepSeek V4 Flash 0731 Fast",
-      "owned_by": "DeepSeek",
-      "contextLength": 1000000,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0.35,
-        "output": 0.7
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.29575,
-        "output": 0.5915
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1530",
-          "usd": 0.00153
-        },
-        "solana": {
-          "priceAtomic": "2530",
-          "usd": 0.00253
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2160",
-          "usd": 0.00216
-        }
-      }
-    },
-    {
-      "id": "deepseek-v4-flash-vision-exp",
-      "name": "DeepSeek: DeepSeek V4 Flash Vision Exp",
-      "owned_by": "DeepSeek",
-      "contextLength": 1048576,
-      "tags": [
-        "vision",
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0.21559999999999999,
-        "output": 0.6468
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.112112,
-        "output": 0.336336
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2281",
-          "usd": 0.002281
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2085",
-          "usd": 0.002085
-        }
-      }
-    },
-    {
-      "id": "deepseek-v4-pro",
-      "name": "DeepSeek V4 Pro",
-      "owned_by": "DeepSeek",
-      "contextLength": 1000000,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0.8162,
-        "output": 1.6325
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.06780173400000002,
-        "output": 0.13561177500000005
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2036",
-          "usd": 0.002036
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2012",
-          "usd": 0.002012
-        }
-      }
-    },
-    {
-      "id": "deepseek-v4-pro-0813",
-      "name": "DeepSeek V4 Pro 0813",
-      "owned_by": "DeepSeek",
-      "contextLength": 1048576,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 1.32,
-        "output": 3.9600000000000004
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.2574,
-        "output": 0.7722000000000001
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2168",
-          "usd": 0.002168
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2051",
-          "usd": 0.002051
-        }
-      }
-    },
-    {
-      "id": "deepseek-v4.1-flash",
-      "name": "DeepSeek V4.1 Flash",
-      "owned_by": "DeepSeek",
-      "contextLength": 1048576,
-      "tags": [
-        "vision",
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0.045,
-        "output": 0.5
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.00014625,
-        "output": 0.0016250000000000001
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "observed"
       },
       "upto": {
         "base": {
@@ -1289,8 +1049,290 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2004",
-          "usd": 0.002004
+          "ceilingAtomic": "2006",
+          "usd": 0.002006
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "owned_by": "DeepSeek",
+      "contextLength": 1000000,
+      "tags": [
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.091,
+        "output": 0.182
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.051874550000000005,
+        "output": 0.10374910000000001
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "trusted"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "priceAtomic": "2130",
+          "usd": 0.00213
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "ceilingAtomic": "2055",
+          "usd": 0.002055
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4-flash-0731",
+      "name": "DeepSeek V4 Flash 0731",
+      "owned_by": "DeepSeek",
+      "contextLength": 1048576,
+      "tags": [
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.0434,
+        "output": 0.26
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.035313278000000003,
+        "output": 0.2115542
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "trusted"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "priceAtomic": "2012",
+          "usd": 0.002012
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "ceilingAtomic": "2006",
+          "usd": 0.002006
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4-flash-0731-fast",
+      "name": "DeepSeek V4 Flash 0731 Fast",
+      "owned_by": "DeepSeek",
+      "contextLength": 1000000,
+      "tags": [
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.35,
+        "output": 0.7
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.10269349999999995,
+        "output": 0.2053869999999999
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "trusted"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "priceAtomic": "2236",
+          "usd": 0.002236
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "ceilingAtomic": "2098",
+          "usd": 0.002098
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4-flash-vision-exp",
+      "name": "DeepSeek: DeepSeek V4 Flash Vision Exp",
+      "owned_by": "DeepSeek",
+      "contextLength": 1048576,
+      "tags": [
+        "vision",
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.44,
+        "output": 1.32
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.4004,
+        "output": 1.2012
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "trusted"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "priceAtomic": "2478",
+          "usd": 0.002478
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "ceilingAtomic": "2199",
+          "usd": 0.002199
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "owned_by": "DeepSeek",
+      "contextLength": 1000000,
+      "tags": [
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.9553,
+        "output": 1.9105
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.006085261,
+        "output": 0.012169885
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "observed"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "priceAtomic": "2160",
+          "usd": 0.00216
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "ceilingAtomic": "2068",
+          "usd": 0.002068
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "name": "DeepSeek V4 Pro 0813",
+      "owned_by": "DeepSeek",
+      "contextLength": 1048576,
+      "tags": [
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.111,
+        "output": 4.4399999999999995
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.005952375000000001,
+        "output": 0.238095
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "observed"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "priceAtomic": "2367",
+          "usd": 0.002367
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "ceilingAtomic": "2154",
+          "usd": 0.002154
+        }
+      }
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "name": "DeepSeek V4.1 Flash",
+      "owned_by": "DeepSeek",
+      "contextLength": 1048576,
+      "tags": [
+        "vision",
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.051,
+        "output": 0.5670000000000001
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.00015249,
+        "output": 0.00169533
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "observed"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "priceAtomic": "2017",
+          "usd": 0.002017
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "ceilingAtomic": "2008",
+          "usd": 0.002008
         }
       }
     },
@@ -1304,12 +1346,12 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.3,
-        "output": 1.2
+        "input": 0.006,
+        "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.058499999999999996,
-        "output": 0.23399999999999999
+        "input": 0.00117,
+        "output": 0.0975
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -1320,8 +1362,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2051",
-          "usd": 0.002051
+          "priceAtomic": "2042",
+          "usd": 0.002042
         }
       },
       "exact": {
@@ -1330,8 +1372,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2016",
-          "usd": 0.002016
+          "ceilingAtomic": "2019",
+          "usd": 0.002019
         }
       }
     },
@@ -1342,11 +1384,11 @@
       "contextLength": 1048576,
       "tags": [],
       "usdPerMillionTokens": {
-        "input": 0.045,
+        "input": 0.006,
         "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.058499999999999996,
+        "input": 0.0078000000000000005,
         "output": 0.65
       },
       "expectedUsdPerMillionTokens": {
@@ -1354,12 +1396,12 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "1523",
-          "usd": 0.001523
+          "priceAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2523",
-          "usd": 0.002523
+          "priceAtomic": "2371",
+          "usd": 0.002371
         }
       },
       "exact": {
@@ -1368,8 +1410,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2158",
-          "usd": 0.002158
+          "ceilingAtomic": "2112",
+          "usd": 0.002112
         }
       }
     },
@@ -1386,8 +1428,8 @@
         "output": 2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.010087999999999988,
-        "output": 0.05043999999999994
+        "input": 0.0052,
+        "output": 0.026000000000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -1398,8 +1440,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2064",
-          "usd": 0.002064
+          "priceAtomic": "2043",
+          "usd": 0.002043
         }
       },
       "exact": {
@@ -1408,8 +1450,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2020",
-          "usd": 0.00202
+          "ceilingAtomic": "2013",
+          "usd": 0.002013
         }
       }
     },
@@ -1427,8 +1469,8 @@
         "output": 0.373
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.15379,
-        "output": 0.31518500000000005
+        "input": 0.05202833999999999,
+        "output": 0.10662950999999998
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -1439,8 +1481,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2283",
-          "usd": 0.002283
+          "priceAtomic": "2121",
+          "usd": 0.002121
         }
       },
       "exact": {
@@ -1449,41 +1491,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2086",
-          "usd": 0.002086
-        }
-      }
-    },
-    {
-      "id": "e2ee-gemma-3-27b",
-      "name": "Gemma 3 27B E2EE",
-      "owned_by": "Google",
-      "contextLength": 40000,
-      "tags": [
-        "private"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "2051",
+          "usd": 0.002051
         }
       }
     },
@@ -1500,44 +1509,11 @@
         "output": 0.88
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.21242000000000003,
-        "output": 0.98384
+        "input": 0.12337650000000001,
+        "output": 0.571428
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1805",
-          "usd": 0.001805
-        },
-        "solana": {
-          "priceAtomic": "2805",
-          "usd": 0.002805
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2242",
-          "usd": 0.002242
-        }
-      }
-    },
-    {
-      "id": "e2ee-gemma-4-31b",
-      "name": "Gemma 4 31B (E2EE)",
-      "owned_by": "Google",
-      "contextLength": 262144,
-      "tags": [
-        "private"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
       },
       "upto": {
         "base": {
@@ -1545,8 +1521,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
+          "priceAtomic": "2472",
+          "usd": 0.002472
         }
       },
       "exact": {
@@ -1555,8 +1531,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "2142",
+          "usd": 0.002142
         }
       }
     },
@@ -1574,35 +1550,37 @@
         "output": 5.75
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.4787500000000002,
-        "output": 4.858750000000001
+        "input": 1.1249875,
+        "output": 3.6963875
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "5302",
-          "usd": 0.005302
+          "priceAtomic": "5067",
+          "usd": 0.005067
         },
         "solana": {
-          "priceAtomic": "6302",
-          "usd": 0.006302
+          "priceAtomic": "6067",
+          "usd": 0.006067
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2294",
-          "usd": 0.002294
+          "ceilingAtomic": "2693",
+          "usd": 0.002693
         },
         "solana": {
-          "ceilingAtomic": "3294",
-          "usd": 0.003294
+          "ceilingAtomic": "3693",
+          "usd": 0.003693
         }
       }
     },
     {
       "id": "e2ee-glm-5.1",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
       "name": "GLM 5.1 E2EE",
       "owned_by": "Zhipu AI",
       "contextLength": 200000,
@@ -1611,27 +1589,27 @@
         "private"
       ],
       "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
+        "input": 1.54,
+        "output": 4.84
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "7714",
+          "usd": 0.007714
         },
         "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
+          "priceAtomic": "8714",
+          "usd": 0.008714
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "3794",
+          "usd": 0.003794
         },
         "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "4794",
+          "usd": 0.004794
         }
       }
     },
@@ -1649,20 +1627,20 @@
         "output": 0.65
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.1453231,
-        "output": 0.7266155000000001
+        "input": 0.08441550000000002,
+        "output": 0.42207750000000005
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1595",
-          "usd": 0.001595
+          "priceAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2595",
-          "usd": 0.002595
+          "priceAtomic": "2459",
+          "usd": 0.002459
         }
       },
       "exact": {
@@ -1671,13 +1649,15 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2180",
-          "usd": 0.00218
+          "ceilingAtomic": "2192",
+          "usd": 0.002192
         }
       }
     },
     {
       "id": "e2ee-gpt-oss-20b-p",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
       "name": "GPT OSS 20B",
       "owned_by": "OpenAI",
       "contextLength": 128000,
@@ -1686,8 +1666,8 @@
         "private"
       ],
       "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
+        "input": 0.055,
+        "output": 0.20900000000000002
       },
       "upto": {
         "base": {
@@ -1695,8 +1675,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
+          "priceAtomic": "2290",
+          "usd": 0.00229
         }
       },
       "exact": {
@@ -1705,8 +1685,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "2121",
+          "usd": 0.002121
         }
       }
     },
@@ -1723,8 +1703,8 @@
         "output": 0.13
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.05849349999999999,
-        "output": 0.1520831
+        "input": 0.0324675,
+        "output": 0.08441550000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -1735,8 +1715,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2127",
-          "usd": 0.002127
+          "priceAtomic": "2071",
+          "usd": 0.002071
         }
       },
       "exact": {
@@ -1745,8 +1725,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2038",
-          "usd": 0.002038
+          "ceilingAtomic": "2023",
+          "usd": 0.002023
         }
       }
     },
@@ -1763,20 +1743,20 @@
         "output": 1.18
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.15379,
-        "output": 0.9971000000000001
+        "input": 0.11631256,
+        "output": 0.7541144
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1878",
-          "usd": 0.001878
+          "priceAtomic": "1631",
+          "usd": 0.001631
         },
         "solana": {
-          "priceAtomic": "2878",
-          "usd": 0.002878
+          "priceAtomic": "2631",
+          "usd": 0.002631
         }
       },
       "exact": {
@@ -1785,13 +1765,15 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2264",
-          "usd": 0.002264
+          "ceilingAtomic": "2190",
+          "usd": 0.00219
         }
       }
     },
     {
       "id": "e2ee-qwen3-6-35b-a3b-uncensored-p",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
       "name": "Qwen 3.6 35B A3B Uncensored (E2EE)",
       "owned_by": "Alibaba",
       "contextLength": 128000,
@@ -1799,27 +1781,27 @@
         "private"
       ],
       "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
+        "input": 0.88,
+        "output": 2.64
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "3785",
+          "usd": 0.003785
         },
         "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
+          "priceAtomic": "4785",
+          "usd": 0.004785
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1839",
+          "usd": 0.001839
         },
         "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "2839",
+          "usd": 0.002839
         }
       }
     },
@@ -1837,30 +1819,30 @@
         "output": 15
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.17,
-        "output": 5.8500000000000005
+        "input": 3.354,
+        "output": 16.770000000000003
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "5878",
-          "usd": 0.005878
+          "priceAtomic": "11571",
+          "usd": 0.011571
         },
         "solana": {
-          "priceAtomic": "6878",
-          "usd": 0.006878
+          "priceAtomic": "12571",
+          "usd": 0.012571
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2467",
-          "usd": 0.002467
+          "ceilingAtomic": "5401",
+          "usd": 0.005401
         },
         "solana": {
-          "ceilingAtomic": "3467",
-          "usd": 0.003467
+          "ceilingAtomic": "6401",
+          "usd": 0.006401
         }
       }
     },
@@ -1877,8 +1859,8 @@
         "output": 2.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.00386099999999998,
-        "output": 0.032174999999999836
+        "input": 0.0019500000000000001,
+        "output": 0.01625
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -1918,30 +1900,30 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.39,
-        "output": 3.12
+        "input": 0.15762500000000007,
+        "output": 1.2610000000000006
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "3615",
-          "usd": 0.003615
+          "priceAtomic": "2518",
+          "usd": 0.002518
         },
         "solana": {
-          "priceAtomic": "4615",
-          "usd": 0.004615
+          "priceAtomic": "3518",
+          "usd": 0.003518
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1786",
-          "usd": 0.001786
+          "ceilingAtomic": "1632",
+          "usd": 0.001632
         },
         "solana": {
-          "ceilingAtomic": "2786",
-          "usd": 0.002786
+          "ceilingAtomic": "2632",
+          "usd": 0.002632
         }
       }
     },
@@ -1958,8 +1940,8 @@
         "output": 9
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.03900000000000001,
-        "output": 0.234
+        "input": 0.009360000000000078,
+        "output": 0.056160000000000466
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2000,30 +1982,30 @@
         "output": 2.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.11696099999999998,
-        "output": 0.9746749999999998
+        "input": 0.146211,
+        "output": 1.218425
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1812",
-          "usd": 0.001812
+          "priceAtomic": "2345",
+          "usd": 0.002345
         },
         "solana": {
-          "priceAtomic": "2812",
-          "usd": 0.002812
+          "priceAtomic": "3345",
+          "usd": 0.003345
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1561",
+          "usd": 0.001561
         },
         "solana": {
-          "ceilingAtomic": "2245",
-          "usd": 0.002245
+          "ceilingAtomic": "2561",
+          "usd": 0.002561
         }
       }
     },
@@ -2042,30 +2024,30 @@
         "output": 3.75
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.2925,
-        "output": 1.4625000000000001
+        "input": 0.2826525,
+        "output": 1.4132624999999996
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2220",
-          "usd": 0.00222
+          "priceAtomic": "2607",
+          "usd": 0.002607
         },
         "solana": {
-          "priceAtomic": "3220",
-          "usd": 0.00322
+          "priceAtomic": "3607",
+          "usd": 0.003607
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1670",
+          "usd": 0.00167
         },
         "solana": {
-          "ceilingAtomic": "2367",
-          "usd": 0.002367
+          "ceilingAtomic": "2670",
+          "usd": 0.00267
         }
       }
     },
@@ -2083,8 +2065,8 @@
         "output": 3
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.006500000000000001,
-        "output": 0.03900000000000001
+        "input": 0.0032500000000000003,
+        "output": 0.019500000000000003
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2095,8 +2077,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2064",
-          "usd": 0.002064
+          "priceAtomic": "2084",
+          "usd": 0.002084
         }
       },
       "exact": {
@@ -2105,8 +2087,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2020",
-          "usd": 0.00202
+          "ceilingAtomic": "2036",
+          "usd": 0.002036
         }
       }
     },
@@ -2123,8 +2105,8 @@
         "output": 1.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0032500000000000003,
-        "output": 0.019500000000000003
+        "input": 0.0015924999999999835,
+        "output": 0.0095549999999999
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2152,6 +2134,8 @@
     },
     {
       "id": "gemini-3.1-pro",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
       "name": "Gemini 3.1 Pro",
       "owned_by": "Google",
       "contextLength": 1048576,
@@ -2160,27 +2144,27 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
+        "input": 2.5,
+        "output": 15
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "21704",
+          "usd": 0.021704
         },
         "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
+          "priceAtomic": "22704",
+          "usd": 0.022704
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "9619",
+          "usd": 0.009619
         },
         "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "10619",
+          "usd": 0.010619
         }
       }
     },
@@ -2198,30 +2182,30 @@
         "output": 12
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.47281000000000006,
-        "output": 2.8368600000000006
+        "input": 0.4858100000000001,
+        "output": 2.9148600000000005
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
       },
       "upto": {
         "base": {
-          "priceAtomic": "3285",
-          "usd": 0.003285
+          "priceAtomic": "2999",
+          "usd": 0.002999
         },
         "solana": {
-          "priceAtomic": "4285",
-          "usd": 0.004285
+          "priceAtomic": "3999",
+          "usd": 0.003999
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2581",
-          "usd": 0.002581
+          "ceilingAtomic": "2384",
+          "usd": 0.002384
         },
         "solana": {
-          "ceilingAtomic": "3581",
-          "usd": 0.003581
+          "ceilingAtomic": "3384",
+          "usd": 0.003384
         }
       }
     },
@@ -2240,8 +2224,8 @@
         "output": 3.75
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.009750000000000002,
-        "output": 0.04875
+        "input": 0.0051675000000000115,
+        "output": 0.025837500000000055
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2252,8 +2236,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2080",
-          "usd": 0.00208
+          "priceAtomic": "2104",
+          "usd": 0.002104
         }
       },
       "exact": {
@@ -2262,8 +2246,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2025",
-          "usd": 0.002025
+          "ceilingAtomic": "2045",
+          "usd": 0.002045
         }
       }
     },
@@ -2282,8 +2266,8 @@
         "output": 4.125
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.01576575,
-        "output": 0.07882874999999999
+        "input": 0.039736125000000004,
+        "output": 0.198680625
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
@@ -2294,8 +2278,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2088",
-          "usd": 0.002088
+          "priceAtomic": "2115",
+          "usd": 0.002115
         }
       },
       "exact": {
@@ -2304,8 +2288,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2026",
-          "usd": 0.002026
+          "ceilingAtomic": "2049",
+          "usd": 0.002049
         }
       }
     },
@@ -2324,30 +2308,30 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.4315999999999999,
-        "output": 2.1579999999999995
+        "input": 0.012480000000000104,
+        "output": 0.06240000000000052
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2889",
-          "usd": 0.002889
+          "priceAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "3889",
-          "usd": 0.003889
+          "priceAtomic": "2277",
+          "usd": 0.002277
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1569",
-          "usd": 0.001569
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2569",
-          "usd": 0.002569
+          "ceilingAtomic": "2116",
+          "usd": 0.002116
         }
       }
     },
@@ -2364,8 +2348,8 @@
         "output": 0.15
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0006434999999999966,
-        "output": 0.00193049999999999
+        "input": 0.035750000000000004,
+        "output": 0.10725000000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2376,8 +2360,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2004",
-          "usd": 0.002004
+          "priceAtomic": "2082",
+          "usd": 0.002082
         }
       },
       "exact": {
@@ -2386,8 +2370,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2002",
-          "usd": 0.002002
+          "ceilingAtomic": "2025",
+          "usd": 0.002025
         }
       }
     },
@@ -2562,8 +2546,8 @@
         "output": 0.36
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.00156,
-        "output": 0.00468
+        "input": 0.00078,
+        "output": 0.00234
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2602,8 +2586,8 @@
         "output": 0.08
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.002574000000000002,
-        "output": 0.005148000000000004
+        "input": 0.0005200000000000001,
+        "output": 0.0010400000000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2614,8 +2598,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2006",
-          "usd": 0.002006
+          "priceAtomic": "2003",
+          "usd": 0.002003
         }
       },
       "exact": {
@@ -2624,8 +2608,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2003",
-          "usd": 0.002003
+          "ceilingAtomic": "2002",
+          "usd": 0.002002
         }
       }
     },
@@ -2642,8 +2626,8 @@
         "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.19012500000000004,
-        "output": 0.5850000000000001
+        "input": 0.09345700000000001,
+        "output": 0.28756000000000004
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2654,8 +2638,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2481",
-          "usd": 0.002481
+          "priceAtomic": "2259",
+          "usd": 0.002259
         }
       },
       "exact": {
@@ -2664,8 +2648,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2145",
-          "usd": 0.002145
+          "ceilingAtomic": "2078",
+          "usd": 0.002078
         }
       }
     },
@@ -2683,30 +2667,30 @@
         "output": 3
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.23399999999999999,
-        "output": 1.17
+        "input": 0.6708000000000001,
+        "output": 3.354
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1977",
-          "usd": 0.001977
+          "priceAtomic": "3116",
+          "usd": 0.003116
         },
         "solana": {
-          "priceAtomic": "2977",
-          "usd": 0.002977
+          "priceAtomic": "4116",
+          "usd": 0.004116
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1881",
+          "usd": 0.001881
         },
         "solana": {
-          "ceilingAtomic": "2294",
-          "usd": 0.002294
+          "ceilingAtomic": "2881",
+          "usd": 0.002881
         }
       }
     },
@@ -2735,8 +2719,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2047",
-          "usd": 0.002047
+          "priceAtomic": "2062",
+          "usd": 0.002062
         }
       },
       "exact": {
@@ -2745,8 +2729,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2015",
-          "usd": 0.002015
+          "ceilingAtomic": "2026",
+          "usd": 0.002026
         }
       }
     },
@@ -2775,8 +2759,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2019",
-          "usd": 0.002019
+          "priceAtomic": "2025",
+          "usd": 0.002025
         }
       },
       "exact": {
@@ -2785,8 +2769,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2007",
-          "usd": 0.002007
+          "ceilingAtomic": "2011",
+          "usd": 0.002011
         }
       }
     },
@@ -2837,12 +2821,12 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.54,
-        "output": 1.9800000000000002
+        "input": 0.55,
+        "output": 2.2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0035802000000000364,
-        "output": 0.013127400000000134
+        "input": 0.0035750000000000005,
+        "output": 0.014300000000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2853,8 +2837,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2043",
-          "usd": 0.002043
+          "priceAtomic": "2062",
+          "usd": 0.002062
         }
       },
       "exact": {
@@ -2863,8 +2847,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2013",
-          "usd": 0.002013
+          "ceilingAtomic": "2026",
+          "usd": 0.002026
         }
       }
     },
@@ -2919,8 +2903,8 @@
         "output": 0.39999999999999997
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.05915000000000001,
-        "output": 0.338
+        "input": 0.04536350000000001,
+        "output": 0.25922
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -2931,8 +2915,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2298",
-          "usd": 0.002298
+          "priceAtomic": "2283",
+          "usd": 0.002283
         }
       },
       "exact": {
@@ -2941,8 +2925,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2090",
-          "usd": 0.00209
+          "ceilingAtomic": "2119",
+          "usd": 0.002119
         }
       }
     },
@@ -2971,8 +2955,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2068",
-          "usd": 0.002068
+          "priceAtomic": "2090",
+          "usd": 0.00209
         }
       },
       "exact": {
@@ -2981,8 +2965,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2021",
-          "usd": 0.002021
+          "ceilingAtomic": "2038",
+          "usd": 0.002038
         }
       }
     },
@@ -3011,8 +2995,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2085",
-          "usd": 0.002085
+          "priceAtomic": "2112",
+          "usd": 0.002112
         }
       },
       "exact": {
@@ -3021,8 +3005,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2026",
-          "usd": 0.002026
+          "ceilingAtomic": "2047",
+          "usd": 0.002047
         }
       }
     },
@@ -3039,8 +3023,8 @@
         "output": 4.4
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.012376000000000125,
-        "output": 0.038896000000000396
+        "input": 0.0182,
+        "output": 0.05720000000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -3051,8 +3035,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2094",
-          "usd": 0.002094
+          "priceAtomic": "2123",
+          "usd": 0.002123
         }
       },
       "exact": {
@@ -3061,8 +3045,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2029",
-          "usd": 0.002029
+          "ceilingAtomic": "2052",
+          "usd": 0.002052
         }
       }
     },
@@ -3091,8 +3075,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2093",
-          "usd": 0.002093
+          "priceAtomic": "2121",
+          "usd": 0.002121
         }
       },
       "exact": {
@@ -3101,8 +3085,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2029",
-          "usd": 0.002029
+          "ceilingAtomic": "2051",
+          "usd": 0.002051
         }
       }
     },
@@ -3115,12 +3099,12 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.08,
-        "output": 3.5999999999999996
+        "input": 0.0699,
+        "output": 1.4
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0024024000000000003,
-        "output": 0.108108
+        "input": 0.0013675935,
+        "output": 0.027390999999999995
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
@@ -3131,8 +3115,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2076",
-          "usd": 0.002076
+          "priceAtomic": "2039",
+          "usd": 0.002039
         }
       },
       "exact": {
@@ -3141,8 +3125,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2024",
-          "usd": 0.002024
+          "ceilingAtomic": "2017",
+          "usd": 0.002017
         }
       }
     },
@@ -3156,15 +3140,15 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.15,
-        "output": 0.5
+        "input": 0.0335,
+        "output": 0.083
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.002925,
-        "output": 0.00975
+        "input": 0.0019837025,
+        "output": 0.004914845
       },
       "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
+        "basis": "observed"
       },
       "upto": {
         "base": {
@@ -3172,8 +3156,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2012",
-          "usd": 0.002012
+          "priceAtomic": "2007",
+          "usd": 0.002007
         }
       },
       "exact": {
@@ -3182,8 +3166,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2004",
-          "usd": 0.002004
+          "ceilingAtomic": "2003",
+          "usd": 0.002003
         }
       }
     },
@@ -3201,20 +3185,20 @@
         "output": 1.25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.143338,
-        "output": 0.48425
+        "input": 0.1443,
+        "output": 0.48750000000000004
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1539",
+          "usd": 0.001539
         },
         "solana": {
-          "priceAtomic": "2409",
-          "usd": 0.002409
+          "priceAtomic": "2539",
+          "usd": 0.002539
         }
       },
       "exact": {
@@ -3223,8 +3207,49 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2124",
-          "usd": 0.002124
+          "ceilingAtomic": "2224",
+          "usd": 0.002224
+        }
+      }
+    },
+    {
+      "id": "glm-5.3-flashx-legal",
+      "name": "Z.ai: GLM 5.3 FlashX Legal",
+      "owned_by": "Z.ai",
+      "contextLength": 1048576,
+      "tags": [
+        "vision",
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.37,
+        "output": 1.25
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.33669999999999994,
+        "output": 1.1375
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "trusted"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "2232",
+          "usd": 0.002232
+        },
+        "solana": {
+          "priceAtomic": "3232",
+          "usd": 0.003232
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1513",
+          "usd": 0.001513
+        },
+        "solana": {
+          "ceilingAtomic": "2513",
+          "usd": 0.002513
         }
       }
     },
@@ -3241,8 +3266,8 @@
         "output": 8.8
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.456,
-        "output": 4.5760000000000005
+        "input": 2.5479999999999996,
+        "output": 8.008
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -3253,8 +3278,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2280",
-          "usd": 0.00228
+          "priceAtomic": "2245",
+          "usd": 0.002245
         }
       },
       "exact": {
@@ -3263,8 +3288,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2085",
-          "usd": 0.002085
+          "ceilingAtomic": "2103",
+          "usd": 0.002103
         }
       }
     },
@@ -3282,30 +3307,30 @@
         "output": 4
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.2675,
-        "output": 4.2250000000000005
+        "input": 0.9595559999999999,
+        "output": 3.19852
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "4751",
-          "usd": 0.004751
+          "priceAtomic": "4383",
+          "usd": 0.004383
         },
         "solana": {
-          "priceAtomic": "5751",
-          "usd": 0.005751
+          "priceAtomic": "5383",
+          "usd": 0.005383
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2129",
-          "usd": 0.002129
+          "ceilingAtomic": "2408",
+          "usd": 0.002408
         },
         "solana": {
-          "ceilingAtomic": "3129",
-          "usd": 0.003129
+          "ceilingAtomic": "3408",
+          "usd": 0.003408
         }
       }
     },
@@ -3322,20 +3347,20 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.09652499999999997,
-        "output": 0.3860999999999999
+        "input": 0.42250000000000004,
+        "output": 1.6900000000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "2472",
+          "usd": 0.002472
         },
         "solana": {
-          "priceAtomic": "2422",
-          "usd": 0.002422
+          "priceAtomic": "3472",
+          "usd": 0.003472
         }
       },
       "exact": {
@@ -3344,8 +3369,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2128",
-          "usd": 0.002128
+          "ceilingAtomic": "2444",
+          "usd": 0.002444
         }
       }
     },
@@ -3362,8 +3387,8 @@
         "output": 0.6
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.005771999999999988,
-        "output": 0.023087999999999952
+        "input": 0.0117,
+        "output": 0.0468
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -3374,8 +3399,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2026",
-          "usd": 0.002026
+          "priceAtomic": "2089",
+          "usd": 0.002089
         }
       },
       "exact": {
@@ -3384,8 +3409,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2008",
-          "usd": 0.002008
+          "ceilingAtomic": "2028",
+          "usd": 0.002028
         }
       }
     },
@@ -3402,20 +3427,20 @@
         "output": 2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.07851999999999999,
-        "output": 0.6281599999999999
+        "input": 0.0802425,
+        "output": 0.64194
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1545",
-          "usd": 0.001545
+          "priceAtomic": "1718",
+          "usd": 0.001718
         },
         "solana": {
-          "priceAtomic": "2545",
-          "usd": 0.002545
+          "priceAtomic": "2718",
+          "usd": 0.002718
         }
       },
       "exact": {
@@ -3424,8 +3449,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2164",
-          "usd": 0.002164
+          "ceilingAtomic": "2299",
+          "usd": 0.002299
         }
       }
     },
@@ -3442,8 +3467,8 @@
         "output": 0.39999999999999997
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.007650499999999997,
-        "output": 0.061203999999999974
+        "input": 0.009340500000000002,
+        "output": 0.07472400000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -3454,8 +3479,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2055",
-          "usd": 0.002055
+          "priceAtomic": "2073",
+          "usd": 0.002073
         }
       },
       "exact": {
@@ -3464,8 +3489,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2017",
-          "usd": 0.002017
+          "ceilingAtomic": "2030",
+          "usd": 0.00203
         }
       }
     },
@@ -3482,30 +3507,30 @@
         "output": 14
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.022750000000000003,
-        "output": 0.18200000000000002
+        "input": 0.12057499999999993,
+        "output": 0.9645999999999995
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "2352",
+          "usd": 0.002352
         },
         "solana": {
-          "priceAtomic": "2294",
-          "usd": 0.002294
+          "priceAtomic": "3352",
+          "usd": 0.003352
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1563",
+          "usd": 0.001563
         },
         "solana": {
-          "ceilingAtomic": "2089",
-          "usd": 0.002089
+          "ceilingAtomic": "2563",
+          "usd": 0.002563
         }
       }
     },
@@ -3532,22 +3557,22 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "4807",
-          "usd": 0.004807
+          "priceAtomic": "6018",
+          "usd": 0.006018
         },
         "solana": {
-          "priceAtomic": "5807",
-          "usd": 0.005807
+          "priceAtomic": "7018",
+          "usd": 0.007018
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2144",
-          "usd": 0.002144
+          "ceilingAtomic": "3091",
+          "usd": 0.003091
         },
         "solana": {
-          "ceilingAtomic": "3144",
-          "usd": 0.003144
+          "ceilingAtomic": "4091",
+          "usd": 0.004091
         }
       }
     },
@@ -3566,30 +3591,30 @@
         "output": 14
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.546,
-        "output": 4.368
+        "input": 0.46319000000000005,
+        "output": 3.7055200000000004
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "4660",
-          "usd": 0.00466
+          "priceAtomic": "5246",
+          "usd": 0.005246
         },
         "solana": {
-          "priceAtomic": "5660",
-          "usd": 0.00566
+          "priceAtomic": "6246",
+          "usd": 0.006246
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2100",
-          "usd": 0.0021
+          "ceilingAtomic": "2768",
+          "usd": 0.002768
         },
         "solana": {
-          "ceilingAtomic": "3100",
-          "usd": 0.0031
+          "ceilingAtomic": "3768",
+          "usd": 0.003768
         }
       }
     },
@@ -3607,30 +3632,30 @@
         "output": 15
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0796250000000001,
-        "output": 0.47775000000000056
+        "input": 0.49335000000000023,
+        "output": 2.9601000000000015
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "6177",
+          "usd": 0.006177
         },
         "solana": {
-          "priceAtomic": "2472",
-          "usd": 0.002472
+          "priceAtomic": "7177",
+          "usd": 0.007177
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "3156",
+          "usd": 0.003156
         },
         "solana": {
-          "ceilingAtomic": "2142",
-          "usd": 0.002142
+          "ceilingAtomic": "4156",
+          "usd": 0.004156
         }
       }
     },
@@ -3648,20 +3673,20 @@
         "output": 4.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.09340499999999999,
-        "output": 0.56043
+        "input": 0.09535500000000002,
+        "output": 0.5721300000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1519",
-          "usd": 0.001519
+          "priceAtomic": "1684",
+          "usd": 0.001684
         },
         "solana": {
-          "priceAtomic": "2519",
-          "usd": 0.002519
+          "priceAtomic": "2684",
+          "usd": 0.002684
         }
       },
       "exact": {
@@ -3670,8 +3695,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2156",
-          "usd": 0.002156
+          "ceilingAtomic": "2285",
+          "usd": 0.002285
         }
       }
     },
@@ -3689,8 +3714,8 @@
         "output": 1.25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.05147999999999999,
-        "output": 0.32175
+        "input": 0.05135,
+        "output": 0.32093750000000004
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -3701,8 +3726,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2276",
-          "usd": 0.002276
+          "priceAtomic": "2363",
+          "usd": 0.002363
         }
       },
       "exact": {
@@ -3711,8 +3736,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2084",
-          "usd": 0.002084
+          "ceilingAtomic": "2153",
+          "usd": 0.002153
         }
       }
     },
@@ -3730,30 +3755,30 @@
         "output": 180
       },
       "singitUsdPerMillionTokens": {
-        "input": 5.249399999999998,
-        "output": 31.49639999999999
+        "input": 5.327399999999999,
+        "output": 31.964399999999994
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "29279",
-          "usd": 0.029279
+          "priceAtomic": "38265",
+          "usd": 0.038265
         },
         "solana": {
-          "priceAtomic": "30279",
-          "usd": 0.030279
+          "priceAtomic": "39265",
+          "usd": 0.039265
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "9495",
-          "usd": 0.009495
+          "ceilingAtomic": "16515",
+          "usd": 0.016515
         },
         "solana": {
-          "ceilingAtomic": "10495",
-          "usd": 0.010495
+          "ceilingAtomic": "17515",
+          "usd": 0.017515
         }
       }
     },
@@ -3771,30 +3796,30 @@
         "output": 30
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.065,
-        "output": 0.39
+        "input": 0.31525000000000003,
+        "output": 1.8915000000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1630",
-          "usd": 0.00163
+          "priceAtomic": "7212",
+          "usd": 0.007212
         },
         "solana": {
-          "priceAtomic": "2630",
-          "usd": 0.00263
+          "priceAtomic": "8212",
+          "usd": 0.008212
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "3586",
+          "usd": 0.003586
         },
         "solana": {
-          "ceilingAtomic": "2190",
-          "usd": 0.00219
+          "ceilingAtomic": "4586",
+          "usd": 0.004586
         }
       }
     },
@@ -3812,30 +3837,30 @@
         "output": 180
       },
       "singitUsdPerMillionTokens": {
-        "input": 11.118900000000004,
-        "output": 66.71340000000002
+        "input": 9.3366,
+        "output": 56.0196
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "57558",
-          "usd": 0.057558
+          "priceAtomic": "63108",
+          "usd": 0.063108
         },
         "solana": {
-          "priceAtomic": "58558",
-          "usd": 0.058558
+          "priceAtomic": "64108",
+          "usd": 0.064108
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "17989",
-          "usd": 0.017989
+          "ceilingAtomic": "26857",
+          "usd": 0.026857
         },
         "solana": {
-          "ceilingAtomic": "18989",
-          "usd": 0.018989
+          "ceilingAtomic": "27857",
+          "usd": 0.027857
         }
       }
     },
@@ -3853,8 +3878,8 @@
         "output": 1.2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0026260000000000133,
-        "output": 0.01575600000000008
+        "input": 0.062243999999999994,
+        "output": 0.37346399999999996
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -3865,8 +3890,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2039",
-          "usd": 0.002039
+          "priceAtomic": "2415",
+          "usd": 0.002415
         }
       },
       "exact": {
@@ -3875,8 +3900,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2012",
-          "usd": 0.002012
+          "ceilingAtomic": "2173",
+          "usd": 0.002173
         }
       }
     },
@@ -3894,20 +3919,20 @@
         "output": 1.2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.050699999999999995,
-        "output": 0.30419999999999997
+        "input": 0.12750399999999998,
+        "output": 0.7650239999999999
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1845",
+          "usd": 0.001845
         },
         "solana": {
-          "priceAtomic": "2266",
-          "usd": 0.002266
+          "priceAtomic": "2845",
+          "usd": 0.002845
         }
       },
       "exact": {
@@ -3916,8 +3941,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2080",
-          "usd": 0.00208
+          "ceilingAtomic": "2353",
+          "usd": 0.002353
         }
       }
     },
@@ -3943,22 +3968,22 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "1631",
-          "usd": 0.001631
+          "priceAtomic": "7910",
+          "usd": 0.00791
         },
         "solana": {
-          "priceAtomic": "2631",
-          "usd": 0.002631
+          "priceAtomic": "8910",
+          "usd": 0.00891
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "3876",
+          "usd": 0.003876
         },
         "solana": {
-          "ceilingAtomic": "2190",
-          "usd": 0.00219
+          "ceilingAtomic": "4876",
+          "usd": 0.004876
         }
       }
     },
@@ -3976,30 +4001,30 @@
         "output": 20
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.04,
-        "output": 5.2
+        "input": 3.2234800000000003,
+        "output": 16.117400000000004
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "5406",
-          "usd": 0.005406
+          "priceAtomic": "15094",
+          "usd": 0.015094
         },
         "solana": {
-          "priceAtomic": "6406",
-          "usd": 0.006406
+          "priceAtomic": "16094",
+          "usd": 0.016094
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2325",
-          "usd": 0.002325
+          "ceilingAtomic": "6867",
+          "usd": 0.006867
         },
         "solana": {
-          "ceilingAtomic": "3325",
-          "usd": 0.003325
+          "ceilingAtomic": "7867",
+          "usd": 0.007867
         }
       }
     },
@@ -4017,30 +4042,30 @@
         "output": 12
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.12155,
-        "output": 0.7293000000000001
+        "input": 0.11674000000000001,
+        "output": 0.7004400000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1756",
-          "usd": 0.001756
+          "priceAtomic": "3320",
+          "usd": 0.00332
         },
         "solana": {
-          "priceAtomic": "2756",
-          "usd": 0.002756
+          "priceAtomic": "4320",
+          "usd": 0.00432
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1966",
+          "usd": 0.001966
         },
         "solana": {
-          "ceilingAtomic": "2228",
-          "usd": 0.002228
+          "ceilingAtomic": "2966",
+          "usd": 0.002966
         }
       }
     },
@@ -4058,30 +4083,30 @@
         "output": 12
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.78,
-        "output": 4.68
+        "input": 1.4307800000000002,
+        "output": 8.58468
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "4898",
-          "usd": 0.004898
+          "priceAtomic": "9448",
+          "usd": 0.009448
         },
         "solana": {
-          "priceAtomic": "5898",
-          "usd": 0.005898
+          "priceAtomic": "10448",
+          "usd": 0.010448
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2172",
-          "usd": 0.002172
+          "ceilingAtomic": "4518",
+          "usd": 0.004518
         },
         "solana": {
-          "ceilingAtomic": "3172",
-          "usd": 0.003172
+          "ceilingAtomic": "5518",
+          "usd": 0.005518
         }
       }
     },
@@ -4107,22 +4132,22 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "5721",
-          "usd": 0.005721
+          "priceAtomic": "18963",
+          "usd": 0.018963
         },
         "solana": {
-          "priceAtomic": "6721",
-          "usd": 0.006721
+          "priceAtomic": "19963",
+          "usd": 0.019963
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2419",
-          "usd": 0.002419
+          "ceilingAtomic": "8478",
+          "usd": 0.008478
         },
         "solana": {
-          "ceilingAtomic": "3419",
-          "usd": 0.003419
+          "ceilingAtomic": "9478",
+          "usd": 0.009478
         }
       }
     },
@@ -4140,11 +4165,11 @@
         "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.003886999999999993,
-        "output": 0.019434999999999966
+        "input": 0.010465,
+        "output": 0.052325
       },
       "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
+        "basis": "observed"
       },
       "upto": {
         "base": {
@@ -4152,8 +4177,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2023",
-          "usd": 0.002023
+          "priceAtomic": "2215",
+          "usd": 0.002215
         }
       },
       "exact": {
@@ -4162,8 +4187,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2007",
-          "usd": 0.002007
+          "ceilingAtomic": "2090",
+          "usd": 0.00209
         }
       }
     },
@@ -4181,8 +4206,8 @@
         "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.039,
-        "output": 0.195
+        "input": 0.09099999999999998,
+        "output": 0.45499999999999996
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -4193,8 +4218,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2164",
-          "usd": 0.002164
+          "priceAtomic": "2354",
+          "usd": 0.002354
         }
       },
       "exact": {
@@ -4203,8 +4228,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2050",
-          "usd": 0.00205
+          "ceilingAtomic": "2147",
+          "usd": 0.002147
         }
       }
     },
@@ -4222,30 +4247,30 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.4893199999999998,
-        "output": 2.446599999999999
+        "input": 0.51636,
+        "output": 2.5818000000000003
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "3099",
-          "usd": 0.003099
+          "priceAtomic": "3902",
+          "usd": 0.003902
         },
         "solana": {
-          "priceAtomic": "4099",
-          "usd": 0.004099
+          "priceAtomic": "4902",
+          "usd": 0.004902
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1631",
-          "usd": 0.001631
+          "ceilingAtomic": "2209",
+          "usd": 0.002209
         },
         "solana": {
-          "ceilingAtomic": "2631",
-          "usd": 0.002631
+          "ceilingAtomic": "3209",
+          "usd": 0.003209
         }
       }
     },
@@ -4263,30 +4288,30 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.78,
-        "output": 3.9000000000000004
+        "input": 1.8199999999999998,
+        "output": 9.1
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "4253",
-          "usd": 0.004253
+          "priceAtomic": "8048",
+          "usd": 0.008048
         },
         "solana": {
-          "priceAtomic": "5253",
-          "usd": 0.005253
+          "priceAtomic": "9048",
+          "usd": 0.009048
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1978",
-          "usd": 0.001978
+          "ceilingAtomic": "3935",
+          "usd": 0.003935
         },
         "solana": {
-          "ceilingAtomic": "2978",
-          "usd": 0.002978
+          "ceilingAtomic": "4935",
+          "usd": 0.004935
         }
       }
     },
@@ -4304,30 +4329,30 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.338,
-        "output": 1.6900000000000002
+        "input": 0.6497399999999999,
+        "output": 3.2486999999999995
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2469",
-          "usd": 0.002469
+          "priceAtomic": "4594",
+          "usd": 0.004594
         },
         "solana": {
-          "priceAtomic": "3469",
-          "usd": 0.003469
+          "priceAtomic": "5594",
+          "usd": 0.005594
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "2497",
+          "usd": 0.002497
         },
         "solana": {
-          "ceilingAtomic": "2442",
-          "usd": 0.002442
+          "ceilingAtomic": "3497",
+          "usd": 0.003497
         }
       }
     },
@@ -4345,30 +4370,30 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.65,
-        "output": 3.25
+        "input": 1.8199999999999998,
+        "output": 9.1
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "3728",
-          "usd": 0.003728
+          "priceAtomic": "10810",
+          "usd": 0.01081
         },
         "solana": {
-          "priceAtomic": "4728",
-          "usd": 0.004728
+          "priceAtomic": "11810",
+          "usd": 0.01181
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1821",
-          "usd": 0.001821
+          "ceilingAtomic": "5085",
+          "usd": 0.005085
         },
         "solana": {
-          "ceilingAtomic": "2821",
-          "usd": 0.002821
+          "ceilingAtomic": "6085",
+          "usd": 0.006085
         }
       }
     },
@@ -4386,30 +4411,30 @@
         "output": 5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.169,
-        "output": 0.8450000000000001
+        "input": 0.38986999999999994,
+        "output": 1.9493499999999997
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1735",
-          "usd": 0.001735
+          "priceAtomic": "3143",
+          "usd": 0.003143
         },
         "solana": {
-          "priceAtomic": "2735",
-          "usd": 0.002735
+          "priceAtomic": "4143",
+          "usd": 0.004143
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1892",
+          "usd": 0.001892
         },
         "solana": {
-          "ceilingAtomic": "2221",
-          "usd": 0.002221
+          "ceilingAtomic": "2892",
+          "usd": 0.002892
         }
       }
     },
@@ -4427,30 +4452,30 @@
         "output": 5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.39,
-        "output": 1.9500000000000002
+        "input": 1.118,
+        "output": 5.590000000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2627",
-          "usd": 0.002627
+          "priceAtomic": "4525",
+          "usd": 0.004525
         },
         "solana": {
-          "priceAtomic": "3627",
-          "usd": 0.003627
+          "priceAtomic": "5525",
+          "usd": 0.005525
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "2468",
+          "usd": 0.002468
         },
         "solana": {
-          "ceilingAtomic": "2489",
-          "usd": 0.002489
+          "ceilingAtomic": "3468",
+          "usd": 0.003468
         }
       }
     },
@@ -4476,12 +4501,12 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1559",
+          "usd": 0.001559
         },
         "solana": {
-          "priceAtomic": "2426",
-          "usd": 0.002426
+          "priceAtomic": "2559",
+          "usd": 0.002559
         }
       },
       "exact": {
@@ -4490,8 +4515,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2129",
-          "usd": 0.002129
+          "ceilingAtomic": "2233",
+          "usd": 0.002233
         }
       }
     },
@@ -4517,12 +4542,12 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1559",
+          "usd": 0.001559
         },
         "solana": {
-          "priceAtomic": "2426",
-          "usd": 0.002426
+          "priceAtomic": "2559",
+          "usd": 0.002559
         }
       },
       "exact": {
@@ -4531,8 +4556,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2129",
-          "usd": 0.002129
+          "ceilingAtomic": "2233",
+          "usd": 0.002233
         }
       }
     },
@@ -4562,8 +4587,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2054",
-          "usd": 0.002054
+          "priceAtomic": "2071",
+          "usd": 0.002071
         }
       },
       "exact": {
@@ -4572,8 +4597,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2017",
-          "usd": 0.002017
+          "ceilingAtomic": "2030",
+          "usd": 0.00203
         }
       }
     },
@@ -4591,30 +4616,30 @@
         "output": 6
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.38973999999999986,
-        "output": 1.1692199999999997
+        "input": 0.44200000000000006,
+        "output": 1.326
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2013",
-          "usd": 0.002013
+          "priceAtomic": "2499",
+          "usd": 0.002499
         },
         "solana": {
-          "priceAtomic": "3013",
-          "usd": 0.003013
+          "priceAtomic": "3499",
+          "usd": 0.003499
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1624",
+          "usd": 0.001624
         },
         "solana": {
-          "ceilingAtomic": "2306",
-          "usd": 0.002306
+          "ceilingAtomic": "2624",
+          "usd": 0.002624
         }
       }
     },
@@ -4632,30 +4657,30 @@
         "output": 6
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.46279999999999993,
-        "output": 1.3883999999999999
+        "input": 0.46799999999999997,
+        "output": 1.404
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2203",
-          "usd": 0.002203
+          "priceAtomic": "2583",
+          "usd": 0.002583
         },
         "solana": {
-          "priceAtomic": "3203",
-          "usd": 0.003203
+          "priceAtomic": "3583",
+          "usd": 0.003583
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1660",
+          "usd": 0.00166
         },
         "solana": {
-          "ceilingAtomic": "2363",
-          "usd": 0.002363
+          "ceilingAtomic": "2660",
+          "usd": 0.00266
         }
       }
     },
@@ -4681,22 +4706,22 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "2124",
-          "usd": 0.002124
+          "priceAtomic": "2343",
+          "usd": 0.002343
         },
         "solana": {
-          "priceAtomic": "3124",
-          "usd": 0.003124
+          "priceAtomic": "3343",
+          "usd": 0.003343
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1637",
-          "usd": 0.001637
+          "ceilingAtomic": "1809",
+          "usd": 0.001809
         },
         "solana": {
-          "ceilingAtomic": "2637",
-          "usd": 0.002637
+          "ceilingAtomic": "2809",
+          "usd": 0.002809
         }
       }
     },
@@ -4711,58 +4736,20 @@
         "output": 2
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.07887,
-        "output": 2.15774
+        "input": 0.78,
+        "output": 1.56
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2785",
-          "usd": 0.002785
+          "priceAtomic": "2297",
+          "usd": 0.002297
         },
         "solana": {
-          "priceAtomic": "3785",
-          "usd": 0.003785
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1539",
-          "usd": 0.001539
-        },
-        "solana": {
-          "ceilingAtomic": "2539",
-          "usd": 0.002539
-        }
-      }
-    },
-    {
-      "id": "hermes-3-llama-3.1-405b",
-      "name": "Hermes 3 Llama 3.1 405b",
-      "owned_by": "Meta",
-      "contextLength": 128000,
-      "tags": [],
-      "usdPerMillionTokens": {
-        "input": 1,
-        "output": 1
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 1.02687,
-        "output": 1.02687
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1869",
-          "usd": 0.001869
-        },
-        "solana": {
-          "priceAtomic": "2869",
-          "usd": 0.002869
+          "priceAtomic": "3297",
+          "usd": 0.003297
         }
       },
       "exact": {
@@ -4771,8 +4758,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2263",
-          "usd": 0.002263
+          "ceilingAtomic": "2392",
+          "usd": 0.002392
         }
       }
     },
@@ -4789,8 +4776,8 @@
         "output": 0.5279999999999999
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.032174999999999995,
-        "output": 0.12869999999999998
+        "input": 0.042899999999999994,
+        "output": 0.17159999999999997
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -4801,8 +4788,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2112",
-          "usd": 0.002112
+          "priceAtomic": "2192",
+          "usd": 0.002192
         }
       },
       "exact": {
@@ -4811,8 +4798,89 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2034",
-          "usd": 0.002034
+          "ceilingAtomic": "2080",
+          "usd": 0.00208
+        }
+      }
+    },
+    {
+      "id": "hy4",
+      "name": "Tencent: Hy4",
+      "owned_by": "Tencent",
+      "contextLength": 1048576,
+      "tags": [
+        "vision",
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.417,
+        "output": 1.2505
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.46615179000000007,
+        "output": 1.397896435
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "observed"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "2511",
+          "usd": 0.002511
+        },
+        "solana": {
+          "priceAtomic": "3511",
+          "usd": 0.003511
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1630",
+          "usd": 0.00163
+        },
+        "solana": {
+          "ceilingAtomic": "2630",
+          "usd": 0.00263
+        }
+      }
+    },
+    {
+      "id": "hy4-preview",
+      "name": "Tencent: Hy4 preview",
+      "owned_by": "Tencent",
+      "contextLength": 1048576,
+      "tags": [
+        "reasoning"
+      ],
+      "usdPerMillionTokens": {
+        "input": 0.834,
+        "output": 2.501
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.86736,
+        "output": 2.60104
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "trusted"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "3812",
+          "usd": 0.003812
+        },
+        "solana": {
+          "priceAtomic": "4812",
+          "usd": 0.004812
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "2170",
+          "usd": 0.00217
+        },
+        "solana": {
+          "ceilingAtomic": "3170",
+          "usd": 0.00317
         }
       }
     },
@@ -4827,20 +4895,20 @@
         "output": 2.3
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.22230000000000003,
-        "output": 0.8969999999999999
+        "input": 0.5187,
+        "output": 2.0929999999999995
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1751",
-          "usd": 0.001751
+          "priceAtomic": "2234",
+          "usd": 0.002234
         },
         "solana": {
-          "priceAtomic": "2751",
-          "usd": 0.002751
+          "priceAtomic": "3234",
+          "usd": 0.003234
         }
       },
       "exact": {
@@ -4849,8 +4917,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2227",
-          "usd": 0.002227
+          "ceilingAtomic": "2372",
+          "usd": 0.002372
         }
       }
     },
@@ -4867,8 +4935,8 @@
         "output": 2.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.00772199999999996,
-        "output": 0.032174999999999836
+        "input": 0.0078000000000000005,
+        "output": 0.0325
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -4879,8 +4947,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2054",
-          "usd": 0.002054
+          "priceAtomic": "2071",
+          "usd": 0.002071
         }
       },
       "exact": {
@@ -4889,8 +4957,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2017",
-          "usd": 0.002017
+          "ceilingAtomic": "2030",
+          "usd": 0.00203
         }
       }
     },
@@ -4904,12 +4972,12 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.5,
-        "output": 2.5
+        "input": 0.532,
+        "output": 3.3249999999999997
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.005329999999999955,
-        "output": 0.026649999999999778
+        "input": 0.005256160000000037,
+        "output": 0.03285100000000022
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -4920,8 +4988,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2054",
-          "usd": 0.002054
+          "priceAtomic": "2093",
+          "usd": 0.002093
         }
       },
       "exact": {
@@ -4930,8 +4998,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2017",
-          "usd": 0.002017
+          "ceilingAtomic": "2039",
+          "usd": 0.002039
         }
       }
     },
@@ -4949,8 +5017,8 @@
         "output": 3.41
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.07055749999999997,
-        "output": 0.3701554999999998
+        "input": 0.08340150000000005,
+        "output": 0.43753710000000023
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -4961,8 +5029,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2180",
-          "usd": 0.00218
+          "priceAtomic": "2237",
+          "usd": 0.002237
         }
       },
       "exact": {
@@ -4971,8 +5039,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2055",
-          "usd": 0.002055
+          "ceilingAtomic": "2099",
+          "usd": 0.002099
         }
       }
     },
@@ -4987,12 +5055,12 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.56,
-        "output": 3.1
+        "input": 0.6,
+        "output": 3.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.10912719999999997,
-        "output": 0.6040969999999998
+        "input": 0.11699999999999999,
+        "output": 0.6825
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -5003,8 +5071,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2130",
-          "usd": 0.00213
+          "priceAtomic": "2194",
+          "usd": 0.002194
         }
       },
       "exact": {
@@ -5013,8 +5081,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2041",
-          "usd": 0.002041
+          "ceilingAtomic": "2081",
+          "usd": 0.002081
         }
       }
     },
@@ -5029,11 +5097,11 @@
       ],
       "usdPerMillionTokens": {
         "input": 0.192,
-        "output": 15
+        "output": 16
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.00154752,
-        "output": 0.1209
+        "input": 0.0015724800000000002,
+        "output": 0.13104000000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
@@ -5044,8 +5112,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2314",
-          "usd": 0.002314
+          "priceAtomic": "2441",
+          "usd": 0.002441
         }
       },
       "exact": {
@@ -5054,8 +5122,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2095",
-          "usd": 0.002095
+          "ceilingAtomic": "2184",
+          "usd": 0.002184
         }
       }
     },
@@ -5073,30 +5141,30 @@
         "output": 22.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 3.509415,
-        "output": 17.547075000000003
+        "input": 3.744,
+        "output": 18.720000000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "15397",
-          "usd": 0.015397
+          "priceAtomic": "19964",
+          "usd": 0.019964
         },
         "solana": {
-          "priceAtomic": "16397",
-          "usd": 0.016397
+          "priceAtomic": "20964",
+          "usd": 0.020964
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "5326",
-          "usd": 0.005326
+          "ceilingAtomic": "8894",
+          "usd": 0.008894
         },
         "solana": {
-          "ceilingAtomic": "6326",
-          "usd": 0.006326
+          "ceilingAtomic": "9894",
+          "usd": 0.009894
         }
       }
     },
@@ -5122,22 +5190,22 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "2679",
-          "usd": 0.002679
+          "priceAtomic": "3212",
+          "usd": 0.003212
         },
         "solana": {
-          "priceAtomic": "3679",
-          "usd": 0.003679
+          "priceAtomic": "4212",
+          "usd": 0.004212
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1505",
-          "usd": 0.001505
+          "ceilingAtomic": "1921",
+          "usd": 0.001921
         },
         "solana": {
-          "ceilingAtomic": "2505",
-          "usd": 0.002505
+          "ceilingAtomic": "2921",
+          "usd": 0.002921
         }
       }
     },
@@ -5154,8 +5222,8 @@
         "output": 0.7
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0195,
-        "output": 0.27299999999999996
+        "input": 0.0559,
+        "output": 0.7826000000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -5166,8 +5234,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2228",
-          "usd": 0.002228
+          "priceAtomic": "2492",
+          "usd": 0.002492
         }
       },
       "exact": {
@@ -5176,8 +5244,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2069",
-          "usd": 0.002069
+          "ceilingAtomic": "2206",
+          "usd": 0.002206
         }
       }
     },
@@ -5190,12 +5258,12 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.075,
-        "output": 0.22499999999999998
+        "input": 0.045,
+        "output": 0.135
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.029249999999999998,
-        "output": 0.08775
+        "input": 0.05031,
+        "output": 0.15093000000000004
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -5206,8 +5274,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2075",
-          "usd": 0.002075
+          "priceAtomic": "2160",
+          "usd": 0.00216
         }
       },
       "exact": {
@@ -5216,8 +5284,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2024",
-          "usd": 0.002024
+          "ceilingAtomic": "2067",
+          "usd": 0.002067
         }
       }
     },
@@ -5232,8 +5300,8 @@
         "output": 0.33
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.01625,
-        "output": 0.10725000000000001
+        "input": 0.0325,
+        "output": 0.21450000000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -5244,8 +5312,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2091",
-          "usd": 0.002091
+          "priceAtomic": "2177",
+          "usd": 0.002177
         }
       },
       "exact": {
@@ -5254,8 +5322,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2028",
-          "usd": 0.002028
+          "ceilingAtomic": "2054",
+          "usd": 0.002054
         }
       }
     },
@@ -5266,12 +5334,12 @@
       "contextLength": 128000,
       "tags": [],
       "usdPerMillionTokens": {
-        "input": 0.09999999999999999,
-        "output": 0.32
+        "input": 0.59,
+        "output": 0.7899999999999999
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.010803000000000002,
-        "output": 0.03456960000000001
+        "input": 0.01963520000000002,
+        "output": 0.02629120000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -5282,8 +5350,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2034",
-          "usd": 0.002034
+          "priceAtomic": "2036",
+          "usd": 0.002036
         }
       },
       "exact": {
@@ -5310,8 +5378,8 @@
         "output": 1.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.009100000000000037,
-        "output": 0.02730000000000011
+        "input": 0.006500000000000001,
+        "output": 0.019500000000000003
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -5322,8 +5390,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2049",
-          "usd": 0.002049
+          "priceAtomic": "2033",
+          "usd": 0.002033
         }
       },
       "exact": {
@@ -5332,128 +5400,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2015",
-          "usd": 0.002015
-        }
-      }
-    },
-    {
-      "id": "mercury-2",
-      "name": "Mercury 2",
-      "owned_by": "Inception Labs",
-      "contextLength": 128000,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0.25,
-        "output": 0.75
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.26406250000000003,
-        "output": 0.7921875
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1705",
-          "usd": 0.001705
-        },
-        "solana": {
-          "priceAtomic": "2705",
-          "usd": 0.002705
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2212",
-          "usd": 0.002212
-        }
-      }
-    },
-    {
-      "id": "mercury-2.5",
-      "name": "Inception: Mercury 2.5",
-      "owned_by": "Inception",
-      "contextLength": 260000,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0.04,
-        "output": 0.15
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.015600000000000001,
-        "output": 0.058499999999999996
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2050",
-          "usd": 0.00205
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2016",
-          "usd": 0.002016
-        }
-      }
-    },
-    {
-      "id": "mercury-3",
-      "name": "Mercury 3",
-      "owned_by": "Inception",
-      "contextLength": 1000000,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
-        "input": 0.09999999999999999,
-        "output": 0.35
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.039,
-        "output": 0.13649999999999998
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2115",
-          "usd": 0.002115
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2036",
-          "usd": 0.002036
+          "ceilingAtomic": "2011",
+          "usd": 0.002011
         }
       }
     },
@@ -5470,30 +5418,30 @@
         "output": 1.7999999999999998
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.1249872,
-        "output": 0.46870199999999995
+        "input": 0.3086928,
+        "output": 1.157598
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "2272",
+          "usd": 0.002272
         },
         "solana": {
-          "priceAtomic": "2342",
-          "usd": 0.002342
+          "priceAtomic": "3272",
+          "usd": 0.003272
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1530",
+          "usd": 0.00153
         },
         "solana": {
-          "ceilingAtomic": "2103",
-          "usd": 0.002103
+          "ceilingAtomic": "2530",
+          "usd": 0.00253
         }
       }
     },
@@ -5512,8 +5460,8 @@
         "output": 0.28
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.05460000000000001,
-        "output": 0.10920000000000002
+        "input": 0.1456,
+        "output": 0.2912
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -5524,8 +5472,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2093",
-          "usd": 0.002093
+          "priceAtomic": "2201",
+          "usd": 0.002201
         }
       },
       "exact": {
@@ -5534,8 +5482,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2029",
-          "usd": 0.002029
+          "ceilingAtomic": "2084",
+          "usd": 0.002084
         }
       }
     },
@@ -5554,20 +5502,20 @@
         "output": 0.87
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.16965,
-        "output": 0.3393
+        "input": 0.48633000000000004,
+        "output": 0.9726600000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1621",
+          "usd": 0.001621
         },
         "solana": {
-          "priceAtomic": "2288",
-          "usd": 0.002288
+          "priceAtomic": "2621",
+          "usd": 0.002621
         }
       },
       "exact": {
@@ -5576,8 +5524,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2088",
-          "usd": 0.002088
+          "ceilingAtomic": "2258",
+          "usd": 0.002258
         }
       }
     },
@@ -5596,30 +5544,30 @@
         "output": 8.7
       },
       "singitUsdPerMillionTokens": {
-        "input": 2.262,
-        "output": 4.524
+        "input": 4.8633,
+        "output": 9.7266
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "4790",
-          "usd": 0.00479
+          "priceAtomic": "8161",
+          "usd": 0.008161
         },
         "solana": {
-          "priceAtomic": "5790",
-          "usd": 0.00579
+          "priceAtomic": "9161",
+          "usd": 0.009161
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2142",
-          "usd": 0.002142
+          "ceilingAtomic": "3977",
+          "usd": 0.003977
         },
         "solana": {
-          "ceilingAtomic": "3142",
-          "usd": 0.003142
+          "ceilingAtomic": "4977",
+          "usd": 0.004977
         }
       }
     },
@@ -5630,52 +5578,12 @@
       "contextLength": 1000000,
       "tags": [],
       "usdPerMillionTokens": {
-        "input": 0.255,
-        "output": 1.02
-      },
-      "singitUsdPerMillionTokens": {
-        "input": 0.003016649999999989,
-        "output": 0.012066599999999955
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
-      "upto": {
-        "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "priceAtomic": "2023",
-          "usd": 0.002023
-        }
-      },
-      "exact": {
-        "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
-        },
-        "solana": {
-          "ceilingAtomic": "2007",
-          "usd": 0.002007
-        }
-      }
-    },
-    {
-      "id": "minimax-m2.1",
-      "name": "MiniMax M2.1",
-      "owned_by": "MiniMax",
-      "contextLength": 198000,
-      "tags": [
-        "reasoning"
-      ],
-      "usdPerMillionTokens": {
         "input": 0.3,
         "output": 1.2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0004680000000000177,
-        "output": 0.0018720000000000709
+        "input": 0.003002999999999985,
+        "output": 0.01201199999999994
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -5726,8 +5634,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2021",
-          "usd": 0.002021
+          "priceAtomic": "2028",
+          "usd": 0.002028
         }
       },
       "exact": {
@@ -5736,8 +5644,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2007",
-          "usd": 0.002007
+          "ceilingAtomic": "2012",
+          "usd": 0.002012
         }
       }
     },
@@ -5750,24 +5658,24 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.3,
-        "output": 1.2
+        "input": 0.21,
+        "output": 0.84
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.09281999999999999,
-        "output": 0.37127999999999994
+        "input": 0.1520883,
+        "output": 0.6083532
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1663",
+          "usd": 0.001663
         },
         "solana": {
-          "priceAtomic": "2316",
-          "usd": 0.002316
+          "priceAtomic": "2663",
+          "usd": 0.002663
         }
       },
       "exact": {
@@ -5776,39 +5684,41 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2095",
-          "usd": 0.002095
+          "ceilingAtomic": "2277",
+          "usd": 0.002277
         }
       }
     },
     {
       "id": "minimax-m2.7-highspeed",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
       "name": "MiniMax M2.7 Highspeed",
       "owned_by": "MiniMax",
       "contextLength": 204800,
       "tags": [],
       "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
+        "input": 0.6336,
+        "output": 2.5344
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "3665",
+          "usd": 0.003665
         },
         "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
+          "priceAtomic": "4665",
+          "usd": 0.004665
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1801",
+          "usd": 0.001801
         },
         "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "2801",
+          "usd": 0.002801
         }
       }
     },
@@ -5823,20 +5733,20 @@
         "output": 1.2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.35100000000000003,
-        "output": 1.4040000000000001
+        "input": 0.04418699999999999,
+        "output": 0.17674799999999996
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2148",
-          "usd": 0.002148
+          "priceAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "3148",
-          "usd": 0.003148
+          "priceAtomic": "2166",
+          "usd": 0.002166
         }
       },
       "exact": {
@@ -5845,8 +5755,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2346",
-          "usd": 0.002346
+          "ceilingAtomic": "2050",
+          "usd": 0.00205
         }
       }
     },
@@ -5864,20 +5774,20 @@
         "output": 1.2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.2535,
-        "output": 1.014
+        "input": 0.195,
+        "output": 0.78
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1896",
-          "usd": 0.001896
+          "priceAtomic": "1848",
+          "usd": 0.001848
         },
         "solana": {
-          "priceAtomic": "2896",
-          "usd": 0.002896
+          "priceAtomic": "2848",
+          "usd": 0.002848
         }
       },
       "exact": {
@@ -5886,8 +5796,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2271",
-          "usd": 0.002271
+          "ceilingAtomic": "2354",
+          "usd": 0.002354
         }
       }
     },
@@ -5984,8 +5894,8 @@
         "output": 0.15
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.002261999999999993,
-        "output": 0.002261999999999993
+        "input": 0.0019500000000000001,
+        "output": 0.0019500000000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -6105,20 +6015,20 @@
         "output": 2.0999999999999996
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.27299999999999996,
-        "output": 0.8189999999999998
+        "input": 0.08189999999999999,
+        "output": 0.24569999999999995
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1688",
-          "usd": 0.001688
+          "priceAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2688",
-          "usd": 0.002688
+          "priceAtomic": "2293",
+          "usd": 0.002293
         }
       },
       "exact": {
@@ -6127,8 +6037,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2207",
-          "usd": 0.002207
+          "ceilingAtomic": "2123",
+          "usd": 0.002123
         }
       }
     },
@@ -6143,8 +6053,8 @@
         "output": 0.19999999999999998
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.006064499999999999,
-        "output": 0.016171999999999995
+        "input": 0.01755,
+        "output": 0.046799999999999994
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -6155,8 +6065,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2019",
-          "usd": 0.002019
+          "priceAtomic": "2041",
+          "usd": 0.002041
         }
       },
       "exact": {
@@ -6165,8 +6075,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2006",
-          "usd": 0.002006
+          "ceilingAtomic": "2013",
+          "usd": 0.002013
         }
       }
     },
@@ -6196,8 +6106,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2210",
-          "usd": 0.00221
+          "priceAtomic": "2275",
+          "usd": 0.002275
         }
       },
       "exact": {
@@ -6206,8 +6116,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2064",
-          "usd": 0.002064
+          "ceilingAtomic": "2115",
+          "usd": 0.002115
         }
       }
     },
@@ -6225,30 +6135,30 @@
         "output": 2.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.11699999999999999,
-        "output": 0.9750000000000001
+        "input": 0.33540000000000003,
+        "output": 2.7950000000000004
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1812",
-          "usd": 0.001812
+          "priceAtomic": "2758",
+          "usd": 0.002758
         },
         "solana": {
-          "priceAtomic": "2812",
-          "usd": 0.002812
+          "priceAtomic": "3758",
+          "usd": 0.003758
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1732",
+          "usd": 0.001732
         },
         "solana": {
-          "ceilingAtomic": "2245",
-          "usd": 0.002245
+          "ceilingAtomic": "2732",
+          "usd": 0.002732
         }
       }
     },
@@ -6266,30 +6176,30 @@
         "output": 2.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.11699999999999999,
-        "output": 0.9750000000000001
+        "input": 0.33540000000000003,
+        "output": 2.7950000000000004
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1812",
-          "usd": 0.001812
+          "priceAtomic": "2758",
+          "usd": 0.002758
         },
         "solana": {
-          "priceAtomic": "2812",
-          "usd": 0.002812
+          "priceAtomic": "3758",
+          "usd": 0.003758
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1732",
+          "usd": 0.001732
         },
         "solana": {
-          "ceilingAtomic": "2245",
-          "usd": 0.002245
+          "ceilingAtomic": "2732",
+          "usd": 0.002732
         }
       }
     },
@@ -6307,20 +6217,20 @@
         "output": 1.2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.11699999999999999,
-        "output": 0.46799999999999997
+        "input": 0.33540000000000003,
+        "output": 1.3416000000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1848",
+          "usd": 0.001848
         },
         "solana": {
-          "priceAtomic": "2392",
-          "usd": 0.002392
+          "priceAtomic": "2848",
+          "usd": 0.002848
         }
       },
       "exact": {
@@ -6329,8 +6239,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2119",
-          "usd": 0.002119
+          "ceilingAtomic": "2354",
+          "usd": 0.002354
         }
       }
     },
@@ -6349,30 +6259,30 @@
         "output": 4.25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.65,
-        "output": 2.21
+        "input": 1.3975000000000002,
+        "output": 4.7515
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "2827",
+          "usd": 0.002827
         },
         "solana": {
-          "priceAtomic": "2136",
-          "usd": 0.002136
+          "priceAtomic": "3827",
+          "usd": 0.003827
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1761",
+          "usd": 0.001761
         },
         "solana": {
-          "ceilingAtomic": "2042",
-          "usd": 0.002042
+          "ceilingAtomic": "2761",
+          "usd": 0.002761
         }
       }
     },
@@ -6391,30 +6301,30 @@
         "output": 4.25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.65,
-        "output": 2.21
+        "input": 1.3975000000000002,
+        "output": 4.7515
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "2827",
+          "usd": 0.002827
         },
         "solana": {
-          "priceAtomic": "2136",
-          "usd": 0.002136
+          "priceAtomic": "3827",
+          "usd": 0.003827
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1761",
+          "usd": 0.001761
         },
         "solana": {
-          "ceilingAtomic": "2042",
-          "usd": 0.002042
+          "ceilingAtomic": "2761",
+          "usd": 0.002761
         }
       }
     },
@@ -6432,13 +6342,6 @@
         "input": 0.09999999999999999,
         "output": 0.19999999999999998
       },
-      "singitUsdPerMillionTokens": {
-        "input": 0.052,
-        "output": 0.104
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
       "upto": {
         "base": {
           "priceAtomic": "1500",
@@ -6455,8 +6358,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2028",
-          "usd": 0.002028
+          "ceilingAtomic": "2037",
+          "usd": 0.002037
         }
       }
     },
@@ -6475,30 +6378,30 @@
         "output": 4.25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.65,
-        "output": 2.21
+        "input": 1.3975000000000002,
+        "output": 4.7515
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "2827",
+          "usd": 0.002827
         },
         "solana": {
-          "priceAtomic": "2090",
-          "usd": 0.00209
+          "priceAtomic": "3827",
+          "usd": 0.003827
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1761",
+          "usd": 0.001761
         },
         "solana": {
-          "ceilingAtomic": "2028",
-          "usd": 0.002028
+          "ceilingAtomic": "2761",
+          "usd": 0.002761
         }
       }
     },
@@ -6516,21 +6419,14 @@
         "input": 0.09999999999999999,
         "output": 0.19999999999999998
       },
-      "singitUsdPerMillionTokens": {
-        "input": 0.052,
-        "output": 0.104
-      },
-      "expectedUsdPerMillionTokens": {
-        "basis": "trusted"
-      },
       "upto": {
         "base": {
           "priceAtomic": "1500",
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2006",
-          "usd": 0.002006
+          "priceAtomic": "2088",
+          "usd": 0.002088
         }
       },
       "exact": {
@@ -6539,8 +6435,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2002",
-          "usd": 0.002002
+          "ceilingAtomic": "2037",
+          "usd": 0.002037
         }
       }
     },
@@ -6559,30 +6455,30 @@
         "output": 4.25
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.48750000000000004,
-        "output": 1.6575
+        "input": 1.1375,
+        "output": 3.8674999999999997
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2389",
-          "usd": 0.002389
+          "priceAtomic": "4005",
+          "usd": 0.004005
         },
         "solana": {
-          "priceAtomic": "3389",
-          "usd": 0.003389
+          "priceAtomic": "5005",
+          "usd": 0.005005
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "2251",
+          "usd": 0.002251
         },
         "solana": {
-          "ceilingAtomic": "2418",
-          "usd": 0.002418
+          "ceilingAtomic": "3251",
+          "usd": 0.003251
         }
       }
     },
@@ -6601,30 +6497,30 @@
         "output": 20
       },
       "singitUsdPerMillionTokens": {
-        "input": 2.08,
-        "output": 10.4
+        "input": 2.6,
+        "output": 13
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "9567",
+          "usd": 0.009567
         },
         "solana": {
-          "priceAtomic": "2420",
-          "usd": 0.00242
+          "priceAtomic": "10567",
+          "usd": 0.010567
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "4566",
+          "usd": 0.004566
         },
         "solana": {
-          "ceilingAtomic": "2127",
-          "usd": 0.002127
+          "ceilingAtomic": "5566",
+          "usd": 0.005566
         }
       }
     },
@@ -6642,8 +6538,11 @@
         "output": 0.19999999999999998
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.091,
-        "output": 0.26
+        "input": 0.07569380000000002,
+        "output": 0.21626800000000002
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "trusted"
       },
       "upto": {
         "base": {
@@ -6651,8 +6550,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2279",
-          "usd": 0.002279
+          "priceAtomic": "2237",
+          "usd": 0.002237
         }
       },
       "exact": {
@@ -6661,8 +6560,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2116",
-          "usd": 0.002116
+          "ceilingAtomic": "2099",
+          "usd": 0.002099
         }
       }
     },
@@ -6680,8 +6579,8 @@
         "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.058499999999999996,
-        "output": 0.195
+        "input": 0.156,
+        "output": 0.52
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -6692,8 +6591,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2164",
-          "usd": 0.002164
+          "priceAtomic": "2146",
+          "usd": 0.002146
         }
       },
       "exact": {
@@ -6702,8 +6601,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2050",
-          "usd": 0.00205
+          "ceilingAtomic": "2062",
+          "usd": 0.002062
         }
       }
     },
@@ -6752,12 +6651,12 @@
       "contextLength": 256000,
       "tags": [],
       "usdPerMillionTokens": {
-        "input": 0.3,
-        "output": 2.4
+        "input": 0.075,
+        "output": 0.39999999999999997
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0010140000000000199,
-        "output": 0.008112000000000159
+        "input": 0.0010432499999999934,
+        "output": 0.005563999999999964
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -6768,8 +6667,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2051",
-          "usd": 0.002051
+          "priceAtomic": "2010",
+          "usd": 0.00201
         }
       },
       "exact": {
@@ -6778,8 +6677,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2016",
-          "usd": 0.002016
+          "ceilingAtomic": "2003",
+          "usd": 0.002003
         }
       }
     },
@@ -6796,30 +6695,30 @@
         "output": 3.125
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.5281250000000001,
-        "output": 2.6406250000000004
+        "input": 0.09766249999999997,
+        "output": 0.48831249999999987
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "3329",
-          "usd": 0.003329
+          "priceAtomic": "1605",
+          "usd": 0.001605
         },
         "solana": {
-          "priceAtomic": "4329",
-          "usd": 0.004329
+          "priceAtomic": "2605",
+          "usd": 0.002605
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1700",
-          "usd": 0.0017
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2700",
-          "usd": 0.0027
+          "ceilingAtomic": "2253",
+          "usd": 0.002253
         }
       }
     },
@@ -6836,8 +6735,8 @@
         "output": 0.6
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0028599999999999854,
-        "output": 0.008579999999999956
+        "input": 0.0026,
+        "output": 0.0078000000000000005
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -6874,8 +6773,8 @@
         "output": 0.22999999999999998
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0014507999999999995,
-        "output": 0.005561399999999998
+        "input": 0.00078,
+        "output": 0.00299
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -6886,8 +6785,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2008",
-          "usd": 0.002008
+          "priceAtomic": "2006",
+          "usd": 0.002006
         }
       },
       "exact": {
@@ -6946,12 +6845,12 @@
       "contextLength": 128000,
       "tags": [],
       "usdPerMillionTokens": {
-        "input": 0.018,
-        "output": 0.09
+        "input": 0.03,
+        "output": 0.13
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.00002339999999999867,
-        "output": 0.00011699999999999336
+        "input": 0.000023400000000000887,
+        "output": 0.00010140000000000385
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -6962,8 +6861,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2003",
-          "usd": 0.002003
+          "priceAtomic": "2004",
+          "usd": 0.002004
         }
       },
       "exact": {
@@ -6972,8 +6871,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2002",
-          "usd": 0.002002
+          "ceilingAtomic": "2003",
+          "usd": 0.002003
         }
       }
     },
@@ -6988,8 +6887,8 @@
         "output": 0.6
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0031199999999999895,
-        "output": 0.012479999999999958
+        "input": 0.0019500000000000001,
+        "output": 0.0078000000000000005
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -7000,8 +6899,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2020",
-          "usd": 0.00202
+          "priceAtomic": "2013",
+          "usd": 0.002013
         }
       },
       "exact": {
@@ -7010,8 +6909,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2007",
-          "usd": 0.002007
+          "ceilingAtomic": "2004",
+          "usd": 0.002004
         }
       }
     },
@@ -7078,8 +6977,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2026",
-          "usd": 0.002026
+          "priceAtomic": "2013",
+          "usd": 0.002013
         }
       },
       "exact": {
@@ -7088,8 +6987,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2008",
-          "usd": 0.002008
+          "ceilingAtomic": "2004",
+          "usd": 0.002004
         }
       }
     },
@@ -7106,30 +7005,30 @@
         "output": 7.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 1.3,
-        "output": 3.9000000000000004
+        "input": 2.7950000000000004,
+        "output": 8.385000000000002
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "4244",
-          "usd": 0.004244
+          "priceAtomic": "5036",
+          "usd": 0.005036
         },
         "solana": {
-          "priceAtomic": "5244",
-          "usd": 0.005244
+          "priceAtomic": "6036",
+          "usd": 0.006036
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1977",
-          "usd": 0.001977
+          "ceilingAtomic": "2215",
+          "usd": 0.002215
         },
         "solana": {
-          "ceilingAtomic": "2977",
-          "usd": 0.002977
+          "ceilingAtomic": "3215",
+          "usd": 0.003215
         }
       }
     },
@@ -7143,12 +7042,12 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.25,
-        "output": 1
+        "input": 0.049999999999999996,
+        "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.13,
-        "output": 0.52
+        "input": 0.0559,
+        "output": 0.559
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -7159,8 +7058,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2432",
-          "usd": 0.002432
+          "priceAtomic": "2353",
+          "usd": 0.002353
         }
       },
       "exact": {
@@ -7169,8 +7068,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2130",
-          "usd": 0.00213
+          "ceilingAtomic": "2147",
+          "usd": 0.002147
         }
       }
     },
@@ -7187,30 +7086,30 @@
         "output": 8.049999999999999
       },
       "singitUsdPerMillionTokens": {
-        "input": 2.526849,
-        "output": 7.533753499999999
+        "input": 1.3004550000000001,
+        "output": 3.8772824999999997
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "7710",
-          "usd": 0.00771
+          "priceAtomic": "5358",
+          "usd": 0.005358
         },
         "solana": {
-          "priceAtomic": "8710",
-          "usd": 0.00871
+          "priceAtomic": "6358",
+          "usd": 0.006358
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "3018",
-          "usd": 0.003018
+          "ceilingAtomic": "2814",
+          "usd": 0.002814
         },
         "solana": {
-          "ceilingAtomic": "4018",
-          "usd": 0.004018
+          "ceilingAtomic": "3814",
+          "usd": 0.003814
         }
       }
     },
@@ -7225,30 +7124,30 @@
         "output": 2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.52,
-        "output": 2.08
+        "input": 0.324025,
+        "output": 1.2961
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2703",
-          "usd": 0.002703
+          "priceAtomic": "2073",
+          "usd": 0.002073
         },
         "solana": {
-          "priceAtomic": "3703",
-          "usd": 0.003703
+          "priceAtomic": "3073",
+          "usd": 0.003073
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1513",
-          "usd": 0.001513
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2513",
-          "usd": 0.002513
+          "ceilingAtomic": "2323",
+          "usd": 0.002323
         }
       }
     },
@@ -7278,8 +7177,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2041",
-          "usd": 0.002041
+          "priceAtomic": "2052",
+          "usd": 0.002052
         }
       },
       "exact": {
@@ -7288,8 +7187,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2013",
-          "usd": 0.002013
+          "ceilingAtomic": "2023",
+          "usd": 0.002023
         }
       }
     },
@@ -7300,12 +7199,12 @@
       "contextLength": 128000,
       "tags": [],
       "usdPerMillionTokens": {
-        "input": 0.09,
-        "output": 0.55
+        "input": 0.14,
+        "output": 0.75
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0007370999999999948,
-        "output": 0.004504499999999969
+        "input": 0.0007461999999999939,
+        "output": 0.003997499999999966
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -7316,8 +7215,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2012",
-          "usd": 0.002012
+          "priceAtomic": "2017",
+          "usd": 0.002017
         }
       },
       "exact": {
@@ -7326,8 +7225,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2004",
-          "usd": 0.002004
+          "ceilingAtomic": "2006",
+          "usd": 0.002006
         }
       }
     },
@@ -7344,20 +7243,20 @@
         "output": 3.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.011875500000000008,
-        "output": 0.09236500000000006
+        "input": 0.08851049999999996,
+        "output": 0.6884149999999998
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1821",
+          "usd": 0.001821
         },
         "solana": {
-          "priceAtomic": "2147",
-          "usd": 0.002147
+          "priceAtomic": "2821",
+          "usd": 0.002821
         }
       },
       "exact": {
@@ -7366,8 +7265,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2045",
-          "usd": 0.002045
+          "ceilingAtomic": "2342",
+          "usd": 0.002342
         }
       }
     },
@@ -7382,8 +7281,8 @@
         "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0468,
-        "output": 0.195
+        "input": 0.10919999999999999,
+        "output": 0.45499999999999996
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -7394,8 +7293,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2164",
-          "usd": 0.002164
+          "priceAtomic": "2270",
+          "usd": 0.00227
         }
       },
       "exact": {
@@ -7404,8 +7303,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2050",
-          "usd": 0.00205
+          "ceilingAtomic": "2081",
+          "usd": 0.002081
         }
       }
     },
@@ -7461,20 +7360,20 @@
         "output": 1
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.12675,
-        "output": 0.8450000000000001
+        "input": 0.11559599999999999,
+        "output": 0.77064
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1744",
-          "usd": 0.001744
+          "priceAtomic": "1843",
+          "usd": 0.001843
         },
         "solana": {
-          "priceAtomic": "2744",
-          "usd": 0.002744
+          "priceAtomic": "2843",
+          "usd": 0.002843
         }
       },
       "exact": {
@@ -7483,13 +7382,15 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2224",
-          "usd": 0.002224
+          "ceilingAtomic": "2351",
+          "usd": 0.002351
         }
       }
     },
     {
       "id": "qwen3-5-9b",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
       "name": "Qwen 3.5 9B",
       "owned_by": "Alibaba",
       "contextLength": 256000,
@@ -7498,27 +7399,27 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
+        "input": 0.15,
+        "output": 1
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "2381",
+          "usd": 0.002381
         },
         "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
+          "priceAtomic": "3381",
+          "usd": 0.003381
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1575",
+          "usd": 0.001575
         },
         "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "2575",
+          "usd": 0.002575
         }
       }
     },
@@ -7536,8 +7437,8 @@
         "output": 1
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.11178700000000001,
-        "output": 1.1178700000000001
+        "input": 0.06369999999999999,
+        "output": 0.637
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -7548,8 +7449,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2064",
-          "usd": 0.002064
+          "priceAtomic": "2084",
+          "usd": 0.002084
         }
       },
       "exact": {
@@ -7558,8 +7459,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2020",
-          "usd": 0.00202
+          "ceilingAtomic": "2036",
+          "usd": 0.002036
         }
       }
     },
@@ -7612,12 +7513,12 @@
         "code"
       ],
       "usdPerMillionTokens": {
-        "input": 0.07,
-        "output": 0.28
+        "input": 0.15,
+        "output": 0.6
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0009008999999999954,
-        "output": 0.0036035999999999816
+        "input": 0.0008969999999999878,
+        "output": 0.003587999999999951
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -7628,8 +7529,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2007",
-          "usd": 0.002007
+          "priceAtomic": "2013",
+          "usd": 0.002013
         }
       },
       "exact": {
@@ -7638,8 +7539,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2003",
-          "usd": 0.002003
+          "ceilingAtomic": "2004",
+          "usd": 0.002004
         }
       }
     },
@@ -7696,20 +7597,20 @@
         "output": 1.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.29575,
-        "output": 1.2675
+        "input": 0.1499225,
+        "output": 0.642525
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2120",
-          "usd": 0.00212
+          "priceAtomic": "1537",
+          "usd": 0.001537
         },
         "solana": {
-          "priceAtomic": "3120",
-          "usd": 0.00312
+          "priceAtomic": "2537",
+          "usd": 0.002537
         }
       },
       "exact": {
@@ -7718,8 +7619,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2337",
-          "usd": 0.002337
+          "ceilingAtomic": "2162",
+          "usd": 0.002162
         }
       }
     },
@@ -7814,20 +7715,20 @@
         "output": 1.9
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.17745000000000002,
-        "output": 1.6055000000000001
+        "input": 0.13622700000000001,
+        "output": 1.2325300000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2411",
-          "usd": 0.002411
+          "priceAtomic": "2013",
+          "usd": 0.002013
         },
         "solana": {
-          "priceAtomic": "3411",
-          "usd": 0.003411
+          "priceAtomic": "3013",
+          "usd": 0.003013
         }
       },
       "exact": {
@@ -7836,8 +7737,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2424",
-          "usd": 0.002424
+          "ceilingAtomic": "2305",
+          "usd": 0.002305
         }
       }
     },
@@ -7854,8 +7755,8 @@
         "output": 0.8999999999999999
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0975,
-        "output": 0.351
+        "input": 0.123175,
+        "output": 0.44343
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -7866,8 +7767,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2294",
-          "usd": 0.002294
+          "priceAtomic": "2371",
+          "usd": 0.002371
         }
       },
       "exact": {
@@ -7876,8 +7777,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2089",
-          "usd": 0.002089
+          "ceilingAtomic": "2112",
+          "usd": 0.002112
         }
       }
     },
@@ -7891,12 +7792,12 @@
         "reasoning"
       ],
       "usdPerMillionTokens": {
-        "input": 0.5,
+        "input": 0.6,
         "output": 3.5999999999999996
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.52,
-        "output": 3.7439999999999998
+        "input": 0.44280600000000003,
+        "output": 2.6568359999999998
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -7907,8 +7808,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2189",
-          "usd": 0.002189
+          "priceAtomic": "2199",
+          "usd": 0.002199
         }
       },
       "exact": {
@@ -7917,29 +7818,31 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2058",
-          "usd": 0.002058
+          "ceilingAtomic": "2084",
+          "usd": 0.002084
         }
       }
     },
     {
       "id": "qwen3.5-flash",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
       "name": "Qwen3.5 Flash",
       "owned_by": "Alibaba",
       "contextLength": 1000000,
       "tags": [],
       "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
+        "input": 0.1056,
+        "output": 0.4224
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1585",
+          "usd": 0.001585
         },
         "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
+          "priceAtomic": "2585",
+          "usd": 0.002585
         }
       },
       "exact": {
@@ -7948,39 +7851,41 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "2245",
+          "usd": 0.002245
         }
       }
     },
     {
       "id": "qwen3.5-plus",
+      "priceBasis": "reference",
+      "priceDescription": "A conservative per-token estimate, not Surplus's list price: Surplus lists this model at 0",
       "name": "Qwen3.5 Plus",
       "owned_by": "Alibaba",
       "contextLength": 1000000,
       "tags": [],
       "usdPerMillionTokens": {
-        "input": 0,
-        "output": 0
+        "input": 0.4,
+        "output": 2.4
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "4313",
+          "usd": 0.004313
         },
         "solana": {
-          "priceAtomic": "2000",
-          "usd": 0.002
+          "priceAtomic": "5313",
+          "usd": 0.005313
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "2380",
+          "usd": 0.00238
         },
         "solana": {
-          "ceilingAtomic": "2000",
-          "usd": 0.002
+          "ceilingAtomic": "3380",
+          "usd": 0.00338
         }
       }
     },
@@ -7998,8 +7903,8 @@
         "output": 3.1999999999999997
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.27464320000000003,
-        "output": 2.746432
+        "input": 0.20779200000000003,
+        "output": 2.07792
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -8010,8 +7915,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2202",
-          "usd": 0.002202
+          "priceAtomic": "2266",
+          "usd": 0.002266
         }
       },
       "exact": {
@@ -8020,8 +7925,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2062",
-          "usd": 0.002062
+          "ceilingAtomic": "2111",
+          "usd": 0.002111
         }
       }
     },
@@ -8039,30 +7944,30 @@
         "output": 3.75
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.7312500000000001,
-        "output": 4.3875
+        "input": 0.40625,
+        "output": 2.4375
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "4575",
-          "usd": 0.004575
+          "priceAtomic": "3641",
+          "usd": 0.003641
         },
         "solana": {
-          "priceAtomic": "5575",
-          "usd": 0.005575
+          "priceAtomic": "4641",
+          "usd": 0.004641
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2074",
-          "usd": 0.002074
+          "ceilingAtomic": "2100",
+          "usd": 0.0021
         },
         "solana": {
-          "ceilingAtomic": "3074",
-          "usd": 0.003074
+          "ceilingAtomic": "3100",
+          "usd": 0.0031
         }
       }
     },
@@ -8080,8 +7985,8 @@
         "output": 0.13
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.0156,
-        "output": 0.06760000000000001
+        "input": 0.00585,
+        "output": 0.02535
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -8092,8 +7997,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2010",
-          "usd": 0.00201
+          "priceAtomic": "2012",
+          "usd": 0.002012
         }
       },
       "exact": {
@@ -8102,8 +8007,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2003",
-          "usd": 0.002003
+          "ceilingAtomic": "2006",
+          "usd": 0.002006
         }
       }
     },
@@ -8120,8 +8025,8 @@
         "output": 6
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.029120000000000118,
-        "output": 0.08736000000000035
+        "input": 0.28600000000000003,
+        "output": 0.8580000000000001
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -8132,8 +8037,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2128",
-          "usd": 0.002128
+          "priceAtomic": "2168",
+          "usd": 0.002168
         }
       },
       "exact": {
@@ -8142,8 +8047,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2039",
-          "usd": 0.002039
+          "ceilingAtomic": "2071",
+          "usd": 0.002071
         }
       }
     },
@@ -8173,8 +8078,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2011",
-          "usd": 0.002011
+          "priceAtomic": "2106",
+          "usd": 0.002106
         }
       },
       "exact": {
@@ -8183,8 +8088,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2004",
-          "usd": 0.002004
+          "ceilingAtomic": "2045",
+          "usd": 0.002045
         }
       }
     },
@@ -8202,20 +8107,20 @@
         "output": 6
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.55874,
-        "output": 1.67622
+        "input": 0.33891,
+        "output": 1.01673
       },
       "expectedUsdPerMillionTokens": {
         "basis": "observed"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1500",
-          "usd": 0.0015
+          "priceAtomic": "1501",
+          "usd": 0.001501
         },
         "solana": {
-          "priceAtomic": "2381",
-          "usd": 0.002381
+          "priceAtomic": "2501",
+          "usd": 0.002501
         }
       },
       "exact": {
@@ -8224,8 +8129,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2115",
-          "usd": 0.002115
+          "ceilingAtomic": "2208",
+          "usd": 0.002208
         }
       }
     },
@@ -8243,30 +8148,30 @@
         "output": 12
       },
       "singitUsdPerMillionTokens": {
-        "input": 2.08,
-        "output": 6.24
+        "input": 1.04,
+        "output": 3.12
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "6190",
-          "usd": 0.00619
+          "priceAtomic": "4497",
+          "usd": 0.004497
         },
         "solana": {
-          "priceAtomic": "7190",
-          "usd": 0.00719
+          "priceAtomic": "5497",
+          "usd": 0.005497
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "2562",
-          "usd": 0.002562
+          "ceilingAtomic": "2455",
+          "usd": 0.002455
         },
         "solana": {
-          "ceilingAtomic": "3562",
-          "usd": 0.003562
+          "ceilingAtomic": "3455",
+          "usd": 0.003455
         }
       }
     },
@@ -8285,8 +8190,8 @@
         "output": 0.47
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.078,
-        "output": 0.2444
+        "input": 0.029249999999999998,
+        "output": 0.09165
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
@@ -8297,8 +8202,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2011",
-          "usd": 0.002011
+          "priceAtomic": "2015",
+          "usd": 0.002015
         }
       },
       "exact": {
@@ -8307,8 +8212,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2004",
-          "usd": 0.002004
+          "ceilingAtomic": "2007",
+          "usd": 0.002007
         }
       }
     },
@@ -8326,30 +8231,30 @@
         "output": 2.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.1937,
-        "output": 0.9685
+        "input": 0.325,
+        "output": 1.625
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1814",
-          "usd": 0.001814
+          "priceAtomic": "2763",
+          "usd": 0.002763
         },
         "solana": {
-          "priceAtomic": "2814",
-          "usd": 0.002814
+          "priceAtomic": "3763",
+          "usd": 0.003763
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1500",
-          "usd": 0.0015
+          "ceilingAtomic": "1735",
+          "usd": 0.001735
         },
         "solana": {
-          "ceilingAtomic": "2245",
-          "usd": 0.002245
+          "ceilingAtomic": "2735",
+          "usd": 0.002735
         }
       }
     },
@@ -8368,20 +8273,58 @@
         "output": 3
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.195,
-        "output": 1.17
+        "input": 0.559,
+        "output": 3.354
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1975",
-          "usd": 0.001975
+          "priceAtomic": "3113",
+          "usd": 0.003113
         },
         "solana": {
-          "priceAtomic": "2975",
-          "usd": 0.002975
+          "priceAtomic": "4113",
+          "usd": 0.004113
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "1881",
+          "usd": 0.001881
+        },
+        "solana": {
+          "ceilingAtomic": "2881",
+          "usd": 0.002881
+        }
+      }
+    },
+    {
+      "id": "venice-uncensored",
+      "name": "Venice Uncensored 1.1",
+      "owned_by": "Venice AI",
+      "contextLength": 32000,
+      "tags": [],
+      "usdPerMillionTokens": {
+        "input": 0.19999999999999998,
+        "output": 0.8999999999999999
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.055614000000000004,
+        "output": 0.250263
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "trusted"
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "1500",
+          "usd": 0.0015
+        },
+        "solana": {
+          "priceAtomic": "2219",
+          "usd": 0.002219
         }
       },
       "exact": {
@@ -8390,8 +8333,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2294",
-          "usd": 0.002294
+          "ceilingAtomic": "2067",
+          "usd": 0.002067
         }
       }
     },
@@ -8416,12 +8359,12 @@
       },
       "upto": {
         "base": {
-          "priceAtomic": "1823",
-          "usd": 0.001823
+          "priceAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2823",
-          "usd": 0.002823
+          "priceAtomic": "2483",
+          "usd": 0.002483
         }
       },
       "exact": {
@@ -8430,8 +8373,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2249",
-          "usd": 0.002249
+          "ceilingAtomic": "2146",
+          "usd": 0.002146
         }
       }
     },
@@ -8448,30 +8391,30 @@
         "output": 2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.559,
-        "output": 2.236
+        "input": 0.324025,
+        "output": 1.2961
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "2830",
-          "usd": 0.00283
+          "priceAtomic": "2073",
+          "usd": 0.002073
         },
         "solana": {
-          "priceAtomic": "3830",
-          "usd": 0.00383
+          "priceAtomic": "3073",
+          "usd": 0.003073
         }
       },
       "exact": {
         "base": {
-          "ceilingAtomic": "1550",
-          "usd": 0.00155
+          "ceilingAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2550",
-          "usd": 0.00255
+          "ceilingAtomic": "2323",
+          "usd": 0.002323
         }
       }
     },
@@ -8490,20 +8433,20 @@
         "output": 2
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.156,
-        "output": 0.78
+        "input": 0.08715200000000002,
+        "output": 0.43576000000000015
       },
       "expectedUsdPerMillionTokens": {
         "basis": "trusted"
       },
       "upto": {
         "base": {
-          "priceAtomic": "1652",
-          "usd": 0.001652
+          "priceAtomic": "1500",
+          "usd": 0.0015
         },
         "solana": {
-          "priceAtomic": "2652",
-          "usd": 0.002652
+          "priceAtomic": "2498",
+          "usd": 0.002498
         }
       },
       "exact": {
@@ -8512,8 +8455,8 @@
           "usd": 0.0015
         },
         "solana": {
-          "ceilingAtomic": "2197",
-          "usd": 0.002197
+          "ceilingAtomic": "2208",
+          "usd": 0.002208
         }
       }
     }
@@ -8527,14 +8470,6 @@
       "free/qwen3-coder-30b-a3b-instruct",
       "free/deepseek-v4.1-flash"
     ],
-    "perVisitorPerDay": 20,
-    "budgetUsdPerDay": 0.25
-  },
-  "draftAdditions": {
-    "nemotron-3.5-lightning": {
-      "metadataCapturedAt": "2026-11-05T06:55:00",
-      "source": "singit-ask/test/fixtures/surplus-nemotron-3-5-lightning.json",
-      "pricing": "Draft: Surplus list rates plus 30% markup; no live seller quote. Owner confirmation pending."
-    }
+    "perVisitorPerDay": 20
   }
 }
