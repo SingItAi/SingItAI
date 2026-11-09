@@ -195,6 +195,13 @@ export function spendLimitMiddleware({ reader = null, log = () => {} } = {}) {
 // The receipt for a settled answer. `res.locals.singitReceipt` is set by the route that knows what it billed.
 export function receiptFor(req, res, settlement, peeked = null) {
   if (!settlement?.success || !settlement.transaction) return null;
+  // x402 Solana upto deposits (settles) before the handler. When the handler
+  // then fails, @x402/express writes PAYMENT-RESPONSE from settleOnCancel
+  // (amount 0, a refund) or echoes the deposit. Without this guard, chargedAtomic
+  // falls back to accepted.amount (the signed ceiling) and a 503 no_billable_answer
+  // reports a charge while the escrow is refunded.
+  const status = Number(res.statusCode) || 200;
+  if (status >= 400) return null;
   const accepted = decodeHeader(req.get("payment-signature") ?? req.get("x-payment"))?.accepted ?? {};
   const own = res.locals?.singitReceipt ?? {};
   const receipt = { v: 1, ref: own.ref ?? settlement.transaction, tx: settlement.transaction,

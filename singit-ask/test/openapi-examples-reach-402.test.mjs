@@ -1,3 +1,4 @@
+import { MAX_PAYMENT_REQUIRED_HEADER_BYTES } from "../src/payment-required-header.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, ROUTE, createApp } from "../src/app.mjs";
@@ -86,6 +87,7 @@ test("paid OpenAPI JSON examples reach an unpaid 402 and all paid paths are disc
     assert.deepEqual(price, doc.paths[path].post["x-payment-info"].price, `${path}: OpenAPI/WK price parity`);
   }
   const checked = [];
+  let largestHeaderBytes = 0;
   const skipped = [];
   for (const [path, item] of Object.entries(doc.paths)) {
     const operation = item.post;
@@ -99,6 +101,8 @@ test("paid OpenAPI JSON examples reach an unpaid 402 and all paid paths are disc
     assert.equal(response.status, 402, `${path}: OpenAPI example must reach payment`);
     const header = response.headers.get("payment-required");
     assert.ok(header, `${path}: payment challenge header`);
+    largestHeaderBytes = Math.max(largestHeaderBytes, Buffer.byteLength(header, "utf8"));
+    assert.ok(Buffer.byteLength(header, "utf8") < MAX_PAYMENT_REQUIRED_HEADER_BYTES, `${path}: header under 8KiB`);
     const challenge = JSON.parse(Buffer.from(header, "base64").toString("utf8"));
     for (const key of ["input", "output"]) {
       const value = challenge.extensions?.bazaar?.info?.[key];
@@ -110,13 +114,22 @@ test("paid OpenAPI JSON examples reach an unpaid 402 and all paid paths are disc
       const amount = Number(accept.amount) / 1e6;
       assert.ok(amount >= Number(price.min) && amount <= Number(price.max), `${path}: example amount within WK price`);
     }
-    await response.arrayBuffer();
+    const body = await response.json();
+    assert.equal(body.x402Version, challenge.x402Version);
+    assert.deepEqual(body.accepts, challenge.accepts);
+    assert.deepEqual(body.extensions.bazaar.info, challenge.extensions.bazaar.info);
+    assert.ok(body.extensions.bazaar.schema.properties);
+    if (path.includes("chat") || path === "/v1/messages" || path === "/v1/responses") {
+      assert.ok(body.extensions.bazaar.schema.properties.input.properties.body.properties);
+    }
     checked.push(path);
   }
   for (const path of [ROUTE, IMAGE_ROUTE, SPEECH_ROUTE, "/v1/embeddings", "/v1/images/edits",
     "/v1/images/image2image", "/v1/audio/generations", "/v1/audio/sound-effects", ...Object.keys(SEARCH_ROUTES),
     ...Object.keys(FORMAT_ROUTES), ...modelRoutePaths(), ...MODEL_ALIAS_ROUTES.map(aliasPath)]) assert.ok(checked.includes(path), `${path} example checked`);
+  for (const path of discoverable) assert.ok(checked.includes(path), `${path}: discoverable path checked`);
   assert.deepEqual(skipped, [], "this configuration has JSON examples for every paid operation");
+  t.diagnostic(`Largest PAYMENT-REQUIRED header: ${largestHeaderBytes} bytes`);
   t.diagnostic(`WK price coverage: ${discovery.resourceDetails.length}/${discovery.resources.length}; paid examples checked: ${checked.length}; example gaps: ${skipped.length}`);
   assert.equal(upstreamCalls(), 0);
   assert.equal(facilitator.calls.verify, 0);
