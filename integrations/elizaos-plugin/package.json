@@ -1,6 +1,6 @@
 {
   "name": "@singitai/plugin-singit",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "ElizaOS plugin for SingIt: free crypto/FX prices and model listing via SingIt's MCP server, optional paid web search/page reading with a SingIt API key, and optional x402-paid chat on SingIt Ask (Base; needs the optional @x402/evm peer).",
   "type": "module",
   "main": "src/index.js",
@@ -15,7 +15,8 @@
     "src",
     "index.d.ts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "images"
   ],
   "keywords": [
     "elizaos",
@@ -60,5 +61,57 @@
     "@x402/evm": {
       "optional": true
     }
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SINGIT_API_KEY": {
+        "type": "string",
+        "description": "SingIt API key for paid web search and page reading. The owner sets server-side daily and per-request limits on the key in the SingIt app.",
+        "required": false,
+        "sensitive": true
+      },
+      "SINGIT_EVM_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Optional 0x-prefixed EVM key for x402-paid chat on Base. Paid chat is only offered when both spend ceilings are also set.",
+        "required": false,
+        "sensitive": true
+      },
+      "SINGIT_MAX_PER_CALL_USD": {
+        "type": "string",
+        "description": "Required for paid chat. Client-side per-call spend ceiling in USD. The model cannot raise it.",
+        "required": false,
+        "sensitive": false
+      },
+      "SINGIT_MAX_PER_DAY_USD": {
+        "type": "string",
+        "description": "Required for paid chat. Client-side per-UTC-day spend ceiling in USD. The model cannot raise it.",
+        "required": false,
+        "sensitive": false
+      },
+      "SINGIT_MCP_URL": {
+        "type": "string",
+        "description": "Optional MCP server URL. Defaults to https://app.singitai.app/mcp.",
+        "required": false,
+        "sensitive": false
+      },
+      "SINGIT_ASK_BASE_URL": {
+        "type": "string",
+        "description": "Optional SingIt Ask base URL. Defaults to https://ask.singitai.app.",
+        "required": false,
+        "sensitive": false
+      }
+    },
+    "actions": [
+      "SINGIT_GET_PRICE",
+      "SINGIT_LIST_PRICE_SYMBOLS",
+      "SINGIT_LIST_MODELS",
+      "SINGIT_WEB_SEARCH",
+      "SINGIT_READ_PAGE",
+      "SINGIT_PAID_CHAT"
+    ],
+    "providers": [
+      "SINGIT_TOOLS"
+    ]
   }
 }
