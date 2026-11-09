@@ -95,30 +95,40 @@ export class SpendLimitReader {
 
 // What a limiter allows right now. `spendableNowAtomic` is the most one purchase can be: the smaller of the
 // per-purchase cap, today's remainder and what the owner left approved on the token. (The owner's own USDC balance is
-// not read, and the limiter's day rolls over at 00:00 UTC.)
+// not read, and the limiter's day rolls over at 00:00 UTC.) `bindingLimit` names the constraint that sets that number,
+// i.e. the limit that fires first: paused | expired | per_purchase | remaining_today | allowance_left (ties go to the
+// earlier name, the order in which a refusal is explained).
 export function describeLimiter(limiter, got, nowSeconds) {
   const expired = nowSeconds >= Number(got.expiry);
   const spendable = got.paused || expired ? 0n : min(got.perPurchaseCap, got.remainingToday, got.allowanceLeft);
+  const bindingLimit = got.paused ? "paused" : expired ? "expired"
+    : spendable === got.perPurchaseCap ? "per_purchase" : spendable === got.remainingToday ? "remaining_today" : "allowance_left";
   return { v: 1, limiter, network: BASE_NETWORK, asset: "USDC", asOf: new Date(nowSeconds * 1000).toISOString(),
     paused: Boolean(got.paused), expired, expiresAt: new Date(Number(got.expiry) * 1000).toISOString(),
     dailyCapAtomic: String(got.dailyCap), perPurchaseCapAtomic: String(got.perPurchaseCap),
     remainingTodayAtomic: String(got.remainingToday), allowanceLeftAtomic: String(got.allowanceLeft),
-    spendableNowAtomic: String(spendable) };
+    spendableNowAtomic: String(spendable), bindingLimit };
+}
+
+// Would `amount` (atomic USDC) pass this limiter snapshot? `{ fits: true }` or `{ fits: false, reason }`, the reason
+// naming the limit that refuses it.
+export function fitAgainstLimit(info, amount) {
+  if (info.paused) return { fits: false, reason: "limiter_paused" };
+  if (info.expired) return { fits: false, reason: "limiter_expired" };
+  const value = BigInt(amount);
+  if (value <= BigInt(info.spendableNowAtomic)) return { fits: true };
+  const reason = value > BigInt(info.perPurchaseCapAtomic) ? "over_per_purchase_cap"
+    : value > BigInt(info.remainingTodayAtomic) ? "over_remaining_today" : "over_allowance_left";
+  return { fits: false, reason };
 }
 
 // Each offer in a 402's `accepts`, against the limiter. Only Base is checked: a Solana offer is marked as not checked.
 export function offersAgainstLimit(info, accepts = []) {
   if (info.error) return info;
-  const spendable = BigInt(info.spendableNowAtomic);
   return { ...info, offers: accepts.map((offer) => {
     const base = { scheme: offer.scheme, network: offer.network, amountAtomic: String(offer.amount) };
     if (offer.network !== BASE_NETWORK) return { ...base, fits: null, reason: "not_checked" };
-    if (info.paused) return { ...base, fits: false, reason: "limiter_paused" };
-    if (info.expired) return { ...base, fits: false, reason: "limiter_expired" };
-    if (BigInt(offer.amount) <= spendable) return { ...base, fits: true };
-    const reason = BigInt(offer.amount) > BigInt(info.perPurchaseCapAtomic) ? "over_per_purchase_cap"
-      : BigInt(offer.amount) > BigInt(info.remainingTodayAtomic) ? "over_remaining_today" : "over_allowance_left";
-    return { ...base, fits: false, reason };
+    return { ...base, ...fitAgainstLimit(info, offer.amount) };
   }) };
 }
 
@@ -190,7 +200,18 @@ export function receiptFor(req, res, settlement, peeked = null) {
   const receipt = { v: 1, ref: own.ref ?? settlement.transaction, tx: settlement.transaction,
     network: settlement.network ?? accepted.network, scheme: accepted.scheme, payer: settlement.payer,
     asset: "USDC", chargedAtomic: String(own.chargedAtomic ?? res.locals?.singitSettledAmount ?? accepted.amount ?? ""), ceilingAtomic: String(accepted.amount ?? "") };
-  if (peeked && !peeked.error) receipt.limit = { limiter: peeked.limiter, asOf: peeked.asOf,
-    remainingTodayBeforeAtomic: peeked.remainingTodayAtomic, spendableNowBeforeAtomic: peeked.spendableNowAtomic };
+  // The limiter as it was read before this payment, and what that snapshot made of the charge. Informational only:
+  // settlement already happened and is not changed by it.
+  if (peeked && !peeked.error) {
+    receipt.limit = { limiter: peeked.limiter, asOf: peeked.asOf,
+      dailyCapAtomic: peeked.dailyCapAtomic, perPurchaseCapAtomic: peeked.perPurchaseCapAtomic,
+      remainingTodayBeforeAtomic: peeked.remainingTodayAtomic, spendableNowBeforeAtomic: peeked.spendableNowAtomic,
+      bindingLimit: peeked.bindingLimit };
+    if (/^[0-9]+$/.test(receipt.chargedAtomic) && peeked.spendableNowAtomic !== undefined) {
+      const fit = fitAgainstLimit(peeked, receipt.chargedAtomic);
+      receipt.limit.chargeFitted = fit.fits;
+      if (!fit.fits) receipt.limit.reason = fit.reason;
+    }
+  }
   return receipt;
 }

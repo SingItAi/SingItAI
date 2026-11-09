@@ -6,8 +6,8 @@ between calls. Built on plain JSON-RPC 2.0 dicts, since this process is http.ser
 
 Tools:
   * chat_free: public free model answers without a key; chat: paid answers from any valid key, no extra scope.
-  * Free: get_price, list_price_symbols, list_models (no key needed), and get_balance, get_limits and
-    get_receipts (the key's own balance, limits and charges, so they need the key; read-only).
+  * Free: get_price, list_price_symbols, list_models (no key needed), and get_balance, get_limits, get_allowance
+    and get_receipts (the key's own balance, limits, what is left and charges, so they need the key; read-only).
   * Paid from the key's own limits, needing the "search" scope: web_search, read_page (Exa, through
     ApiKeys._search, exactly as /v1/exa/… is billed).
   * Paid from the key's own limits, needing the "tools" scope: every entry of server.PAID_TOOLS, under
@@ -116,9 +116,10 @@ def _env_requests_per_minute() -> int:
 # Tools billed through ApiKeys._search: it rates the key itself, so McpServer must not rate it again.
 SEARCH_TOOLS = frozenset({"web_search", "read_page"})
 # Free tools; chat_free uses the public Ask allowance rather than the key balance.
-FREE_TOOL_NAMES = frozenset({"get_price", "list_price_symbols", "list_models", "get_balance", "get_limits", "get_receipts", "chat_free"})
+FREE_TOOL_NAMES = frozenset({"get_price", "list_price_symbols", "list_models", "get_balance", "get_limits", "get_allowance",
+                             "get_receipts", "chat_free"})
 # Free, but about the caller's own account, so it needs a key even though it bills nothing.
-KEYED_FREE_TOOLS = frozenset({"get_balance", "get_limits", "get_receipts"})
+KEYED_FREE_TOOLS = frozenset({"get_balance", "get_limits", "get_allowance", "get_receipts"})
 FREE_NON_IDEMPOTENT = OPEN_WORLD_FREE = frozenset({"chat_free"})
 RECEIPT_KINDS = ("charge", "topup", "refund")
 RECEIPTS_DEFAULT, RECEIPTS_MAX = 10, 50
@@ -157,6 +158,7 @@ TOOL_TITLES: dict[str, str] = {
     "get_weather": "Get weather",
     "get_balance": "Get balance",
     "get_limits": "Get limits",
+    "get_allowance": "Get allowance",
     "get_receipts": "Get receipts",
     "get_singit_risk_check": "SingIt risk check",
     "get_x_profile": "Get X profile",
@@ -376,14 +378,19 @@ OWN_TOOLS: list[dict[str, Any]] = [_annotated(entry) for entry in (
      "https://app.singitai.app/v1. Free, no key needed.",
      "inputSchema": LIST_MODELS_SCHEMA},
     {"name": "chat_free", "description": "Free model answers, no key needed. Answers are short (400 tokens), with a small daily allowance shared per network and a shared daily budget that can run out. To pay for a model answer with your key use chat with the same model without the free/ prefix.", "inputSchema": _chat_schema(True)},
-    {"name": "chat", "description": "Paid per call from your key's SingIt balance and limits in USDC. The server enforces per-request and daily caps; a call over a cap is refused before anything is charged. Use list_models for model ids and prices, get_limits for what remains, and get_receipts for the charge. Pass max_tokens high enough for reasoning models: thinking uses the same budget.", "inputSchema": _chat_schema(False)},
+    {"name": "chat", "description": "Paid per call from your key's SingIt balance and limits in USDC. The server enforces per-request and daily caps; a call over a cap is refused before anything is charged. Use list_models for model ids and prices, get_allowance (or get_limits) for what remains and which cap would refuse a call, and get_receipts for the charge. Pass max_tokens high enough for reasoning models: thinking uses the same budget.", "inputSchema": _chat_schema(False)},
     {"name": "get_balance", "description": "Your SingIt API balance: available and held USDC, auto top-up and "
      "pending top-ups. Use to check funds before paid calls. Free, but needs your API key.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_limits", "description": "What your API key may still spend: its daily and per-request caps, spent and "
-     "remaining today, scopes and expiry, plus your account's balance and, on Base, your allowance limiter (caps, "
-     "left today, approved from your wallet, paused = emergency stop, expired). Read-only: it cannot change a limit. "
-     "Use before a paid call to see whether it fits. Free, but needs your API key.",
+     "remaining today, scopes and expiry, plus your account's balance and your allowance limits on Base or Solana "
+     "(caps, left today, approved from your wallet, paused = emergency stop, expired). Read-only: it cannot change a "
+     "limit. Use before a paid call to see whether it fits. Free, but needs your API key.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "get_allowance", "description": "How much you can still spend right now, before you pay: your API key's "
+     "remaining today and per-request cap, and your wallet allowance's remaining today, per-purchase cap and approval "
+     "on Base or Solana, each with spendableNowUsd and bindingLimit (the limit that would refuse a larger call). "
+     "Read-only: it cannot change a limit. Free, but needs your API key.",
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "get_receipts", "description": "Your recent receipts, newest first: for each, its id, time, model, USDC "
      "charged, tokens and the upstream reference (kind charge, this key only), or the account's top-ups and refunds "
@@ -459,8 +466,11 @@ def _tool_success(data: Any) -> dict[str, Any]:
     return out
 
 
-def _tool_error(message: str) -> dict[str, Any]:
-    return {"content": [{"type": "text", "text": message}], "isError": True}
+def _tool_error(message: str, details: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    out: dict[str, Any] = {"content": [{"type": "text", "text": message}], "isError": True}
+    if details:  # e.g. which key cap refused the call (limitHit) and what is left, for an agent to act on
+        out["structuredContent"] = dict(details)
+    return out
 
 
 def _classify(exc: ApiError | None) -> tuple[str, str]:
@@ -674,7 +684,8 @@ class McpServer:
         except ApiError as exc:
             if seen is not None:
                 seen.append(exc)
-            return _tool_error(exc.message)
+            details = getattr(exc, "details", None)
+            return _tool_error(exc.message, {"code": exc.code, **details} if details else None)
         return _tool_success(data)
 
     def _call_tool(self, row, name: str, args: dict[str, Any], *, client_ip: str | None = None) -> Any:
@@ -700,6 +711,8 @@ class McpServer:
             return self.keys._balance(row["account_id"])
         if name == "get_limits":
             return self._get_limits(row)
+        if name == "get_allowance":
+            return self._get_allowance(row)
         if name == "get_receipts":
             return self._get_receipts(row, args)
         if name == "web_search":
@@ -782,38 +795,77 @@ class McpServer:
                 "usage": {k: (answer.get("usage") or {}).get(k, 0) for k in
                           ("prompt_tokens", "completion_tokens", "total_tokens")}, "billing": billing}
 
-    def _get_limits(self, row) -> dict[str, Any]:
-        """The key's own caps and today's spend, the account's balance, and the account's allowance limiter on Base.
-        Read-only: nothing here writes, advances a pending grant, or reveals an address other than the limiter's."""
+    def _key_view(self, row) -> dict[str, Any]:
+        """The key's own caps and today's spend. `spendableNowUsd` is the most one paid call may cost right now, and
+        `bindingLimit` the cap that sets it (per_request or daily; revoked / expired when the key cannot spend)."""
         now = int(self.keys.now())
-        spent, answers = self.keys.store.key_spent(row["key_id"], int(self.keys.now()) // 86400)
+        spent, answers = self.keys.store.key_spent(row["key_id"], now // 86400)
         daily, per_request = int(row["daily_cap_atomic"]), int(row["per_request_cap_atomic"])
         held = int(getattr(self.keys, "_reserved", {}).get(row["key_id"], 0))  # answers still running
-        revoked = row["revoked_at"] is not None
-        out: dict[str, Any] = {"object": "limits", "currency": "USDC", "key": {
-            "id": row["key_id"], "name": row["name"], "prefix": row["prefix"],
-            "state": "revoked" if revoked else ("expired" if row["expires_at"] <= now else "active"),
+        remaining = max(0, daily - spent - held)
+        state = "revoked" if row["revoked_at"] is not None else ("expired" if row["expires_at"] <= now else "active")
+        binding = state if state != "active" else ("per_request" if per_request <= remaining else "daily")
+        return {
+            "id": row["key_id"], "name": row["name"], "prefix": row["prefix"], "state": state,
             "dailyCapUsd": daily / 1e6, "perRequestCapUsd": per_request / 1e6, "spentTodayUsd": spent / 1e6,
-            "heldNowUsd": held / 1e6, "remainingTodayUsd": max(0, daily - spent - held) / 1e6, "answersToday": answers,
-            "scopes": str(row["scopes"]).split(), "expiresAt": row["expires_at"],
-            "resetsAt": (int(self.keys.now()) // 86400 + 1) * 86400,
-            "note": "Caps are per key and reset at 00:00 UTC; answers still running are held against the daily cap (heldNowUsd)."}}
-        if getattr(self.keys, "proxy", None) is not None:
-            try:
-                balance = self.keys._balance(row["account_id"])
-                out["balance"] = {k: balance[k] for k in ("availableUsd", "heldUsd", "autoTopup") if k in balance}
-            except Exception as exc:  # noqa: BLE001 - one unreadable part must not hide the key's own limits
-                logger.warning("get_limits: balance unreadable (%s)", type(exc).__name__)
-                out["balance"] = {"available": False}
+            "heldNowUsd": held / 1e6, "remainingTodayUsd": remaining / 1e6, "answersToday": answers,
+            "spendableNowUsd": (min(per_request, remaining) if state == "active" else 0) / 1e6, "bindingLimit": binding,
+            "scopes": str(row["scopes"]).split(), "expiresAt": row["expires_at"], "resetsAt": (now // 86400 + 1) * 86400,
+            "note": "Caps are per key and reset at 00:00 UTC; answers still running are held against the daily cap (heldNowUsd)."}
+
+    def _balance_view(self, account: str) -> dict[str, Any] | None:
+        if getattr(self.keys, "proxy", None) is None:
+            return None
+        try:
+            balance = self.keys._balance(account)
+            return {k: balance[k] for k in ("availableUsd", "heldUsd", "autoTopup") if k in balance}
+        except Exception as exc:  # noqa: BLE001 - one unreadable part must not hide the key's own limits
+            logger.warning("get_limits: balance unreadable (%s)", type(exc).__name__)
+            return {"available": False}
+
+    def _get_limits(self, row) -> dict[str, Any]:
+        """The key's own caps and today's spend, the account's balance, and the account's allowance limits.
+        Read-only: nothing here writes, advances a pending grant, or reveals an address other than the Base limiter's."""
+        out: dict[str, Any] = {"object": "limits", "currency": "USDC", "key": self._key_view(row)}
+        balance = self._balance_view(row["account_id"])
+        if balance is not None:
+            out["balance"] = balance
         out["allowance"] = self._allowance_view(row["account_id"])
         return out
 
+    def _get_allowance(self, row) -> dict[str, Any]:
+        """What is left before a paid call, and which limit would refuse it: the key's caps and the account's wallet
+        allowance (Base limiter or Solana delegate), each with spendableNowUsd and bindingLimit. Read-only."""
+        key = self._key_view(row)
+        out: dict[str, Any] = {"object": "allowance", "currency": "USDC", "key": {k: key[k] for k in (
+            "id", "state", "dailyCapUsd", "perRequestCapUsd", "spentTodayUsd", "heldNowUsd", "remainingTodayUsd",
+            "spendableNowUsd", "bindingLimit", "resetsAt")}}
+        balance = self._balance_view(row["account_id"])
+        if balance is not None:
+            out["balance"] = balance
+        out["allowance"] = self._allowance_view(row["account_id"])
+        out["note"] = ("Key caps apply to calls made with this API key; the allowance applies to purchases SingIt's agent "
+                       "makes from your wallet. Both reset at 00:00 UTC. Nothing here changes a limit.")
+        return out
+
+    @staticmethod
+    def _spendable(paused: bool, expired: bool, per_purchase: int, remaining: int, approved: int) -> tuple[float, str]:
+        """The most one purchase can be under an allowance, and the limit that sets it (ties go to the earlier name)."""
+        if paused:
+            return 0.0, "paused"
+        if expired:
+            return 0.0, "expired"
+        most = min(per_purchase, remaining, approved)
+        return most / 1e6, ("per_purchase" if most == per_purchase else "remaining_today" if most == remaining
+                            else "allowance_left")
+
     def _allowance_view(self, account: str) -> dict[str, Any]:
-        """The account's active Base allowance limiter, as the owner would read it (no owner, agent or guardian
-        address). `paused` is the emergency stop; `approvedUsd` 0 means the owner's approval is revoked or not granted."""
+        """The account's allowance limits as the owner would read them (no owner, agent or guardian address, no wallet
+        balances). Base: the active limiter. Solana: SingIt's server-side limits over the wallet's delegation.
+        `paused` is the emergency stop; `approvedUsd` 0 means the owner's approval is revoked or not granted."""
+        usd = lambda atomic: int(atomic) / 1e6  # noqa: E731
         if chain_of_account(account) == "solana":
-            return {"configured": False, "chain": "solana",
-                    "note": "Allowance limits are on Base only for now. Solana limits are checked by SingIt's server."}
+            return self._solana_allowance_view(account)
         allowance = getattr(self.keys.api, "allowance", None)
         try:
             active = allowance.store.active_limiter(account)
@@ -823,13 +875,44 @@ class McpServer:
         except Exception as exc:  # noqa: BLE001
             logger.warning("get_limits: allowance unreadable (%s)", type(exc).__name__)
             return {"available": False, "chain": "base", "note": "The allowance could not be read right now."}
-        usd = lambda atomic: int(atomic) / 1e6  # noqa: E731
         state = str(seen.get("state", ""))
+        expiry = int(seen["expiry"])
+        spendable, binding = self._spendable(bool(seen["paused"]), state == "expired" or expiry <= int(self.keys.now()),
+                                             int(seen["perPurchaseCapAtomic"]), int(seen["remainingTodayAtomic"]),
+                                             int(seen["allowanceAtomic"]))
         return {"configured": True, "chain": "base", "limiter": seen["limiter"], "state": state if state in (
                     "paused", "expired", "granted") else "waiting_for_grant",
                 "dailyCapUsd": usd(seen["dailyCapAtomic"]), "perPurchaseCapUsd": usd(seen["perPurchaseCapAtomic"]),
                 "remainingTodayUsd": usd(seen["remainingTodayAtomic"]), "approvedUsd": usd(seen["allowanceAtomic"]),
-                "paused": bool(seen["paused"]), "expiresAt": int(seen["expiry"])}
+                "paused": bool(seen["paused"]), "expiresAt": expiry,
+                "spendableNowUsd": spendable, "bindingLimit": binding}
+
+    def _solana_allowance_view(self, account: str) -> dict[str, Any]:
+        """Solana limits from solana_allowance.SolanaAllowanceService.status(), keeping only the limits: its owner,
+        delegate ("limiter") and wallet balances are left out. No service, no numbers."""
+        usd = lambda atomic: int(atomic) / 1e6  # noqa: E731
+        lane = getattr(self.keys.api, "solana", None)
+        if lane is None:
+            return {"configured": False, "chain": "solana",
+                    "note": "Solana allowance limits are not available on this server; Solana limits are checked by SingIt's server."}
+        try:
+            seen = lane.status(account)
+            if not seen.get("configured"):
+                return {"configured": False, "chain": "solana"}
+            state = str(seen.get("state", ""))
+            expiry = int(seen["expiry"])
+            paused = bool(seen.get("paused"))
+            spendable, binding = self._spendable(paused, state == "expired" or expiry <= int(self.keys.now()),
+                                                 int(seen["perPurchaseCapAtomic"]), int(seen["remainingTodayAtomic"]),
+                                                 int(seen["allowanceAtomic"]))
+            return {"configured": True, "chain": "solana", "state": state if state in (
+                        "paused", "expired", "granted") else "waiting_for_grant",
+                    "dailyCapUsd": usd(seen["dailyCapAtomic"]), "perPurchaseCapUsd": usd(seen["perPurchaseCapAtomic"]),
+                    "remainingTodayUsd": usd(seen["remainingTodayAtomic"]), "approvedUsd": usd(seen["allowanceAtomic"]),
+                    "paused": paused, "expiresAt": expiry, "spendableNowUsd": spendable, "bindingLimit": binding}
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("get_limits: Solana allowance unreadable (%s)", type(exc).__name__)
+            return {"available": False, "chain": "solana", "note": "The allowance could not be read right now."}
 
     def _get_receipts(self, row, args: dict[str, Any]) -> dict[str, Any]:
         if getattr(self.keys, "proxy", None) is None:

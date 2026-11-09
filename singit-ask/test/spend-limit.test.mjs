@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { UnknownModel } from "../src/catalogue.mjs";
-import { SpendLimitReader, spendLimitMiddleware, describeLimiter, offersAgainstLimit, receiptFor, BASE_USDC, LIMIT_HEADER, RECEIPT_HEADER } from "../src/spend-limit.mjs";
+import { SpendLimitReader, spendLimitMiddleware, describeLimiter, offersAgainstLimit, fitAgainstLimit, receiptFor, BASE_USDC, LIMIT_HEADER, RECEIPT_HEADER } from "../src/spend-limit.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -62,6 +62,26 @@ test("describeLimiter: the smallest of the per-purchase cap, today's remainder a
   assert.equal(describeLimiter(LIMITER, { ...got, paused: true }, NOW).spendableNowAtomic, "0");
   const expired = describeLimiter(LIMITER, { ...got, expiry: BigInt(NOW - 1) }, NOW);
   assert.equal(expired.expired, true); assert.equal(expired.spendableNowAtomic, "0");
+});
+
+test("describeLimiter names the binding limit: the one that fires first before signing", () => {
+  const got = { token: BASE_USDC, paused: false, expiry: BigInt(NOW + 10), dailyCap: 5_000_000n, perPurchaseCap: 2_000n, remainingToday: 1_500n, allowanceLeft: 9_000n };
+  assert.equal(describeLimiter(LIMITER, got, NOW).bindingLimit, "remaining_today");
+  assert.equal(describeLimiter(LIMITER, { ...got, remainingToday: 9_000_000n }, NOW).bindingLimit, "per_purchase");
+  assert.equal(describeLimiter(LIMITER, { ...got, remainingToday: 9_000_000n, allowanceLeft: 800n }, NOW).bindingLimit, "allowance_left");
+  assert.equal(describeLimiter(LIMITER, { ...got, remainingToday: 2_000n }, NOW).bindingLimit, "per_purchase", "a tie goes to the per-purchase cap");
+  assert.equal(describeLimiter(LIMITER, { ...got, paused: true }, NOW).bindingLimit, "paused");
+  assert.equal(describeLimiter(LIMITER, { ...got, expiry: BigInt(NOW - 1) }, NOW).bindingLimit, "expired");
+});
+
+test("fitAgainstLimit says whether an amount passes and which limit refuses it", () => {
+  const info = describeLimiter(LIMITER, { token: BASE_USDC, paused: false, expiry: BigInt(NOW + 10), dailyCap: 5_000_000n,
+    perPurchaseCap: 2_000n, remainingToday: 9_000n, allowanceLeft: 1_000n }, NOW);
+  assert.deepEqual(fitAgainstLimit(info, "1000"), { fits: true });
+  assert.deepEqual(fitAgainstLimit(info, "1500"), { fits: false, reason: "over_allowance_left" });
+  assert.deepEqual(fitAgainstLimit(info, "2500"), { fits: false, reason: "over_per_purchase_cap" });
+  assert.deepEqual(fitAgainstLimit({ ...info, paused: true }, "1"), { fits: false, reason: "limiter_paused" });
+  assert.deepEqual(fitAgainstLimit({ ...info, expired: true }, "1"), { fits: false, reason: "limiter_expired" });
 });
 
 test("offersAgainstLimit marks Base offers fits or not, with a reason; Solana is not checked", () => {
@@ -126,6 +146,7 @@ test("a 402 with X-SingIt-Limiter carries the limit in a header and the body, an
   const body = await response.json();
   assert.deepEqual(body.singitSpendLimit, header);
   assert.equal(header.limiter, LIMITER); assert.equal(header.remainingTodayAtomic, "1200"); assert.equal(header.spendableNowAtomic, "1200");
+  assert.equal(header.bindingLimit, "remaining_today", "the 402 says which limit fires before the agent signs");
   const accepts = decode(response.headers.get("payment-required")).accepts;
   assert.equal(header.offers.length, accepts.length);
   const uptoBase = header.offers.find((o) => o.scheme === "upto" && o.network === BASE);
@@ -181,6 +202,23 @@ test("exact: the receipt's charge is the flat ceiling; with the limiter header t
   assert.equal(receipt.chargedAtomic, flat);
   assert.equal(receipt.limit.limiter, LIMITER);
   assert.equal(receipt.limit.remainingTodayBeforeAtomic, "4000000");
+  assert.equal(receipt.limit.perPurchaseCapAtomic, "2000"); assert.equal(receipt.limit.dailyCapAtomic, "5000000");
+  assert.equal(receipt.limit.bindingLimit, "per_purchase");
+  assert.equal(receipt.limit.chargeFitted, BigInt(flat) <= 2_000n);
+  if (!receipt.limit.chargeFitted) assert.equal(receipt.limit.reason, "over_per_purchase_cap");
+  assert.equal(receipt.limit.owner, undefined);
+});
+
+test("receiptFor: a charge the peeked snapshot would not have allowed is named, settlement untouched", () => {
+  const peeked = describeLimiter(LIMITER, { token: BASE_USDC, paused: false, expiry: BigInt(NOW + 10), dailyCap: 5_000_000n,
+    perPurchaseCap: 2_000n, remainingToday: 1_000n, allowanceLeft: 9_000n }, NOW);
+  const payment = encode({ accepted: { amount: "1500", network: BASE, scheme: "exact" } });
+  const req = { get: (k) => (k === "payment-signature" ? payment : undefined) };
+  const over = receiptFor(req, { locals: {} }, { success: true, transaction: "0xtx" }, peeked);
+  assert.equal(over.chargedAtomic, "1500"); assert.equal(over.tx, "0xtx");
+  assert.deepEqual([over.limit.bindingLimit, over.limit.chargeFitted, over.limit.reason], ["remaining_today", false, "over_remaining_today"]);
+  const fits = receiptFor(req, { locals: { singitReceipt: { chargedAtomic: "900" } } }, { success: true, transaction: "0xtx" }, peeked);
+  assert.equal(fits.limit.chargeFitted, true); assert.equal(fits.limit.reason, undefined);
 });
 
 test("an answer that is not settled (>= 400) has no receipt", async (t) => {

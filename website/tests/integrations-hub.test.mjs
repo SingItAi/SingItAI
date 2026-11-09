@@ -78,7 +78,7 @@ test('honest status and forbidden text', () => {
   assert.match(page,/Not published to npm; install from a Git checkout/);
 });
 
- test("hub distinguishes prepared 18-tool catalogue from dated live checks", () => {
-  assert.match(page, /Repository version: 18 MCP tools, including keyless chat_free and paid chat/);
+ test("hub distinguishes prepared 19-tool catalogue from dated live checks", () => {
+  assert.match(page, /Repository version: 19 MCP tools, including keyless chat_free, paid chat and get_allowance/);
   assert.match(page, /served after the next gateway restart/);
 });

@@ -59,4 +59,4 @@ Each URL returned HTTP 200 when fetched on 31 October 2026.
 - Website: `node --test website/tests/*.test.mjs` and `node scripts/generate-model-pages.mjs --check` pass on the build machine (Node 24.22.1).
 - Not tested: the key-authenticated variant (`https://app.singitai.app/v1` with an `sk_singit_` key), any paid x402 call from these libraries, AgentKit.
 
-Repository version: 18 MCP tools, including keyless chat_free and paid chat; served after the next gateway restart. The dated checks above observed the previous 16-tool server.
+Repository version: 19 MCP tools, including keyless chat_free, paid chat and get_allowance; served after the next gateway restart. The dated checks above observed the previous 16-tool server.

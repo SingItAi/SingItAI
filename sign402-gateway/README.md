@@ -565,7 +565,7 @@ Base-only for now: a Solana account's key gets a clear refusal. Nothing here can
 (no Bitrefill, no wallet/allowance tools beyond the read-only `get_limits` — changing them stays out of MCP for now, v2 at the earliest).
 
 Every `tools/list` entry carries a `title` and MCP annotations (`readOnlyHint`, `destructiveHint`,
-`idempotentHint`, `openWorldHint`). All 18 tools are read-only and non-destructive: paid ones debit the
+`idempotentHint`, `openWorldHint`). All 19 tools are read-only and non-destructive: paid ones debit the
 key's limits but never touch external state. `get_price`, `list_price_symbols`, `list_models`,
 `get_balance`, `get_limits` and `get_receipts` read SingIt's own data, so they are idempotent and not open-world; every paid tool bills again on each call
 (not idempotent) and reaches third-party data (open-world). `chat_free` also consumes allowance and reaches an external model, so it is not idempotent and is open-world.
