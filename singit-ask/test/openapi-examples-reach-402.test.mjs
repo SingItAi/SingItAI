@@ -69,6 +69,22 @@ test("paid OpenAPI JSON examples reach an unpaid 402 and all paid paths are disc
   const doc = await (await fetch(`${url}/openapi.json`)).json();
   const discovery = await (await fetch(`${url}/.well-known/x402`)).json();
   const discoverable = new Set(discovery.resources.map(resource => new URL(resource).pathname));
+  assert.equal(discovery.resourceDetails.length, discovery.resources.length);
+  for (const detail of discovery.resourceDetails) {
+    const path = new URL(detail.resource).pathname;
+    assert.ok(discovery.resources.includes(detail.resource), `${path}: resource listed`);
+    const price = detail.price;
+    assert.ok(price, `${path}: WK price`);
+    assert.ok(["dynamic", "fixed"].includes(price.mode), `${path}: price mode`);
+    assert.equal(price.currency, "USD");
+    for (const key of ["min", "max"]) {
+      assert.equal(typeof price[key], "string", `${path}: ${key} string`);
+      assert.match(price[key], /^\d+(?:\.\d+)?$/, `${path}: ${key} decimal`);
+    }
+    assert.ok(Number(price.min) <= Number(price.max), `${path}: price bounds`);
+    if (price.mode === "fixed") assert.equal(price.min, price.max, `${path}: fixed price`);
+    assert.deepEqual(price, doc.paths[path].post["x-payment-info"].price, `${path}: OpenAPI/WK price parity`);
+  }
   const checked = [];
   const skipped = [];
   for (const [path, item] of Object.entries(doc.paths)) {
@@ -81,7 +97,19 @@ test("paid OpenAPI JSON examples reach an unpaid 402 and all paid paths are disc
     const response = await fetch(`${url}${path}`, { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify(media.example) });
     assert.equal(response.status, 402, `${path}: OpenAPI example must reach payment`);
-    assert.ok(response.headers.get("payment-required"), `${path}: payment challenge header`);
+    const header = response.headers.get("payment-required");
+    assert.ok(header, `${path}: payment challenge header`);
+    const challenge = JSON.parse(Buffer.from(header, "base64").toString("utf8"));
+    for (const key of ["input", "output"]) {
+      const value = challenge.extensions?.bazaar?.info?.[key];
+      assert.ok(value && typeof value === "object" && !Array.isArray(value)
+        && Object.keys(value).length > 0, `${path}: non-empty structured Bazaar ${key}`);
+    }
+    const price = discovery.resourceDetails.find(detail => new URL(detail.resource).pathname === path).price;
+    for (const accept of challenge.accepts) {
+      const amount = Number(accept.amount) / 1e6;
+      assert.ok(amount >= Number(price.min) && amount <= Number(price.max), `${path}: example amount within WK price`);
+    }
     await response.arrayBuffer();
     checked.push(path);
   }
@@ -89,6 +117,7 @@ test("paid OpenAPI JSON examples reach an unpaid 402 and all paid paths are disc
     "/v1/images/image2image", "/v1/audio/generations", "/v1/audio/sound-effects", ...Object.keys(SEARCH_ROUTES),
     ...Object.keys(FORMAT_ROUTES), ...modelRoutePaths(), ...MODEL_ALIAS_ROUTES.map(aliasPath)]) assert.ok(checked.includes(path), `${path} example checked`);
   assert.deepEqual(skipped, [], "this configuration has JSON examples for every paid operation");
+  t.diagnostic(`WK price coverage: ${discovery.resourceDetails.length}/${discovery.resources.length}; paid examples checked: ${checked.length}; example gaps: ${skipped.length}`);
   assert.equal(upstreamCalls(), 0);
   assert.equal(facilitator.calls.verify, 0);
   assert.deepEqual(facilitator.calls.settle, []);

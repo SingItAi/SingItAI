@@ -832,7 +832,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   });
 
   // Free: how directories (x402scan, agents) find the paid route. x402scan reads this first, then /.well-known/x402.
-  app.get("/openapi.json", open, async (req, res) => {
+  // Both discovery documents use this builder so per-model and media prices cannot drift.
+  async function openapiDocument(req) {
     const price = await priceRange(catalogue);
     const editMax = usd(imagePrice(await editCeiling(catalogue), SOLANA).totalAtomic);
     const embeddingMax = usd(imagePrice(await embeddingCeiling(catalogue, config), SOLANA).totalAtomic);
@@ -1165,11 +1166,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       document.paths[aliasPath(model)] = { post: { ...base, operationId: `aliasImage${model.id.replace(/[^a-zA-Z0-9]/g, "_")}`,
         summary: `Generate images with ${model.name}`, description: aliasDescription(model), requestBody } };
     }
-    res.json(document);
-  });
+    return document;
+  }
+  app.get("/openapi.json", open, async (req, res) => res.json(await openapiDocument(req)));
   const audioRoutes = () => config.audioSold && config.audioDiscoverable
     ? [...new Set(availableAudioPrices(config, catalogue).map(m => m.route))] : [];
-  app.get("/.well-known/x402", open, (req, res) => {
+  app.get("/.well-known/x402", open, async (req, res) => {
+    const { paths } = await openapiDocument(req);
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
                          ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, ...audioRoutes().map(path => `${origin(req)}${path}`),
@@ -1177,7 +1180,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                          ...aliasPaths(catalogue).map((route) => `${origin(req)}${route}`),
                          ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
-      resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
+      resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`,
+        price: paths[path].post["x-payment-info"].price, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
         ...(!audioRoutes().includes(path) && path !== VIDEO_ROUTE ? routeCopy(path) : {}), ...(EXTRA_PAID.includes(path) ? { outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT } : {}) })),
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
