@@ -7,6 +7,7 @@ import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 // payment is verified, Surplus makes the audio, and only then is the payment settled: no audio, no charge. The audio
 // is checked against the requested format (mp3 by default), with what was charged in the X-SingIt-* headers.
 import crypto from "node:crypto";
+import { execFile } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
 import https from "node:https";
@@ -49,6 +50,24 @@ export function matchesSpeechFormat(audio, format = "mp3") {
     default: return false;
   }
 }
+// Pipes keep audio out of temporary files; cap both runtime and buffered output.
+export function transcodeWavToMp3(wavBuffer) {
+  return new Promise((resolve, reject) => {
+    const child = execFile("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "wav", "-i", "pipe:0",
+      "-map", "0:a:0", "-vn", "-codec:a", "libmp3lame", "-f", "mp3", "pipe:1"],
+    { encoding: "buffer", timeout: 15_000, killSignal: "SIGKILL", maxBuffer: 20 * 1024 * 1024 }, (error, audio) => {
+      if (error) return reject(new Error("Speech transcoding failed."));
+      if (!audio.length || !matchesSpeechFormat(audio, "mp3")) return reject(new Error("Invalid transcoded MP3."));
+      resolve(audio);
+    });
+    child.stdin.on("error", () => {
+      child.kill("SIGKILL");
+      reject(new Error("Speech transcoding input failed."));
+    });
+    child.stdin.end(wavBuffer);
+  });
+}
+
 const FEES = { [BASE]: TERMS.settlementFeeAtomic, [SOLANA]: SOLANA_TERMS.settlementFeeAtomic };
 
 export class SpeechError extends Error {
@@ -121,7 +140,7 @@ export const SPEECH_JSON_SCHEMA = { type: "object", required: ["object", "model"
 export const SPEECH_REQUEST_BODY = () => ({ required: true, content: { "application/json": {
   schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
 
-export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, resolveHostname = lookup, log = console.error, open }) {
+export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, resolveHostname = lookup, ffmpeg = transcodeWavToMp3, log = console.error, open }) {
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new ExactEvmScheme())
     .register(SOLANA, new ExactSvmScheme());
@@ -222,6 +241,17 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
     }
     const type = response.headers.get("content-type") ?? "";
     const format = actualFormat ?? request.response_format ?? "mp3";
+    if (response.ok && format === "mp3" && !matchesSpeechFormat(audio, format) && matchesSpeechFormat(audio, "wav")) {
+      const inputBytes = audio.length;
+      try {
+        const mp3 = await ffmpeg(audio);
+        if (!Buffer.isBuffer(mp3) || !mp3.length || !matchesSpeechFormat(mp3, "mp3")) throw new Error("Invalid MP3");
+        audio = mp3;
+        log(`singit-ask: voice model ${request.model} transcoded WAV to mp3 (${inputBytes} in bytes, ${audio.length} out bytes)`);
+      } catch {
+        log(`singit-ask: voice model ${request.model} WAV to mp3 transcoding failed (${inputBytes} in bytes, 0 out bytes)`);
+      }
+    }
     const pcmError = format === "pcm" && /(?:json|text|html)/i.test(type);
     if (!response.ok || !audio.length || !matchesSpeechFormat(audio, format) || pcmError) {
       log(`singit-ask: voice model ${request.model} answered HTTP ${response.status} (format ${format}, upstream content-type ${JSON.stringify(type)}, ${audio.length} bytes, first4 ${audio.subarray(0, 4).toString("hex")})`);

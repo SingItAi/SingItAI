@@ -548,3 +548,16 @@ no Solana enablement, paid call, deployment or environment edit.
 Verification: focused audio tests 14/14; full singit-ask 755/756 (known solana-direct
 @solana/kit env miss on this worktree, same as main here). Production remains off
 pending operator OK, merge/deploy and SINGIT_ASK_AUDIO_SOLD=1.
+Post-competition speech delivery fix (2026-11-09), branch `fix/speech-wav-as-mp3`,
+commit `fix(speech): transcode upstream WAV for MP3 delivery`: synchronous speech
+requests for default/explicit MP3, including json/b64_json envelopes, now convert
+upstream WAV to MP3 before validation and settlement. This extends imported SingIt
+speech delivery; it adds no payment route or Solana functionality. The system
+ffmpeg helper uses pipes, a 15-second timeout and a 20 MiB output limit. Conversion
+failure or invalid output keeps the existing 503/no-charge behavior; discovery
+continues to advertise b64_json with MP3.
+Verification: speech and paid-fallback suites pass (97 tests), including binary and
+JSON conversion, no settlement on failed/empty/invalid conversion, MP3 bypass, and
+real system ffmpeg conversion of a generated PCM WAV. Requires ffmpeg with
+libmp3lame on the runtime PATH; format validation remains a signature check.
+No paid call, deployment or push.
