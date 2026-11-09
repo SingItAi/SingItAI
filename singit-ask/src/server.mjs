@@ -23,6 +23,7 @@
 //                              ~/.config/singit-ask/guard-shares.json
 //   SINGIT_ASK_STATS_FILE      persistent private counters, default ~/.config/singit-ask/health-stats.json
 //   SINGIT_ASK_OWN_PAYERS_FILE optional own payers, one per line with # comments
+//   SINGIT_ASK_TEST_FORCE_FAIL_A test only, default off: "1" lets an own payer's X-SingIt-Test-Force-Fail-A: 1 fail model A once
 //   SINGIT_ASK_X402LIST_PROOF_FILE optional x402-list ownership proof file, read on each request
 //   SINGIT_ASK_NOHUMANS_CLAIM_FILE optional nohumans.directory claim token file, read on each request
 //   SINGIT_ASK_FREE_MODELS     models answered free as "free/<id>" (comma-separated); unset means six default free models,
