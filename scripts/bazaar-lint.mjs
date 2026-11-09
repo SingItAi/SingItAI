@@ -48,7 +48,7 @@ export const INSTRUCTION_PATTERNS = [
 ];
 
 // Routes whose answer is not JSON, so there is no JSON output example to publish.
-const NO_JSON_OUTPUT = new Map([["/v1/audio/speech", /^audio\//], ["/v1/audio/sound-effects", /^audio\//], ["/v1/audio/generations", /^audio\//]]);
+const NO_JSON_OUTPUT = new Map([["/v1/audio/sound-effects", /^audio\//], ["/v1/audio/generations", /^audio\//]]);
 
 const decode = (header) => JSON.parse(Buffer.from(header, "base64").toString("utf8"));
 const strings = (value, out = []) => {
