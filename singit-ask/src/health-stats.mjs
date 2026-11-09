@@ -55,12 +55,14 @@ function validState(s) {
     && object(o.routes) && Object.keys(o.routes).length <= ROUTE_CAP
     && Object.entries(o.routes).every(([key, n]) => (key === "other" || /^\/[^\s]{0,200}$/.test(key)) && count(n));
   const refusals = o => object(o) && Object.entries(o).every(([k, n]) => PAYMENT_ERROR_CODES.includes(k) && count(n));
-  return object(s) && (s.agent_traffic === undefined || validTraffic(s.agent_traffic)) && (s.paymentFailures === undefined || refusals(s.paymentFailures)) && (s.c402 === undefined || c402(s.c402)) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
+  const phases = o => o === undefined || (object(o) && Object.entries(o).every(([k, v]) => ["verify", "settle"].includes(k) && refusals(v)));
+  const windows = o => o === undefined || (object(o) && Object.entries(o).every(([k, n]) => ["unverified", "budget", "timeout", "late"].includes(k) && count(n)));
+  return object(s) && phases(s.paymentFailurePhases) && windows(s.windowRefusals) && (s.agent_traffic === undefined || validTraffic(s.agent_traffic)) && (s.paymentFailures === undefined || refusals(s.paymentFailures)) && (s.c402 === undefined || c402(s.c402)) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
     && hashes(s.payers, PAYER_CAP) && typeof s.capped === "boolean" && totals(s.totals)
     && models(s.models, modelLast) && networks(s.networks, last) && object(s.buckets)
     && Object.keys(s.buckets).length <= RETENTION_HOURS
     && Object.entries(s.buckets).every(([key, b]) => Number.isFinite(Date.parse(key)) && object(b)
-      && (b.agent_traffic === undefined || validTraffic(b.agent_traffic)) && (b.paymentFailures === undefined || refusals(b.paymentFailures)) && (b.c402 === undefined || c402(b.c402)) && models(b.models, modelCounts) && networks(b.networks, counts) && totals(b.totals)
+      && (b.agent_traffic === undefined || validTraffic(b.agent_traffic)) && (b.paymentFailures === undefined || refusals(b.paymentFailures)) && phases(b.paymentFailurePhases) && windows(b.windowRefusals) && (b.c402 === undefined || c402(b.c402)) && models(b.models, modelCounts) && networks(b.networks, counts) && totals(b.totals)
       && hashes(b.payers, BUCKET_PAYER_CAP) && typeof b.capped === "boolean");
 }
 export class HealthStats {
@@ -119,12 +121,29 @@ export class HealthStats {
   }
   recordAgent(req) { try { recordTraffic(this, req); } catch {} }
 
-  recordPaymentFailure({ code } = {}) {
+  recordPaymentFailure({ code, phase } = {}) {
     try {
       if (!PAYMENT_ERROR_CODES.includes(code)) return;
       for (const target of [this.state, this.bucket()]) {
         target.paymentFailures ??= {};
         target.paymentFailures[code] = (target.paymentFailures[code] || 0) + 1;
+        // Private only (/internal/stats): before the model (verify) or after it (settle). The code is the only label.
+        if (phase === "verify" || phase === "settle") {
+          target.paymentFailurePhases ??= {};
+          const p = target.paymentFailurePhases[phase] ??= {};
+          p[code] = (p[code] || 0) + 1;
+        }
+      }
+      this.changed();
+    } catch {}
+  }
+  // Solana exact answers refused for running out of their window (solana-exact-window.mjs), by phase. Private only.
+  recordWindowRefusal(phase) {
+    try {
+      if (!["unverified", "budget", "timeout", "late"].includes(phase)) return;
+      for (const target of [this.state, this.bucket()]) {
+        target.windowRefusals ??= {};
+        target.windowRefusals[phase] = (target.windowRefusals[phase] || 0) + 1;
       }
       this.changed();
     } catch {}
@@ -385,6 +404,14 @@ export function privateStatsBody(stats) {
   return { schema: 1, generated_at: n.generated_at, since: n.since,
     external_payers: { unique: n.unique_payers, paid_calls: fields(n.paid_calls), usdc: fields(n.usdc_volume) },
     own_payments_excluded: n.own_payments_excluded, own_payers_configured: n.own_payers_configured, counts_basis: n.counts_basis,
+    payment_failures_by_phase: Object.fromEntries(["verify", "settle"].map(phase => {
+      const sum = entries => Object.fromEntries(PAYMENT_ERROR_CODES.map(code =>
+        [code, entries.reduce((n, b) => n + (b?.paymentFailurePhases?.[phase]?.[code] || 0), 0)]));
+      return [phase, { total: sum([stats.state]), last_24h: sum(stats.window(24)), last_7d: sum(stats.window(168)) }];
+    })),
+    solana_exact_window_refusals: Object.fromEntries([["total", [stats.state]], ["last_24h", stats.window(24)], ["last_7d", stats.window(168)]]
+      .map(([k, entries]) => [k, Object.fromEntries(["unverified", "budget", "timeout", "late"].map(p =>
+        [p, entries.reduce((n, b) => n + (b?.windowRefusals?.[p] || 0), 0)]))])),
     issued_402: { total: total.result, last_24h: day.result, last_7d: week.result,
       by_route: { total: total.routes, last_24h: day.routes, last_7d: week.routes } },
     note: "402s count responses, not unique clients. post = POST challenge; probe = GET/HEAD discovery; refused = 402 without PAYMENT-REQUIRED. Windows use UTC hourly buckets. Own unique hashes are removed retroactively; calls and volume before configuration still include own payments." };

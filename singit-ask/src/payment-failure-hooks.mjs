@@ -26,22 +26,31 @@ export function attachPaymentFailureCodes(server) {
   };
   server.onVerifyFailure(record("verify"));
   const verify = record("verify");
-  server.onAfterVerify(ctx => { try { if (ctx?.result?.isValid === false) verify(ctx); } catch {} });
+  server.onAfterVerify(ctx => {
+    try {
+      if (ctx?.result?.isValid === false) return verify(ctx);
+      // When this payment's verification succeeded: Solana `exact` gives the model a window from here
+      // (solana-exact-window.mjs).
+      const store = paymentFailureContext.getStore();
+      if (store && ctx?.result?.isValid === true)
+        store.verified = { at: (store.clock ?? Date).now(), network: ctx.requirements?.network, scheme: ctx.requirements?.scheme };
+    } catch {}
+  });
   server.onSettleFailure(record("settle"));
   return server;
 }
-export function paymentCodesMiddleware({ stats, log } = {}) {
+export function paymentCodesMiddleware({ stats, log, clock } = {}) {
   return (_req, res, next) => {
-    const store = {}, json = res.json.bind(res);
+    const store = { clock }, json = res.json.bind(res);
     let recorded = false;
     res.json = body => {
       if (res.statusCode === 402 && store.failure && body
           && [Object.prototype, null].includes(Object.getPrototypeOf(body))) {
-        const { code, network } = store.failure;
+        const { code, network, phase } = store.failure;
         body = { ...body, code, action: ACTIONS[code], message: messageFor(code, network) };
         if (!recorded) {
           recorded = true;
-          try { stats?.recordPaymentFailure({ code, network }); } catch {}
+          try { stats?.recordPaymentFailure({ code, network, phase }); } catch {}
         }
       }
       // errorCodesMiddleware supplies a legacy 409 default inside this wrapper.

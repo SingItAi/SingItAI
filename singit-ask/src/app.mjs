@@ -551,7 +551,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                                       url: config.surplusUrl, fetchImpl, blocked: config.blockedProviders ?? [],
                                       suspensionsFile: config.suspensionsFile, guardSharesFile: config.guardSharesFile, neverHide: [config.model, ...Object.values(AUTO_CONFIG.tiers).flat(), ...freeTerms(config).models], unservableTtlMs: config.unservableTtlMs }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }),
-                                    spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null }) {
+                                    spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null,
+                                    clock }) {
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
   fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log, responseLimits: {
     [`${config.surplusUrl}/v1/music/generations`]: 256 * 1024,
@@ -570,7 +571,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");
   app.use(errorCodesMiddleware);
-  app.use(paymentCodesMiddleware({ stats: app.locals.healthStats, log }));
+  // `clock` (tests only) times the Solana exact window from verification (solana-exact-window.mjs).
+  app.use(paymentCodesMiddleware({ stats: app.locals.healthStats, log, clock }));
   app.use((req, res, next) => {
     res.on("finish", () => {
       try {
@@ -1275,13 +1277,16 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Every answer that came back teaches the price shown for its model. It never delays or fails the answer.
   const learning = async (config_, messages, maxTokens, fetchImpl_, model = config.model, options) => {
     let answer;
+    // Inside a Solana exact window the route records the outcome the payer actually got (metered.mjs): an answer the
+    // window discarded is not a success, and a cut-off call is one failure, not none or two.
+    const recordsOutcome = options?.windowObserved !== true;
     try { answer = await upstream(config_, messages, maxTokens, fetchImpl_, model, options); }
     catch (error) {
-      try { app.locals.healthStats.recordModel(model, { ok: false, code: error.code, status: error.status }); } catch {}
+      if (recordsOutcome) try { app.locals.healthStats.recordModel(model, { ok: false, code: error.code, status: error.status }); } catch {}
       throw error;
     }
     catalogue?.noteAnswered?.(model);
-    try { app.locals.healthStats.recordModel(model, { ok: true, retried: answer.retried }); } catch {}
+    if (recordsOutcome) try { app.locals.healthStats.recordModel(model, { ok: true, retried: answer.retried }); } catch {}
     catalogue?.resolve(model, { allowUnpriced: true }).then((list) => {
       if (list.priceBasis === "reference") {
         const usage = answer.usage;
