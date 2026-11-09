@@ -37,6 +37,7 @@ import { UnknownModel, ModelCatalogue, priceGuard, unservableError } from "./cat
 import { normalizeAgent, toolCalls } from "./agent-chat.mjs";
 import { AGENT_LIMITS, LIMITS } from "./limits.mjs";
 import { ObservedPrices } from "./observed.mjs";
+import { paymentRequiredHeaderMiddleware } from "./payment-required-header.mjs";
 import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { CREDIT_ROUTE, addCreditRoute } from "./credit.mjs";
@@ -651,6 +652,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
 
   // The caller's own spend limit in the 402 (X-SingIt-Limiter) and a receipt on every settled answer: only headers
   // and the 402's body; no price, offer or settlement changes. Before every paid route below.
+  app.use(paymentRequiredHeaderMiddleware({ log }));
   app.use(spendLimitMiddleware({ reader: spendLimits, log }));
 
   const pricing = { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS };

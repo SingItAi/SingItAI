@@ -80,7 +80,7 @@ for (const [path, body] of [['/v1/images/edits', edit], ['/v1/images/edits', { .
     assert.equal(challenge.status, 402);
     const required = decode(challenge.headers.get('payment-required'));
     assert.deepEqual(required.accepts.map(a => a.network), [BASE, SOLANA]);
-    assert.ok(required.extensions.bazaar.schema.properties.output.properties.example);
+    assert.ok((await challenge.json()).extensions.bazaar.schema.properties.output.properties.example);
     const headers = payment(required, network);
     assert.equal((await post(url + path, body, headers)).status, 200);
     assert.equal(facilitator.calls.settle.length, 1);
