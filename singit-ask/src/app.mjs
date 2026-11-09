@@ -714,6 +714,17 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       res.sendStatus(404);
     }
   });
+  app.get("/.well-known/nohumans-claim", open, async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (!config.nohumansClaimFile) return res.sendStatus(404);
+    try {
+      const token = (await readFile(config.nohumansClaimFile, "utf8")).trim();
+      if (!token) return res.sendStatus(404);
+      res.type("text/plain").send(token);
+    } catch {
+      res.sendStatus(404);
+    }
+  });
   const discoveryCatalog = () => buildCatalog({ catalogue, config, free, searchEnabled: !!exaKey,
         chatPrice: m => pricingFor(config, catalogue, m.id),
         extraPrice: async (model, modality) => {
@@ -1139,6 +1150,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           responses: {
             200: { description: "Ownership proof", content: { "text/plain": { schema: { type: "string" } } } },
             404: { description: "Ownership proof unavailable" },
+          } } },
+        "/.well-known/nohumans-claim": { get: { operationId: "getNohumansClaim", security: [], summary: "Get nohumans.directory claim token (plain text)",
+          responses: {
+            200: { description: "Claim token", content: { "text/plain": { schema: { type: "string" } } } },
+            404: { description: "Claim token unavailable" },
           } } },
         "/v1/catalog": { get: {
           operationId: "listCatalog", security: [], summary: "List all currently sold modalities, payment access and prices",
