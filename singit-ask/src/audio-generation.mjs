@@ -87,7 +87,7 @@ export const audioOpenapi = (paidErrors, invalidResponse) => Object.fromEntries(
   return [route, { post: { operationId: i ? 'createMusic' : 'createSoundEffects', summary: i ? 'Generate music from a text prompt' : 'Generate sound effects from text',
     description: `Exact per job on Base only (Solana is refused): list price + 30% + network fee. Audio bytes, as with speech. Server polls up to ${i ? 180 : 60} seconds, then downloads at most ${i ? 25 : 5} MiB; any failure returns 503 without settlement. See ${MEDIA_MODELS_ROUTE} for prices and capabilities.`,
     security: [{ x402: [] }],
-    'x-payment-info': { price: { mode: 'dynamic', currency: 'USD', min: String(Math.min(...prices)), max: String(Math.max(...prices)) }, protocols: [{ x402: {} }] },
+    'x-payment-info': { price: { mode: Math.min(...prices) === Math.max(...prices) ? 'fixed' : 'dynamic', currency: 'USD', min: String(Math.min(...prices)), max: String(Math.max(...prices)) }, protocols: [{ x402: {} }] },
     requestBody: { required: true, content: { 'application/json': { schema: audioSchema(kind), example: audioExample(kind) } } },
     responses: { 200: { description: 'Validated audio bytes; Content-Type follows detected audio format.', content: Object.fromEntries(['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/flac', 'audio/aac', 'audio/mp4'].map(t => [t, { schema: { type: 'string', format: 'binary' } }])) },
       ...paidErrors({ exactTimeout: i ? 240 : 120, duplicate: true, noAnswer: 'No audio; no settlement', exampleMessage: 'No audio was delivered. You were not charged.', exampleCode: 'no_billable_answer' }), 422: invalidResponse } } }];

@@ -23,6 +23,7 @@ const EXTRA_PAID = ["/v1/images/edits", "/v1/images/image2image", "/v1/embedding
 
 import { parseBestDiscount } from "./reject-log.mjs";
 import express from "express";
+import { readFile } from "node:fs/promises";
 import { addAgentFiles } from "./agent-files.mjs";
 import { AUTO_CONFIG, AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback, attachPaidAlternates } from "./auto-router.mjs";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -700,6 +701,16 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
   });
   app.get("/favicon.ico", open, (_req, res) => res.redirect(302, ICON_URL));
+  app.get("/.well-known/x402list.txt", open, async (_req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (!config.x402listProofFile) return res.sendStatus(404);
+    try {
+      const proof = await readFile(config.x402listProofFile, "utf8");
+      res.type("text/plain").send(proof);
+    } catch {
+      res.sendStatus(404);
+    }
+  });
   const discoveryCatalog = () => buildCatalog({ catalogue, config, free, searchEnabled: !!exaKey,
         chatPrice: m => pricingFor(config, catalogue, m.id),
         extraPrice: async (model, modality) => {
@@ -888,7 +899,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   });
 
   // Free: how directories (x402scan, agents) find the paid route. x402scan reads this first, then /.well-known/x402.
-  app.get("/openapi.json", open, async (req, res) => {
+  // Both discovery documents use this builder so per-model and media prices cannot drift.
+  async function openapiDocument(req) {
     const price = await priceRange(catalogue);
     const editMax = usd(imagePrice(await editCeiling(catalogue), SOLANA).totalAtomic);
     const embeddingMax = usd(imagePrice(await embeddingCeiling(catalogue, config), SOLANA).totalAtomic);
@@ -994,7 +1006,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           security: [{ x402: [] }],
         } }, "/v1/images/models": { get: { operationId: "listImageModels", summary: "List image models and their prices",
           responses: { 200: { description: "Model list" } }, security: [] } },
-          ...(config.audioSold ? { ...audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))),
+          ...(config.audioSold && config.audioDiscoverable ? audioOpenapi(paidErrors, errorBody("Invalid request input", ERROR_SCHEMA, errorExample("invalid_request_error", "Invalid input", "invalid_request"))) : {}),
+          ...(config.audioSold ? {
           [MEDIA_MODELS_ROUTE]: { get: { operationId: "listGenerationAudioModels", security: [], summary: "List music and sound effect models with exact prices", responses: { 200: { description: "Pinned per-job prices and model metadata" } } } } } : {}),
           [SPEECH_ROUTE]: { post: {
             operationId: "createSpeech", summary: "Generate speech with any listed voice model",
@@ -1007,7 +1020,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           } },
           "/v1/audio/models": { get: { operationId: "listAudioModels", summary: "List speech and transcription models with prices",
             responses: { 200: { description: "Model list" } }, security: [] } },
-          ...(config.videoSold ? {
+          ...(config.videoSold && config.videoDiscoverable ? {
           [VIDEO_ROUTE]: { post: {
             operationId: "createVideo", summary: "Generate a video clip with any of 30+ text-to-video models",
             description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio, fallback. "
@@ -1083,6 +1096,11 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           } },
         "/favicon.ico": { get: { operationId: "getFavicon", security: [], summary: "Get the SingIt icon redirect",
           responses: { 302: { description: "Redirect to the public SingIt icon" } } } },
+        "/.well-known/x402list.txt": { get: { operationId: "getX402listProof", security: [], summary: "Get x402-list ownership proof (plain text)",
+          responses: {
+            200: { description: "Ownership proof", content: { "text/plain": { schema: { type: "string" } } } },
+            404: { description: "Ownership proof unavailable" },
+          } } },
         "/v1/catalog": { get: {
           operationId: "listCatalog", security: [], summary: "List all currently sold modalities, payment access and prices",
           parameters: [{ name: "modality", in: "query", schema: { type: "string", enum: [...MODALITIES, ...new Set(availableAudioPrices(config, catalogue).map(m => m.kind === 'music' ? 'music' : 'sound_effects')), ...(config.videoSold === true ? ['video'] : [])] } }],
@@ -1225,11 +1243,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       document.paths[aliasPath(model)] = { post: { ...base, operationId: `aliasImage${model.id.replace(/[^a-zA-Z0-9]/g, "_")}`,
         summary: `Generate images with ${model.name}`, description: aliasDescription(model), requestBody } };
     }
-    res.json(document);
-  });
+    return document;
+  }
+  app.get("/openapi.json", open, async (req, res) => res.json(await openapiDocument(req)));
   const audioRoutes = () => config.audioSold && config.audioDiscoverable
     ? [...new Set(availableAudioPrices(config, catalogue).map(m => m.route))] : [];
-  app.get("/.well-known/x402", open, (req, res) => {
+  app.get("/.well-known/x402", open, async (req, res) => {
+    const { paths } = await openapiDocument(req);
     res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
                          ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, ...audioRoutes().map(path => `${origin(req)}${path}`),
@@ -1237,7 +1257,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                          ...aliasPaths(catalogue).map((route) => `${origin(req)}${route}`),
                          ...modelRoutePaths(catalogue).map((route) => `${origin(req)}${route}`)] : []),
         ...(exaKey ? Object.keys(SEARCH_ROUTES).map((route) => `${origin(req)}${route}`) : [])],
-      resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
+      resourceDetails: discoverableRoutes().map(path => ({ resource: `${origin(req)}${path}`,
+        price: paths[path].post["x-payment-info"].price, networks: audioRoutes().includes(path) ? [BASE] : [BASE, SOLANA],
         ...(!audioRoutes().includes(path) && path !== VIDEO_ROUTE ? routeCopy(path) : {}), ...(EXTRA_PAID.includes(path) ? { outputSchema: path === "/v1/embeddings" ? EMBEDDING_OUTPUT : EDIT_OUTPUT } : {}) })),
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
