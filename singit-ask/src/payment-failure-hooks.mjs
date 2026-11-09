@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { originalVerificationFailure } from "./facilitator-hints.mjs";
-import { PAYMENT_ERROR_CODES, ACTIONS, MESSAGES, classifyPaymentFailure } from "./payment-codes.mjs";
+import { PAYMENT_ERROR_CODES, ACTIONS, messageFor, classifyPaymentFailure } from "./payment-codes.mjs";
 
 export const paymentFailureContext = new AsyncLocalStorage();
 export function attachPaymentFailureCodes(server) {
@@ -47,7 +47,7 @@ export function paymentCodesMiddleware({ stats, log, clock } = {}) {
       if (res.statusCode === 402 && store.failure && body
           && [Object.prototype, null].includes(Object.getPrototypeOf(body))) {
         const { code, network, phase } = store.failure;
-        body = { ...body, code, action: ACTIONS[code], message: MESSAGES[code] };
+        body = { ...body, code, action: ACTIONS[code], message: messageFor(code, network) };
         if (!recorded) {
           recorded = true;
           try { stats?.recordPaymentFailure({ code, network, phase }); } catch {}
@@ -56,7 +56,7 @@ export function paymentCodesMiddleware({ stats, log, clock } = {}) {
       // errorCodesMiddleware supplies a legacy 409 default inside this wrapper.
       const code = body?.code ?? body?.error?.code ?? (typeof body?.error === "string"
         && /^[a-z][a-z0-9_]*$/.test(body.error) ? body.error : res.statusCode === 409 ? "payment_duplicate" : undefined);
-      if (res.statusCode >= 400 && [...PAYMENT_ERROR_CODES, "payment_duplicate", "stale_payment_permit"].includes(code)) res.set("X-SingIt-Error", code);
+      if (res.statusCode >= 400 && [...PAYMENT_ERROR_CODES, "payment_duplicate", "stale_payment_permit", "permit2_allowance_required"].includes(code)) res.set("X-SingIt-Error", code);
       return json(body);
     };
     paymentFailureContext.run(store, next);

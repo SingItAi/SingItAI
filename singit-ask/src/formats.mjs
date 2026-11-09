@@ -7,6 +7,7 @@ import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 import { randomUUID } from "node:crypto";
 import { solanaExactWindow, withinWindow, windowRefusal, WindowExceeded } from "./solana-exact-window.mjs";
+import { reserveChatPayment, reservationRefusal } from "./payment-reservation.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
 // what Claude Code and the Anthropic SDK speak) and OpenAI's Responses (POST /v1/responses). Sold over x402 like the
 // chat route: the payer authorizes a ceiling with `upto`, worked out from the model's list price and the size of the
@@ -254,6 +255,12 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         req.format = { ...input, info, ...priceGuard(catalogue, info.id, bufferPp) };
         req.askCeilings = ceilings(info, req.format, exactOutputFraction);
         quotes.set(req.body, req.askCeilings);
+        // One payment, one answer at a time: an identical copy in flight is refused before verification.
+        const reserved = reserveChatPayment(req, res, route);
+        if (reserved === "duplicate" || reserved === "full") {
+          const { status, body } = reservationRefusal(res, reserved, (s, message, code) => refusal(route, s, message, code));
+          return res.status(status).json(body);
+        }
         next();
       } catch (error) {
         if (error.retryAfter) res.set("Retry-After", String(error.retryAfter));

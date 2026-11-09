@@ -16,7 +16,7 @@ JSON errors retain their existing status, message, type and envelope. OpenAI-com
 | `not_found` | Route or price symbol is unavailable. |
 | `payment_required` | Payment challenge; select an offer and retry with a signature. |
 | `stale_payment_permit` | Your previous payment already spent this permit nonce. Wait for its transaction, then fetch a new 402 and sign again. Nothing was charged for this request. |
-| `payment_unfunded` | Fund the wallet and its token account. Nothing was charged for this request. |
+| `payment_unfunded` | On Base, fund the wallet with enough USDC; on Solana, fund the wallet and its token account. Nothing was charged for this request. |
 | `payment_blockhash_stale` | On Solana, sign again with a fresh blockhash. Nothing was charged for this request. |
 | `payment_replay` | Check the previous result before paying again. Nothing was charged for this request. |
 | `payment_invalid` | Fix the payment before retrying. Nothing was charged for this request. |
@@ -70,7 +70,8 @@ Refused payments keep error: "payment_required" and add a specific code, action 
 
 | Code | Action | What to do | Charged? |
 | --- | --- | --- | --- |
-| `payment_unfunded` | `fund_wallet` | Fund the wallet and its token account. | Nothing was charged for this request. |
+| `payment_unfunded` | `fund_wallet` | Base: fund the wallet with enough USDC on Base. Solana: fund the wallet and its token account. | Nothing was charged for this request. |
+| `permit2_allowance_required` | `use_exact_or_provide_permit` | Base `upto` only: sign an `eip2612GasSponsoring` permit, approve Permit2 for at least the ceiling, or pay the `exact` offer. `details` names the scheme, network and extension. | Nothing was charged; the model did not run. |
 | `payment_blockhash_stale` | `sign_again` | On Solana, sign again with a fresh blockhash. | Nothing was charged for this request. |
 | `payment_replay` | `check_previous_result` | Check the previous result before paying again. | Nothing was charged for this request. |
 | `payment_invalid` | `fix_payment` | Fix the payment before retrying. | Nothing was charged for this request. |

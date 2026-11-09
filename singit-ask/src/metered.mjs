@@ -5,6 +5,7 @@ import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 import { randomUUID } from "node:crypto";
 import { solanaExactWindow, withinWindow, windowRefusal, WindowExceeded } from "./solana-exact-window.mjs";
+import { reserveChatPayment, reservationRefusal } from "./payment-reservation.mjs";
 // Pay for actual usage: the payer authorizes a ceiling with x402 `upto`, and CDP settles only what the
 // answer cost, after it came back. A request that ends in 400 or above is never charged.
 //
@@ -358,6 +359,13 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       }
       req.askCeilings = ceilings(req.askInput.info, req.askInput, exactOutputFraction);
       quotes.set(req.body, req.askCeilings);
+      // One payment, one answer at a time: an identical copy in flight is refused before verification.
+      const reserved = reserveChatPayment(req, res, route);
+      if (reserved === "duplicate" || reserved === "full") {
+        const { status, body } = reservationRefusal(res, reserved, (_s, message, code) =>
+          ({ error: { type: code === "payment_duplicate" ? "invalid_request_error" : "upstream_error", code, message } }));
+        return res.status(status).json(body);
+      }
       next();
     } catch (error) {
       if (error.retryAfter) res.set("Retry-After", String(error.retryAfter));
