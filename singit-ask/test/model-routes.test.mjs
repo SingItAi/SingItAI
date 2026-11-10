@@ -202,6 +202,29 @@ test("GET / and /llms.txt list all 19 model routes", async (t) => {
   for (const route of modelRoutePaths()) assert.ok(llmsTxt.includes(`POST ${url}${route}`), route);
 });
 
+test("a pinned model route matches /v1/chat/completions for tools and agent token limits", async (t) => {
+  const { url, asked } = await serve(t);
+  const path = routePath(CHEAP.id);
+  const hello = [{ role: "user", content: "Hello" }];
+  const tool = { type: "function", function: { name: "lookup", description: "Look up", parameters: { type: "object", properties: {} } } };
+  const offers = (r) => decode(r.headers.get("payment-required")).accepts.map((a) => [a.scheme, a.network, a.amount, a.payTo]);
+  for (const extra of [{}, { max_tokens: 200 }, { max_tokens: 1200 }, { max_tokens: 4000 }, { max_tokens: 8192 }, { max_tokens: 99999 }, { tools: [tool] }]) {
+    const body = { model: CHEAP.id, messages: hello, ...extra };
+    const base = await post(`${url}${ROUTE}`, body);
+    const pinned = await post(`${url}${path}`, body);
+    const omitted = await post(`${url}${path}`, { messages: hello, ...extra });
+    assert.equal(base.status, 402, JSON.stringify(extra));
+    assert.equal(pinned.status, 402, JSON.stringify(extra));
+    assert.deepEqual(offers(pinned), offers(base), JSON.stringify(extra));
+    assert.deepEqual(offers(omitted), offers(base), JSON.stringify(extra));
+  }
+  const required = decode((await post(`${url}${path}`, { messages: hello, max_tokens: 99999, tools: [tool] })).headers.get("payment-required"));
+  const paid = await post(`${url}${path}`, { messages: hello, max_tokens: 99999, tools: [tool] }, pay(required, BASE));
+  assert.equal(paid.status, 200);
+  assert.equal(asked.at(-1).model, CHEAP.id);
+  assert.equal(asked.at(-1).maxTokens, 8192);
+});
+
 test("/v1/chat/completions keeps taking model in the body, unaffected by the per-model routes", async (t) => {
   const { url, asked } = await serve(t);
   const required = decode((await post(`${url}${ROUTE}`, { model: CHEAP.id, messages: [{ role: "user", content: "Hi" }] }))
@@ -221,6 +244,8 @@ test("pinned route schemas exclude generic-only fields while generic chat retain
     for (const fields of [schema.properties, challenge.extensions.bazaar.schema.properties.input.properties.body.properties]) {
       assert.ok(!Object.hasOwn(fields, "fallback_models"), route);
       assert.ok(!Object.hasOwn(fields, "min_tier"), route);
+      assert.ok(fields.tools, route);
+      assert.equal(fields.max_tokens.maximum, 8192, route);
     }
   }
   assert.ok(doc.paths[ROUTE].post.requestBody.content["application/json"].schema.properties.fallback_models);

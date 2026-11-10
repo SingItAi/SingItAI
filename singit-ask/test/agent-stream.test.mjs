@@ -80,7 +80,7 @@ test('traffic fixed sources, windows, persistence, old and invalid files', () =>
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('per-model SSE retains legacy limits; chat usage is opt-in', async t => {
+test('per-model SSE uses agent limits; chat usage is opt-in', async t => {
   const id = 'deepseek-v4.1-flash';
   const catalogue = { async list() { return []; }, async resolve() { return { id, promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 }; }, async canAnswer() { return true; } };
   const { url, asked } = await serve(t, { catalogue });
@@ -90,7 +90,7 @@ test('per-model SSE retains legacy limits; chat usage is opt-in', async t => {
     const res = await url(body, { 'payment-signature': signature(decode(quote.headers.get('payment-required')), BASE, 'upto') }, path);
     assert.equal(res.status, 200); const events = frames(await res.text());
     assert.equal(events.length, 3); assert.equal(events.at(-1), '[DONE]'); assert.ok(events[1].billing);
-    assert.equal(asked.at(-1).maxTokens, path === '/v1/chat/completions' ? 8000 : 1200);
+    assert.equal(asked.at(-1).maxTokens, 8000);
   }
 });
 

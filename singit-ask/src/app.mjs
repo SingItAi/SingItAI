@@ -477,7 +477,7 @@ function perMillionFor(m, observed, market) {
 // `charsPerToken: 1` matches the `upto` authorization this max actually describes (see pricing.mjs's
 // `ceilingAtomic`): the loosest input estimate, so a dense worst-case prompt is never quoted below what it costs.
 export async function priceRange(catalogue) {
-  const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 };
+  const size = { chars: AGENT_LIMITS.chars, maxTokens: AGENT_LIMITS.maxTokens, messageCount: AGENT_LIMITS.messages, charsPerToken: 1 };
   const listed = catalogue ? await catalogue.list().catch(() => []) : [];
   const most = listed.reduce((top, m) => {
     const c = BigInt(ceilingAtomic(m, size, SOLANA_TERMS));
@@ -1072,8 +1072,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } }])) : {}),
         // Per-model routes (#66) answer the same errors as /v1/chat/completions minus the free tier's 429, plus 404
         // for a model the catalogue does not list; documented with the shared JSON error shapes (SI-63).
-        ...(catalogue ? Object.fromEntries(Object.entries({ ...await chatAliasOpenapiPaths(catalogue, { inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }), ...await modelOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA,
-          outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }) }).map(([route, item]) => [route,
+        ...(catalogue ? Object.fromEntries(Object.entries({ ...await chatAliasOpenapiPaths(catalogue, { inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }), ...await modelOpenapiPaths(catalogue, { inputSchema: baseInputSchema,
+          outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }) }).map(([route, item]) => [route,
           { post: { ...item.post, responses: { 200: item.post.responses[200],
             ...paidErrors({ notFound: "This model is not available; nothing was charged",
                             noAnswer: "No billable answer came back; nothing was charged", reasoning: true }) } } }])) : {}),
@@ -1550,8 +1550,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
-  if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
-    inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
+  // Pinned chat routes take the same agent envelope as /v1/chat/completions and the aliases (tools, content
+  // blocks, 8192-token cap); only fallback_models / min_tier stay off, because the model is in the path.
+  if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: body => readRequest(body, { agent: true, allowFallback: false }), upstream: learning, fetchImpl, log,
+    inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Aliases read a request as /v1/chat/completions does, so the same body gets the same limits and the same price.
   if (catalogue) addModelAliasRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: body => readRequest(body, { agent: true, allowFallback: false }), upstream: learning, fetchImpl, log,
     inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });

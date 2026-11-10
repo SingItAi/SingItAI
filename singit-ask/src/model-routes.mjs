@@ -133,7 +133,7 @@ export async function modelPriceRange(catalogue, model) {
     ? await catalogue.resolve(model.id).catch(() => null)
     : null;
   if (!info) return null;
-  const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 };
+  const size = { chars: AGENT_LIMITS.chars, maxTokens: AGENT_LIMITS.maxTokens, messageCount: AGENT_LIMITS.messages, charsPerToken: 1 };
   return { min: usd(TERMS.settlementFeeAtomic), max: usd(ceilingAtomic(info, size, SOLANA_TERMS)) };
 }
 
@@ -142,11 +142,12 @@ export async function modelPriceRange(catalogue, model) {
 // Registered only when there is a catalogue to resolve models against, same gate as addFormatRoutes/addImageRoutes.
 // Pinned routes ignore fallback_models and cannot select singit/auto for min_tier.
 // max_tokens says what it does to the price: the cap a payer signs follows it (so the example's 400 quotes less than a
-// larger value), and anything above LIMITS.maxTokens counts as LIMITS.maxTokens. No dollar figures: they follow the seller market.
-const modelInputSchema = (schema, config = {}) => ({ ...schema, description: probeNote(400, config),
+// larger value), and anything above AGENT_LIMITS.maxTokens counts as AGENT_LIMITS.maxTokens. No dollar figures: they follow the seller market.
+const modelInputSchema = (schema, config = {}) => ({ ...schema,
+  description: probeNote(400, config).replace(`above ${LIMITS.maxTokens} counts as ${LIMITS.maxTokens}`, `above ${AGENT_LIMITS.maxTokens} counts as ${AGENT_LIMITS.maxTokens}`),
   properties: Object.fromEntries(Object.entries(schema.properties).filter(([name]) => !["fallback_models", "min_tier"].includes(name))
     .map(([name, property]) => [name, name !== "max_tokens" ? property : { ...property,
-      description: `The longest answer, in tokens; ${LIMITS.maxTokens} is the most, and a larger value counts as ${LIMITS.maxTokens}. `
+      description: `The longest answer, in tokens; ${AGENT_LIMITS.maxTokens} is the most, and a larger value counts as ${AGENT_LIMITS.maxTokens}. `
         + "The ceiling grows with it (the 402 states the amount to sign for your request); the charge follows what was used." }])),
 });
 
@@ -200,7 +201,7 @@ export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, 
     const own = await modelPriceRange(catalogue, model);
     return [pathFor(model), { post: {
       operationId: prefix + operationId(model), summary: `Generate a ${model.name} chat completion`, description: describe(model),
-      "x-payment-info": { notes: probeNote(400, config), price: { mode: "dynamic", currency: "USD", ...(own ?? fallbackPrice) }, protocols: [{ x402: {} }] },
+      "x-payment-info": { notes: inputSchema.description ?? probeNote(400, config), price: { mode: "dynamic", currency: "USD", ...(own ?? fallbackPrice) }, protocols: [{ x402: {} }] },
       requestBody: { required: true, content: { "application/json": {
         schema: { type: "object", ...schemaOf(inputSchema, model) }, example: modelExample(model) } } },
       responses: {

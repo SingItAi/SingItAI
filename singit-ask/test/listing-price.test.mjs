@@ -55,7 +55,8 @@ test('list probes bound every audit mismatch across live shares, verbs, networks
       ge(probes[0], real, path);
       // Baseline POST formula: unchanged parser + chooser/guard + ceilings, independent of probe policy.
       const input = path === '/v1/messages' || path === '/v1/responses'
-        ? readFormatRequest(path, example) : readRequest(example);
+        ? readFormatRequest(path, example)
+        : readRequest(example, path.startsWith('/v1/chat/') ? { agent: true, allowFallback: path === '/v1/chat/completions' } : {});
       const chosen = path === '/v1/chat/completions' ? await chooseModel(CONFIG, catalogue, input)
         : path.startsWith('/v1/chat/') ? await chooseModelRoute(catalogue, example.model, 1, input)
           : { ...input, info: await catalogue.resolve(input.model), ...priceGuard(catalogue, input.model, 1) };
@@ -70,20 +71,23 @@ test('list probes bound every audit mismatch across live shares, verbs, networks
   assert.equal(facilitator.calls.verify, 0); assert.deepEqual(facilitator.calls.settle, []);
 });
 
-test('1200 probe budget bounds verifier 2000 requests; default listing only promises example sizes', async t => {
+test('default listing only promises example sizes; pinned requests clamp at 8192', async t => {
   const normal = await serve(t, catalogue, { probeShare: 'list' });
   const raised = await serve(t, catalogue, { probeShare: 'list', probeMaxTokens: 1200 });
   share = 1;
   for (const id of ['claude-opus-5.5', 'gpt-5.5', 'qwen3.8-max-0902']) {
     const path = '/v1/chat/' + id;
     const example = modelExample(MODEL_ROUTES.find(m => m.id === id));
+    const capped = buckets(decode(await post(normal.url + path, { ...example, max_tokens: 1200 })));
     const real = buckets(decode(await post(normal.url + path, { ...example, max_tokens: 2000 })));
     const probe = buckets(decode(await fetch(normal.url + path)));
     assert.ok(Object.keys(real).some(k => real[k] > probe[k]), id);
-    ge(buckets(decode(await fetch(raised.url + path))), real, id);
+    assert.ok(Object.keys(real).some(k => real[k] > capped[k]), id);
+    ge(buckets(decode(await fetch(raised.url + path))), capped, id);
     const op = (await (await fetch(normal.url + '/openapi.json')).json()).paths[path].post;
-    assert.match(op['x-payment-info'].notes, /above 1200 counts as 1200/);
+    assert.match(op['x-payment-info'].notes, /above 8192 counts as 8192/);
     assert.equal(readRequest({ ...example, max_tokens: 2000 }).maxTokens, 1200);
+    assert.equal(readRequest({ ...example, max_tokens: 20000 }, { agent: true }).maxTokens, 8192);
   }
   share = undefined;
 });
