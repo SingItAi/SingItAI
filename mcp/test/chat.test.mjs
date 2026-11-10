@@ -40,6 +40,7 @@ test("singit_chat pays the 402 from a wallet it creates and returns the 200 comp
   assert.deepEqual(merchant.requests.map(r => r.status), [402, 200]);
   assert.equal(merchant.requests[0].headers["payment-signature"], undefined);
   assert.equal(merchant.requests[0].headers.authorization, undefined);
+  assert.match(merchant.requests[0].headers["x-singit-client"] ?? "", /^singit-mcp\//);
 
   // The payment was signed by the wallet persisted on first use, and the key stayed out of the result.
   const wallet = await call("singit_wallet", { action: "status" });

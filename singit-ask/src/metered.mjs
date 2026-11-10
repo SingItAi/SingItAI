@@ -30,6 +30,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, publicTerms, publicBilling, ceilingAtomic, minDiscountFor, exactReserveTokens,
   DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
+import { clientSource } from "./agent-traffic.mjs";
 
 // The price shown for the model, metered by what the answer actually used, plus the network's settlement fee. Solana's upto escrows the ceiling, then
 // settles the actual amount and refunds the rest: two transactions, hence its higher fee.
@@ -295,10 +296,11 @@ export function addPaymentRoute(app, routes, server,
             .find(([key]) => key.toLowerCase() === SETTLEMENT_OVERRIDES_HEADER.toLowerCase())?.[1];
           amountOverridden = JSON.parse(raw)?.amount !== undefined;
         } catch {}
+        const req = ctx.transportContext?.request?.adapter?.req;
         app.locals?.healthStats?.recordSettlement({ route, network: ctx.requirements?.network,
           scheme: ctx.requirements?.scheme, ok: ok && ctx.result?.success !== false,
           amount: ctx.result?.amount ?? ((ctx.requirements?.scheme === "exact" || amountOverridden) ? ctx.requirements?.amount : undefined),
-          payer: ctx.result?.payer });
+          payer: ctx.result?.payer, source: req ? clientSource(req) : undefined });
       } catch {}
     };
     server.onAfterSettle(record(true)); server.onSettleFailure(record(false));

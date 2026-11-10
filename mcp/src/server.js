@@ -9,6 +9,19 @@ import { SingIt, NETWORKS } from "@singitai/sdk";
 import { loadWallet, loadOrCreateWallet, sessionPath, NETWORK } from "./wallet.js";
 
 export const VERSION = "0.1.0";
+
+function withClientHeader(fetchImpl, value) {
+  return (input, init) => {
+    if (typeof Request !== "undefined" && input instanceof Request) {
+      const headers = new Headers(input.headers);
+      if (!headers.has("x-singit-client")) headers.set("x-singit-client", value);
+      return fetchImpl(new Request(input, { headers }), init);
+    }
+    const headers = new Headers(init?.headers);
+    if (!headers.has("x-singit-client")) headers.set("x-singit-client", value);
+    return fetchImpl(input, { ...init, headers });
+  };
+}
 export const DEFAULT_ASK_URL = "https://ask.singitai.app";
 export const DEFAULT_APP_URL = "https://app.singitai.app";
 export const DEFAULT_MODEL = "deepseek-v4.1-flash";
@@ -52,6 +65,7 @@ async function failedBody(response) {
 export function createServer({ env = process.env, fetchImpl = fetch } = {}) {
   const config = readConfig(env);
   const limits = { maxPerCallUsd: config.maxPerCallUsd, maxPerDayUsd: config.maxPerDayUsd };
+  fetchImpl = withClientHeader(fetchImpl, `singit-mcp/${VERSION}`);
   const server = new McpServer({ name: "singit", version: VERSION });
 
   // One SingIt per process: its per-day ceiling is counted in memory on the instance.
