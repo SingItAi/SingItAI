@@ -18,7 +18,7 @@ import { reserveChatPayment, reservationRefusal } from "./payment-reservation.mj
 // names become Surplus's) and a bounded answer length. Buffered SSE is serialized only after a whole answer is ready.
 import { x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
-import { UptoSvmScheme } from "@x402/svm/upto/server";
+import { createUptoSvmServerScheme } from "./upto-svm-claim.mjs";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
@@ -227,7 +227,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
     const server = new x402ResourceServer(facilitatorClient)
       .register(BASE, new UptoEvmScheme())
       .register(BASE, new ExactEvmScheme())
-      .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300, rpcUrl: config.solanaRpcUrl }))
+      .register(SOLANA, createUptoSvmServerScheme({ withdrawDelay: 300, rpcUrl: config.solanaRpcUrl }))
       .register(SOLANA, new ExactSvmScheme());
     attachPaymentFailureCodes(server);
     // Discovery prices the example at list share by default; real POSTs below retain priceGuard.

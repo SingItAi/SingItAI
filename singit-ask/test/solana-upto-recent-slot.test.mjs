@@ -33,7 +33,7 @@ test("server config and resource servers pass solanaRpcUrl into UptoSvmScheme", 
   assert.match(server, /solanaRpcUrl:\s*\(process\.env\.SINGIT_ASK_SOLANA_RPC_URL/);
   for (const file of ["metered.mjs", "formats.mjs"]) {
     const src = readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8");
-    assert.match(src, /new UptoSvmScheme\(\{\s*withdrawDelay:\s*300,\s*rpcUrl:\s*config\.solanaRpcUrl\s*\}\)/);
+    assert.match(src, /createUptoSvmServerScheme\(\{\s*withdrawDelay:\s*300,\s*rpcUrl:\s*config\.solanaRpcUrl\s*\}\)/);
   }
 });
 

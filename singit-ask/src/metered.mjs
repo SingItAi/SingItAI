@@ -25,7 +25,7 @@ import { permitGuard as defaultPermitGuard } from "./permit-guard.mjs";
 import { withBuilderCode } from "./builder-code.mjs";
 import { acceptedOf, answerLogFor, recordWhenSettled } from "./answer-log.mjs";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
-import { UptoSvmScheme } from "@x402/svm/upto/server";
+import { createUptoSvmServerScheme, attachUptoSvmClaimGuards } from "./upto-svm-claim.mjs";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic, minDiscountFor, exactReserveTokens,
@@ -242,6 +242,7 @@ const signedExtension = (extension, field) => typeof extension?.info?.[field] ==
 const statsServers = new WeakSet(), statsRoutes = new WeakMap();
 export function addPaymentRoute(app, routes, server,
   { discoverable = true, log = console.log, permitGuard = defaultPermitGuard, publicClient, allowanceTimeoutMs = 3_000 } = {}) {
+  attachUptoSvmClaimGuards(server);
   const paths = statsRoutes.get(server) ?? new Set();
   for (const key of Object.keys(routes)) if (key.startsWith("POST ")) paths.add(key.slice(5));
   statsRoutes.set(server, paths);
@@ -405,7 +406,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
   const server = new x402ResourceServer(facilitatorClient)
     .register(BASE, new UptoEvmScheme())
     .register(BASE, new ExactEvmScheme())
-    .register(SOLANA, new UptoSvmScheme({ withdrawDelay: 300, rpcUrl: config.solanaRpcUrl }))
+    .register(SOLANA, createUptoSvmServerScheme({ withdrawDelay: 300, rpcUrl: config.solanaRpcUrl }))
     .register(SOLANA, new ExactSvmScheme());
   attachPaymentFailureCodes(server);
   // An unreadable question, or a model that is not offered, is refused before any payment is asked for.
