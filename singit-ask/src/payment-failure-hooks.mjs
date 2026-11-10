@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { originalVerificationFailure } from "./facilitator-hints.mjs";
-import { PAYMENT_ERROR_CODES, ACTIONS, messageFor, classifyPaymentFailure } from "./payment-codes.mjs";
+import { PAYMENT_ERROR_CODES, ACTIONS, messageFor, classifyPaymentFailure, missingFor, nextAction, unfundedMessage } from "./payment-codes.mjs";
 
 export const paymentFailureContext = new AsyncLocalStorage();
 export function attachPaymentFailureCodes(server) {
@@ -21,7 +21,10 @@ export function attachPaymentFailureCodes(server) {
         const reason = typeof failure.errorReason === "string" ? failure.errorReason : "";
         if (!reason || failure.transaction || /pending|time(?:d)? ?out|unavailable|unexpected|settlement failed|unknown reason/i.test(text + " " + reason)) return;
       }
-      store.failure = { code: classifyPaymentFailure({ message: text }), phase, network };
+      const code = classifyPaymentFailure({ message: text });
+      // Only the derived "what is missing", never the facilitator's text, outlives this hook.
+      store.failure = { code, phase, network, amount: ctx.requirements?.amount,
+        ...(code === "payment_unfunded" ? { missing: missingFor(text, network) } : {}) };
     } catch {}
   };
   server.onVerifyFailure(record("verify"));
@@ -46,8 +49,11 @@ export function paymentCodesMiddleware({ stats, log, clock } = {}) {
     res.json = body => {
       if (res.statusCode === 402 && store.failure && body
           && [Object.prototype, null].includes(Object.getPrototypeOf(body))) {
-        const { code, network, phase } = store.failure;
-        body = { ...body, code, action: ACTIONS[code], message: messageFor(code, network) };
+        const { code, network, phase, amount, missing } = store.failure;
+        body = code === "payment_unfunded"
+          ? { ...body, code, action: ACTIONS[code], message: unfundedMessage({ missing, amount, network }),
+            next_action: nextAction({ type: ACTIONS[code], missing, amount, network }) }
+          : { ...body, code, action: ACTIONS[code], message: messageFor(code, network) };
         if (!recorded) {
           recorded = true;
           try { stats?.recordPaymentFailure({ code, network, phase }); } catch {}

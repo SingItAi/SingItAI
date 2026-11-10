@@ -540,7 +540,9 @@ const PAYMENT_REQUIRED = (exactTimeout) => ({ description: "Payment Required: th
     challenge: { value: { x402Version: 2, accepts: exactTimeout ? exactExampleOffers(exactTimeout) : chatExampleOffers,
       error: "payment_required", code: "payment_required" } },
     unfunded: { value: { error: "payment_required", code: "payment_unfunded", action: "fund_wallet",
-      message: "Fund the wallet and its token account. Nothing was charged for this request." } },
+      message: "Fund the wallet with at least 0.01 USDC on Base (eip155:8453). Nothing was charged for this request.",
+      next_action: { type: "fund_wallet", missing: "USDC", amountAtomic: "10000", amountUsd: 0.01,
+        network: "eip155:8453", asset: "USDC", docs: "https://singitai.app/docs/errors/" } } },
   } } } });
 const BAD_REQUEST = "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged";
 const TOO_LARGE = "The JSON body is over 128 kB; nothing was charged";

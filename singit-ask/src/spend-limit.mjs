@@ -13,6 +13,7 @@
 import { parseAbi } from "viem";
 import { SETTLEMENT_OVERRIDES_HEADER } from "@x402/core/server";
 import { randomUUID } from "node:crypto";
+import { nextAction } from "./payment-codes.mjs";
 
 export const LIMITER_HEADER = "x-singit-limiter";
 export const LIMIT_HEADER = "X-SingIt-Spend-Limit";
@@ -176,12 +177,20 @@ export function spendLimitMiddleware({ reader = null, log = () => {} } = {}) {
             if (challenge?.error === "permit2_allowance_required") res.statusCode = 402;
             body = { ...body, error: body.error ?? "payment_required", code: body.code ?? "payment_required",
               ...(challenge?.accepts ? { x402Version: challenge.x402Version, accepts: challenge.accepts } : {}) };
-            if (challenge?.error === "permit2_allowance_required") body = { ...body,
-              error: "permit2_allowance_required", code: "permit2_allowance_required",
-              message: "Include an EIP-2612 permit or approve Permit2 for at least the ceiling. Nothing was charged.",
-              action: "use_exact_or_provide_permit",
-              details: { scheme: "upto", network: "eip155:8453", extension: "eip2612GasSponsoring" },
-              request_id: `req_${randomUUID()}` };
+            if (challenge?.error === "permit2_allowance_required") {
+              // The ceiling the payer signed, else the Base upto offer in the challenge. Never the Permit2 address.
+              const signed = decodeHeader(req.get("payment-signature") ?? req.get("x-payment"))?.accepted;
+              const upto = [signed, ...(Array.isArray(challenge.accepts) ? challenge.accepts : [])]
+                .find(a => a?.scheme === "upto" && a?.network === "eip155:8453");
+              body = { ...body,
+                error: "permit2_allowance_required", code: "permit2_allowance_required",
+                message: "Include an EIP-2612 permit or approve Permit2 for at least the ceiling. Nothing was charged.",
+                action: "use_exact_or_provide_permit",
+                details: { scheme: "upto", network: "eip155:8453", extension: "eip2612GasSponsoring" },
+                next_action: nextAction({ type: "approve_allowance", missing: "permit2_allowance",
+                  amount: upto?.amount === undefined ? undefined : String(upto.amount), network: "eip155:8453" }),
+                request_id: `req_${randomUUID()}` };
+            }
             if (limit) body = { ...body, singitSpendLimit: offersAgainstLimit(limit, seen ?? []) };
           } catch { /* keep the body */ }
         }
