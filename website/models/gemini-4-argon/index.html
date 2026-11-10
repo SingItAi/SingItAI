@@ -181,7 +181,7 @@
 <p>One short message, max_tokens 800 (30 characters), 12 input tokens. upto settles actual usage, so a real answer normally costs less; exact is flat, with no refund.</p><div class="table-wrap"><table class="mtable"><thead><tr><th scope="col">Network</th><th scope="col">upto ceiling (USD)</th><th scope="col">exact flat price (USD)</th></tr></thead><tbody><tr><th scope="row">Base</th><td>$0.0015</td><td>$0.0015</td></tr>
 <tr><th scope="row">Solana</th><td>$0.002277</td><td>$0.002116</td></tr></tbody></table></div><p>Prices as of 2026-11-10 12:03:14 UTC (snapshot of ask.singitai.app/v1/models and /pricing.json). Live: <a href="https://ask.singitai.app/v1/models">/v1/models</a> and <a href="https://ask.singitai.app/pricing.json">/pricing.json</a>. Live values are authoritative and the 402 response states the exact price.</p>
 </div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Call it with x402</h2>
-<div class="code"><pre><code>curl -i -X POST https://ask.singitai.app/v1/chat/completions \
+<div class="code"><pre><code>curl -i -X POST https://ask.singitai.app/v1/chat/gemini-4-argon \
   -H &#39;Content-Type: application/json&#39; \
   -d &#39;{&quot;model&quot;:&quot;gemini-4-argon&quot;,&quot;max_tokens&quot;:400,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;Say hello in one sentence.&quot;}]}&#39;</code></pre></div>
 <p>The unpaid POST returns HTTP 402 and a PAYMENT-REQUIRED header: base64 JSON, x402 v2. Sign one offer (upto first, then exact; Base then Solana) and retry the same request with the PAYMENT-SIGNATURE header. HTTP 200 returns choices[0].message.content and billing.totalAtomic.</p>
