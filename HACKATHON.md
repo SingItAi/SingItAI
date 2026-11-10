@@ -573,3 +573,22 @@ Post-competition speech delivery fix (2026-11-09), branch `fix/speech-wav-mp3-tr
 synchronous speech requests for default/explicit MP3, including json/b64_json envelopes,
 convert upstream WAV to MP3 via system ffmpeg before validation and settlement.
 Conversion failure keeps 503/no-charge. Discovery stays b64_json/mp3.
+
+### November 11: Codex harness in the existing SingIt proxy
+
+Post-competition SingIt harness work on `feat/singit-codex`, recorded by commit
+subject `feat(proxy): translate OpenAI /v1/responses and add singit-codex launcher`.
+This extends the existing SingIt proxy and shared session wallet; it is not new
+Solana functionality. The Responses translator maps text and function calls onto
+Ask chat completions, resolves auto models through a cached free catalog, and
+emits ordered Responses SSE with final usage. Unpayable Responses requests return
+HTTP 402 JSON. The thin Base-only launcher writes a separate SingIt profile,
+preserves the base Codex config, and stops its child and proxy on signals.
+
+Verification: `cd proxy && npm test` passed 62/62 (zero failures, skips or
+cancellations), using a local merchant and fake Codex only. The proxy package
+content assertion passed with both new source files included. Limitations:
+streaming is buffered, reasoning/non-chat input items are dropped, conversation
+storage is unsupported, and separate profile loading plus remote MCP auth still
+require manual compatibility checks with real Codex. No live paid calls,
+production Codex turns, publication, deployment, push or PR were performed.

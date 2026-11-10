@@ -70,7 +70,7 @@ export function startMerchant({ offer, funded = true, acceptBearer, freeSse = fa
       ...extra,
     });
     if (req.method === "GET" && req.url === "/v1/models") {
-      return reply(200, { object: "list", data: [{ id: "deepseek-v4.1-flash", object: "model" }] });
+      return reply(200, { object: "list", default: "deepseek-v4.1-flash", data: [{ id: "deepseek-v4.1-flash", object: "model" }] });
     }
     if (req.method !== "POST" || req.url !== "/v1/chat/completions") return reply(404, { error: "Not found." });
     if (acceptBearer && req.headers.authorization === `Bearer ${acceptBearer}`) return reply(200, completion({}));
