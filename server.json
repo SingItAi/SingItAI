@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "app.singitai/singit",
   "title": "SingIt x402",
-  "description": "Chat with AI models, web search, page reading and market data, inside owner-set key limits (USDC).",
-  "version": "0.1.5",
+  "description": "Chat, web search, page reading and market data; owner-set daily and per-request key limits (USDC).",
+  "version": "0.1.6",
   "websiteUrl": "https://singitai.app/developers/",
   "repository": {
     "url": "https://github.com/SingItAi/singit-mcp",

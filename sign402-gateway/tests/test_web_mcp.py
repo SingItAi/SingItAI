@@ -1288,7 +1288,7 @@ class HttpTests(Fixture):
         self.assertEqual(len(card["tools"]), 19)
         self.assertLessEqual(len(card["description"]), 200)
         self.assertEqual(card["serverInfo"]["version"], SERVER_INFO["version"])
-        self.assertEqual(SERVER_INFO["version"], "0.1.5")
+        self.assertEqual(SERVER_INFO["version"], "0.1.6")
         self.assertEqual(card["documentationUrl"], "https://singitai.app/docs/mcp/")
         self.assertNotIn("bubon-ik", card["documentationUrl"])
         self.assertEqual(card, server_card(URI))
