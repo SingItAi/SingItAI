@@ -3,6 +3,7 @@
 // translating to Ask's /v1/chat/completions. It holds the wallet, signs x402, and never
 // treats HTTP 402 as a successful completion or message.
 import http from "node:http";
+import { resolveModel, isAlias } from "./models.js";
 import { SingIt, NETWORKS } from "@singitai/sdk";
 import { loadOrCreateWallet, loadWallet, sessionPath, NETWORK } from "@singitai/session-wallet";
 import { readConfig, assertNetworkAllowed, VERSION } from "./config.js";
@@ -70,7 +71,7 @@ export function routeUpstream(urlPath, body) {
   if (path === "/v1/chat/completions") return { path, body: body ?? {} };
   const pinned = path.match(/^\/v1\/chat\/([^/]+)$/);
   if (pinned && pinned[1] !== "completions") {
-    return { path: "/v1/chat/completions", body: { ...(body ?? {}), model: body?.model || pinned[1] } };
+    return { path: "/v1/chat/completions", body: { ...(body ?? {}), model: body?.model || decodeURIComponent(pinned[1]) } };
   }
   const alias = path.match(/^\/v1\/models\/([^/]+)\/chat$/);
   if (alias) {
@@ -266,7 +267,7 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
       try {
         // Validate before any upstream I/O.
         const preview = responsesToChatCompletions(body, { modelMap: config.modelMap });
-        const models = ["auto", "singit/auto"].includes(preview.model) ? await catalog() : undefined;
+        const models = isAlias(preview.model) ? await catalog() : undefined;
         const openaiBody = responsesToChatCompletions(body, { modelMap: config.modelMap, catalog: models });
         const response = await upstreamChat(payer(), openaiBody);
         return await sendChatResponse(res, response, { streaming: body.stream === true, format: "responses" });
@@ -301,6 +302,8 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
     }
 
     try {
+      const mapped = resolveModel(routed.body.model, { modelMap: config.modelMap });
+      routed.body.model = resolveModel(routed.body.model, { modelMap: config.modelMap, catalog: isAlias(mapped) ? await catalog() : undefined });
       const response = await upstreamChat(payer(), routed.body);
       return await sendChatResponse(res, response, { streaming: routed.body?.stream === true, format: "openai" });
     } catch (error) {

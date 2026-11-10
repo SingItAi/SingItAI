@@ -341,3 +341,28 @@ test("Responses non-stream upstream errors stay JSON; invalid input never reache
   assert.equal(response.status, 503);
   assert.equal((await response.json()).error.type, "api_error");
 });
+
+test("chat and pinned routes resolve auto/free aliases with one cached catalog", async t => {
+  const { merchant, url } = await listenProxy(t);
+  for (const [model, route] of [["auto", "/v1/chat/completions"], ["singit/auto", "/v1/chat/completions"], [undefined, "/v1/chat/auto"], [undefined, "/v1/models/singit%2Fauto/chat"], ["free", "/v1/chat/completions"], ["singit/free", "/v1/chat/completions"]]) {
+    const response = await post(url, { model, messages: [{ role: "user", content: "Hi" }] }, route);
+    assert.equal(response.status, 200);
+    assert.equal(merchant.requests.at(-1).body.model, model?.includes("free") ? "free/deepseek-v4.1-flash" : "deepseek-v4.1-flash");
+  }
+  assert.equal(merchant.requests.filter(r => r.path === "/v1/models").length, 1);
+});
+
+test("chat mapping precedes catalog aliases; catalog failure passes the mapped model through", async t => {
+  for (const offline of [false, true]) {
+    const { merchant, url } = await listenProxy(t, {
+      extraEnv: { SINGIT_MODEL_MAP: "chosen=auto" },
+      fetchImpl: (url, options) => {
+        if (offline && String(url).endsWith("/v1/models")) throw new Error("offline");
+        return fetch(url, options);
+      },
+    });
+    const response = await post(url, { model: "chosen", messages: [{ role: "user", content: "Hi" }] });
+    assert.equal(response.status, 200);
+    assert.equal(merchant.requests.at(-1).body.model, offline ? "auto" : "deepseek-v4.1-flash");
+  }
+});

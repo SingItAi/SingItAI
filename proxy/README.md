@@ -158,3 +158,7 @@ Use `setup`, `doctor`, `start --no-launch`, `--help`, `--version`, `--client lab
 The launcher is Base only and requires host `127.0.0.1`. Defaults are $0.05/call, $2/day and client `codex`, with user env overrides. The shared wallet remains `~/.singit/session`; only its public funding data and QR are printed. `SINGIT_WALLET_KEY` is removed from the child environment. Standalone proxy and MCP defaults are unchanged.
 
 Responses translation is stateless and buffered; reasoning and non-chat input items are dropped. Function calls and usage are preserved. Auto models resolve against a cached free catalog; on catalog failure the mapped id passes through. HTTP 402 remains a JSON payment error. See [the Codex guide](../docs/codex.md) for profile, MCP and compatibility limits. The future `curl -fsSL https://singitai.app/singit-codex-install | bash` URL is **NOT LIVE**.
+
+## OpenClaw
+
+Not on npm yet. `node src/openclaw.js setup` merges the SingIt provider and MCP config; `start` runs this same proxy with client `openclaw` and launches OpenClaw. `doctor` checks without creating a wallet. Defaults for this installer are $0.05/call and $2/day (user-overridable), while standalone proxy defaults stay $0.01/$1. Primary is unchanged unless `--default-model` is passed. See [OpenClaw setup](../docs/openclaw.md) for backups, `--no-mcp`, `--no-launch`, and local plugin/skill status.

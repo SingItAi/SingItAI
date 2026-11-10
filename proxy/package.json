@@ -27,7 +27,8 @@
   "bin": {
     "singit-proxy": "src/index.js",
     "singit-cc": "src/cc.js",
-    "singit-codex": "src/codex.js"
+    "singit-codex": "src/codex.js",
+    "singit-openclaw": "src/openclaw.js"
   },
   "exports": {
     ".": "./src/server.js"
