@@ -23,7 +23,17 @@ test('every D3 catalog entry has a page, modality, snapshot price, curl and site
 test('generated agent guide lists aliases within the compact guide budget', async () => {
   assert.ok(Buffer.byteLength(await read('llms.txt')) <= 14000);
   const full = await read('llms-models.txt');
-  for (const m of MODEL_ALIAS_ROUTES) assert.ok(full.includes(aliasPath(m)));
+  const catalog = JSON.parse(await read('data/catalog-snapshot.json'));
+  const hold = JSON.parse(await readFile(new URL('../../scripts/hidden-models.json', import.meta.url), 'utf8'));
+  const hidden = new Set(hold.hidden.map((entry) => entry.id));
+  const live = new Set(catalog.data.map((entry) => entry.id));
+  for (const m of MODEL_ALIAS_ROUTES) {
+    if (!live.has(m.id) || hidden.has(m.id)) {
+      assert.ok(!full.includes(aliasPath(m)), m.id);
+      continue;
+    }
+    assert.ok(full.includes(aliasPath(m)), m.id);
+  }
 });
 test('an SI-62 model page calls its /v1/chat/<id> route, with no alias anywhere', async () => {
   const catalog = JSON.parse(await read('data/catalog-snapshot.json'));

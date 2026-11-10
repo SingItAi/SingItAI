@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-11-09T12:08:15.381Z",
+  "fetchedAt": "2026-11-10T12:03:14.294Z",
   "source": "https://ask.singitai.app/v1/catalog",
   "coverage": "Website modalities from the captured catalog; excluded modalities are recorded in the snapshot",
   "excluded": [
@@ -10,7 +10,7 @@
   ],
   "object": "list",
   "counts": {
-    "chat": 218,
+    "chat": 219,
     "image": 54,
     "image_edit": 24,
     "embeddings": 1,
@@ -75,12 +75,12 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1509",
-            "usd": 0.001509
+            "priceAtomic": "2193",
+            "usd": 0.002193
           },
           "solana": {
-            "priceAtomic": "2509",
-            "usd": 0.002509
+            "priceAtomic": "3193",
+            "usd": 0.003193
           }
         },
         "exact": {
@@ -89,8 +89,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2212",
-            "usd": 0.002212
+            "ceilingAtomic": "2496",
+            "usd": 0.002496
           }
         }
       }
@@ -189,22 +189,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "23799",
-            "usd": 0.023799
+            "priceAtomic": "28633",
+            "usd": 0.028633
           },
           "solana": {
-            "priceAtomic": "24799",
-            "usd": 0.024799
+            "priceAtomic": "29633",
+            "usd": 0.029633
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "10490",
-            "usd": 0.01049
+            "ceilingAtomic": "12503",
+            "usd": 0.012503
           },
           "solana": {
-            "ceilingAtomic": "11490",
-            "usd": 0.01149
+            "ceilingAtomic": "13503",
+            "usd": 0.013503
           }
         }
       }
@@ -227,22 +227,60 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "23799",
-            "usd": 0.023799
+            "priceAtomic": "34851",
+            "usd": 0.034851
           },
           "solana": {
-            "priceAtomic": "24799",
-            "usd": 0.024799
+            "priceAtomic": "35851",
+            "usd": 0.035851
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "10490",
-            "usd": 0.01049
+            "ceilingAtomic": "15091",
+            "usd": 0.015091
           },
           "solana": {
-            "ceilingAtomic": "11490",
-            "usd": 0.01149
+            "ceilingAtomic": "16091",
+            "usd": 0.016091
+          }
+        }
+      }
+    },
+    {
+      "id": "claude-fable-5.2",
+      "name": "Claude Fable 5.2",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "access": "x402",
+      "available": true,
+      "router": false,
+      "free": false,
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "37476",
+            "usd": 0.037476
+          },
+          "solana": {
+            "priceAtomic": "38476",
+            "usd": 0.038476
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "16184",
+            "usd": 0.016184
+          },
+          "solana": {
+            "ceilingAtomic": "17184",
+            "usd": 0.017184
           }
         }
       }
@@ -269,8 +307,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2474",
-            "usd": 0.002474
+            "priceAtomic": "2368",
+            "usd": 0.002368
           }
         },
         "exact": {
@@ -279,8 +317,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2143",
-            "usd": 0.002143
+            "ceilingAtomic": "2111",
+            "usd": 0.002111
           }
         }
       },
@@ -382,22 +420,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "32991",
-            "usd": 0.032991
+            "priceAtomic": "31418",
+            "usd": 0.031418
           },
           "solana": {
-            "priceAtomic": "33991",
-            "usd": 0.033991
+            "priceAtomic": "32418",
+            "usd": 0.032418
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "10613",
-            "usd": 0.010613
+            "ceilingAtomic": "10139",
+            "usd": 0.010139
           },
           "solana": {
-            "ceilingAtomic": "11613",
-            "usd": 0.011613
+            "ceilingAtomic": "11139",
+            "usd": 0.011139
           }
         }
       }
@@ -458,22 +496,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "2382",
-            "usd": 0.002382
+            "priceAtomic": "2038",
+            "usd": 0.002038
           },
           "solana": {
-            "priceAtomic": "3382",
-            "usd": 0.003382
+            "priceAtomic": "3038",
+            "usd": 0.003038
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1576",
-            "usd": 0.001576
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2576",
-            "usd": 0.002576
+            "ceilingAtomic": "2432",
+            "usd": 0.002432
           }
         }
       }
@@ -534,12 +572,12 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1526",
-            "usd": 0.001526
+            "priceAtomic": "2312",
+            "usd": 0.002312
           },
           "solana": {
-            "priceAtomic": "2526",
-            "usd": 0.002526
+            "priceAtomic": "3312",
+            "usd": 0.003312
           }
         },
         "exact": {
@@ -548,8 +586,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2159",
-            "usd": 0.002159
+            "ceilingAtomic": "2396",
+            "usd": 0.002396
           }
         }
       }
@@ -572,22 +610,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "3764",
-            "usd": 0.003764
+            "priceAtomic": "4110",
+            "usd": 0.00411
           },
           "solana": {
-            "priceAtomic": "4764",
-            "usd": 0.004764
+            "priceAtomic": "5110",
+            "usd": 0.00511
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "2151",
-            "usd": 0.002151
+            "ceilingAtomic": "2295",
+            "usd": 0.002295
           },
           "solana": {
-            "ceilingAtomic": "3151",
-            "usd": 0.003151
+            "ceilingAtomic": "3295",
+            "usd": 0.003295
           }
         }
       }
@@ -686,22 +724,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "11777",
-            "usd": 0.011777
+            "priceAtomic": "6804",
+            "usd": 0.006804
           },
           "solana": {
-            "priceAtomic": "12777",
-            "usd": 0.012777
+            "priceAtomic": "7804",
+            "usd": 0.007804
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "5487",
-            "usd": 0.005487
+            "ceilingAtomic": "3417",
+            "usd": 0.003417
           },
           "solana": {
-            "ceilingAtomic": "6487",
-            "usd": 0.006487
+            "ceilingAtomic": "4417",
+            "usd": 0.004417
           }
         }
       }
@@ -724,22 +762,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "5353",
-            "usd": 0.005353
+            "priceAtomic": "5768",
+            "usd": 0.005768
           },
           "solana": {
-            "priceAtomic": "6353",
-            "usd": 0.006353
+            "priceAtomic": "6768",
+            "usd": 0.006768
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "2813",
-            "usd": 0.002813
+            "ceilingAtomic": "2986",
+            "usd": 0.002986
           },
           "solana": {
-            "ceilingAtomic": "3813",
-            "usd": 0.003813
+            "ceilingAtomic": "3986",
+            "usd": 0.003986
           }
         }
       }
@@ -838,22 +876,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "5836",
-            "usd": 0.005836
+            "priceAtomic": "4594",
+            "usd": 0.004594
           },
           "solana": {
-            "priceAtomic": "6836",
-            "usd": 0.006836
+            "priceAtomic": "5594",
+            "usd": 0.005594
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "3014",
-            "usd": 0.003014
+            "ceilingAtomic": "2497",
+            "usd": 0.002497
           },
           "solana": {
-            "ceilingAtomic": "4014",
-            "usd": 0.004014
+            "ceilingAtomic": "3497",
+            "usd": 0.003497
           }
         }
       }
@@ -956,8 +994,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2012",
-            "usd": 0.002012
+            "priceAtomic": "2017",
+            "usd": 0.002017
           }
         },
         "exact": {
@@ -966,8 +1004,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2006",
-            "usd": 0.002006
+            "ceilingAtomic": "2008",
+            "usd": 0.002008
           }
         }
       }
@@ -1066,12 +1104,12 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1500",
-            "usd": 0.0015
+            "priceAtomic": "1597",
+            "usd": 0.001597
           },
           "solana": {
-            "priceAtomic": "2206",
-            "usd": 0.002206
+            "priceAtomic": "2597",
+            "usd": 0.002597
           }
         },
         "exact": {
@@ -1080,8 +1118,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2086",
-            "usd": 0.002086
+            "ceilingAtomic": "2249",
+            "usd": 0.002249
           }
         }
       }
@@ -1104,22 +1142,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "2302",
-            "usd": 0.002302
+            "priceAtomic": "2594",
+            "usd": 0.002594
           },
           "solana": {
-            "priceAtomic": "3302",
-            "usd": 0.003302
+            "priceAtomic": "3594",
+            "usd": 0.003594
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1543",
-            "usd": 0.001543
+            "ceilingAtomic": "1663",
+            "usd": 0.001663
           },
           "solana": {
-            "ceilingAtomic": "2543",
-            "usd": 0.002543
+            "ceilingAtomic": "2663",
+            "usd": 0.002663
           }
         }
       }
@@ -1146,8 +1184,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2054",
-            "usd": 0.002054
+            "priceAtomic": "2160",
+            "usd": 0.00216
           }
         },
         "exact": {
@@ -1156,8 +1194,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2024",
-            "usd": 0.002024
+            "ceilingAtomic": "2068",
+            "usd": 0.002068
           }
         }
       }
@@ -1222,8 +1260,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2119",
-            "usd": 0.002119
+            "priceAtomic": "2063",
+            "usd": 0.002063
           }
         },
         "exact": {
@@ -1232,8 +1270,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2050",
-            "usd": 0.00205
+            "ceilingAtomic": "2026",
+            "usd": 0.002026
           }
         }
       }
@@ -1294,12 +1332,12 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1522",
-            "usd": 0.001522
+            "priceAtomic": "1653",
+            "usd": 0.001653
           },
           "solana": {
-            "priceAtomic": "2522",
-            "usd": 0.002522
+            "priceAtomic": "2653",
+            "usd": 0.002653
           }
         },
         "exact": {
@@ -1308,8 +1346,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2158",
-            "usd": 0.002158
+            "ceilingAtomic": "2197",
+            "usd": 0.002197
           }
         }
       }
@@ -1336,8 +1374,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2043",
-            "usd": 0.002043
+            "priceAtomic": "2064",
+            "usd": 0.002064
           }
         },
         "exact": {
@@ -1346,8 +1384,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2013",
-            "usd": 0.002013
+            "ceilingAtomic": "2020",
+            "usd": 0.00202
           }
         }
       }
@@ -1374,8 +1412,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2111",
-            "usd": 0.002111
+            "priceAtomic": "2319",
+            "usd": 0.002319
           }
         },
         "exact": {
@@ -1384,8 +1422,46 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2046",
-            "usd": 0.002046
+            "ceilingAtomic": "2133",
+            "usd": 0.002133
+          }
+        }
+      }
+    },
+    {
+      "id": "e2ee-gemma-3-27b",
+      "name": "Gemma 3 27B E2EE",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "access": "x402",
+      "available": true,
+      "router": false,
+      "free": false,
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "priceAtomic": "2293",
+            "usd": 0.002293
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2089",
+            "usd": 0.002089
           }
         }
       }
@@ -1914,22 +1990,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "2518",
-            "usd": 0.002518
+            "priceAtomic": "2931",
+            "usd": 0.002931
           },
           "solana": {
-            "priceAtomic": "3518",
-            "usd": 0.003518
+            "priceAtomic": "3931",
+            "usd": 0.003931
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1632",
-            "usd": 0.001632
+            "ceilingAtomic": "1805",
+            "usd": 0.001805
           },
           "solana": {
-            "ceilingAtomic": "2632",
-            "usd": 0.002632
+            "ceilingAtomic": "2805",
+            "usd": 0.002805
           }
         }
       }
@@ -1990,22 +2066,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "2345",
-            "usd": 0.002345
+            "priceAtomic": "3103",
+            "usd": 0.003103
           },
           "solana": {
-            "priceAtomic": "3345",
-            "usd": 0.003345
+            "priceAtomic": "4103",
+            "usd": 0.004103
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1561",
-            "usd": 0.001561
+            "ceilingAtomic": "1877",
+            "usd": 0.001877
           },
           "solana": {
-            "ceilingAtomic": "2561",
-            "usd": 0.002561
+            "ceilingAtomic": "2877",
+            "usd": 0.002877
           }
         }
       }
@@ -2028,22 +2104,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "2607",
-            "usd": 0.002607
+            "priceAtomic": "3799",
+            "usd": 0.003799
           },
           "solana": {
-            "priceAtomic": "3607",
-            "usd": 0.003607
+            "priceAtomic": "4799",
+            "usd": 0.004799
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1670",
-            "usd": 0.00167
+            "ceilingAtomic": "2165",
+            "usd": 0.002165
           },
           "solana": {
-            "ceilingAtomic": "2670",
-            "usd": 0.00267
+            "ceilingAtomic": "3165",
+            "usd": 0.003165
           }
         }
       }
@@ -2120,44 +2196,6 @@
           "solana": {
             "ceilingAtomic": "2011",
             "usd": 0.002011
-          }
-        }
-      }
-    },
-    {
-      "id": "gemini-3.1-pro",
-      "name": "Gemini 3.1 Pro",
-      "modality": "chat",
-      "route": "/v1/chat/completions",
-      "payment": "x402",
-      "access": "x402",
-      "available": true,
-      "router": false,
-      "free": false,
-      "networks": [
-        "eip155:8453",
-        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
-      ],
-      "kind": "model",
-      "price": {
-        "upto": {
-          "base": {
-            "priceAtomic": "21704",
-            "usd": 0.021704
-          },
-          "solana": {
-            "priceAtomic": "22704",
-            "usd": 0.022704
-          }
-        },
-        "exact": {
-          "base": {
-            "ceilingAtomic": "9619",
-            "usd": 0.009619
-          },
-          "solana": {
-            "ceilingAtomic": "10619",
-            "usd": 0.010619
           }
         }
       }
@@ -2450,8 +2488,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2007",
-            "usd": 0.002007
+            "priceAtomic": "2003",
+            "usd": 0.002003
           }
         },
         "exact": {
@@ -2460,8 +2498,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2003",
-            "usd": 0.002003
+            "ceilingAtomic": "2002",
+            "usd": 0.002002
           }
         }
       }
@@ -2602,8 +2640,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2228",
-            "usd": 0.002228
+            "priceAtomic": "2270",
+            "usd": 0.00227
           }
         },
         "exact": {
@@ -2612,8 +2650,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2069",
-            "usd": 0.002069
+            "ceilingAtomic": "2082",
+            "usd": 0.002082
           }
         }
       }
@@ -2716,8 +2754,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2025",
-            "usd": 0.002025
+            "priceAtomic": "2032",
+            "usd": 0.002032
           }
         },
         "exact": {
@@ -2726,8 +2764,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2011",
-            "usd": 0.002011
+            "ceilingAtomic": "2013",
+            "usd": 0.002013
           }
         }
       }
@@ -2944,8 +2982,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2112",
-            "usd": 0.002112
+            "priceAtomic": "2333",
+            "usd": 0.002333
           }
         },
         "exact": {
@@ -2954,8 +2992,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2047",
-            "usd": 0.002047
+            "ceilingAtomic": "2140",
+            "usd": 0.00214
           }
         }
       }
@@ -3096,8 +3134,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2008",
-            "usd": 0.002008
+            "priceAtomic": "2021",
+            "usd": 0.002021
           }
         },
         "exact": {
@@ -3106,8 +3144,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2004",
-            "usd": 0.002004
+            "ceilingAtomic": "2010",
+            "usd": 0.00201
           }
         }
       }
@@ -3130,12 +3168,12 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1539",
-            "usd": 0.001539
+            "priceAtomic": "1504",
+            "usd": 0.001504
           },
           "solana": {
-            "priceAtomic": "2539",
-            "usd": 0.002539
+            "priceAtomic": "2504",
+            "usd": 0.002504
           }
         },
         "exact": {
@@ -3144,8 +3182,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2224",
-            "usd": 0.002224
+            "ceilingAtomic": "2210",
+            "usd": 0.00221
           }
         }
       }
@@ -3282,22 +3320,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "2472",
-            "usd": 0.002472
+            "priceAtomic": "2683",
+            "usd": 0.002683
           },
           "solana": {
-            "priceAtomic": "3472",
-            "usd": 0.003472
+            "priceAtomic": "3683",
+            "usd": 0.003683
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1500",
-            "usd": 0.0015
+            "ceilingAtomic": "1506",
+            "usd": 0.001506
           },
           "solana": {
-            "ceilingAtomic": "2444",
-            "usd": 0.002444
+            "ceilingAtomic": "2506",
+            "usd": 0.002506
           }
         }
       }
@@ -3400,8 +3438,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2073",
-            "usd": 0.002073
+            "priceAtomic": "2089",
+            "usd": 0.002089
           }
         },
         "exact": {
@@ -3410,8 +3448,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2030",
-            "usd": 0.00203
+            "ceilingAtomic": "2038",
+            "usd": 0.002038
           }
         }
       }
@@ -3434,22 +3472,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "2352",
-            "usd": 0.002352
+            "priceAtomic": "2737",
+            "usd": 0.002737
           },
           "solana": {
-            "priceAtomic": "3352",
-            "usd": 0.003352
+            "priceAtomic": "3737",
+            "usd": 0.003737
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1563",
-            "usd": 0.001563
+            "ceilingAtomic": "1725",
+            "usd": 0.001725
           },
           "solana": {
-            "ceilingAtomic": "2563",
-            "usd": 0.002563
+            "ceilingAtomic": "2725",
+            "usd": 0.002725
           }
         }
       }
@@ -3510,22 +3548,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "5246",
-            "usd": 0.005246
+            "priceAtomic": "9492",
+            "usd": 0.009492
           },
           "solana": {
-            "priceAtomic": "6246",
-            "usd": 0.006246
+            "priceAtomic": "10492",
+            "usd": 0.010492
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "2768",
-            "usd": 0.002768
+            "ceilingAtomic": "4536",
+            "usd": 0.004536
           },
           "solana": {
-            "ceilingAtomic": "3768",
-            "usd": 0.003768
+            "ceilingAtomic": "5536",
+            "usd": 0.005536
           }
         }
       }
@@ -3548,22 +3586,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "6177",
-            "usd": 0.006177
+            "priceAtomic": "1830",
+            "usd": 0.00183
           },
           "solana": {
-            "priceAtomic": "7177",
-            "usd": 0.007177
+            "priceAtomic": "2830",
+            "usd": 0.00283
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "3156",
-            "usd": 0.003156
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "4156",
-            "usd": 0.004156
+            "ceilingAtomic": "2346",
+            "usd": 0.002346
           }
         }
       }
@@ -3662,22 +3700,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "38265",
-            "usd": 0.038265
+            "priceAtomic": "40749",
+            "usd": 0.040749
           },
           "solana": {
-            "priceAtomic": "39265",
-            "usd": 0.039265
+            "priceAtomic": "41749",
+            "usd": 0.041749
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "16515",
-            "usd": 0.016515
+            "ceilingAtomic": "17549",
+            "usd": 0.017549
           },
           "solana": {
-            "ceilingAtomic": "17515",
-            "usd": 0.017515
+            "ceilingAtomic": "18549",
+            "usd": 0.018549
           }
         }
       }
@@ -3700,22 +3738,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "7212",
-            "usd": 0.007212
+            "priceAtomic": "3486",
+            "usd": 0.003486
           },
           "solana": {
-            "priceAtomic": "8212",
-            "usd": 0.008212
+            "priceAtomic": "4486",
+            "usd": 0.004486
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "3586",
-            "usd": 0.003586
+            "ceilingAtomic": "2035",
+            "usd": 0.002035
           },
           "solana": {
-            "ceilingAtomic": "4586",
-            "usd": 0.004586
+            "ceilingAtomic": "3035",
+            "usd": 0.003035
           }
         }
       }
@@ -3780,8 +3818,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2415",
-            "usd": 0.002415
+            "priceAtomic": "2481",
+            "usd": 0.002481
           }
         },
         "exact": {
@@ -3790,8 +3828,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2173",
-            "usd": 0.002173
+            "ceilingAtomic": "2201",
+            "usd": 0.002201
           }
         }
       }
@@ -3814,12 +3852,12 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1845",
-            "usd": 0.001845
+            "priceAtomic": "1912",
+            "usd": 0.001912
           },
           "solana": {
-            "priceAtomic": "2845",
-            "usd": 0.002845
+            "priceAtomic": "2912",
+            "usd": 0.002912
           }
         },
         "exact": {
@@ -3828,8 +3866,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2353",
-            "usd": 0.002353
+            "ceilingAtomic": "2380",
+            "usd": 0.00238
           }
         }
       }
@@ -3890,22 +3928,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "18410",
-            "usd": 0.01841
+            "priceAtomic": "20620",
+            "usd": 0.02062
           },
           "solana": {
-            "priceAtomic": "19410",
-            "usd": 0.01941
+            "priceAtomic": "21620",
+            "usd": 0.02162
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "8248",
-            "usd": 0.008248
+            "ceilingAtomic": "9168",
+            "usd": 0.009168
           },
           "solana": {
-            "ceilingAtomic": "9248",
-            "usd": 0.009248
+            "ceilingAtomic": "10168",
+            "usd": 0.010168
           }
         }
       }
@@ -3928,22 +3966,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "3320",
-            "usd": 0.00332
+            "priceAtomic": "1995",
+            "usd": 0.001995
           },
           "solana": {
-            "priceAtomic": "4320",
-            "usd": 0.00432
+            "priceAtomic": "2995",
+            "usd": 0.002995
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1966",
-            "usd": 0.001966
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2966",
-            "usd": 0.002966
+            "ceilingAtomic": "2415",
+            "usd": 0.002415
           }
         }
       }
@@ -3966,22 +4004,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "10441",
-            "usd": 0.010441
+            "priceAtomic": "10607",
+            "usd": 0.010607
           },
           "solana": {
-            "priceAtomic": "11441",
-            "usd": 0.011441
+            "priceAtomic": "11607",
+            "usd": 0.011607
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "4932",
-            "usd": 0.004932
+            "ceilingAtomic": "5001",
+            "usd": 0.005001
           },
           "solana": {
-            "ceilingAtomic": "5932",
-            "usd": 0.005932
+            "ceilingAtomic": "6001",
+            "usd": 0.006001
           }
         }
       }
@@ -4083,12 +4121,12 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1500",
-            "usd": 0.0015
+            "priceAtomic": "1596",
+            "usd": 0.001596
           },
           "solana": {
-            "priceAtomic": "2492",
-            "usd": 0.002492
+            "priceAtomic": "2596",
+            "usd": 0.002596
           }
         },
         "exact": {
@@ -4097,8 +4135,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2206",
-            "usd": 0.002206
+            "ceilingAtomic": "2249",
+            "usd": 0.002249
           }
         }
       }
@@ -4121,22 +4159,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "3902",
-            "usd": 0.003902
+            "priceAtomic": "8738",
+            "usd": 0.008738
           },
           "solana": {
-            "priceAtomic": "4902",
-            "usd": 0.004902
+            "priceAtomic": "9738",
+            "usd": 0.009738
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "2209",
-            "usd": 0.002209
+            "ceilingAtomic": "4222",
+            "usd": 0.004222
           },
           "solana": {
-            "ceilingAtomic": "3209",
-            "usd": 0.003209
+            "ceilingAtomic": "5222",
+            "usd": 0.005222
           }
         }
       }
@@ -4159,22 +4197,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "10810",
-            "usd": 0.01081
+            "priceAtomic": "12884",
+            "usd": 0.012884
           },
           "solana": {
-            "priceAtomic": "11810",
-            "usd": 0.01181
+            "priceAtomic": "13884",
+            "usd": 0.013884
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "5085",
-            "usd": 0.005085
+            "ceilingAtomic": "5947",
+            "usd": 0.005947
           },
           "solana": {
-            "ceilingAtomic": "6085",
-            "usd": 0.006085
+            "ceilingAtomic": "6947",
+            "usd": 0.006947
           }
         }
       }
@@ -4197,22 +4235,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "8048",
-            "usd": 0.008048
+            "priceAtomic": "9705",
+            "usd": 0.009705
           },
           "solana": {
-            "priceAtomic": "9048",
-            "usd": 0.009048
+            "priceAtomic": "10705",
+            "usd": 0.010705
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "3935",
-            "usd": 0.003935
+            "ceilingAtomic": "4625",
+            "usd": 0.004625
           },
           "solana": {
-            "ceilingAtomic": "4935",
-            "usd": 0.004935
+            "ceilingAtomic": "5625",
+            "usd": 0.005625
           }
         }
       }
@@ -4235,22 +4273,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "10810",
-            "usd": 0.01081
+            "priceAtomic": "12884",
+            "usd": 0.012884
           },
           "solana": {
-            "priceAtomic": "11810",
-            "usd": 0.01181
+            "priceAtomic": "13884",
+            "usd": 0.013884
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "5085",
-            "usd": 0.005085
+            "ceilingAtomic": "5947",
+            "usd": 0.005947
           },
           "solana": {
-            "ceilingAtomic": "6085",
-            "usd": 0.006085
+            "ceilingAtomic": "6947",
+            "usd": 0.006947
           }
         }
       }
@@ -4273,22 +4311,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "3143",
-            "usd": 0.003143
+            "priceAtomic": "5353",
+            "usd": 0.005353
           },
           "solana": {
-            "priceAtomic": "4143",
-            "usd": 0.004143
+            "priceAtomic": "6353",
+            "usd": 0.006353
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1892",
-            "usd": 0.001892
+            "ceilingAtomic": "2813",
+            "usd": 0.002813
           },
           "solana": {
-            "ceilingAtomic": "2892",
-            "usd": 0.002892
+            "ceilingAtomic": "3813",
+            "usd": 0.003813
           }
         }
       }
@@ -4311,22 +4349,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "7012",
-            "usd": 0.007012
+            "priceAtomic": "6943",
+            "usd": 0.006943
           },
           "solana": {
-            "priceAtomic": "8012",
-            "usd": 0.008012
+            "priceAtomic": "7943",
+            "usd": 0.007943
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "3503",
-            "usd": 0.003503
+            "ceilingAtomic": "3474",
+            "usd": 0.003474
           },
           "solana": {
-            "ceilingAtomic": "4503",
-            "usd": 0.004503
+            "ceilingAtomic": "4474",
+            "usd": 0.004474
           }
         }
       }
@@ -4691,22 +4729,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "3812",
-            "usd": 0.003812
+            "priceAtomic": "3118",
+            "usd": 0.003118
           },
           "solana": {
-            "priceAtomic": "4812",
-            "usd": 0.004812
+            "priceAtomic": "4118",
+            "usd": 0.004118
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "2170",
-            "usd": 0.00217
+            "ceilingAtomic": "1882",
+            "usd": 0.001882
           },
           "solana": {
-            "ceilingAtomic": "3170",
-            "usd": 0.00317
+            "ceilingAtomic": "2882",
+            "usd": 0.002882
           }
         }
       }
@@ -4885,8 +4923,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2194",
-            "usd": 0.002194
+            "priceAtomic": "2146",
+            "usd": 0.002146
           }
         },
         "exact": {
@@ -4895,8 +4933,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2081",
-            "usd": 0.002081
+            "ceilingAtomic": "2062",
+            "usd": 0.002062
           }
         }
       }
@@ -4919,22 +4957,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1500",
-            "usd": 0.0015
+            "priceAtomic": "4517",
+            "usd": 0.004517
           },
           "solana": {
-            "priceAtomic": "2441",
-            "usd": 0.002441
+            "priceAtomic": "5517",
+            "usd": 0.005517
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1500",
-            "usd": 0.0015
+            "ceilingAtomic": "2466",
+            "usd": 0.002466
           },
           "solana": {
-            "ceilingAtomic": "2184",
-            "usd": 0.002184
+            "ceilingAtomic": "3466",
+            "usd": 0.003466
           }
         }
       }
@@ -5151,8 +5189,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2036",
-            "usd": 0.002036
+            "priceAtomic": "2032",
+            "usd": 0.002032
           }
         },
         "exact": {
@@ -5223,22 +5261,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "2272",
-            "usd": 0.002272
+            "priceAtomic": "3169",
+            "usd": 0.003169
           },
           "solana": {
-            "priceAtomic": "3272",
-            "usd": 0.003272
+            "priceAtomic": "4169",
+            "usd": 0.004169
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1530",
-            "usd": 0.00153
+            "ceilingAtomic": "1904",
+            "usd": 0.001904
           },
           "solana": {
-            "ceilingAtomic": "2530",
-            "usd": 0.00253
+            "ceilingAtomic": "2904",
+            "usd": 0.002904
           }
         }
       }
@@ -5265,8 +5303,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2318",
-            "usd": 0.002318
+            "priceAtomic": "2341",
+            "usd": 0.002341
           }
         },
         "exact": {
@@ -5275,8 +5313,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2133",
-            "usd": 0.002133
+            "ceilingAtomic": "2142",
+            "usd": 0.002142
           }
         }
       }
@@ -5472,44 +5510,6 @@
       }
     },
     {
-      "id": "minimax-m2.7-highspeed",
-      "name": "MiniMax M2.7 Highspeed",
-      "modality": "chat",
-      "route": "/v1/chat/completions",
-      "payment": "x402",
-      "access": "x402",
-      "available": true,
-      "router": false,
-      "free": false,
-      "networks": [
-        "eip155:8453",
-        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
-      ],
-      "kind": "model",
-      "price": {
-        "upto": {
-          "base": {
-            "priceAtomic": "3665",
-            "usd": 0.003665
-          },
-          "solana": {
-            "priceAtomic": "4665",
-            "usd": 0.004665
-          }
-        },
-        "exact": {
-          "base": {
-            "ceilingAtomic": "1801",
-            "usd": 0.001801
-          },
-          "solana": {
-            "ceilingAtomic": "2801",
-            "usd": 0.002801
-          }
-        }
-      }
-    },
-    {
       "id": "minimax-m3",
       "name": "MiniMax M3",
       "modality": "chat",
@@ -5531,8 +5531,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2166",
-            "usd": 0.002166
+            "priceAtomic": "2177",
+            "usd": 0.002177
           }
         },
         "exact": {
@@ -5541,8 +5541,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2050",
-            "usd": 0.00205
+            "ceilingAtomic": "2054",
+            "usd": 0.002054
           }
         }
       }
@@ -5683,8 +5683,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2004",
-            "usd": 0.002004
+            "priceAtomic": "2006",
+            "usd": 0.002006
           }
         },
         "exact": {
@@ -5693,8 +5693,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2002",
-            "usd": 0.002002
+            "ceilingAtomic": "2003",
+            "usd": 0.002003
           }
         }
       }
@@ -5835,8 +5835,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2041",
-            "usd": 0.002041
+            "priceAtomic": "2043",
+            "usd": 0.002043
           }
         },
         "exact": {
@@ -5966,6 +5966,44 @@
       }
     },
     {
+      "id": "muse-ember",
+      "name": "Meta: Muse Ember",
+      "modality": "chat",
+      "route": "/v1/chat/completions",
+      "payment": "x402",
+      "access": "x402",
+      "available": true,
+      "router": false,
+      "free": false,
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "1692",
+            "usd": 0.001692
+          },
+          "solana": {
+            "priceAtomic": "2692",
+            "usd": 0.002692
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "1500",
+            "usd": 0.0015
+          },
+          "solana": {
+            "ceilingAtomic": "2289",
+            "usd": 0.002289
+          }
+        }
+      }
+    },
+    {
       "id": "muse-glimmer-30b",
       "name": "Meta: Muse Glimmer 30B",
       "modality": "chat",
@@ -6021,22 +6059,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "2827",
-            "usd": 0.002827
+            "priceAtomic": "5183",
+            "usd": 0.005183
           },
           "solana": {
-            "priceAtomic": "3827",
-            "usd": 0.003827
+            "priceAtomic": "6183",
+            "usd": 0.006183
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "1761",
-            "usd": 0.001761
+            "ceilingAtomic": "2741",
+            "usd": 0.002741
           },
           "solana": {
-            "ceilingAtomic": "2761",
-            "usd": 0.002761
+            "ceilingAtomic": "3741",
+            "usd": 0.003741
           }
         }
       }
@@ -6135,22 +6173,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "4005",
-            "usd": 0.004005
+            "priceAtomic": "2827",
+            "usd": 0.002827
           },
           "solana": {
-            "priceAtomic": "5005",
-            "usd": 0.005005
+            "priceAtomic": "3827",
+            "usd": 0.003827
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "2251",
-            "usd": 0.002251
+            "ceilingAtomic": "1761",
+            "usd": 0.001761
           },
           "solana": {
-            "ceilingAtomic": "3251",
-            "usd": 0.003251
+            "ceilingAtomic": "2761",
+            "usd": 0.002761
           }
         }
       }
@@ -6177,8 +6215,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2088",
-            "usd": 0.002088
+            "priceAtomic": "2129",
+            "usd": 0.002129
           }
         },
         "exact": {
@@ -6187,8 +6225,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2037",
-            "usd": 0.002037
+            "ceilingAtomic": "2055",
+            "usd": 0.002055
           }
         }
       }
@@ -6249,22 +6287,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "17858",
-            "usd": 0.017858
+            "priceAtomic": "16751",
+            "usd": 0.016751
           },
           "solana": {
-            "priceAtomic": "18858",
-            "usd": 0.018858
+            "priceAtomic": "17751",
+            "usd": 0.017751
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "8018",
-            "usd": 0.008018
+            "ceilingAtomic": "7558",
+            "usd": 0.007558
           },
           "solana": {
-            "ceilingAtomic": "9018",
-            "usd": 0.009018
+            "ceilingAtomic": "8558",
+            "usd": 0.008558
           }
         }
       }
@@ -6325,12 +6363,12 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1562",
-            "usd": 0.001562
+            "priceAtomic": "1500",
+            "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2562",
-            "usd": 0.002562
+            "priceAtomic": "2471",
+            "usd": 0.002471
           }
         },
         "exact": {
@@ -6339,8 +6377,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2234",
-            "usd": 0.002234
+            "ceilingAtomic": "2197",
+            "usd": 0.002197
           }
         }
       }
@@ -7013,8 +7051,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "priceAtomic": "2374",
-            "usd": 0.002374
+            "priceAtomic": "2432",
+            "usd": 0.002432
           }
         },
         "exact": {
@@ -7023,8 +7061,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2114",
-            "usd": 0.002114
+            "ceilingAtomic": "2130",
+            "usd": 0.00213
           }
         }
       }
@@ -7845,22 +7883,22 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "4497",
-            "usd": 0.004497
+            "priceAtomic": "15486",
+            "usd": 0.015486
           },
           "solana": {
-            "priceAtomic": "5497",
-            "usd": 0.005497
+            "priceAtomic": "16486",
+            "usd": 0.016486
           }
         },
         "exact": {
           "base": {
-            "ceilingAtomic": "2455",
-            "usd": 0.002455
+            "ceilingAtomic": "7027",
+            "usd": 0.007027
           },
           "solana": {
-            "ceilingAtomic": "3455",
-            "usd": 0.003455
+            "ceilingAtomic": "8027",
+            "usd": 0.008027
           }
         }
       }
@@ -8016,7 +8054,7 @@
       "kind": "router",
       "price": {
         "mode": "selected_model",
-        "description": "Picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets the minimum tier. X-SingIt-Model and X-SingIt-Tier report the choice. Only POST /v1/chat/completions. If the chosen model's seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered."
+        "description": "Picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets the minimum tier. X-SingIt-Model and X-SingIt-Tier report the choice. Only POST /v1/chat/completions. If the chosen model's seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered. A pinned model (not singit/auto) may likewise be answered once after payment by an equivalent model no dearer than the amount signed, if it is refused without a billable result; X-SingIt-Fallback-From and X-SingIt-Fallback-Policy: paid disclose it, and X-SingIt-Fallback: off disables automatic substitution."
       }
     },
     {
@@ -8037,12 +8075,12 @@
       "price": {
         "upto": {
           "base": {
-            "priceAtomic": "1500",
-            "usd": 0.0015
+            "priceAtomic": "1578",
+            "usd": 0.001578
           },
           "solana": {
-            "priceAtomic": "2199",
-            "usd": 0.002199
+            "priceAtomic": "2578",
+            "usd": 0.002578
           }
         },
         "exact": {
@@ -8051,8 +8089,8 @@
             "usd": 0.0015
           },
           "solana": {
-            "ceilingAtomic": "2060",
-            "usd": 0.00206
+            "ceilingAtomic": "2175",
+            "usd": 0.002175
           }
         }
       }
