@@ -17,7 +17,7 @@ class RequestError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
+// Keep discovery descriptions within 500 characters, capability first (see app.mjs).
 const DESCRIPTION = routeCopy("/v1/images/edits").description;
 
 import { readEditRequest, INPUT_SCHEMA, EXAMPLE, OUTPUT_SCHEMA, OUTPUT_EXAMPLE, listAtomic as estimateListAtomic, maxListAtomic, catalogueCeiling } from "./image-edits-request.mjs";

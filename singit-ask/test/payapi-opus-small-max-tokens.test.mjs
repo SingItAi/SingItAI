@@ -134,11 +134,11 @@ test("all examples request one sentence and OpenAPI explains the cap without len
     assert.equal(example.model, model.id);
     const required = decode((await fetch(url + routePath(model.id))).headers.get("payment-required"));
     assert.equal(required.resource.description, discoveryDescription(model));
-    assert.ok(required.resource.description.length <= 160);
+    assert.ok(required.resource.description.length <= 500);
     assert.deepEqual(required.extensions.bazaar.info.input.body, example);
   }
   const operation = doc.paths[routePath(PRICEY.id)].post;
-  assert.ok(operation.description.length <= 160);
+  assert.ok(operation.description.length <= 500);
   const maxTokens = operation.requestBody.content["application/json"].schema.properties.max_tokens;
   assert.match(maxTokens.description, /ceiling grows with it/);
   assert.match(maxTokens.description, /larger value counts as 1200/);

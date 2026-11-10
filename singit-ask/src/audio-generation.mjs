@@ -4,6 +4,7 @@ import { declareDiscoveryExtension } from './binary-discovery.mjs';
 import { attachPaymentFailureCodes } from './payment-failure-hooks.mjs';
 import { addPaymentRoute, isDiscoveryProbe } from './metered.mjs';
 import { ASSET, BASE, ICON_URL, discoveryTags } from './pricing.mjs';
+import { payTail } from './listing-copy.mjs';
 import { imagePrice } from './images.mjs';
 import { paymentDigest, reservePayment } from './media-payment-replay.mjs';
 import { runMediaJob } from './media-jobs.mjs';
@@ -126,7 +127,7 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
     };
     addPaymentRoute(app, { [`POST ${route}`]: {
       accepts: [BASE].map(network => ({ scheme: 'exact', network, payTo: config.payToBase, maxTimeoutSeconds: i ? 240 : 120, price: price(network) })),
-      mimeType: 'audio/mpeg', description: i ? 'Music generation API: MiniMax songs or instrumental audio. USDC on Base only, no key.' : 'Sound effects API: ElevenLabs or Sonilo audio from text. USDC on Base only, no key.',
+      mimeType: 'audio/mpeg', description: i ? `Music generation API: MiniMax songs or instrumental audio. ${payTail('call', 'Base')}` : `Sound effects API: ElevenLabs or Sonilo audio from text. ${payTail('call', 'Base')}`,
       serviceName: i ? 'SingIt Music' : 'SingIt Sound Effects', iconUrl: ICON_URL, tags: discoveryTags(kind, 'audio', 'base'),
       extensions: declareDiscoveryExtension({ bodyType: 'json', input: audioExample(kind), inputSchema: audioSchema(kind), output: { type: "audio/mpeg", format: "binary" } }),
     } }, server, { log, publicClient });

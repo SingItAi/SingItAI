@@ -1,10 +1,33 @@
 // Draft CDP/Growth propagation copy. Direct wallet calls require the buyer's signature.
 // Keep existing route/alias descriptions stable; long pinned names leave no room.
-export function bazaarLimitsBoilerplate(capability = 'AI chat, images and search') {
-  const description = `${capability}. Owner-set USDC limits via MCP/API keys; check allowance and receipts.`;
-  if (description.length > 160) throw new RangeError('Listing description exceeds 160 characters');
-  if (/ceiling|\bfees?\b|%/i.test(description)) throw new Error('Listing description contains banned wording');
+// CDP's facilitator rejects a resource description over 500 characters; real copy stays well under it.
+export const MAX_DESCRIPTION = 500;
+// Billing detail, the markup in any spelling and commands aimed at an agent never go into a listing.
+const BANNED = /ceiling|\bfees?\b|%|markup|\b(30|thirty)\s*percent\b|\bcall it when\b|\byou (should|must)\b/i;
+export function checkedDescription(description) {
+  if (!description) throw new RangeError('Listing description is empty');
+  if (description.length > MAX_DESCRIPTION) throw new RangeError(`Listing description exceeds ${MAX_DESCRIPTION} characters`);
+  if (BANNED.test(description)) throw new Error('Listing description contains banned wording');
   return description;
+}
+
+// What a buyer pays with and how; `unit` is "answer" for chat and "call" for everything else.
+export const payTail = (unit = 'call', networks = 'Base or Solana') =>
+  `Pay-per-${unit} in USDC on ${networks}, no API key; the max charge is quoted before signing.`;
+
+// Service-level blurb (the bare origin's index, llms.txt), not a route's 402 description. It names only what
+// this instance sells: `formats` adds Anthropic/Responses, images and speech, `search` adds Exa.
+export function serviceDescription({ formats = true, search = true, long = false } = {}) {
+  const sold = [long && formats ? 'LLM chat (OpenAI, Anthropic and Responses formats)' : 'LLM chat',
+    ...(formats ? ['images', 'speech'] : []), ...(search ? ['Exa web search'] : [])];
+  const list = sold.length > 1 ? `${sold.slice(0, -1).join(', ')} and ${sold.at(-1)}` : sold[0];
+  return checkedDescription(long
+    ? `Pay-per-answer ${list} over x402 in USDC, with no API key. The SingIt SDK supports client-side per-call and per-day spend limits; the max charge is quoted before signing.`
+    : `Pay-per-answer ${list} over x402 in USDC, no API key; the max charge is quoted before signing.`);
+}
+
+export function bazaarLimitsBoilerplate(capability = 'AI chat, images and search') {
+  return checkedDescription(`${capability}. Owner-set USDC limits via MCP/API keys; check allowance and receipts.`);
 }
 
 // Listing copy changes metadata only; it does not add per-model resources.
@@ -28,8 +51,6 @@ export function listingCopy(catalog, modality, capability, { audioSold = false, 
   const free = entries.some(e => e.free || e.kind === 'free');
   const lead = capability === 'OpenAI-compatible chat API'
     ? `${capability}, many models${free ? ' incl. free ones' : ''}` : capability;
-  const description = `${lead}. Pay per call in USDC on Base or Solana, no API key. Models: GET /v1/catalog.`;
-  if (description.length > 160) throw new RangeError('Listing description exceeds 160 characters');
-  if (/ceiling|\bfees?\b|%/i.test(description)) throw new Error('Listing description contains banned wording');
+  const description = checkedDescription(`${lead}. ${payTail(modality === 'chat' ? 'answer' : 'call')} Models: GET /v1/catalog.`);
   return { description, tags: [modality, ...names, ...(hidden ? [] : families)].slice(0, 5) };
 }

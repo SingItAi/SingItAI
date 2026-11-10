@@ -2,6 +2,7 @@ import { samplingAllowed } from "./model-policy.mjs";
 import { MODEL_ALIAS_ROUTES, aliasPath, aliasDescription, aliasPaths, aliasCopy } from "./model-alias-routes.mjs";
 import { aliasCandidates, aliasesFor, resolveDiscoveryId } from "./discovery-aliases.mjs";
 import { routeCopy as baseRouteCopy } from "./listing-snapshot.mjs";
+import { serviceDescription } from "./listing-copy.mjs";
 const routeCopy = path => aliasCopy(path) ?? baseRouteCopy(path);
 import { buildCatalog, catalogResponse, MODALITIES } from './catalog.mjs';
 import { validateStream, agentResponses } from './agent-stream.mjs';
@@ -710,10 +711,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const origin = req => `${req.protocol}://${req.get("host")}`;
   // Public, read-only documents: the website reads them straight from the browser.
   const open = (_req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); next(); };
-  // Listing descriptions stay within 160 characters.
+  // Listing descriptions stay within 500 characters (CDP's limit), capability first. DISCOVERY_DESCRIPTION is
+  // this route's own 402 description; the service as a whole is described by SERVICE_DESCRIPTION and LLMS_INTRO.
   const DESCRIPTION = routeCopy(ROUTE).description;
   const DISCOVERY_DESCRIPTION = DESCRIPTION;
-  const LLMS_INTRO = DESCRIPTION;
+  const sells = { formats: Boolean(catalogue), search: Boolean(exaKey) };
+  const SERVICE_DESCRIPTION = serviceDescription({ ...sells, long: true });
+  const LLMS_INTRO = serviceDescription(sells);
   const AUTO_GUIDE = "\"model\":\"singit/auto\" on POST /v1/chat/completions picks an eco, standard or premium model for "
     + "text prompts by simple rules; optional \"min_tier\" (eco, standard or premium) sets the minimum "
     + "tier. X-SingIt-Model and X-SingIt-Tier identify the model and tier that answered. If the chosen "
@@ -1405,7 +1409,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Express answers HEAD the same way automatically. Open CORS, like the other public documents.
   app.get("/", open, (req, res) => {
     const base = origin(req);
-    res.json({ name: SERVICE_NAME, description: DISCOVERY_DESCRIPTION, icon: ICON_URL,
+    res.json({ name: SERVICE_NAME, description: SERVICE_DESCRIPTION, icon: ICON_URL,
       links: { openapi: `${base}/openapi.json`, x402: `${base}/.well-known/x402`, llmsTxt: `${base}/llms.txt`,
         models: `${base}/v1/models`, docs: "https://singitai.app/developers/",
         terms: "https://singitai.app/terms/", privacy: "https://singitai.app/privacy/" } });

@@ -254,8 +254,8 @@ test("an empty unpaid request gets the standing offer, so directories can regist
 test("the listing tells agents what to send and what comes back, within Coinbase's limits", async (t) => {
   const { url } = await serve(t);
   const required = await offer(url);
-  // Directory descriptions stay short even though CDP accepts up to 500 characters.
-  assert.ok(required.resource.description.length <= 160, `description is ${required.resource.description.length} characters`);
+  // CDP's facilitator rejects descriptions over 500 characters.
+  assert.ok(required.resource.description.length <= 500, `description is ${required.resource.description.length} characters`);
   assert.match(required.resource.description, /^OpenAI-compatible chat API/);
   const bazaar = required.extensions.bazaar;
   const response = await fetch(`${url}${ROUTE}`);

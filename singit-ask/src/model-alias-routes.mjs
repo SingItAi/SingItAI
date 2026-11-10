@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
+import { MAX_DESCRIPTION, payTail } from "./listing-copy.mjs";
 const load = file => JSON.parse(readFileSync(new URL(file, import.meta.url), "utf8"));
 const config = load("../config/model-aliases-wave1.json");
 const names = new Map(load("../config/d4-model-aliases-first-wave.json").models.map(m => [m.id, m.name]));
 export const aliasPath = m => `/v1/models/${m.id}/${m.suffix}`;
 export function aliasDescription(m) {
-  const text = `${m.name}: ${m.modality === "image" ? "Generate images" : "OpenAI-compatible chat API"}. Pay per call in USDC on Base or Solana, no API key. Models: GET /v1/catalog.`;
-  if (text.length > 160 || /ceiling|fee|%|0x[a-fA-F0-9]{8,}|growth|on-chain limits/i.test(text)) throw new Error(`Invalid alias description: ${m.id}`);
+  const text = `${m.name}: ${m.modality === "image" ? "Generate images" : "OpenAI-compatible chat API"}. ${payTail(m.modality === "image" ? "call" : "answer")} Models: GET /v1/catalog.`;
+  if (text.length > MAX_DESCRIPTION || /ceiling|fee|markup|%|0x[a-fA-F0-9]{8,}|growth|on-chain limits/i.test(text)) throw new Error(`Invalid alias description: ${m.id}`);
   return text;
 }
 export const MODEL_ALIAS_ROUTES = Object.freeze(config.aliases.map(m => {

@@ -252,7 +252,7 @@ test("OpenAPI and llms disclose the Exa settlement fee and range", async (t) => 
   const spec = await (await fetch(`${url}/openapi.json`)).json();
   for (const route of Object.keys(SEARCH_ROUTES)) {
     const operation = spec.paths[route].post;
-    assert.match(operation.description, /Pay per call in USDC/);
+    assert.match(operation.description, /Pay-per-call in USDC/);
     assert.doesNotMatch(operation.description, /ceiling|fee|%/i);
     assert.deepEqual(operation["x-payment-info"].price, { mode: "dynamic", currency: "USD", min: "0.002", max: "0.051" });
   }
