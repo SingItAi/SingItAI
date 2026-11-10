@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { NETWORKS } from "@singitai/sdk";
-import { startMerchant } from "../../mcp/test/helpers/merchant.mjs";
+import { startMerchant } from "./helpers/merchant.mjs";
 import { startProxy, VERSION } from "../src/server.js";
 import { assertNetworkAllowed, SOLANA_MIN_SUCCESS_PCT } from "../src/config.js";
 
