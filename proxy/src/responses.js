@@ -37,11 +37,15 @@ export function responsesToChatCompletions(body, { modelMap = {}, catalog } = {}
   if (body.max_output_tokens != null) out.max_tokens = body.max_output_tokens;
   if (body.tools != null) {
     if (!Array.isArray(body.tools)) throw bad("tools must be an array.");
-    out.tools = body.tools.map(tool => {
-      const fn = tool?.function ?? tool;
-      if (tool?.type !== "function" || typeof fn?.name !== "string" || !fn.name) throw bad("Invalid function tool.");
-      return { type: "function", function: { name: fn.name, ...(fn.description != null ? { description: fn.description } : {}), parameters: fn.parameters ?? { type: "object", properties: {} }, ...(fn.strict != null ? { strict: fn.strict } : {}) } };
-    });
+    // Codex sends hosted tools (web_search, apply_patch, …) alongside functions.
+    // Skip non-function tools instead of rejecting the whole turn.
+    const tools = [];
+    for (const tool of body.tools) {
+      const fn = tool?.type === "function" || tool?.type == null ? (tool.function ?? tool) : null;
+      if (!fn || typeof fn.name !== "string" || !fn.name) continue;
+      tools.push({ type: "function", function: { name: fn.name, ...(fn.description != null ? { description: fn.description } : {}), parameters: fn.parameters ?? { type: "object", properties: {} }, ...(fn.strict != null ? { strict: fn.strict } : {}) } });
+    }
+    if (tools.length) out.tools = tools;
   }
   if (body.tool_choice != null) out.tool_choice = body.tool_choice?.type === "function" && body.tool_choice.name
     ? { type: "function", function: { name: body.tool_choice.name } } : body.tool_choice;

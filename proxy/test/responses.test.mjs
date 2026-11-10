@@ -30,6 +30,17 @@ test("model mapping precedes catalog resolution; unknown ids pass through", () =
   assert.equal(translate({ model: "unknown", input: "Hi" }, { catalog }).model, "unknown");
   assert.equal(translate({ model: "auto", input: "Hi" }, { catalog: { data: [{ id: "embeddings" }, { id: "chat" }] } }).model, "chat");
   assert.equal(translate({ model: "x", input: "Hi", tools: [{ type: "function", function: { name: "f" } }] }).tools[0].function.name, "f");
+  const mixed = translate({
+    model: "x", input: "Hi",
+    tools: [
+      { type: "web_search" },
+      { type: "function", name: "lookup", parameters: { type: "object" } },
+      { type: "apply_patch" },
+    ],
+  });
+  assert.equal(mixed.tools.length, 1);
+  assert.equal(mixed.tools[0].function.name, "lookup");
+  assert.equal(translate({ model: "x", input: "Hi", tools: [{ type: "web_search" }] }).tools, undefined);
 });
 
 const completion = {
