@@ -92,5 +92,9 @@ export function paymentFailureLine(route, phase, ctx) {
   // Requirements are server-selected; retain the complete CAIP network identifier.
   const networkLabel = typeof network === 'string'
     && /^(?:solana:[1-9A-HJ-NP-Za-km-z]{1,44}|eip155:[0-9]{1,20})$/.test(network) ? network : safeDiagnostic(network);
-  return `singit-ask: ${safeDiagnostic(route)} ${phase} network=${networkLabel} scheme=${safeDiagnostic(scheme)} amount=${safeDiagnostic(amount)}${accounts} reason=${reason}`;
+  // Escrow phase and client payload type are closed vocabularies; they tell deposit vs claim apart without addresses.
+  const step = ctx.phase === 'before-handler' || ctx.phase === 'after-handler' ? ` step=${ctx.phase}` : '';
+  const payloadType = ctx.paymentPayload?.payload?.type;
+  const typed = payloadType === 'deposit' || payloadType === 'claim' ? ` type=${payloadType}` : '';
+  return `singit-ask: ${safeDiagnostic(route)} ${phase} network=${networkLabel} scheme=${safeDiagnostic(scheme)} amount=${safeDiagnostic(amount)}${accounts}${step}${typed} reason=${reason}`;
 }

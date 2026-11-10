@@ -147,3 +147,23 @@ test('free upstream failures log code/status, other failures name only, and keep
     assert.ok(!lines[0].includes('private message'));
   }
 });
+
+test('settle diagnostics include escrow step and deposit/claim type only', () => {
+  const line = paymentFailureLine('/ask', 'settle failed', {
+    requirements: { ...requirements, scheme: 'upto' },
+    phase: 'after-handler',
+    paymentPayload: { payload: { type: 'claim' } },
+    error: { errorReason: 'invalid_upto_svm_channel_already_open', errorMessage: 'channel already exists' },
+  });
+  assert.match(line, /scheme=upto amount=1234/);
+  assert.match(line, /step=after-handler type=claim reason=/);
+  assert.match(line, /invalid_upto_svm_channel_already_open/);
+  const hidden = paymentFailureLine('/ask', 'settle failed', {
+    requirements,
+    phase: 'not-a-phase',
+    paymentPayload: { payload: { type: 'unexpected' } },
+    error: { errorReason: 'invalid_payload' },
+  });
+  assert.ok(!hidden.includes('step='));
+  assert.ok(!hidden.includes('type=unexpected'));
+});
