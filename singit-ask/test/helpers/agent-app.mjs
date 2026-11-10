@@ -44,14 +44,14 @@ const IDLE = { id: "idle-model", name: "Idle", provider: "X", contextLength: 1, 
 const fakeCatalogue = { async market() { return new Map([["pro-model", { trustedShare: 0.25 }]]); }, async resolve(id) { const m = [PRICEY, CHEAP, IDLE].find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
   async list() { return [CHEAP, PRICEY]; }, async canAnswer(id) { return id !== "idle-model"; } };
 
-async function serve(t, { upstream, config = CONFIG, catalogue = fakeCatalogue, fetchImpl } = {}) {
+async function serve(t, { upstream, config = CONFIG, catalogue = fakeCatalogue, fetchImpl, log = () => {}, clock } = {}) {
   const facilitator = fakeFacilitator();
   const asked = [];
   const answer = upstream ?? (async (_config, messages, maxTokens) => {
     asked.push({ messages, maxTokens });
     return { content: "Try Caffè Propaganda.", finishReason: "stop", usage: { total_tokens: 42, buyer_cost_micro: 100 } };
   });
-  const app = createApp(config, { facilitatorClient: facilitator, upstream: answer, log: () => {}, catalogue, fetchImpl });
+  const app = createApp(config, { facilitatorClient: facilitator, upstream: answer, log, catalogue, fetchImpl, clock });
   // Exercise the actual Express and x402 middleware without binding a network socket.
   const url = async (body, headers = {}, path = ROUTE) => {
     const chunks = [];

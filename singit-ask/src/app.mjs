@@ -51,6 +51,7 @@ import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
 import { withRejectLog } from "./reject-log.mjs";
+import { NOHUMANS_PATH, nohumansAlertHandlers } from "./nohumans-alerts.mjs";
 import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY, publicTerms, publicBilling } from "./pricing.mjs";
 import { addModelRoutes, addModelAliasRoutes, chatAliasOpenapiPaths, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 import { paymentCodesMiddleware } from "./payment-failure-hooks.mjs";
@@ -666,6 +667,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   }
   // Four images (or one image plus mask), base64 expansion and JSON overhead; other routes stay at 128 KB.
   app.post(EXTRA_PAID.slice(0, 2), express.json({ limit: Math.ceil((config.maxEditImageBytes ?? 8 * 1024 * 1024) * 4 / 3) * 4 + 65536 }));
+  // nohumans.directory alerts: signed over the raw bytes, so this route reads them itself, before the global parser.
+  app.post(NOHUMANS_PATH, ...nohumansAlertHandlers(config, { log, fetchImpl, clock: clock ?? Date }));
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
   // ...with a JSON body like every other refusal, not Express's HTML page (documented in openapi.json).
   app.use((error, req, res, next) => {
