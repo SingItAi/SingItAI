@@ -21,7 +21,8 @@ export function renderTools(data) {
     const annotations = `readOnlyHint: ${tool.annotations.readOnlyHint}; idempotentHint: ${tool.annotations.idempotentHint}`;
     return `<tr><th scope="row"><code>${e(tool.name)}</code></th><td>${e(first)}</td><td>${params}</td><td>${e(access[0])}</td><td>${e(access[1])}</td><td>${e(network)}</td><td>${e(annotations)}</td></tr>`;
   });
-  return `<div class="table-wrap"><table class="mtable">\n<caption>19 tools generated from repository web_mcp.tools(). Paid tools are paid per call within the key's caps; get_limits and get_allowance show spent and remaining today.</caption>\n<thead><tr><th>Tool</th><th>What it does</th><th>Parameters</th><th>Needs a key?</th><th>Scope</th><th>Network</th><th>Annotation hints</th></tr></thead>\n<tbody>\n${rows.join('\n')}\n</tbody></table></div>`;
+  const n = data.result.tools.length;
+  return `<div class="table-wrap"><table class="mtable">\n<caption>${n} tools generated from repository web_mcp.tools(). Paid tools are paid per call within the key's caps; get_limits and get_allowance show spent and remaining today.</caption>\n<thead><tr><th>Tool</th><th>What it does</th><th>Parameters</th><th>Needs a key?</th><th>Scope</th><th>Network</th><th>Annotation hints</th></tr></thead>\n<tbody>\n${rows.join('\n')}\n</tbody></table></div>`;
 }
 export async function generate(check = false) {
   const file = path.join(root, 'website/docs/mcp/index.html');

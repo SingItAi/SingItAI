@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-11-09T17:25:43Z",
+  "fetchedAt": "2026-11-10T18:47:30Z",
   "source": "generated from the repository's web_mcp.tools(); the live server serves these after the next gateway restart",
   "result": {
     "tools": [
@@ -355,23 +355,6 @@
         }
       },
       {
-        "name": "get_weather",
-        "description": "A sample weather forecast from GoPlausible's x402 demo service on Algorand. Takes no location and returns a fixed example, so it is mainly useful to try a paid call end to end. Paid per call from your key's SingIt limits in USDC; Base accounts only for now.",
-        "inputSchema": {
-          "type": "object",
-          "properties": {},
-          "required": []
-        },
-        "title": "Get weather",
-        "annotations": {
-          "title": "Get weather",
-          "readOnlyHint": true,
-          "destructiveHint": false,
-          "idempotentHint": false,
-          "openWorldHint": true
-        }
-      },
-      {
         "name": "get_singit_risk_check",
         "description": "SingIt's risk check on Bankr x402 Cloud, run on a fixed sample payment request (no input). Mainly useful to try a paid call end to end. Paid per call from your key's SingIt limits in USDC; Base accounts only for now.",
         "inputSchema": {
@@ -430,32 +413,8 @@
         }
       },
       {
-        "name": "get_hyperliquid_market",
-        "description": "One Hyperliquid perpetual market (e.g. BTC): price, funding, open interest, max leverage and size rules, from Otto AI. Use for Hyperliquid's own contract details; use get_funding_rates to compare venues. Paid per call from your key's SingIt limits in USDC; Base accounts only for now.",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "asset": {
-              "type": "string",
-              "description": "Perpetual market ticker, e.g. BTC, ETH, SOL."
-            }
-          },
-          "required": [
-            "asset"
-          ]
-        },
-        "title": "Get Hyperliquid market",
-        "annotations": {
-          "title": "Get Hyperliquid market",
-          "readOnlyHint": true,
-          "destructiveHint": false,
-          "idempotentHint": false,
-          "openWorldHint": true
-        }
-      },
-      {
         "name": "get_funding_rates",
-        "description": "Funding rates for one symbol across exchanges, with open interest, long/short ratio, large positions and liquidations, from Otto AI. Use to compare venues or gauge positioning; use get_hyperliquid_market for one Hyperliquid contract. Paid per call from your key's SingIt limits in USDC; Base accounts only for now.",
+        "description": "Funding rates for one symbol across exchanges, with open interest, long/short ratio, large positions and liquidations, from Otto AI. Use to compare venues or gauge positioning. Paid per call from your key's SingIt limits in USDC; Base accounts only for now.",
         "inputSchema": {
           "type": "object",
           "properties": {
