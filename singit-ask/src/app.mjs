@@ -462,6 +462,7 @@ const SETTLEMENT_FEE = Object.freeze({
   base: Object.freeze({ usd: Number(usd(TERMS.settlementFeeAtomic)), atomic: TERMS.settlementFeeAtomic }),
   solana: Object.freeze({ usd: Number(usd(SOLANA_TERMS.settlementFeeAtomic)), atomic: SOLANA_TERMS.settlementFeeAtomic }),
 });
+const SETTLEMENT_FEE_SENTENCE = `Each paid answer includes a settlement fee of $${SETTLEMENT_FEE.base.usd} on Base or $${SETTLEMENT_FEE.solana.usd} on Solana.`;
 
 function perMillionFor(m, observed, market) {
   const price = displayPrice(m, observed, market);
@@ -1380,6 +1381,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         llmsTxt: `${origin(req)}/llms.txt`,
       },
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. Free single-model price and schemas: GET ${origin(req)}/v1/models/{id}. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + " Owner-set server-side spend limits apply to MCP/API keys; check get_allowance or get_limits before spending and get_receipts for receipts. On Base, the owner can use Emergency stop / Revoke on their agent allowance. Charged only when answered; direct wallet payments here require your own signature and are not covered by those agent limits."
+        + ` ${SETTLEMENT_FEE_SENTENCE}`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
@@ -1426,7 +1428,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + "and retry with the signature in the PAYMENT-SIGNATURE header. Live prices and models: "
         + `${base}/openapi.json and ${base}/v1/models. For Claude Opus, sign \`upto\`: its \`exact\` price carries room `
         + "for thinking tokens and is usually dearer than the answer used (recommendedScheme in "
-        + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC}`, "",
+        + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC} ${SETTLEMENT_FEE_SENTENCE}`, "",
       "## Agent chat and streams", "",
       "Paid /v1/chat/completions: up to 200 messages, 100000 estimated characters including tools and 8000 per image, 64 tools/calls, four images and 8192 output tokens (default 800; 128 kB JSON body). Tools/images depend on model capabilities. Messages and Responses support tools and up to 32000 output tokens.", "",
       "Chat, Messages and Responses accept stream:true as complete buffered SSE after settlement, not token by token. Billing and PAYMENT-RESPONSE are retained; errors remain JSON. Chat stream_options accepts only include_usage:boolean and requires stream:true. Free and per-model chat retain their existing text-only limits and also support buffered SSE.", "",

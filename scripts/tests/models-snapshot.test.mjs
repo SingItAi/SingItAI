@@ -48,3 +48,22 @@ test('snapshot skips an embedding rate and still rejects a broken token pair', (
   const broken = priced([{ id: 'broken', usdPerMillionTokens: { input: 1 } }]);
   assert.throws(() => snapshot(broken.models, broken.pricing, '2026-11-01T00:00:00Z'), /token prices/);
 });
+
+test('snapshot keeps expected-price n, window, note and observed_preliminary', () => {
+  const offer = priced([]);
+  offer.models.data[1].expectedUsdPerMillionTokens = {
+    basis: 'observed_preliminary', n: 1, window: 20,
+    note: 'Median of only 1 paid answer; not yet a stable median.',
+  };
+  offer.models.data[3].expectedUsdPerMillionTokens = { basis: 'observed', n: 5, window: 20 };
+  offer.models.data[4].expectedUsdPerMillionTokens = { basis: 'trusted' };
+  const result = snapshot(offer.models, offer.pricing, '2026-11-01T00:00:00Z');
+  assert.deepEqual(result.models.find(m => m.id === 'm-1').expectedUsdPerMillionTokens, {
+    basis: 'observed_preliminary', n: 1, window: 20,
+    note: 'Median of only 1 paid answer; not yet a stable median.',
+  });
+  assert.deepEqual(result.models.find(m => m.id === 'm-3').expectedUsdPerMillionTokens, { basis: 'observed', n: 5, window: 20 });
+  assert.deepEqual(result.models.find(m => m.id === 'm-4').expectedUsdPerMillionTokens, { basis: 'trusted' });
+  offer.models.data[5].expectedUsdPerMillionTokens = { basis: 'made_up' };
+  assert.throws(() => snapshot(offer.models, offer.pricing, '2026-11-01T00:00:00Z'), /expected price basis/);
+});

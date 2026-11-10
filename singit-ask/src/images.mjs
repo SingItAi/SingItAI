@@ -14,6 +14,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
+import { resolveDiscoveryId } from "./discovery-aliases.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
 
@@ -111,6 +112,11 @@ const OUTPUT_SCHEMA = { type: "object", required: ["data", "billing"], propertie
 const EXAMPLE = Object.freeze({ model: "venice-seedream-v5-lite", prompt: "a small green robot holding a coin, flat illustration",
   n: 1, size: "1024x1024" });
 
+async function resolveListedImage(catalogue, id) {
+  const listed = typeof catalogue.imageModels === "function" ? [...(await catalogue.imageModels()).keys()] : [];
+  return catalogue.resolveImage((listed.length ? resolveDiscoveryId(id, listed) : null) ?? id);
+}
+
 export function addImageRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
   const priced = new WeakMap();   // parsed body -> { request, listAtomic }
   const used = new Map();         // payment signature digest -> when
@@ -162,7 +168,7 @@ export function addImageRoutes(app, config, { facilitatorClient, publicClient, c
       // paying it with no question is still refused once a signature arrives, in the handler below.
       if (isDiscoveryProbe(req)) return next();
       try {
-        const model = await catalogue.resolveImage(req.body?.model);
+        const model = await resolveListedImage(catalogue, req.body?.model);
         const request = readImageRequest(req.body, model);
         const listAtomic = imageListAtomic(model, request);
         if (listAtomic > IMAGE_TERMS.maxListAtomic) throw new ImageError(400, "This request costs more than is sold here. Ask for fewer images.");
