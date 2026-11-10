@@ -50,7 +50,7 @@ jobs:
       matrix:
         component: [cdp-x402-service, singit-risk-check, tools/ledger-approve, sdk/typescript,
           integrations/elizaos-plugin, integrations/examples/langchain, integrations/examples/vercel-ai-sdk,
-          singit-ask, mcp, proxy]
+          singit-ask, mcp, proxy, cc]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -140,6 +140,11 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm audit --audit-level=moderate
+      - name: cc audit
+        working-directory: cc
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=moderate
 
   sdk-package-checks:
     runs-on: ubuntu-latest
@@ -186,6 +191,18 @@ jobs:
           import { readFileSync } from 'node:fs';
           const files = JSON.parse(readFileSync('/tmp/proxy-pack.json'))[0].files.map(f => f.path);
           for (const file of ['README.md', 'LICENSE', 'src/index.js', 'src/server.js', 'src/config.js', 'src/headers.js']) assert(files.includes(file), file);
+          assert(files.every(f => !/(^|\/)(test|tests|node_modules)(\/|$)/.test(f)));
+          JS
+      - name: Check cc npm package contents
+        working-directory: cc
+        run: |
+          npm ci --ignore-scripts
+          npm pack --dry-run --json > /tmp/cc-pack.json
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const files = JSON.parse(readFileSync('/tmp/cc-pack.json'))[0].files.map(f => f.path);
+          for (const file of ['README.md', 'LICENSE', 'src/index.js', 'src/server.js', 'src/config.js', 'src/headers.js', 'src/sse.js', 'src/ledger.js']) assert(files.includes(file), file);
           assert(files.every(f => !/(^|\/)(test|tests|node_modules)(\/|$)/.test(f)));
           JS
       - name: Build and check Python distributions
