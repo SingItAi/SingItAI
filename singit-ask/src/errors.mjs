@@ -46,6 +46,10 @@ export const ERROR_SCHEMAS = {
     accepts: { type: "array", description: "Present when the 402 is a payment challenge; equals accepts in the decoded PAYMENT-REQUIRED header. Absent when a payment was submitted but could not be settled.", items: { type: "object", additionalProperties: true } },
     error: { type: "string" }, code: { enum: ["payment_required", ...PAYMENT_ERROR_CODES] },
     action: { enum: Object.values(ACTIONS) }, message: { type: "string" },
+    next_action: { type: "object", required: ["type", "missing", "asset", "docs"], description: "Present on payment_unfunded: what to fund, how much and where. Never carries addresses.",
+      properties: { type: { enum: ["fund_wallet", "approve_allowance"] }, missing: { enum: ["USDC", "usdc_token_account", "permit2_allowance"] },
+        amountAtomic: { type: "string", description: "Signed or required amount in USDC atomic units (6 decimals), when known" },
+        amountUsd: { type: "number" }, network: { type: "string" }, asset: { const: "USDC" }, docs: { type: "string" } } },
   } },
   RateLimited429: { $ref: "#/components/schemas/ErrorResponse" },
 };

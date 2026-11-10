@@ -774,7 +774,8 @@ test("the model list carries the price an answer is expected to cost, from trust
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/models`)).json();
   const pro = list.data.find((m) => m.id === "pro-model");
-  assert.deepEqual(pro.expectedUsdPerMillionTokens, { input: 30 * 0.25, output: 180 * 0.25, basis: "trusted" });
+  assert.deepEqual(pro.expectedUsdPerMillionTokens, { input: 30 * 0.25, output: 180 * 0.25, basis: "trusted", n: 0, window: 20 });
+  assert.deepEqual(pro.settlementFee, { base: { usd: 0.001, atomic: "1000" }, solana: { usd: 0.002, atomic: "2000" } });
   assert.equal(list.data.find((m) => m.id === "cheap-model").expectedUsdPerMillionTokens, undefined);
   assert.equal(list.data.some((m) => "marketUsdPerMillionTokens" in m), false, "the unreachable best offer is never shown");
 });
@@ -787,7 +788,11 @@ test("every answer that comes back teaches the price of its model", async (t) =>
   await new Promise((r) => setTimeout(r, 20));
   const pro = (await (await fetch(`${url}/v1/models`)).json()).data.find((m) => m.id === "pro-model");
   // At list price those tokens cost 100*30 + 1000*180 = 183,000 micro-USD; the answer cost 30,000: 16.39%.
-  assert.equal(pro.expectedUsdPerMillionTokens.basis, "observed");
+  // One answer is a preliminary median: shown, but never labelled plainly "observed".
+  assert.equal(pro.expectedUsdPerMillionTokens.basis, "observed_preliminary");
+  assert.equal(pro.expectedUsdPerMillionTokens.n, 1);
+  assert.equal(pro.expectedUsdPerMillionTokens.window, 20);
+  assert.match(pro.expectedUsdPerMillionTokens.note, /not yet a stable median/);
   assert.equal(pro.expectedUsdPerMillionTokens.output, 180 * 0.1639);
 });
 
@@ -1218,6 +1223,42 @@ test("display prices ignore rounded zeros and never promise free tokens", async 
   assert.equal(savingsFor(1.3), -30);
   assert.equal(savingsFor(0.39), 61);
   assert.equal(displayPrice({ ...CHEAP, promptUsdPerToken: Number.MIN_VALUE }, { displayShare: () => Number.MIN_VALUE }, new Map()), null);
+});
+
+test("display prices are observed only from five positive answers in the window", async () => {
+  const { ObservedPrices, KEEP, OBSERVED_MIN_N } = await import("../src/observed.mjs");
+  const { displayPrice } = await import("../src/app.mjs");
+  assert.equal(KEEP, 20);
+  assert.equal(OBSERVED_MIN_N, 5);
+  const observed = new ObservedPrices();
+  const trusted = new Map([[CHEAP.id, { trustedShare: 0.5 }]]);
+  observed.shares.set(CHEAP.id, [0.3]);
+  let price = displayPrice(CHEAP, observed, trusted);
+  assert.equal(price.basis, "observed_preliminary");
+  assert.equal(price.n, 1);
+  assert.equal(price.window, 20);
+  assert.match(price.note, /1 paid answer;/);
+  assert.equal(price.share, 0.3, "a real paid sample beats the trusted share");
+  observed.shares.set(CHEAP.id, [0, 0.1, 0.2, 0.3, 0.4, 0]);
+  price = displayPrice(CHEAP, observed, trusted);
+  assert.equal(observed.displayCount(CHEAP.id), 4, "zeros are not counted");
+  assert.equal(price.basis, "observed_preliminary");
+  assert.equal(price.n, 4);
+  assert.ok(price.note);
+  observed.shares.set(CHEAP.id, [0.1, 0.2, 0.3, 0.4, 0.5]);
+  price = displayPrice(CHEAP, observed, trusted);
+  assert.equal(price.basis, "observed");
+  assert.equal(price.n, 5);
+  assert.equal(price.share, 0.3);
+  assert.equal("note" in price, false);
+  observed.shares.set(CHEAP.id, Array(25).fill(0.1));
+  assert.equal(observed.displayCount(CHEAP.id), 20);
+  observed.shares.set(CHEAP.id, [0, 0]);
+  price = displayPrice(CHEAP, observed, trusted);
+  assert.deepEqual([price.basis, price.n, price.window, price.share, "note" in price], ["trusted", 0, 20, 0.5, false]);
+  // A mock without displayCount counts one positive median as one answer.
+  price = displayPrice(CHEAP, { displayShare: () => 0.3 }, trusted);
+  assert.deepEqual([price.basis, price.n], ["observed_preliminary", 1]);
 });
 
 test("discovery endpoints agree on positive prices and omit unknown prices", async (t) => {
