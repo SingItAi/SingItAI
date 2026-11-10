@@ -15,7 +15,7 @@ const sec = ms => String(Math.floor(ms / 1000));
 
 const purchase = (extra = {}) => ({ id: "evt-1", type: "listing.purchase", hook_id: "hook-1",
   listing: { id: "listing-test-1", name: "Test listing", endpoint_url: "https://example.test/x" },
-  delivered: true, http_status: 200, amount_usdc: "0.05", tx_hash: "0x" + "ab".repeat(32), ...extra });
+  data: { delivered: true, http_status: 200, amount_usdc: 0.05, tx_hash: "0x" + "ab".repeat(32) }, ...extra });
 
 async function post(app, rawBody, headers = {}, { method = "POST", path = PATH } = {}) {
   const chunks = [];
