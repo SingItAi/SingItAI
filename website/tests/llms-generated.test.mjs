@@ -62,7 +62,8 @@ test('llms files derive route prices, fees, reference prices and all visible mod
     assert.ok(text.split('\n').find(line => line.startsWith(`| ${task} |`)).endsWith(`| ${cell} |`));
   }
   for (const n of ['base', 'solana']) assert.ok(text.includes(`$${price(s.fees.perAnswerUsd[s.networks[n].chain])}`));
-  assert.ok(text.includes(`${s.fees.markupPct}% markup`));
+  assert.ok(text.includes("You pay the shown model price (metered by actual usage)"));
+  assert.ok(!text.includes(`${s.fees.markupPct}% markup`));
   for (const m of visible.models) {
     assert.ok(models.includes(`](https://singitai.app/models/${m.id}/)`));
     if (m.singitUsdPerMillionTokens) for (const d of ['input', 'output']) assert.ok(models.includes(`$${price(m.singitUsdPerMillionTokens[d])}`));
@@ -89,7 +90,8 @@ test('renderer is offline and responds to changed snapshot data', async () => {
   const s = { fees: { markupPct: 42, perAnswerUsd: { b: 0.003, s: 0.004 } }, networks: { base: { chain: 'b' }, solana: { chain: 's' } }, referenceRequest: { messages: 1, chars: 30, inputTokens: 12, maxOutputTokens: 800 }, models: [] };
   const text = '# SingIt\n\n> Summary\n\n<!-- generated:ask-guide:start -->\n<!-- generated:ask-guide:end -->\n<!-- generated:model-pages:start -->\n<!-- generated:model-pages:end -->\n';
   const result = renderLlms(text, s, { routes }, price);
-  assert.match(result.get('llms.txt'), /42% markup/);
+  assert.match(result.get('llms.txt'), /You pay the shown model price \(metered by actual usage\)/);
+  assert.doesNotMatch(result.get('llms.txt'), /42% markup/);
   assert.match(result.get('llms.txt'), /\$0.003 on Base or \$0.004 on Solana/);
   assert.deepEqual(renderLlms(result.get('llms.txt'), s, { routes }, price), result);
   assert.throws(() => renderLlms(text, s, { routes: routes.filter(r => r.path !== '/v1/messages') }, price), /Missing priced route/);

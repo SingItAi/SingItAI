@@ -13,7 +13,7 @@ import { EXAMPLE as EDIT_REFERENCE, readEditRequest, listAtomic as editListAtomi
 import { EXAMPLE as EMBEDDING_REFERENCE, readEmbeddingRequest, listAtomic as embeddingListAtomic, catalogueCeiling as embeddingCeiling, OUTPUT_SCHEMA as EMBEDDING_OUTPUT, OUTPUT_EXAMPLE as EMBEDDING_EXAMPLE } from "./embeddings-request.mjs";
 const EXTRA_PAID = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings"];
 // SingIt Ask: one answer from a language model, paid over x402 in USDC on Solana or Base for what it
-// actually cost: model tokens + 30% + the network's settlement fee, up to a ceiling that follows the model's
+// actually used, plus the network's settlement fee, up to a ceiling that follows the model's
 // price (0.003 USDC for the default and cheap ones). Coinbase CDP settles.
 //
 // The payer is charged only when the answer came back: @x402/express holds the response, and a
@@ -51,7 +51,7 @@ import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
 import { withRejectLog } from "./reject-log.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY, publicTerms, publicBilling } from "./pricing.mjs";
 import { addModelRoutes, addModelAliasRoutes, chatAliasOpenapiPaths, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 import { paymentCodesMiddleware } from "./payment-failure-hooks.mjs";
 
@@ -383,8 +383,9 @@ const OUTPUT_SCHEMA = {
       remainingToday: { type: "integer", minimum: 0, description: "Free answers left today for this network, limited by the network and whole-day answer counts; the shared cost budget may end free answers sooner" },
       resetsAt: { type: "string", description: "Next UTC midnight (ISO 8601) for the free answer allowance" },
       hint: { type: "string", const: "drop the free/ prefix to pay", description: "How to request a paid answer" },
-      providerCostAtomic: { type: "string" }, markupAtomic: { type: "string" },
-      totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" },
+      providerCostAtomic: { type: "string" },
+      totalAtomic: { type: "string", description: "The amount settled" }, settlementFeeAtomic: { type: "string" },
+      currency: { type: "string", const: "USDC" },
     } },
   },
 };
@@ -506,14 +507,14 @@ const RECONCILIATION_SCHEMA = {
 
 const EXAMPLE = {
   input: { messages: [{ role: "user", content: "Where is good coffee near the Colosseum?" }], max_tokens: 400 },
-  // A real answer's shape and charge (default model, Base): 6 micro-USD of tokens, 2 markup, 1000 settlement fee.
+  // A real answer's shape and charge (default model, Base): settled total 1008 micro-USDC, including the 1000 settlement fee.
   output: {
     id: "singit-ask-1791932400000", object: "chat.completion", created: 1791932400, model: "singit-ask",
     choices: [{ index: 0, message: { role: "assistant",
       content: "Around the Colosseum, try Caffè Propaganda on Via Claudia or Bar Martini for an espresso with a view." },
       finish_reason: "stop" }],
     usage: { prompt_tokens: 14, completion_tokens: 31, total_tokens: 45, buyer_cost_micro: 6 },
-    billing: { ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" },
+    billing: publicBilling({ ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" }),
   },
 };
 
@@ -532,10 +533,10 @@ const errorExample = (type, message, code, schema) => ({
 const chatExampleOffers = [
   { scheme: "upto", network: BASE, payTo: "<pay-to address>", maxTimeoutSeconds: 120,
     asset: "<USDC contract on Base>", amount: "1500", extra: { name: "USD Coin", version: "2",
-      billing: { version: 1, mode: "actual_usage", markupBps: 3000, settlementFeeAtomic: "1000", maxChargeAtomic: "1500" } } },
+      billing: { ...publicTerms(TERMS), maxChargeAtomic: "1500" } } },
   { scheme: "exact", network: BASE, payTo: "<pay-to address>", maxTimeoutSeconds: 120,
     asset: "<USDC contract on Base>", amount: "1500", extra: { name: "USD Coin", version: "2",
-      billing: { version: 1, mode: "exact_ceiling", markupBps: 3000, settlementFeeAtomic: "1000", maxChargeAtomic: "1500" } } },
+      billing: { ...publicTerms(TERMS), mode: "exact_ceiling", maxChargeAtomic: "1500" } } },
 ];
 const exactExampleOffers = timeout => [
   { scheme: "exact", network: BASE, amount: "<amount in USDC micro-units>", asset: "<USDC contract on Base>",
@@ -685,7 +686,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.use(paymentRequiredHeaderMiddleware({ log }));
   app.use(spendLimitMiddleware({ reader: spendLimits, log }));
 
-  const pricing = { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS };
+  const pricing = { [SOLANA]: publicTerms(SOLANA_TERMS), [BASE]: publicTerms(TERMS) };
   const free = freeTerms(config);
   // Free models are advertised in several places and keep the plain 15 minute rule, never a suspension.
   for (const m of free.models) catalogue?.neverHide?.add(m);
@@ -699,8 +700,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const inputSchema = freeOffer ? { ...baseInputSchema, properties: { ...AGENT_INPUT_SCHEMA.properties,
     model: { ...INPUT_SCHEMA.properties.model, description: `${INPUT_SCHEMA.properties.model.description} `
       + `Free to try, no payment: ${freeOffer.models.join(", ")}.` } } } : baseInputSchema;
-  // What a payer pays on top of the model's own cost: the markup, and one settlement fee per answer.
-  const fees = { markupPct: TERMS.markupBps / 100,
+  // What a payer pays on top of the listed model price: one settlement fee per answer.
+  const fees = {
     perAnswerUsd: { [BASE]: Number(usd(TERMS.settlementFeeAtomic)), [SOLANA]: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) } };
   const origin = req => `${req.protocol}://${req.get("host")}`;
   // Public, read-only documents: the website reads them straight from the browser.
@@ -727,7 +728,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.set("Cache-Control", "no-store");
     res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model, catalogue?.unservableSnapshot?.(), catalogue?.suspensionSnapshot?.()),
                ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
-               metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
+               metered: publicTerms(TERMS), ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...publicTerms(DIRECT_TERMS) } } : {}) });
   });
   app.get("/numbers.json", open, (_req, res) => {
     res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
@@ -891,8 +892,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     const legacy = { object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       savings: {
         field: "savingsVsListPct",
-        definition: "How far SingIt's expected price per million tokens (expected price plus the 30% markup, "
-          + "settlement fees excluded; see settlementFee) is below the model's list price. It is an estimate, not a "
+        definition: "How far SingIt's expected price per million tokens (settlement fees excluded; see settlementFee) "
+          + "is below the model's list price. It is an estimate, not a "
           + "guaranteed discount, and it is absent when no expected price is known. basis=observed requires at least "
           + `${OBSERVED_MIN_N} paid answers in the last ${OBSERVED_KEEP}.`,
         listPrice: "usdPerMillionTokens, the list price in Surplus's model catalogue",
@@ -1123,7 +1124,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           [VIDEO_ROUTE]: { post: {
             operationId: "createVideo", summary: "Generate a video clip with any of 30+ text-to-video models",
             description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio, fallback. "
-              + "Paid per clip over x402: the model's list price (minimum $0.20) + 30% + a settlement fee "
+              + "Paid per clip over x402: you pay the price shown for the model, plus a settlement fee "
               + "(0.001 USDC on Base, 0.002 on Solana), charged "
               + "once the clip is ready. Answers once the clip is ready (up to about 85 seconds); if it is not, "
               + "or the job fails, you get a 503 and are not charged; the response carries the job id, token and file URLs. "
@@ -1579,7 +1580,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // builds its own `upto` requirements and signs nothing else). `exact` is offered alongside it for buyers such
   // as vet402 that only sign `exact`; they pay the same ceiling flat instead of metered actual usage.
   addUsageRoute(app, METERED_ROUTE, quotes => [baseOffer(config, quotes), exactBaseOffer(config, quotes)], {
-    description: "SingIt Ask: actual model cost + 30% markup + 0.001 USDC settlement fee. Authorize at most 0.003 USDC. "
+    description: "SingIt Ask: you pay the price shown for the model, metered by what the answer actually used, plus a 0.001 USDC settlement fee. Authorize at most 0.003 USDC. "
       + "Exact payers are instead charged that ceiling flat, with no metering.",
     extensions: declareEip2612GasSponsoringExtension(),
   }, { ...route, readRequest: readOtherRequest, choose });

@@ -45,7 +45,7 @@ export const discoveryTags = (...tags) => [...new Set(tags)].slice(0, MAX_TAGS);
 // web-agent answers at max_tokens 1200) are bimodal: p50 about 0.12, p75 0.44, p90 0.63, mean 0.24, so 0.3 still
 // sits above the mean. The answer is never cut short: max_tokens goes upstream unchanged. An answer that runs past
 // 0.3 is still delivered and settled at the flat price (`allowOverrun` below absorbs the difference, and it is
-// logged); with the 30% markup and the settlement fee it costs this service more than it was paid only past about
+// logged); with the configured markupBps and the settlement fee it costs this service more than it was paid only past about
 // 0.6-0.8 of max_tokens, depending on the model and network. `upto` is unaffected: it always prices and authorizes
 // the whole budget and settles actual usage. SINGIT_ASK_EXACT_OUTPUT_FRACTION overrides this (server.mjs).
 export const DEFAULT_EXACT_OUTPUT_FRACTION = 0.3;
@@ -72,6 +72,25 @@ export function billUsage(usage, terms = TERMS, { allowOverrun = false } = {}) {
   if (!allowOverrun) throw Object.assign(new Error("Actual cost exceeds the authorized ceiling; payment refused."),
     { code: "ceiling_exceeded", totalAtomic: total.toString() });
   return { ...billed, totalAtomic: cap.toString(), overrunAtomic: (total - cap).toString(), currency: "USDC" };
+}
+
+// Public surfaces never include the internal markup amount or rate
+// (markupBps, markupAtomic). Other cost breakdowns stay as published.
+const PUBLIC_BILLING_OMIT = Object.freeze([
+  "markupBps", "markupAtomic",
+]);
+
+export function publicTerms(terms) {
+  if (!terms || typeof terms !== "object") return terms;
+  const { markupBps, ...published } = terms;
+  return published;
+}
+
+export function publicBilling(billed) {
+  if (!billed || typeof billed !== "object") return billed;
+  const published = { ...billed };
+  for (const key of PUBLIC_BILLING_OMIT) delete published[key];
+  return published;
 }
 
 // Atomic USDC micro-units as a plain decimal string, for a human price (openapi.json, /v1/models, /openapi.json's
@@ -199,7 +218,7 @@ export function exactReserveTokens(id, maxTokens, info) {
 export const isUptoPrimary = (id) => typeof id === "string" && /^claude-opus-/.test(id);
 export const UPTO_PRIMARY = Object.freeze({
   recommended: "upto",
-  why: "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. "
+  why: "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. "
     + "exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer "
     + "used, with no metering and no refund.",
 });

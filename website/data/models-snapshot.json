@@ -5,7 +5,6 @@
     "https://ask.singitai.app/pricing.json"
   ],
   "fees": {
-    "markupPct": 30,
     "perAnswerUsd": {
       "eip155:8453": 0.001,
       "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": 0.002
@@ -405,7 +404,7 @@
         "vision"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 39.60000000000001,
         "output": 198.00000000000003
@@ -440,7 +439,7 @@
         "vision"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 10,
         "output": 50
@@ -483,7 +482,7 @@
         "reasoning"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 5,
         "output": 25
@@ -526,7 +525,7 @@
         "reasoning"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 5,
         "output": 25
@@ -571,7 +570,7 @@
         "reasoning"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 35.64000000000001,
         "output": 178.20000000000002
@@ -606,7 +605,7 @@
         "vision"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 5,
         "output": 25
@@ -649,7 +648,7 @@
         "reasoning"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 5,
         "output": 25
@@ -692,7 +691,7 @@
         "reasoning"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 5,
         "output": 25
@@ -736,7 +735,7 @@
         "reasoning"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 10,
         "output": 50
@@ -779,7 +778,7 @@
         "reasoning"
       ],
       "recommendedScheme": "upto",
-      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer really cost (+30% + the fee), up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
+      "recommendedSchemeWhy": "Pay Claude Opus with upto: it settles what the answer actually used, plus a settlement fee, up to the ceiling you sign. exact is a flat price that includes room for Opus's thinking tokens, so it is usually dearer than the answer used, with no metering and no refund.",
       "usdPerMillionTokens": {
         "input": 4,
         "output": 20
@@ -1350,7 +1349,7 @@
         "output": 0.5
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.000019500000000000003,
+        "input": 1.9500000000000003e-05,
         "output": 0.0016250000000000001
       },
       "expectedUsdPerMillionTokens": {
@@ -3103,7 +3102,7 @@
         "output": 4.4
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.00006318000000000018,
+        "input": 6.318000000000018e-05,
         "output": 0.04633200000000013
       },
       "expectedUsdPerMillionTokens": {
@@ -6860,7 +6859,7 @@
         "output": 0.3
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.00009099999999999484,
+        "input": 9.099999999999484e-05,
         "output": 0.0003899999999999779
       },
       "expectedUsdPerMillionTokens": {
@@ -6898,7 +6897,7 @@
         "output": 0.13
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.000023400000000000887,
+        "input": 2.3400000000000887e-05,
         "output": 0.00010140000000000385
       },
       "expectedUsdPerMillionTokens": {
@@ -6974,7 +6973,7 @@
         "output": 0.3
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.00009749999999999447,
+        "input": 9.749999999999447e-05,
         "output": 0.0003899999999999779
       },
       "expectedUsdPerMillionTokens": {

@@ -94,6 +94,7 @@ class AskTests(unittest.TestCase):
         self.assertFalse(web_ask.selected(self.server,ACCOUNT+"2"));self.assertTrue(web_ask.selected(self.server,ACCOUNT))
         self.pay.assert_not_called()
         self.assertEqual(web_ask.usage()[1]["billingMode"],"actual_usage")
+        self.assertNotIn("markupPercent", web_ask.usage()[1])
 
     def test_singit_ask_is_the_default_and_venice_the_private_mode_once_chosen(self):
         self.assertTrue(web_ask.selected(self.server,ACCOUNT))  # a new account: nothing chosen anywhere

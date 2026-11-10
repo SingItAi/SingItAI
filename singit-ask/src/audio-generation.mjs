@@ -85,7 +85,7 @@ export const audioOpenapi = (paidErrors, invalidResponse) => Object.fromEntries(
   const kind = i ? 'music' : 'sound-effects';
   const prices = audioPrices().filter(m => m.kind === kind).map(m => m.exact.base.usd);
   return [route, { post: { operationId: i ? 'createMusic' : 'createSoundEffects', summary: i ? 'Generate music from a text prompt' : 'Generate sound effects from text',
-    description: `Exact per job on Base only (Solana is refused): list price + 30% + network fee. Audio bytes, as with speech. Server polls up to ${i ? 180 : 60} seconds, then downloads at most ${i ? 25 : 5} MiB; any failure returns 503 without settlement. See ${MEDIA_MODELS_ROUTE} for prices and capabilities.`,
+    description: `Exact per job on Base only (Solana is refused): you pay the price shown for the model, plus a settlement fee. Audio bytes, as with speech. Server polls up to ${i ? 180 : 60} seconds, then downloads at most ${i ? 25 : 5} MiB; any failure returns 503 without settlement. See ${MEDIA_MODELS_ROUTE} for prices and capabilities.`,
     security: [{ x402: [] }],
     'x-payment-info': { price: { mode: Math.min(...prices) === Math.max(...prices) ? 'fixed' : 'dynamic', currency: 'USD', min: String(Math.min(...prices)), max: String(Math.max(...prices)) }, protocols: [{ x402: {} }] },
     requestBody: { required: true, content: { 'application/json': { schema: audioSchema(kind), example: audioExample(kind) } } },

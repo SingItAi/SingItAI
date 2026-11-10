@@ -106,7 +106,7 @@ class MeteredTests(unittest.TestCase):
         with self.assertRaises(AllowanceError):self.pay()
         self.gw._settle_user_wallet_spend.assert_not_called();self.gw._release_user_wallet_spend.assert_not_called()
     def test_fee_tampering_is_rejected(self):
-        paid=result();paid['body']['billing']['markupBps']=4000
+        paid=result();paid['body']['billing']['settlementFeeAtomic']='999'
         with self.assertRaises(AllowanceError):m._validate_result(self.service,paid,AGENT,ACCOUNT)
     def test_reused_transaction_is_rejected(self):
         self.service.store.counted_settlements.return_value={(TX,'0x3')}

@@ -61,8 +61,8 @@ exact  solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp  ...  atomic USDC
 ```
 
 - **`upto` is listed first** (Base, then Solana). You sign a ceiling; SingIt settles only what the answer used: the
-  model's actual cost + 30% + a 0.001 USDC fee on Base (0.002 on Solana). A failed answer is not settled.
-- **`exact`** is a flat price: the cost of an answer about 30% of `max_tokens` long, + 30% + the fee, with no metering
+  price shown for the model, metered by what the answer actually used, plus a 0.001 USDC fee on Base (0.002 on Solana). A failed answer is not settled.
+- **`exact`** is a flat price: the cost of an answer about 30% of `max_tokens` long, plus the settlement fee, with no metering
   and no refund. For buyers whose wallet signs only `exact`.
 - **Claude Opus: sign `upto`.** Opus's thinking cannot be switched off, so its `exact` price includes room for thinking
   tokens (256 on top of the `max_tokens` share) and is usually dearer than the answer used. `upto` charges what the
@@ -180,7 +180,7 @@ from the same CLI: `npx awal@2.12.1 x402 bazaar search "SingIt Ask"`.
 A paid answer comes back as `HTTP 200` with an OpenAI-style body. Check:
 
 - `choices[0].message.content`: the answer.
-- `billing.totalAtomic`: what was settled, in USDC micro-units (for `upto`, the actual cost + 30% + the fee; at most
+- `billing.totalAtomic`: what was settled, in USDC micro-units (for `upto`, the price shown for the model, metered by what the answer actually used, plus the fee; at most
   the ceiling you signed).
 - The `PAYMENT-RESPONSE` header: base64 JSON from the facilitator's settlement (transaction, network, payer).
 

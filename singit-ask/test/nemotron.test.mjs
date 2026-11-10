@@ -97,7 +97,8 @@ for (const path of [`/v1/chat/${id}`, '/v1/chat/completions']) {
           const required = decode(challenge.headers['payment-required']);
           const accepted = required.accepts.find(a => a.network === network && a.scheme === scheme);
           assert.ok(BigInt(accepted.amount) > 0n);
-          assert.equal(accepted.extra.billing.markupBps, 3000);
+          assert.equal(accepted.extra.billing.markupBps, undefined);
+          assert.equal(accepted.extra.billing.mode, scheme === 'exact' ? 'exact_ceiling' : 'actual_usage');
           assert.equal(accepted.extra.billing.settlementFeeAtomic, network === BASE ? '1000' : '2000');
           const result = await post(app, path, { 'payment-signature': encode({ x402Version: 2,
             resource: required.resource, accepted, payload: { signature: '0xsigned' }, extensions: required.extensions }) });

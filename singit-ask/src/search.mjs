@@ -14,7 +14,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, SOLANA_ASSET, SERVICE_NAMES, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
 
 export const EXA_URL = "https://api.exa.ai";
 export const SEARCH_ROUTES = { "/v1/exa/search": "/search", "/v1/exa/contents": "/contents", "/v1/exa/answer": "/answer" };
@@ -159,7 +159,7 @@ const INPUT_SCHEMAS = {
 export const exaRequestBody = (route) => ({ required: true, content: { "application/json": {
   schema: { type: "object", ...INPUT_SCHEMAS[route] }, example: EXAMPLES[route] } } });
 // Example billing uses the current Base settings, just like the example body's offer.
-const billing = (exa) => ({ ...searchPrice(exa, BASE), currency: "USDC" });
+const billing = (exa) => publicBilling({ ...searchPrice(exa, BASE), currency: "USDC" });
 const outputExamples = () => ({
   "/v1/exa/search": { requestId: "example", results: [{ id: "https://x402.org", url: "https://x402.org", title: "x402",
     publishedDate: null, author: null }], billing: billing(7000) },
@@ -170,7 +170,7 @@ const outputExamples = () => ({
 });
 const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
-    exaAtomic: { type: "string" }, markupAtomic: { type: "string" }, feeAtomic: { type: "string" },
+    exaAtomic: { type: "string" }, feeAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } } } };
 
 export function addSearchRoutes(app, config, { facilitatorClient, publicClient, exaKey, fetchImpl = fetch, log = console.error }) {
@@ -248,7 +248,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, publicClient, 
       const reported = Math.ceil(Number(data.costDollars?.total ?? 0) * 1e6);
       if (reported > listed) log(`singit-ask: Exa ${exaPath} cost ${reported} micro-USD, listed ${listed}`);
       delete data.costDollars;
-      const billing = { ...searchPrice(listed, network), currency: "USDC" };
+      const billing = publicBilling({ ...searchPrice(listed, network), currency: "USDC" });
       log(`singit-ask: Exa ${exaPath} answered in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
       res.json({ ...data, billing });
     });

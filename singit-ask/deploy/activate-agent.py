@@ -51,7 +51,7 @@ def checked():
         offer = offers[0]
         if (offer.get('scheme'), offer.get('network'), offer.get('amount')) != ('upto', network, '3000'):
             raise RuntimeError('Unexpected metered payment terms')
-        if offer.get('extra', {}).get('billing') != {'version': 1, 'mode': 'actual_usage', 'markupBps': 3000,
+        if offer.get('extra', {}).get('billing') != {'version': 1, 'mode': 'actual_usage',
             'settlementFeeAtomic': fee, 'maxChargeAtomic': '3000'}:
             raise RuntimeError('Unexpected metered billing terms')
 

@@ -115,9 +115,8 @@ def _invoice(result, agent, cap=CAP):
         raise AllowanceError("No valid token usage invoice. Check the Solana payment before retrying.")
     markup = (cost * MARKUP_BPS + 9999) // 10000
     amount = cost + markup + FEE
-    expected = {"version": 1, "mode": "actual_usage", "markupBps": MARKUP_BPS,
-                "settlementFeeAtomic": str(FEE), "providerCostAtomic": str(cost),
-                "markupAtomic": str(markup), "totalAtomic": str(amount), "currency": "USDC"}
+    expected = {"version": 1, "mode": "actual_usage",
+                "settlementFeeAtomic": str(FEE), "totalAtomic": str(amount), "currency": "USDC"}
     # The merchant sets the ceiling its quote was priced under, but never above what this gateway allowed.
     offered = bill.get("maxChargeAtomic")
     if not (isinstance(offered, str) and offered.isascii() and offered.isdigit() and amount <= int(offered) <= cap):

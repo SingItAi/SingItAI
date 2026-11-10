@@ -1,4 +1,4 @@
-import {SOLANA,SOLANA_ASSET,SOLANA_PAY_TO,billUsage} from './pricing.mjs';
+import {SOLANA,SOLANA_ASSET,SOLANA_PAY_TO,billUsage,publicBilling} from './pricing.mjs';
 import {DIRECT_TERMS,QUOTED_URL} from './pricing.mjs';
 import {isAddress} from '@solana/kit';
 import {TOKEN_PROGRAM_ADDRESS} from '@solana-program/token';
@@ -14,7 +14,7 @@ const REFUSED=new Set(['400:invalid_payment','400:terms_changed','401:unauthoriz
 export class PaymentRefused extends Error {}
 export function validateDirectQuote(quote,{requestId,owner,agent,maxCap=DIRECT_TERMS.maxChargeAtomic}) {
   const terms=ceilingOf(quote,maxCap);
-  const r=quote?.accepts?.[0],bill=billUsage(quote?.usage,terms);
+  const r=quote?.accepts?.[0],bill=publicBilling(billUsage(quote?.usage,terms));
   if(quote?.x402Version!==2||quote.quoteId!==requestId||quote.owner!==owner||quote.agent!==agent||quote.accepts?.length!==1
     ||quote.resource?.url!==`${QUOTED_URL}/${requestId}`||r.scheme!=='exact'||r.network!==SOLANA||r.asset!==SOLANA_ASSET
     ||r.payTo!==SOLANA_PAY_TO||r.amount!==bill.totalAtomic||r.maxTimeoutSeconds!==300||r.extra?.memo!==`singit-ask:${requestId}`
@@ -56,7 +56,7 @@ export async function payDirect({body,owner,wallet,requestId,token,chain,rpc,bef
     throw new Error('Submitted payment unresolved');
   }
   const receipt=decode(response.headers.get('payment-response'));
-  const answer=await response.json(),bill=billUsage(answer.usage,ceilingOf(quote,maxCap));
+  const answer=await response.json(),bill=publicBilling(billUsage(answer.usage,ceilingOf(quote,maxCap)));
   if(receipt.success!==true||receipt.network!==SOLANA||receipt.payer!==wallet.address||receipt.amount!==accepted.amount
     ||!/^([1-9A-HJ-NP-Za-km-z]){80,90}$/.test(receipt.transaction??'')||bill.totalAtomic!==accepted.amount
     ||Object.entries(bill).some(([k,v])=>answer.billing?.[k]!==v||quote.billing?.[k]!==v))throw new Error('Wrong invoice');

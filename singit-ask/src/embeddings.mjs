@@ -8,7 +8,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, SOLANA_ASSET, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
 
 export const ROUTE = "/v1/embeddings";
 import { imagePrice } from "./images.mjs";
@@ -105,7 +105,7 @@ export function addRoutes(app, config, { facilitatorClient, publicClient, catalo
     }
     const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: upstream cost ${cost} micro-USD, listed ${listAtomic}`);
-    const billing = { ...imagePrice(listAtomic, network), currency: "USDC" };
+    const billing = publicBilling({ ...imagePrice(listAtomic, network), currency: "USDC" });
     log(`singit-ask: ${embeddings.length} embedding(s) in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
     res.json({ object: "list", data: embeddings, model: request.model, usage: data.usage, billing });
   });

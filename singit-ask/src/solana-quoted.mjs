@@ -8,7 +8,7 @@ import path from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {isAddress} from '@solana/kit';
 import {ExactSvmScheme} from '@x402/svm/exact/server';
-import {SOLANA, SOLANA_ASSET, SOLANA_PAY_TO, DIRECT_TERMS, QUOTED_ROUTE, QUOTED_URL, billUsage, ceilingAtomic} from './pricing.mjs';
+import {SOLANA, SOLANA_ASSET, SOLANA_PAY_TO, DIRECT_TERMS, QUOTED_ROUTE, QUOTED_URL, billUsage, ceilingAtomic, publicBilling} from './pricing.mjs';
 
 const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64');
 const digest=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -119,13 +119,14 @@ export function addSolanaQuotedRoute(app,config,{facilitatorClient,catalogue,rea
       const cap=chosen.isDefault&&BigInt(worst)>BigInt(DIRECT_TERMS.maxChargeAtomic)?DIRECT_TERMS.maxChargeAtomic:worst;
       const billing=billUsage(answer.usage,{...DIRECT_TERMS,maxChargeAtomic:cap},{allowOverrun:answer.retried===true});
       if(answer.retried&&billing.overrunAtomic)log(`singit-ask: reasoning retry overrun ${billing.overrunAtomic} micro-USDC`);
+      const published=publicBilling(billing);
       const requirement=await new ExactSvmScheme().enhancePaymentRequirements({scheme:'exact',network:SOLANA,
         asset:SOLANA_ASSET,amount:billing.totalAtomic,payTo:SOLANA_PAY_TO,maxTimeoutSeconds:300,
-        extra:{billing,memo:`singit-ask:${requestId}`}},kind,[]);
+        extra:{billing:published,memo:`singit-ask:${requestId}`}},kind,[]);
       const quote={x402Version:2,resource:{url:`${QUOTED_URL}/${requestId}`,mimeType:'application/json'},accepts:[requirement],
-        quoteId:requestId,owner,agent,usage:answer.usage,billing,expiresAt:now()+300};
+        quoteId:requestId,owner,agent,usage:answer.usage,billing:published,expiresAt:now()+300};
       const result={id:`singit-ask-${requestId}`,object:'chat.completion',model:'singit-ask',created:now(),
-        choices:[{index:0,message:{role:'assistant',content:answer.content},finish_reason:answer.finishReason??'stop'}],usage:answer.usage,billing};
+        choices:[{index:0,message:{role:'assistant',content:answer.content},finish_reason:answer.finishReason??'stop'}],usage:answer.usage,billing:published};
       store.ready(requestId,quote,result,now());
       return res.json({quote});
     }catch(error){
