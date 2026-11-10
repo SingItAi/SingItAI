@@ -21,12 +21,6 @@
       "base_path": "/v1/chat/completions"
     },
     {
-      "id": "gpt-6-luna",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
       "id": "e2ee-qwen3-6-35b-a3b-uncensored-p",
       "modality": "chat",
       "suffix": "chat",

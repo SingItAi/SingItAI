@@ -1,5 +1,6 @@
 import { samplingAllowed } from "./model-policy.mjs";
 import { MODEL_ALIAS_ROUTES, aliasPath, aliasDescription, aliasPaths, aliasCopy } from "./model-alias-routes.mjs";
+import { aliasCandidates, aliasesFor, resolveDiscoveryId } from "./discovery-aliases.mjs";
 import { routeCopy as baseRouteCopy } from "./listing-snapshot.mjs";
 const routeCopy = path => aliasCopy(path) ?? baseRouteCopy(path);
 import { buildCatalog, catalogResponse, MODALITIES } from './catalog.mjs';
@@ -147,6 +148,19 @@ export async function chooseModel(config, catalogue, input) {
     if (error instanceof UnknownModel) throw Object.assign(new RequestError(400, error.message), { code: "model_not_found" });
     throw error;
   }
+}
+
+// A chat model asked for by an alternate name (discovery-aliases.mjs) is answered and billed as its catalog id. The
+// exact id always wins; the default, routers and free/ ids are never renamed; a name nothing resolves stays as asked,
+// so chooseModel refuses it as before.
+export async function canonicalChatModel(config, catalogue, input) {
+  const asked = input.model;
+  if (!asked || !catalogue || asked === config.model || asked === AUTO_ID || asked.startsWith(FREE_PREFIX)) return input;
+  if (await catalogue.resolve(asked).then(() => true, error => !(error instanceof UnknownModel))) return input;
+  for (const id of [asked.toLowerCase(), ...aliasCandidates(asked)]) {
+    if (id !== asked && id !== AUTO_ID && await catalogue.resolve(id).then(() => true, () => false)) return { ...input, model: id };
+  }
+  return input;
 }
 
 // `status` is the HTTP status Surplus answered (0 when it never did), `code` its error.code (never its message,
@@ -847,15 +861,22 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       ? chatTokenPrices(source, market ?? await catalogue?.market?.().catch(() => new Map()) ?? new Map())
       : entry.modality === 'embeddings' && source?.usdPerMillionTokens !== undefined
         ? { usdPerMillionTokens: source.usdPerMillionTokens } : {};
-    return { ...entry, price, schemas, ...tokenPrices, inputModalities: source?.inputs ?? io[0], outputModalities: io[1],
+    const aliases = aliasesFor(entry.id);
+    return { ...entry, ...(aliases.length ? { aliases } : {}), price, schemas, ...tokenPrices, inputModalities: source?.inputs ?? io[0], outputModalities: io[1],
       ...(source?.contextLength ? { contextLength: source.contextLength, context: { length: source.contextLength } } : {}),
       ...(limits ? { limits } : {}), ...(source?.sizes ? { sizes: source.sizes } : {}),
       exampleCall: { method: 'POST', path: entry.route, body } };
   };
   app.get(/^\/v1\/models\/(.+)$/, open, async (req, res, next) => {
-    const entry = (await discoveryCatalog()).find(m => m.id === req.params[0]);
+    const entries = await discoveryCatalog();
+    let entry = entries.find(m => m.id === req.params[0]);
     // Paid aliases share this prefix; let their GET discovery challenges handle them.
     if (!entry && aliasPaths(catalogue).includes(req.path)) return next();
+    // Alternate names (discovery-aliases.mjs) answer with the canonical card.
+    if (!entry) {
+      const id = resolveDiscoveryId(req.params[0], entries.map(m => m.id));
+      entry = id === null ? undefined : entries.find(m => m.id === id);
+    }
     if (!entry) return res.status(404).json({ error: { message: 'Unknown model', type: 'invalid_request_error', code: 'not_found' } });
     res.json(await modelCard(entry));
   });
@@ -1451,9 +1472,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.set("Content-Type", "text/plain; charset=utf-8").send(lines.join("\n") + "\n");
   });
 
-  const choose = input => input.model === AUTO_ID
-    ? chooseAuto(config, catalogue, input, RequestError, log) : chooseModel(config, catalogue, input);
+  const choose = async input => {
+    input = await canonicalChatModel(config, catalogue, input);
+    return input.model === AUTO_ID
+      ? chooseAuto(config, catalogue, input, RequestError, log) : chooseModel(config, catalogue, input);
+  };
   const chooseChat = async (input, req) => {
+    input = await canonicalChatModel(config, catalogue, input);
     if (!input.model || input.model === AUTO_ID) return choose(input);
     // Server-chosen substitutes (reviewed defaults before payment, same-tier equivalents after it): never for the
     // default model, and off with the operator switch or X-SingIt-Fallback: off. A request's fallback_models always apply.

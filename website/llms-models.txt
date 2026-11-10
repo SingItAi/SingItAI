@@ -223,7 +223,6 @@ singit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rule
 - POST https://ask.singitai.app/v1/models/deepseek-v4-pro-0813/chat
 - POST https://ask.singitai.app/v1/models/glm-5.3-flash/chat
 - POST https://ask.singitai.app/v1/models/claude-haiku-4.5/chat
-- POST https://ask.singitai.app/v1/models/gpt-6-luna/chat
 - POST https://ask.singitai.app/v1/models/e2ee-qwen3-6-35b-a3b-uncensored-p/chat
 - POST https://ask.singitai.app/v1/models/e2ee-gemma-4-26b-a4b-uncensored-p/chat
 - POST https://ask.singitai.app/v1/models/gemma-4-uncensored/chat

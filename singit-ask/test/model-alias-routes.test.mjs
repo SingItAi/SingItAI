@@ -9,7 +9,7 @@ const decode = header => JSON.parse(Buffer.from(header, "base64").toString("utf8
 // Fixture prices distinguish cheap, expensive and temporarily unavailable models.
 const PRICEY = { id: "claude-opus-5.5", name: "Opus", provider: "anthropic", contextLength: 1e6, promptUsdPerToken: 30e-6, completionUsdPerToken: 180e-6 };
 const CHEAP = { id: "glm-5.3-flash", name: "Flash", provider: "google", contextLength: 1e6, promptUsdPerToken: 0.1e-6, completionUsdPerToken: 0.3e-6 };
-const IDLE = { id: "gpt-6-luna", name: "GLM", provider: "zhipu", contextLength: 1e5, promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 };
+const IDLE = { id: "gemma-4-uncensored", name: "Gemma", provider: "zhipu", contextLength: 1e5, promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 };
 const KNOWN = [PRICEY, CHEAP, IDLE];
 const catalogue = {
   async resolve(id) { const m = KNOWN.find((x) => x.id === id); if (!m) throw new UnknownModel("That model is not available."); return m; },
@@ -34,8 +34,8 @@ import { MODEL_ALIAS_ROUTES, aliasPath, aliasDescription } from "../src/model-al
 import { readFileSync } from "node:fs";
 import { MODEL_ROUTES, routePath } from "../src/model-routes.mjs";
 test("wave config and strict discovery copy", () => {
-  assert.equal(MODEL_ALIAS_ROUTES.length, 34);
-  assert.equal(MODEL_ALIAS_ROUTES.filter(m => m.modality === "chat").length, 24);
+  assert.equal(MODEL_ALIAS_ROUTES.length, 33);
+  assert.equal(MODEL_ALIAS_ROUTES.filter(m => m.modality === "chat").length, 23);
   assert.equal(MODEL_ALIAS_ROUTES.filter(m => m.modality === "image").length, 10);
   for (const m of MODEL_ALIAS_ROUTES) {
     const d = aliasDescription(m);
@@ -104,7 +104,7 @@ test("image alias uses the base image quote without payment", async t => {
 });
 
 test("each SI-62 model keeps one advertised record, its /v1/chat/<id> route", async t => {
-  assert.equal(MODEL_ROUTES.length, 15);
+  assert.equal(MODEL_ROUTES.length, 19);
   for (const m of MODEL_ROUTES) assert.ok(!MODEL_ALIAS_ROUTES.some(a => a.id === m.id), m.id);
   const { url } = await serve(t);
   const discovery = await (await fetch(url + "/.well-known/x402")).json();
