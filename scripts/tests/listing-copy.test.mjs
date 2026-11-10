@@ -6,6 +6,7 @@ import { routeCopy } from '../../singit-ask/src/listing-snapshot.mjs';
 import { catalogResponse } from '../../singit-ask/src/catalog-shape.mjs';
 import { serve, request } from '../../singit-ask/test/fixtures/listing-harness.mjs';
 import { aliasPaths } from '../../singit-ask/src/model-alias-routes.mjs';
+import { SERVICE_NAME } from '../../singit-ask/src/pricing.mjs';
 
 
 const tail = unit => `Pay-per-${unit} in USDC on Base or Solana, no API key; the max charge is quoted before signing. Models: GET /v1/catalog.`;
@@ -86,6 +87,16 @@ test('default discovery preserves base URLs plus D4 model aliases and shares des
   assert.equal(discovery.resourceDetails.length, expected);
   assert.doesNotMatch(JSON.stringify(openapi), /video|music|sound.effects/i);
   assert.doesNotMatch(JSON.stringify(discovery), /video|music|sound.effects/i);
+  assert.equal(discovery.version, 1);
+  // Service-level card copy for directory crawlers: the same strings GET / serves.
+  assert.equal(discovery.name, SERVICE_NAME);
+  assert.equal(discovery.description, serviceDescription({ long: true }));
+  assert.match(discovery.description, /LLM chat/i);
+  assert.ok(discovery.description.length <= MAX_DESCRIPTION);
+  assert.doesNotMatch(discovery.description, /markup|\b(30|thirty)\s*percent\b/i);
+  assert.doesNotMatch(discovery.description, /ceiling|\bfees?\b|%/i);
+  assert.doesNotMatch(discovery.description, /0x[0-9a-fA-F]{8,}/);
+  assert.doesNotMatch(discovery.description, /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/);
   assert.doesNotMatch(discovery.instructions, /ceiling|%/i);
   assert.match(discovery.instructions, /settlement fee of \$0\.001 on Base or \$0\.002 on Solana/);
   assert.match(llms, /settlement fee of \$0\.001 on Base or \$0\.002 on Solana/);
