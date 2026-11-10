@@ -97,7 +97,7 @@ test("a paid image is made once with this service's key, then the payer is settl
   assert.equal(paid.status, 200);
   const body = await paid.json();
   assert.deepEqual(body.data, [{ b64_json: "aW1hZ2U=" }]);
-  assert.deepEqual(body.billing, { feeAtomic: "1000", totalAtomic: "14000", currency: "USDC" });
+  assert.deepEqual(body.billing, { listAtomic: "10000", feeAtomic: "1000", totalAtomic: "14000", currency: "USDC" });
   assert.deepEqual(surplus.calls.map((c) => [c.url, c.auth, c.body]), [["https://surplus.test/v1/images/generations",
     "Bearer inf_test", { model: "venice-seedream-v5-lite", prompt: "a green robot", n: 1, size: "1024x1024" }]]);
   assert.deepEqual(facilitator.calls.settle, [[BASE, "14000"]]);

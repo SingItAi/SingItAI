@@ -83,7 +83,7 @@ test("a paid search asks Exa once with SingIt's key, then settles the payer", as
   const body = await paid.json();
   assert.equal(body.results[0].url, "https://x402.org");
   assert.equal(body.costDollars, undefined, "Exa's own cost stays here");
-  assert.deepEqual(body.billing, { feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
+  assert.deepEqual(body.billing, { exaAtomic: "7000", feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
   assert.deepEqual(exa.calls.map((c) => [c.url, c.key, c.body]), [["https://api.exa.ai/search", "exa_test_key", SEARCH]]);
   assert.deepEqual(facilitator.calls.settle, [[BASE, "8000"]]);
   const again = await post(`${url}/v1/exa/search`, SEARCH, pay(required, BASE));
@@ -266,6 +266,6 @@ test("a paid Solana search bills the same single settlement fee", async (t) => {
   const paid = await post(`${url}/v1/exa/search`, SEARCH, pay(required, SOLANA));
   assert.equal(paid.status, 200);
   assert.deepEqual((await paid.json()).billing,
-    { feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
+    { exaAtomic: "7000", feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
   assert.deepEqual(facilitator.calls.settle, [[SOLANA, "8000"]]);
 });

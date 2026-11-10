@@ -103,7 +103,7 @@ const OUTPUT_SCHEMA = { type: "object", required: ["data", "billing"], propertie
   data: { type: "array", items: { type: "object", properties: {
     b64_json: { type: "string", description: "The image, base64" }, url: { type: "string", description: "Or a link to it" } } } },
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
-    feeAtomic: { type: "string" },
+    listAtomic: { type: "string" }, feeAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } },
 } };
 

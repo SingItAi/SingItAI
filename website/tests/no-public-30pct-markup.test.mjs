@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-// Public copy that names SingIt's percentage markup. Does not match machine
-// fields (markupBps, markupAtomic, markupPct), Uniswap 0.30%, or
-// "about 30% of max_tokens" (exact's typical-length assumption).
+// Public copy that names SingIt's percentage markup. Does not match Uniswap
+// 0.30%, or "about 30% of max_tokens" (exact's typical-length assumption).
+// Markup field names on public website files are checked separately below.
 const FORBIDDEN = /(?:\+|plus)\s*30\s*%|30\s*%\s*markup|markup(?:\s+of)?\s*30\s*%|(?:cost|usage|used|price)\s*\+\s*30\s*%|Usage \+ 30%|(?:adds|plus)\s+30\s*%/i;
 const EXACT_LENGTH = /~?\s*30\s*%\s*of\s*max_tokens/gi;
 
@@ -59,3 +59,19 @@ test("public website, docs and API copy omit the historical percentage surcharge
   }
   assert.deepEqual(hits, [], hits.join("\n"));
 });
+
+const MARKUP_FIELD = /\bmarkup(?:Bps|Atomic|Pct|Percent)\b/;
+
+test("public website files do not publish markup field names", async () => {
+  const files = (await walk("website"))
+    .filter((file) => !file.includes(`${path.sep}tests${path.sep}`));
+  const hits = [];
+  for (const file of files) {
+    const content = await readFile(file, "utf8");
+    content.split(/\n/).forEach((line, i) => {
+      if (MARKUP_FIELD.test(line)) hits.push(`${path.relative(root, file)}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(hits, [], hits.join("\n"));
+});
+

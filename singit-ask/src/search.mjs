@@ -170,7 +170,7 @@ const outputExamples = () => ({
 });
 const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
-    feeAtomic: { type: "string" },
+    exaAtomic: { type: "string" }, feeAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } } } };
 
 export function addSearchRoutes(app, config, { facilitatorClient, publicClient, exaKey, fetchImpl = fetch, log = console.error }) {

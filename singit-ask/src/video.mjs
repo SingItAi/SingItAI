@@ -130,7 +130,7 @@ const OUTPUT_SCHEMA = { type: "object", required: ["id", "status", "job_token", 
   job_token: { type: "string", description: "Send as X-Job-Token to poll and download, for free" },
   poll: { type: "string", description: "GET this path for the job's status and files" },
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
-    feeAtomic: { type: "string" },
+    listAtomic: { type: "string" }, feeAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } },
 } };
 

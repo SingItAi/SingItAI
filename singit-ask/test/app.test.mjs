@@ -22,6 +22,21 @@ const CONFIG = {
   model: "deepseek-v4.1-flash",
 };
 
+test("public billing omits markup fields and keeps other cost breakdowns", () => {
+  const billed = publicBilling({
+    ...TERMS, providerCostAtomic: "6", markupAtomic: "2", listAtomic: "10",
+    exaAtomic: "7", totalAtomic: "1008", currency: "USDC",
+  });
+  assert.equal(billed.markupBps, undefined);
+  assert.equal(billed.markupAtomic, undefined);
+  assert.equal(billed.providerCostAtomic, "6");
+  assert.equal(billed.listAtomic, "10");
+  assert.equal(billed.exaAtomic, "7");
+  assert.equal(billed.totalAtomic, "1008");
+  assert.equal(publicTerms(TERMS).markupBps, undefined);
+  assert.equal(publicTerms(TERMS).settlementFeeAtomic, TERMS.settlementFeeAtomic);
+});
+
 function fakeFacilitator() {
   const calls = { verify: 0, settle: [] };
   return {
@@ -260,6 +275,7 @@ test("the listing tells agents what to send and what comes back, within Coinbase
   assert.deepEqual(publicBilling(billUsage(bazaar.info.output.example.usage)), bazaar.info.output.example.billing);
   assert.equal(bazaar.info.output.example.billing.markupBps, undefined);
   assert.equal(bazaar.info.output.example.billing.markupAtomic, undefined);
+  assert.equal(bazaar.info.output.example.billing.providerCostAtomic, "6");
   assert.ok(required.resource.tags.includes("claude"));
 });
 

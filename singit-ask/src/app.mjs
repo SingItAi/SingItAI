@@ -383,6 +383,7 @@ const OUTPUT_SCHEMA = {
       remainingToday: { type: "integer", minimum: 0, description: "Free answers left today for this network, limited by the network and whole-day answer counts; the shared cost budget may end free answers sooner" },
       resetsAt: { type: "string", description: "Next UTC midnight (ISO 8601) for the free answer allowance" },
       hint: { type: "string", const: "drop the free/ prefix to pay", description: "How to request a paid answer" },
+      providerCostAtomic: { type: "string" },
       totalAtomic: { type: "string", description: "The amount settled" }, settlementFeeAtomic: { type: "string" },
       currency: { type: "string", const: "USDC" },
     } },

@@ -208,6 +208,7 @@ const OUTPUT_EXAMPLES = {
 };
 const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
+    providerCostAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, settlementFeeAtomic: { type: "string" },
     currency: { type: "string", const: "USDC" } } } } };
 // Bazaar keeps only the first 5 (pricing.mjs's discoveryTags): the format's own category first.

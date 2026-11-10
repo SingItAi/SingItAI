@@ -74,10 +74,10 @@ export function billUsage(usage, terms = TERMS, { allowOverrun = false } = {}) {
   return { ...billed, totalAtomic: cap.toString(), overrunAtomic: (total - cap).toString(), currency: "USDC" };
 }
 
-// Public surfaces never include the internal markup, or leftover fields that would let a
-// client derive it from a breakdown (provider, list or Exa cost next to total and fee).
+// Public surfaces never include the internal markup amount or rate
+// (markupBps, markupAtomic). Other cost breakdowns stay as published.
 const PUBLIC_BILLING_OMIT = Object.freeze([
-  "markupBps", "markupAtomic", "providerCostAtomic", "listAtomic", "exaAtomic",
+  "markupBps", "markupAtomic",
 ]);
 
 export function publicTerms(terms) {
