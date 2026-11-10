@@ -155,7 +155,7 @@ function modelPage(shell, s, m) {
   const priceTable = m.priceBasis === "reference" ? table(["Conservative reference estimate per 1M tokens", "Input", "Output"], [
     ["The published list price is 0; no list-price savings claimed", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
   ]) : p ? table(["USD per 1M tokens", "Input", "Output"], [
-    ["SingIt price (expected, markup included)", `$${price(p.input)}`, `$${price(p.output)}`],
+    ["SingIt price (expected)", `$${price(p.input)}`, `$${price(p.output)}`],
     ["List price of the model (for reference)", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
   ]) : "<p>No per-token price is listed for this model. A request costs the minimum request price below.</p>";
   const basis = m.expectedUsdPerMillionTokens?.basis;
@@ -173,7 +173,7 @@ function modelPage(shell, s, m) {
   ];
   let body = section("Pay per request", `<p>Send a request to ask.singitai.app, get HTTP 402 with the exact price, pay in USDC on Base, get the answer. No signup, no monthly plan.</p>${facts ? `<p>${facts}</p>` : ""}`);
   body += section("Price", priceTable + (basis ? `<p>The expected price is ${e(basisText)}. It is an expected price, not a guarantee; you pay what each answer actually used.</p>` : "") +
-    `<p>Price = what the provider charges for the answer + ${price(s.fees.markupPct)}% markup + a settlement fee per request ($${price(s.fees.perAnswerUsd[s.networks.base.chain])} on Base, $${price(s.fees.perAnswerUsd[s.networks.solana.chain])} on Solana).</p>
+    `<p>You pay the price shown for each model, metered by what the answer actually used, plus a settlement fee per request ($${price(s.fees.perAnswerUsd[s.networks.base.chain])} on Base, $${price(s.fees.perAnswerUsd[s.networks.solana.chain])} on Solana).</p>
 <h3>Per request, reference request</h3>
 <p>${s.referenceRequest.messages === 1 ? "One short message" : `${e(s.referenceRequest.messages)} messages`}, max_tokens ${e(s.referenceRequest.maxOutputTokens)}${s.referenceRequest.chars !== undefined ? ` (${e(s.referenceRequest.chars)} characters)` : ""}${s.referenceRequest.inputTokens !== undefined ? `, ${e(s.referenceRequest.inputTokens)} input tokens` : ""}. upto settles actual usage, so a real answer normally costs less; exact is flat, with no refund.</p>` +
     table(["Network", "upto ceiling (USD)", "exact flat price (USD)"], ["base", "solana"].map((n) => [n === "base" ? "Base" : "Solana", `$${price(m.upto[n].usd)}`, `$${price(m.exact[n].usd)}`])) +

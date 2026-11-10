@@ -59,7 +59,7 @@ sequenceDiagram
     Fac-->>Ask: valid
     Ask->>Up: run the model
     Up-->>Ask: answer + actual token cost
-    Note over Ask: price = actual cost + 30% markup + settlement fee
+    Note over Ask: price = shown model price (metered by actual usage) + settlement fee
     alt answer returned
         Ask->>Fac: settle the actual amount
         Fac->>Chain: USDC transfer

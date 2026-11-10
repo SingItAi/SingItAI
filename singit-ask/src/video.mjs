@@ -1,6 +1,6 @@
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
-// SingIt video: a clip from any of Surplus's text-to-video models, sold over x402 at the model's list price per job +
-// 30% + the network's settlement fee, made on Surplus with this service's own key.
+// SingIt video: a clip from any of Surplus's text-to-video models, sold over x402 at the price shown for the model
+// plus the network's settlement fee, made on Surplus with this service's own key.
 //
 // Payment is verified first, but settlement waits for a finished clip within one bounded window across attempts.
 // Failed or late jobs answer >=400 so x402 cancels settlement; polling and downloads remain free with the job token.
@@ -10,7 +10,7 @@ import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
 
 export const VIDEO_ROUTE = "/v1/video/generations";
 export const VIDEO_MODELS_ROUTE = "/v1/video/models";
@@ -119,7 +119,7 @@ const OUTPUT_EXAMPLE = { id: "01M5STJCFTVSC5588N9YGQCPQW", object: "video.genera
   model: "wan-2-2-a14b-text-to-video",
   results: [{ index: 0, url: "/v1/video/generations/01M5STJCFTVSC5588N9YGQCPQW/content?index=0" }],
   job_token: "jt_…", poll: "/v1/video/generations/01M5STJCFTVSC5588N9YGQCPQW",
-  billing: { listAtomic: "200000", markupAtomic: "60000", feeAtomic: "1000", totalAtomic: "261000", currency: "USDC" } };
+  billing: publicBilling({ listAtomic: "200000", markupAtomic: "60000", feeAtomic: "1000", totalAtomic: "261000", currency: "USDC" }) };
 const OUTPUT_SCHEMA = { type: "object", required: ["id", "status", "job_token", "billing"], properties: {
   id: { type: "string", description: "The job id" }, object: { type: "string", const: "video.generation" },
   status: { type: "string", description: "queued, running, succeeded or failed" }, model: { type: "string" },
@@ -130,7 +130,7 @@ const OUTPUT_SCHEMA = { type: "object", required: ["id", "status", "job_token", 
   job_token: { type: "string", description: "Send as X-Job-Token to poll and download, for free" },
   poll: { type: "string", description: "GET this path for the job's status and files" },
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
-    listAtomic: { type: "string" }, markupAtomic: { type: "string" }, feeAtomic: { type: "string" },
+    feeAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } },
 } };
 
@@ -154,7 +154,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, publicClient, c
   } else app.get(VIDEO_MODELS_ROUTE, open, async (_req, res) => {
     const models = await catalogue.videoModels().catch(() => new Map());
     const served = await catalogue.videoServed?.();
-    res.json({ object: "list", endpoint: VIDEO_ROUTE, fees: { markupPct: VIDEO_TERMS.markupBps / 100,
+    res.json({ object: "list", endpoint: VIDEO_ROUTE, fees: {
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6 } },
       data: [...models.values()].filter((m) => !served || !served.size || served.get(m.id) > 0)
         .map((m) => ({ ...(served ? { healthySellers: served.get(m.id) ?? null } : {}), id: m.id, object: "model", name: m.name, owned_by: m.provider || "surplus",
@@ -390,7 +390,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, publicClient, c
     if (!actual) return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error",
       code: "no_healthy_sellers", message: "The video was not started. You were not charged." } });
     if (actual !== request.model) log(`singit-ask: video substitution ${request.model} -> ${actual}`);
-    const billing = { ...videoPrice(listAtomic, network), currency: "USDC" };
+    const billing = publicBilling({ ...videoPrice(listAtomic, network), currency: "USDC" });
     log(`singit-ask: video job ${job.id} for ${actual} finished for ${billing.totalAtomic} micro-USDC`);
     // The middleware settles once, after this completed response, at the original signed quote.
     res.json({ ...publicJob({ ...job, model: actual }, origin(req)), job_token: token,

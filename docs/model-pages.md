@@ -22,7 +22,7 @@ The only credential is `GITHUB_TOKEN`. Under Settings → Actions → General �
 
 The priced-model snapshot copies `budgetUsdPerDay` when `/v1/models` sends it. Pages quote that number and omit the cap sentence when it is absent, so the copy never says `$undefined`. A reference list price is described without naming the upstream seller. A blank model name falls back to the id, and a page with an empty title or canonical URL is rejected. Optional tags and recommendation blurbs that violate the page content rules are left off.
 
-`/v1/models` supplies list prices, expected SingIt token prices including markup, basis, fees and model facts. `/pricing.json` supplies reference-request `upto` ceilings and `exact` flat prices on Base and Solana. The snapshot retains only the basis of the upstream expected-price object, not its raw cost estimates. It also preserves the free offer's models, daily answer limit and, when the payload includes it, the shared daily cost cap, so the generator does not invent those limits. Missing fields stay missing. A model with `priceBasis: "reference"` shows that per-token estimate even when no SingIt token price is stored. Any other model without a SingIt token price shows only request prices, with no zero-dollar token offer.
+`/v1/models` supplies list prices, expected SingIt token prices, basis, fees and model facts. `/pricing.json` supplies reference-request `upto` ceilings and `exact` flat prices on Base and Solana. The snapshot retains only the basis of the upstream expected-price object, not its raw cost estimates. It also preserves the free offer's models, daily answer limit and, when the payload includes it, the shared daily cost cap, so the generator does not invent those limits. Missing fields stay missing. A model with `priceBasis: "reference"` shows that per-token estimate even when no SingIt token price is stored. Any other model without a SingIt token price shows only request prices, with no zero-dollar token offer.
 
 Formatting treats digits beyond the 12th significant digit as binary floating-point noise (for example, the server's decimal product `0.052 * 1.3` becomes `0.06760000000000001`) and normalizes with `x = Number(n.toPrecision(12))`. On that number's decimal string, it keeps up to nine decimal places; if more remain, it rounds UP at the ninth decimal using string arithmetic, then trims trailing zeros. Snapshot numbers remain unchanged in JSON. Live values and the actual request's 402 are authoritative. Titles fall back to a shorter form; descriptions drop the optional price sentence before shortening a name.
 
@@ -54,14 +54,14 @@ Line numbers refer to this checkout. The limits templates use only the claims be
 | Solana daily/per-purchase/expiry checked on server before payment | `sign402-gateway/sign402_gateway/solana_allowance.py:9` |
 | Solana pause refuses new purchases, retains delegate approval, lifted only by new owner-signed approval; reserved purchase may settle | `sign402-gateway/sign402_gateway/solana_allowance.py:16`, `docs/allowance-web-v1.md:142` |
 | x402 402 header, offers upto then exact, Base then Solana; retry with signature | `singit-ask/README.md:32`, `docs/first-paid-call.md:40`, `docs/first-paid-call.md:177` |
-| upto signs ceiling, settles actual cost plus markup and fee, refuses excess | `singit-ask/src/pricing.mjs:61`, `singit-ask/src/pricing.mjs:68` |
+| upto signs ceiling, settles what the answer actually used plus fee, refuses excess | `singit-ask/src/pricing.mjs:61`, `singit-ask/src/pricing.mjs:68` |
 | exact flat price, no refund | `docs/first-paid-call.md:65`, `singit-ask/src/pricing.mjs:58` |
 | X-SingIt-Limiter and X-SingIt-Spend-Limit; Base only, Solana offers unchecked; cached 15 seconds, balance not read | `singit-ask/README.md:169` |
 | Settled answers carry X-SingIt-Receipt with charged amount, ceiling and optional prior limit figures | `singit-ask/README.md:180` |
 | AgentAllowance covers SingIt app's own agent; independent signing wallets are outside it | `sdk/README.md:49`, `integrations/elizaos-plugin/README.md:116` |
 | SDK caps are in-memory per client, reset at restart, only as strong as client | `sdk/README.md:43` |
 | Plugin paid chat uses Base; caps in process memory, reset at restart, not on-chain or server-enforced | `integrations/elizaos-plugin/README.md:110` |
-| Provider charge + markup + per-request network fee | `singit-ask/src/pricing.mjs:7`, `singit-ask/src/pricing.mjs:13`, `singit-ask/src/pricing.mjs:61` |
+| Shown model price (metered by actual usage) + per-request network fee | `singit-ask/src/pricing.mjs:7`, `singit-ask/src/pricing.mjs:13`, `singit-ask/src/pricing.mjs:61` |
 | Funded hot wallet / stored key risks funds accessible to it (problem framing inferred from compromised-key loss scope); client software limits depend on the client | `docs/trezor-allowance-v1.md:483`, `sdk/README.md:43` |
 | Spend alerts report after activity rather than imposing caps | `docs/trezor-allowance-v1.md:296`, `docs/trezor-allowance-v1.md:309` |
 | Sign in with email, Google or Apple as well as a wallet; signing in moves nothing | `README.md:72` |

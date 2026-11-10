@@ -68,7 +68,7 @@ export function renderLlms(text, s, routes, format, hold = { hidden: [] }) {
 }
 
 export function renderModelList(s, format) {
-  return '# SingIt model pages\n\nsingit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets a minimum. X-SingIt-Model and X-SingIt-Tier report the choice. If the chosen model\'s seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered. Prices depend on the chosen model; use the live 402 quote.\n\n> Generated from models-snapshot.json; USD per 1M tokens includes markup. Settlement fees are additional. Reference request prices are USDC per call; live 402 offers are authoritative.\n\n' +
+  return '# SingIt model pages\n\nsingit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets a minimum. X-SingIt-Model and X-SingIt-Tier report the choice. If the chosen model\'s seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered. Prices depend on the chosen model; use the live 402 quote.\n\n> Generated from models-snapshot.json; USD per 1M tokens is the listed SingIt price. Settlement fees are additional. Reference request prices are USDC per call; live 402 offers are authoritative.\n\n' +
     '| Model page | Input / 1M | Output / 1M | Base upto | Base exact | Solana upto | Solana exact |\n| --- | --- | --- | --- | --- | --- | --- |\n' +
     s.models.map(m => `| [${label(m.name ?? m.id)}](https://singitai.app/models/${m.id}/) | ${hasTokenPrice(m) ? '$' + format(m.singitUsdPerMillionTokens.input) : 'Not listed'} | ${hasTokenPrice(m) ? '$' + format(m.singitUsdPerMillionTokens.output) : 'Not listed'} | ${['base', 'solana'].flatMap(n => ['upto', 'exact'].map(scheme => format(m[scheme][n].usd))).join(' | ')} |`).join('\n') + '\n';
 }
@@ -97,7 +97,7 @@ Unpaid calls: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). D
 
 \`upto\` is listed first: pay the actual cost up to the signed ceiling. \`exact\` is priced for a typical answer (~30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Never sign above budget.
 
-LLM/image/speech: model cost plus ${format(s.fees.markupPct)}% markup, plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Base and Solana share API URLs. Exa: own price, no markup, plus settlement fee of $0.001 on both Base and Solana. Route ranges are USDC; the request's 402 offer is authoritative.
+You pay the shown model price (metered by actual usage), plus a settlement fee of $${fees[0]} on Base or $${fees[1]} on Solana. Base and Solana share API URLs. Exa: its listed price plus a settlement fee of $0.001 on both Base and Solana. Route ranges are USDC; the request's 402 offer is authoritative.
 
 Only billable answers charge; upstream 503s never charge. For 400/413/422, fix the request; do not switch models. 409: payment signature already used. For 503, wait Retry-After if supplied; for free-tier 429, wait Retry-After.
 

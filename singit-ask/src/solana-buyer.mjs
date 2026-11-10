@@ -1,7 +1,7 @@
 import { UptoSvmScheme } from '@x402/svm/upto/client';
 import { address, isAddress, getBase58Encoder } from '@solana/kit';
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
-import { SOLANA, SOLANA_ASSET, SOLANA_PAY_TO, SOLANA_TERMS, billUsage } from './pricing.mjs';
+import { SOLANA, SOLANA_ASSET, SOLANA_PAY_TO, SOLANA_TERMS, billUsage, publicTerms, publicBilling } from './pricing.mjs';
 // An x402 buyer for the public route's Solana offer: also the operator's live check of it.
 export const ENDPOINT='https://ask.singitai.app/v1/chat/completions';
 export const CHANNEL_PROGRAM='CHNLxYvVA28MJP9PrFuDXccuoGXAx7jBacfLEkahyGsX';
@@ -18,11 +18,11 @@ export function selectSolanaOffer(q) {
     ||BigInt(a.amount)>BigInt(SOLANA_TERMS.maxChargeAtomic)||e?.billing?.maxChargeAtomic!==a.amount
     ||a.maxTimeoutSeconds!==300||e?.withdrawDelay!==300||e?.tokenProgram!==TOKEN_PROGRAM_ADDRESS
     ||(e.paymentFlow??'escrow')!=='escrow'||!isAddress(e.feePayer??'')||!isAddress(e.receiverAuthorizer??'')
-    ||Object.entries(SOLANA_TERMS).some(([k,v])=>k!=='maxChargeAtomic'&&e.billing?.[k]!==v))throw new Error('Changed Solana billing terms.');
+    ||Object.entries(publicTerms(SOLANA_TERMS)).some(([k,v])=>k!=='maxChargeAtomic'&&e.billing?.[k]!==v))throw new Error('Changed Solana billing terms.');
   return a;
 }
 export function validateSolanaBill(data,ceiling=SOLANA_TERMS.maxChargeAtomic) {
-  const expected=billUsage(data?.usage,{...SOLANA_TERMS,maxChargeAtomic:ceiling});
+  const expected=publicBilling(billUsage(data?.usage,{...SOLANA_TERMS,maxChargeAtomic:ceiling}));
   if(Object.entries(expected).some(([k,v])=>data?.billing?.[k]!==v))throw new Error('Invalid actual-usage invoice.');
   return expected;
 }

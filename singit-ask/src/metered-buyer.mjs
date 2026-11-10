@@ -1,5 +1,5 @@
 import { UptoEvmScheme } from "@x402/evm/upto/client";
-import { ASSET, BASE, PAY_TO, METERED_ROUTE, TERMS, billUsage } from "./pricing.mjs";
+import { ASSET, BASE, PAY_TO, METERED_ROUTE, TERMS, billUsage, publicTerms, publicBilling } from "./pricing.mjs";
 
 export const ENDPOINT = `https://ask.singitai.app${METERED_ROUTE}`;
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
@@ -23,7 +23,7 @@ export function selectOffer(challenge, maxCap = TERMS.maxChargeAtomic) {
       || /^0x0{40}$/i.test(a.extra.facilitatorAddress) || a.extra?.assetTransferMethod !== "permit2" || a.extra?.name !== "USD Coin" || a.extra?.version !== "2"
       || !Number.isInteger(a.maxTimeoutSeconds) || a.maxTimeoutSeconds < 1 || a.maxTimeoutSeconds > 300
       || a.extra?.billing?.maxChargeAtomic !== a.amount
-      || Object.entries(TERMS).some(([key, value]) => key !== "maxChargeAtomic" && a.extra?.billing?.[key] !== value)) {
+      || Object.entries(publicTerms(TERMS)).some(([key, value]) => key !== "maxChargeAtomic" && a.extra?.billing?.[key] !== value)) {
     throw new Error("The merchant, ceiling or billing terms changed. Nothing was signed.");
   }
   if (!challenge.extensions?.eip2612GasSponsoring) throw new Error("Gasless Permit2 support is required.");
@@ -31,7 +31,7 @@ export function selectOffer(challenge, maxCap = TERMS.maxChargeAtomic) {
 }
 
 export function validateBill(body, ceiling = TERMS.maxChargeAtomic) {
-  const expected = billUsage(body?.usage, { ...TERMS, maxChargeAtomic: ceiling });
+  const expected = publicBilling(billUsage(body?.usage, { ...TERMS, maxChargeAtomic: ceiling }));
   if (Object.entries(expected).some(([key, value]) => body?.billing?.[key] !== value)) {
     throw new Error("The returned invoice does not match actual usage and the agreed fees.");
   }

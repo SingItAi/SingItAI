@@ -608,7 +608,7 @@ class Proxy:
             scrub(data, answer_id if status < 400 else None)
             raw = json.dumps(data).encode()
         if isinstance(data, dict) and status < 400:
-            data["billing"] = {"chargedAtomic": charged, "costAtomic": meter.cost, "markupBps": MARKUP_BPS,
+            data["billing"] = {"chargedAtomic": charged, "costAtomic": meter.cost,
                                "currency": "USDC", "paidFrom": "your SingIt balance" if wallet is self.balances
                                else "your SingIt starter credit"}
             raw = json.dumps(data).encode()

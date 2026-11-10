@@ -87,9 +87,8 @@ def _validate_result(service, result, agent, account, cap=CAP):
         raise AllowanceError("The usage invoice is missing; settlement needs review.")
     markup = (cost * MARKUP_BPS + 9999) // 10000
     amount = cost + markup + FEE
-    expected = {"providerCostAtomic": str(cost), "markupAtomic": str(markup),
-        "totalAtomic": str(amount), "settlementFeeAtomic": str(FEE),
-        "markupBps": MARKUP_BPS, "mode": "actual_usage", "version": 1, "currency": "USDC"}
+    expected = {"totalAtomic": str(amount), "settlementFeeAtomic": str(FEE),
+        "mode": "actual_usage", "version": 1, "currency": "USDC"}
     # The merchant's offered ceiling is its own to set, but it may not exceed what this gateway allowed for the
     # model, and the invoice must stay under it.
     offered = bill.get("maxChargeAtomic")

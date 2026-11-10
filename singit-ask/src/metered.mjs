@@ -28,10 +28,10 @@ import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { createUptoSvmServerScheme, attachUptoSvmClaimGuards } from "./upto-svm-claim.mjs";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
-import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, ceilingAtomic, minDiscountFor, exactReserveTokens,
+import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, publicTerms, publicBilling, ceilingAtomic, minDiscountFor, exactReserveTokens,
   DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 
-// Actual model cost + 30% + the network's settlement fee. Solana's upto escrows the ceiling, then
+// The price shown for the model, metered by what the answer actually used, plus the network's settlement fee. Solana's upto escrows the ceiling, then
 // settles the actual amount and refunds the rest: two transactions, hence its higher fee.
 const TERMS_BY_NETWORK = { [BASE]: TERMS, [SOLANA]: SOLANA_TERMS };
 
@@ -69,14 +69,14 @@ export const baseOffer = (config, quotes, fallback) => ({
   scheme: "upto", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
   price: async ctx => {
     const amount = quotes.get(ctx.adapter.getBody())?.upto?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
-    return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2", billing: { ...TERMS, maxChargeAtomic: amount } } };
+    return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2", billing: { ...publicTerms(TERMS), maxChargeAtomic: amount } } };
   },
 });
 export const solanaOffer = (config, quotes, fallback) => ({
   scheme: "upto", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 300,
   price: async ctx => {
     const amount = quotes.get(ctx.adapter.getBody())?.upto?.[SOLANA] ?? (fallback ? await fallback(ctx) : SOLANA_TERMS.maxChargeAtomic);
-    return { asset: SOLANA_ASSET, amount, extra: { billing: { ...SOLANA_TERMS, maxChargeAtomic: amount } } };
+    return { asset: SOLANA_ASSET, amount, extra: { billing: { ...publicTerms(SOLANA_TERMS), maxChargeAtomic: amount } } };
   },
 });
 
@@ -89,14 +89,14 @@ export const exactBaseOffer = (config, quotes, fallback) => ({
   price: async ctx => {
     const amount = quotes.get(ctx.adapter.getBody())?.exact?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
     return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2",
-      billing: { ...TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
+      billing: { ...publicTerms(TERMS), mode: "exact_ceiling", maxChargeAtomic: amount } } };
   },
 });
 export const exactSolanaOffer = (config, quotes, fallback) => ({
   scheme: "exact", network: SOLANA, payTo: config.payToSolana, maxTimeoutSeconds: 300,
   price: async ctx => {
     const amount = quotes.get(ctx.adapter.getBody())?.exact?.[SOLANA] ?? (fallback ? await fallback(ctx) : SOLANA_TERMS.maxChargeAtomic);
-    return { asset: SOLANA_ASSET, amount, extra: { billing: { ...SOLANA_TERMS, mode: "exact_ceiling", maxChargeAtomic: amount } } };
+    return { asset: SOLANA_ASSET, amount, extra: { billing: { ...publicTerms(SOLANA_TERMS), mode: "exact_ceiling", maxChargeAtomic: amount } } };
   },
 });
 
@@ -561,7 +561,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         model: req.askInput.fallbackFrom ? req.askInput.model : "singit-ask",
         ...(answer.retried ? { retried: true } : {}),
         ...(req.askInput.fallbackFrom ? { singit_fallback_from: req.askInput.fallbackFrom } : {}), choices: [{ index: 0, message: answer.message?.tool_calls ? answer.message : { role: "assistant", content: answer.content },
-          finish_reason: answer.finishReason }], usage: answer.usage, billing });
+          finish_reason: answer.finishReason }], usage: answer.usage, billing: publicBilling(billing) });
     } catch (error) {
       if (error instanceof WindowExceeded) {
         // Not the seller's failure to count against it: the payment's window ran out. Nothing settles.

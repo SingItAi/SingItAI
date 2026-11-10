@@ -65,7 +65,7 @@
       "post": {
         "operationId": "createSpeech",
         "summary": "Generate speech with any listed voice model",
-        "description": "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: the model's list price for the text + 30% + a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models: GET /v1/audio/models. Async speech: elevenlabs/multilingual-v2 and elevenlabs/v3 cost 0.157 USDC Base / 0.158 Solana per job; bytedance/seed-audio-1.0 costs 0.004738 / 0.005738. Max 4096 characters, provider audio format, no response_format or speed. A 110-second deadline includes artifact validation; failures never settle. Nothing is charged without audio.",
+        "description": "OpenAI speech request (model, input, voice, response_format, speed). Paid per request over x402: you pay the price shown for the model, plus a settlement fee (0.001 USDC on Base, 0.002 on Solana). Models: GET /v1/audio/models. Async speech: elevenlabs/multilingual-v2 and elevenlabs/v3 cost 0.157 USDC Base / 0.158 Solana per job; bytedance/seed-audio-1.0 costs 0.004738 / 0.005738. Max 4096 characters, provider audio format, no response_format or speed. A 110-second deadline includes artifact validation; failures never settle. Nothing is charged without audio.",
         "x-payment-info": {
           "price": {
             "mode": "dynamic",
@@ -318,7 +318,6 @@
     }
   },
   "terms": {
-    "markupBps": 3000,
     "maxChars": 4096,
     "timeoutMs": 110000,
     "pollMs": 1000,

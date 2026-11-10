@@ -1,7 +1,7 @@
 import { MODEL_ALIAS_ROUTES, aliasPath, aliasDescription } from "./model-alias-routes.mjs";
 import { routeCopy } from "./listing-snapshot.mjs";
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
-// SingIt images: an image from any of Surplus's image models, sold over x402 at the model's list price + 30% + the
+// SingIt images: an image from any of Surplus's image models, sold over x402 at the price shown for the model plus the
 // network's settlement fee, and bought on Surplus with this service's own key, like the answers.
 //
 // The price is worked out from the request and the model's list price before the payer is asked (per image, per
@@ -15,7 +15,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
 
 export const IMAGE_ROUTE = "/v1/images/generations";
 export const IMAGE_MODELS_ROUTE = "/v1/images/models";
@@ -94,16 +94,16 @@ const INPUT_SCHEMA = { properties: {
 // The request body as openapi.json documents it: the schema and example the Bazaar listing declares.
 export const IMAGE_REQUEST_BODY = () => ({ required: true, content: { "application/json": {
   schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
-// Shape and charge of a real answer: a 10000 micro-USD list price, 3000 markup, 1000 settlement fee (Base).
+// Shape and charge of a real answer: settled total 14000 micro-USDC, including the 1000 settlement fee (Base).
 const OUTPUT_EXAMPLE = { created: 1791932400, model: "venice-seedream-v5-lite",
   data: [{ b64_json: "iVBORw0KGgoAAAANSUhEUgAA…" }],
-  billing: { listAtomic: "10000", markupAtomic: "3000", feeAtomic: "1000", totalAtomic: "14000", currency: "USDC" } };
+  billing: publicBilling({ listAtomic: "10000", markupAtomic: "3000", feeAtomic: "1000", totalAtomic: "14000", currency: "USDC" }) };
 const OUTPUT_SCHEMA = { type: "object", required: ["data", "billing"], properties: {
   created: { type: "integer", description: "Unix seconds" }, model: { type: "string" },
   data: { type: "array", items: { type: "object", properties: {
     b64_json: { type: "string", description: "The image, base64" }, url: { type: "string", description: "Or a link to it" } } } },
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
-    listAtomic: { type: "string" }, markupAtomic: { type: "string" }, feeAtomic: { type: "string" },
+    feeAtomic: { type: "string" },
     totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } },
 } };
 
@@ -119,7 +119,7 @@ export function addImageRoutes(app, config, { facilitatorClient, publicClient, c
   // Free: every image model sold here, with what one 1024x1024 image is expected to cost the payer.
   app.get(IMAGE_MODELS_ROUTE, open, async (_req, res) => {
     const models = await catalogue.imageModels().catch(() => new Map());
-    res.json({ object: "list", endpoint: IMAGE_ROUTE, fees: { markupPct: IMAGE_TERMS.markupBps / 100,
+    res.json({ object: "list", endpoint: IMAGE_ROUTE, fees: {
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
       data: [...models.values(), ...((await catalogue.editModels?.().catch(() => new Map()))?.values() ?? [])].map((m) => {
         const list = imageListAtomic(m, { prompt: "", n: 1, size: m.sizes?.includes("1024x1024") || !m.sizes ? "1024x1024" : m.sizes[0] });
@@ -213,7 +213,7 @@ export function addImageRoutes(app, config, { facilitatorClient, publicClient, c
       }
       const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
       if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);
-      const billing = { ...imagePrice(listAtomic, network), currency: "USDC" };
+      const billing = publicBilling({ ...imagePrice(listAtomic, network), currency: "USDC" });
       log(`singit-ask: ${images.length} image(s) from ${request.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
       res.json({ created: data.created ?? Math.floor(started / 1000), data: images, model: request.model, billing });
     });

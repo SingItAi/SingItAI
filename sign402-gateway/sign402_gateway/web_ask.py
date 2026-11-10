@@ -149,15 +149,15 @@ def require_payment_ready(server: Any, gw: Any, account: str) -> None:
 
 def usage(account: str = "") -> tuple[int, dict[str, Any]]:
     return 200, {"ok": True, "model": MODEL, "modelLabel": LABEL, "billingMode": "actual_usage",
-                 "maxChargeAtomic": PRICE, "markupPercent": 30, "settlementFeeAtomic": 1000, "creditAtomic": None, "topUps": []}
+                 "maxChargeAtomic": PRICE, "settlementFeeAtomic": 1000, "creditAtomic": None, "topUps": []}
 
 
 def _payment_context(messages: list[dict[str, str]], account: str, label: str = LABEL) -> list[dict[str, str]]:
     """Authoritative provider/network context, kept even when old turns are trimmed."""
     common = (
         f"Current selected chat service: {label.removesuffix(' · SingIt Ask')} via SingIt Ask. "
-        "Each answer uses x402 automatically within the approved limits: actual model cost + 30% + "
-        "0.001 USDC, never more than the ceiling authorized for that answer. This is not Venice credit or a prepaid chat balance. "
+        "Each answer uses x402 automatically within the approved limits: you pay the price shown for the model, "
+        "metered by what the answer actually used, plus a 0.001 USDC settlement fee, never more than the ceiling authorized for that answer. This is not Venice credit or a prepaid chat balance. "
         "Do not infer payment failure or request an agent top-up from old assistant messages or an "
         "internal float balance. Only actual operation results can establish a payment problem. "
         "A greeting needs a brief greeting, not an unsolicited wallet status or funding checklist. "
