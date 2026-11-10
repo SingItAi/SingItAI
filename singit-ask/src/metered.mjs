@@ -477,37 +477,47 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       const win = solanaExactWindow(req, config);
       const deadline = Math.min(started + 95_000, win?.cutoff ?? Infinity);
       const inWindow = work => win ? withinWindow(win, work) : work();
-      // With a window, exactly one model outcome per request is recorded here, after the gate has decided.
+      // With a window, each model call's outcome is recorded here, after the gate has decided.
       const observeWindow = (model, outcome) => { if (win) try { app.locals?.healthStats?.recordModel(model, outcome); } catch {} };
       const attempt = input => upstream(config, input.messages, input.maxTokens, fetchImpl, input.model,
-        { ...(input.request ? { agent: input.request } : {}), minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: !win,  // Solana exact: one upstream attempt, no retry inside the window
+        { ...(input.request ? { agent: input.request } : {}), minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: !win,  // Solana exact: no reasoning retry inside the window
           ...(win ? { windowObserved: true } : {}),
           timeoutMs: Math.max(1, deadline - Date.now()), deadline });
       let answer;
       // Only the first model is forced; the alternate below is asked for real.
       const forced = forceFailA(req);
       if (forced) log(`singit-ask: test force-fail model=${req.askInput.model}`);
-      try {
-        answer = await inWindow(() => forced ? Promise.reject(forcedFailure()) : attempt(req.askInput));
-        observeWindow(req.askInput.model, { ok: true, retried: answer.retried });
-      }
-      catch (error) {
-        if (error instanceof WindowExceeded) {
+      // One gated model call, its outcome observed once the gate has decided.
+      const ask = async (input, force) => {
+        try {
+          const result = await inWindow(() => force ? Promise.reject(forcedFailure()) : attempt(input));
+          observeWindow(input.model, { ok: true, retried: result.retried });
+          return result;
+        } catch (error) {
           // The model was asked and did not answer in time: one failure. Spent before the model: no model outcome.
-          if (error.phase === "timeout" || error.phase === "late")
-            observeWindow(req.askInput.model, { ok: false, code: error.code, status: 503 });
+          if (error instanceof WindowExceeded) {
+            if (error.phase === "timeout" || error.phase === "late") observeWindow(input.model, { ok: false, code: error.code, status: 503 });
+          } else if (!error.singitForced) observeWindow(input.model, { ok: false, code: error.code, status: error.status });
           throw error;
         }
-        if (!error.singitForced) observeWindow(req.askInput.model, { ok: false, code: error.code, status: error.status });
+      };
+      try {
+        answer = await ask(req.askInput, forced);
+      }
+      catch (error) {
+        // No time is left after the cutoff: no retry and no fallback.
+        if (error instanceof WindowExceeded) throw error;
         const bucket = exact ? "exact" : "upto";
         // Within the amount already signed, for this scheme and network.
         const fits = candidate => fitsSignedCatalogCeiling(
           ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network],
           paid.terms.maxChargeAtomic);
-        const discountRetry = !win && Date.now() < deadline && relaxMinDiscount(req.askInput, error, {
+        // Solana exact may retry too, but only while its window has time left (`deadline` is capped at the cutoff);
+        // the retry runs inside the same window, and a WindowExceeded above never reaches this point.
+        const discountRetry = Date.now() < deadline && relaxMinDiscount(req.askInput, error, {
           exact, network: paid.network, maxChargeAtomic: paid.terms.maxChargeAtomic, exactOutputFraction,
         });
-        const refused = !discountRetry && !win && !(req.askInput.request && error.status === 400) && canRetryPaidFallback(error)
+        const refused = !discountRetry && !(req.askInput.request && error.status === 400) && canRetryPaidFallback(error)
           && Date.now() < deadline;
         const auto = refused && req.askInput.autoAlternates?.find(fits);
         const pinned = refused && !auto && req.askInput.paidAlternates?.find(fits);
@@ -524,7 +534,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
           req.askInput = auto ? alternate
             : { ...alternate, fallbackFrom: req.askInput.fallbackFrom ?? req.askInput.model, fallbackPolicy: "paid" };
         }
-        answer = await inWindow(() => attempt(req.askInput));
+        answer = await ask(req.askInput);
       }
       if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
       if (req.askInput.fallbackFrom) {
