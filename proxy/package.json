@@ -25,7 +25,8 @@
   "type": "module",
   "main": "src/server.js",
   "bin": {
-    "singit-proxy": "src/index.js"
+    "singit-proxy": "src/index.js",
+    "singit-cc": "src/cc.js"
   },
   "exports": {
     ".": "./src/server.js"

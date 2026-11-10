@@ -185,7 +185,7 @@ jobs:
           import assert from 'node:assert/strict';
           import { readFileSync } from 'node:fs';
           const files = JSON.parse(readFileSync('/tmp/proxy-pack.json'))[0].files.map(f => f.path);
-          for (const file of ['README.md', 'LICENSE', 'src/index.js', 'src/server.js', 'src/config.js', 'src/headers.js']) assert(files.includes(file), file);
+          for (const file of ['README.md', 'LICENSE', 'src/index.js', 'src/server.js', 'src/config.js', 'src/headers.js', 'src/cc.js', 'src/qr.js']) assert(files.includes(file), file);
           assert(files.every(f => !/(^|\/)(test|tests|node_modules)(\/|$)/.test(f)));
           JS
       - name: Build and check Python distributions
