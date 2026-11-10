@@ -12,6 +12,7 @@ import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
 import { payTail } from "./listing-copy.mjs";
+import { holderBasePrice, holderBilling, floorOf } from "./holder-discount.mjs";
 
 export const VIDEO_ROUTE = "/v1/video/generations";
 export const VIDEO_MODELS_ROUTE = "/v1/video/models";
@@ -211,10 +212,11 @@ export function addVideoRoutes(app, config, { facilitatorClient, publicClient, c
   });
 
   if (!sold) return;
-  const price = (network) => (ctx) => {
+  const price = (network) => async (ctx) => {
     const quote = priced.get(ctx.adapter.getBody());
-    const amount = videoPrice(quote?.listAtomic ?? VIDEO_TERMS.maxListAtomic, network).totalAtomic;
-    return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } };
+    const listed = videoPrice(quote?.listAtomic ?? VIDEO_TERMS.maxListAtomic, network);
+    const held = await holderBasePrice(config, ctx, listed.totalAtomic, floorOf(listed), { name: "USD Coin", version: "2" });
+    return { asset: ASSET, amount: held.amount, extra: held.extra };
   };
   app.post(VIDEO_ROUTE, async (req, res, next) => {
     // Listed for discovery only when config.videoDiscoverable is set: then x402scan's empty, unpaid probe gets the
@@ -391,7 +393,7 @@ export function addVideoRoutes(app, config, { facilitatorClient, publicClient, c
     if (!actual) return res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error",
       code: "no_healthy_sellers", message: "The video was not started. You were not charged." } });
     if (actual !== request.model) log(`singit-ask: video substitution ${request.model} -> ${actual}`);
-    const billing = publicBilling({ ...videoPrice(listAtomic, network), currency: "USDC" });
+    const billing = publicBilling({ ...holderBilling(videoPrice(listAtomic, network), req), currency: "USDC" });
     log(`singit-ask: video job ${job.id} for ${actual} finished for ${billing.totalAtomic} micro-USDC`);
     // The middleware settles once, after this completed response, at the original signed quote.
     res.json({ ...publicJob({ ...job, model: actual }, origin(req)), job_token: token,

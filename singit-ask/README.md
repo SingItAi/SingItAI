@@ -200,6 +200,30 @@ curl -si https://ask.singitai.app/v1/chat/completions -H 'Content-Type: applicat
   | grep -i x-singit-spend-limit
 ```
 
+## SINGIT-holder pricing on Base
+
+Payment stays USDC over x402. A buyer that holds SINGIT on Base can be quoted a lower USDC amount; Solana offers are
+never discounted and nothing is staked.
+
+- **Tiers.** At least 20 million SINGIT: 5% off; 50 million: 10%; 150 million: 15% (this top tier also raises the daily
+  limit in the gateway). The tiers are configuration (`SINGIT_ASK_HOLDER_TIERS`) and every Base offer lists them in
+  `extra.holderDiscount`, with `appliedBps` set to the discount in that quote (0 on a full-price quote).
+- **Telling us who pays.** A 402 is issued before anything is signed, so send the paying Base address on the unpaid
+  request: header `X-SingIt-Payer: 0x…` (or `?payer=0x…`). Anything that is not a valid address is ignored and the full
+  price is quoted. Without the hint the quote is the full price; the tiers are still shown.
+- **Never below cost.** A discounted price is the list price less the tier's share, but never less than what the
+  upstream charges plus the settlement fee. A route with nothing above that (Exa search while its margin is 0) costs a
+  holder the same as anyone.
+- **Flash-loan guard.** The balance that counts is the lower of the balance now and the balance about 24 hours ago
+  (`eth_call` at an older block, so the Base RPC must serve that state). Any RPC error, missing historical state,
+  wrong chain or bad address means no discount, and a failed lookup is cached for a short time so a failing RPC is not
+  hammered. A lookup failure is never an error to the buyer; the full price is quoted.
+- **The hint is not trusted.** When a payment arrives the price is computed again for the address that signed it, not
+  the hint, and checked again before verification and against the facilitator's own payer afterwards. A payment that
+  signed a discounted amount for an address that does not qualify is refused before anything is charged (a 402 with
+  the full price); ask again without the hint and pay in full. Paying more than the quote, up to the list price, is
+  accepted. For `upto`, the answer is billed with the same discount and floor as the ceiling it was signed under.
+
 ## Run
 
 ```bash
@@ -235,6 +259,10 @@ node --env-file=.env src/server.mjs
 | `SINGIT_ASK_REASONING_HEADROOM` | Measurement only; unset (default) changes nothing. `model=tokens,...` replaces the model's thinking headroom (the reasoning-tag floor plus explicit overrides in `src/pricing.mjs`) in both the ceiling the 402 offers and the `max_tokens` sent upstream, e.g. `claude-opus-5.5=128`. Use only on a temporary loopback process for a paid test; it does not change the price formula. |
 | `SINGIT_ASK_EXA_MARKUP_BPS` | Exa markup in basis points: integer 0..10000, default `0`. Invalid values use the default. |
 | `SINGIT_ASK_EXA_FEE_ATOMIC` | Exa settlement fee in atomic USDC: `N` for both networks or `base,solana`, default `1000,1000` (a flat $0.001 on both networks). Non-negative integers; invalid values use the default. Set markup to `3000` and fee to `1000,2000` to restore the former pricing; fee `0` with the default zero markup gives no-fee pass-through pricing. |
+| `SINGIT_ASK_SINGIT_TOKEN_ADDRESS` | The SINGIT ERC-20 on Base read for the holder discount. Falls back to `SIGN402_SINGIT_TOKEN_ADDRESS`, then to the gateway's built-in SINGIT contract (18 decimals). |
+| `SINGIT_ASK_HOLDER_TIERS` | Holder discount tiers, `minWholeTokens:discountBps` comma-separated, with `+daily` on the tier that raises the gateway's daily limit. Default `20000000:500,50000000:1000,150000000:1500+daily`. An unreadable value is logged once and the default is used. |
+| `SINGIT_ASK_HOLDER_LOOKBACK_SECONDS` | How far back the second balance reading is taken, `3600`..`2592000`, default `86400`. Invalid values use the default. |
+| `SINGIT_ASK_HOLDER_CACHE_MS` | How long one address's tier is kept, `1000`..`3600000`, default `60000`. A failed lookup is kept for 30 s. |
 | `SINGIT_ASK_EXACT_RESERVE` | Default `0.25,32,256`. How many thinking tokens an `exact` offer for Claude Opus prices: `clamp(round(factor × max_tokens), min, max)` (125 at `max_tokens` 500), never more than the model's headroom. The whole headroom (256) is still added to `max_tokens` sent upstream, and `upto` still authorizes it. `full` restores pricing all 256 tokens (the behaviour before 29.10.2026). A value that cannot be read stops the process at start. |
 | `SINGIT_ASK_WALLET_REPORT_ORIGIN` | Public origin of the sign402 gateway's web API, named in `/openapi.json` for the free `GET /v1/wallet/{address}/reconciliation` (served by the gateway, not here). Default: `https://app.singitai.app`. |
 | `SINGIT_ASK_ANSWER_LOG` | Optional file. Unset (default): nothing is recorded. When set, every settled chat answer (`/v1/chat/*`, `/v1/messages`, `/v1/responses`) appends one JSON line: UTC hour, route, model, scheme, network, `maxTokens`, prompt/completion/reasoning tokens, `upstreamMicro` (model cost), `billedAtomic`, `ceilingAtomic`, `overrunAtomic`. Never the question, the answer, the payer, a transaction, a header, an address or a finer time. File mode `0600`; logging stops at 50 MB. Its purpose: the real p50/p90/p99 of output tokens against `max_tokens`, which decides an `exact` ceiling. |

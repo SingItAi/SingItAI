@@ -19,6 +19,7 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { holderBasePrice, holderBilling, floorOf } from "./holder-discount.mjs";
 
 export const SPEECH_ROUTE = "/v1/audio/speech";
 export const AUDIO_MODELS_ROUTE = "/v1/audio/models";
@@ -183,8 +184,10 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
   });
   const price = (network) => async (ctx) => {
     const quote = priced.get(ctx.adapter.getBody());
-    const amount = speechPrice(quote?.listAtomic ?? await probeList(ctx), network).totalAtomic;
-    return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
+    const listed = speechPrice(quote?.listAtomic ?? await probeList(ctx), network);
+    if (network !== BASE) return { asset: SOLANA_ASSET, amount: listed.totalAtomic };
+    const held = await holderBasePrice(config, ctx, listed.totalAtomic, floorOf(listed), { name: "USD Coin", version: "2" });
+    return { asset: ASSET, amount: held.amount, extra: held.extra };
   };
   app.post(SPEECH_ROUTE, async (req, res, next) => {
     // x402scan's empty, unpaid probe gets the example's offer (`probeList`), not a model-lookup 404.
@@ -259,7 +262,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
     }
     const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);
-    const billing = speechPrice(listAtomic, network);
+    const billing = holderBilling(speechPrice(listAtomic, network), req);
     log(`singit-ask: ${request.input.length} characters read by ${request.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC (format ${format}, upstream content-type ${JSON.stringify(type)}, ${audio.length} bytes)`);
     const contentType = speechContentType(format, audio);
     res.set({ "X-SingIt-Charged-Atomic": billing.totalAtomic, "X-SingIt-List-Atomic": billing.listAtomic,
