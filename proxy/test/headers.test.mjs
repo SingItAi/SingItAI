@@ -10,12 +10,14 @@ test("client labels are allowlisted short tokens; anything else becomes the fall
   assert.equal(sanitizeClient("openclaw"), "openclaw");
   assert.equal(sanitizeClient("Continue"), "continue");
   assert.equal(sanitizeClient("singit-proxy/0.1.0"), "singit-proxy");
-  assert.equal(sanitizeClient("singit-cc/0.1.0"), "singit-cc");
+  assert.equal(sanitizeClient("codex"), "codex");
+  assert.equal(sanitizeClient("codex/0.1.0"), "codex");
   assert.equal(sanitizeClient("not a label"), "singit-proxy");
   assert.equal(sanitizeClient("user@example.com"), "singit-proxy");
   assert.equal(sanitizeClient("x".repeat(40)), "singit-proxy");
   assert.equal(sanitizeClient("evil", null), null);
-  assert.ok(CLIENTS.includes("openclaw") && CLIENTS.includes("continue"));
+  assert.ok(CLIENTS.includes("openclaw") && CLIENTS.includes("continue") && CLIENTS.includes("codex"));
+  assert.equal(CLIENTS.includes("singit-cc"), false);
 });
 
 test("the default header is singit-proxy/<version>; a configured product is sent as-is", () => {
@@ -35,8 +37,10 @@ test("path-pinned chat is rewritten onto /v1/chat/completions", () => {
   assert.equal(routeUpstream("/chat/completions", {}), null);
 });
 
-test("readConfig rejects a non-allowlisted --client and accepts openclaw", () => {
+test("readConfig rejects a non-allowlisted --client and accepts openclaw or codex", () => {
   assert.equal(readConfig({ env: { SINGIT_CLIENT: "openclaw" } }).client, "openclaw");
+  assert.equal(readConfig({ env: { SINGIT_CLIENT: "codex" } }).client, "codex");
+  assert.deepEqual(readConfig({ env: { SINGIT_MODEL_MAP: "haiku=free/deepseek-v4.1-flash" } }).modelMap, { haiku: "free/deepseek-v4.1-flash" });
   assert.throws(() => readConfig({ env: { SINGIT_CLIENT: "user@host" } }), /short product label/);
   assert.equal(readConfig({ argv: ["--port", "9001"] }).port, 9001);
 });

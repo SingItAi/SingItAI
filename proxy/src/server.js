@@ -1,23 +1,42 @@
 // Local OpenAI-compatible proxy: clients talk to http://127.0.0.1:<port>/v1 like any
-// OpenAI baseURL. This process holds the wallet, signs x402 to ask.singitai.app, and
-// never treats HTTP 402 as a successful completion.
+// OpenAI baseURL. The same process also speaks Anthropic Messages at /v1/messages by
+// translating to Ask's /v1/chat/completions. It holds the wallet, signs x402, and never
+// treats HTTP 402 as a successful completion or message.
 import http from "node:http";
 import { SingIt, NETWORKS } from "@singitai/sdk";
 import { loadOrCreateWallet, loadWallet, sessionPath, NETWORK } from "@singitai/session-wallet";
 import { readConfig, assertNetworkAllowed, VERSION } from "./config.js";
 export { VERSION };
 import { withClientHeader, withRetries } from "./headers.js";
+import { anthropicToChatCompletions, chatCompletionToMessage, estimateTokenCount } from "./anthropic.js";
+import {
+  completionToOpenAiSse, messageToAnthropicSse, openaiSseToAnthropicSse,
+  looksLikeSse, ensureOpenAiDone,
+} from "./sse.js";
 
 const BODY_LIMIT = 1_000_000;
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET, POST, OPTIONS",
-  "access-control-allow-headers": "content-type, authorization, x-singit-client",
+  "access-control-allow-headers": "content-type, authorization, x-api-key, anthropic-version, anthropic-beta, x-singit-client",
 };
 
 function json(res, status, body) {
   res.writeHead(status, { "content-type": "application/json", ...CORS });
   res.end(JSON.stringify(body));
+}
+
+function anthropicError(res, status, message, type = status === 400 || status === 422 ? "invalid_request_error" : "api_error") {
+  return json(res, status, { type: "error", error: { type, message } });
+}
+
+function writeSse(res, body) {
+  res.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache",
+    ...CORS,
+  });
+  res.end(body);
 }
 
 function readBody(req) {
@@ -82,6 +101,81 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
     return { singit, wallet };
   }
 
+  async function upstreamChat(paying, openaiBody) {
+    const target = `${config.askUrl}/v1/chat/completions`;
+    const streaming = openaiBody?.stream === true;
+    const headers = { "content-type": "application/json" };
+    if (streaming) {
+      const preview = await tagged(target, { method: "POST", headers, body: JSON.stringify(openaiBody) });
+      if (preview.status !== 402) return preview;
+      const paidBody = { ...openaiBody, stream: false };
+      delete paidBody.stream_options;
+      return paying.singit.paidFetch()(target, { method: "POST", headers, body: JSON.stringify(paidBody) });
+    }
+    return paying.singit.paidFetch()(target, { method: "POST", headers, body: JSON.stringify(openaiBody) });
+  }
+
+  async function sendChatResponse(res, response, { streaming, format }) {
+    if (response.status === 402) {
+      const message = `SingIt Ask answered HTTP 402 (payment required) and the local wallet could not pay. ${fundingHint()}`;
+      if (format === "anthropic") return anthropicError(res, 402, message);
+      return json(res, 402, { error: { message, type: "payment_required" } });
+    }
+    const contentType = response.headers.get("content-type") || "";
+    const text = await response.text();
+    if (response.status !== 200) {
+      if (format === "anthropic") {
+        let message = text;
+        try {
+          const parsed = JSON.parse(text);
+          message = parsed?.error?.message || parsed?.message || text;
+        } catch { /* keep raw text */ }
+        return anthropicError(res, response.status, message || "Upstream request failed.");
+      }
+      res.writeHead(response.status, { "content-type": contentType || "application/json", ...CORS });
+      return res.end(text);
+    }
+
+    if (format === "openai") {
+      if (!streaming) {
+        res.writeHead(response.status, { "content-type": contentType || "application/json", ...CORS });
+        return res.end(text);
+      }
+      if (/text\/event-stream/i.test(contentType) || looksLikeSse(text)) return writeSse(res, ensureOpenAiDone(text));
+      let parsed;
+      try { parsed = JSON.parse(text); }
+      catch {
+        res.writeHead(response.status, { "content-type": contentType || "application/json", ...CORS });
+        return res.end(text);
+      }
+      if (parsed?.error && !parsed?.choices) {
+        return json(res, response.status >= 400 ? response.status : 502, parsed);
+      }
+      return writeSse(res, completionToOpenAiSse(parsed));
+    }
+
+    if (/text\/event-stream/i.test(contentType) || looksLikeSse(text)) {
+      return writeSse(res, openaiSseToAnthropicSse(text));
+    }
+    let parsed;
+    try { parsed = JSON.parse(text); }
+    catch { return anthropicError(res, 502, "Upstream returned an unreadable answer."); }
+    if (parsed?.error && !parsed?.choices) {
+      return anthropicError(res, response.status >= 400 ? response.status : 502, parsed.error?.message || "Upstream request failed.");
+    }
+    const message = parsed?.type === "message" && parsed?.role === "assistant"
+      ? parsed : chatCompletionToMessage(parsed);
+    return streaming ? writeSse(res, messageToAnthropicSse(message)) : json(res, 200, message);
+  }
+
+  function paymentCatch(error, format) {
+    const message = error?.message || "Request failed.";
+    const status = /HTTP 402/.test(message) ? 402 : 502;
+    const wrapped = `${message} ${fundingHint()}`;
+    if (format === "anthropic") return { status, body: { type: "error", error: { type: "api_error", message: wrapped } } };
+    return { status, body: { error: { message: wrapped, type: status === 402 ? "payment_required" : "proxy_error" } } };
+  }
+
   async function handle(req, res) {
     if (req.method === "OPTIONS") {
       res.writeHead(204, CORS);
@@ -94,6 +188,7 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
         name: "singit-proxy", version: VERSION, ok: true,
         listen: `http://${config.host}:${config.port}/v1/`,
         upstream: `${config.askUrl}/v1/chat/completions`,
+        routes: ["/v1/chat/completions", "/v1/messages", "/v1/messages/count_tokens"],
         network: config.network, client: config.client, limits,
         wallet: "GET /wallet",
       });
@@ -126,42 +221,48 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
       return json(res, 404, { error: { message: "Not found.", type: "invalid_request_error" } });
     }
 
-    const body = await readBody(req);
-    const routed = routeUpstream(url.pathname, body);
-    if (!routed) return json(res, 404, { error: { message: "Not found. This proxy serves OpenAI chat completions at /v1/chat/completions.", type: "invalid_request_error" } });
-    if (routed.body?.stream === true) {
-      return json(res, 400, { error: { message: "This proxy returns a complete JSON answer after payment; set stream to false.", type: "invalid_request_error" } });
+    let body;
+    try { body = await readBody(req); }
+    catch (error) {
+      if (url.pathname === "/v1/messages" || url.pathname === "/v1/messages/count_tokens") {
+        return anthropicError(res, error.status || 400, error.message);
+      }
+      return json(res, error.status || 400, { error: { message: error.message, type: "invalid_request_error" } });
     }
 
-    const paying = payer();
-    const target = `${config.askUrl}${routed.path}`;
-    try {
-      const response = await paying.singit.paidFetch()(target, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(routed.body),
-      });
-      // A 402 after the SDK tried to pay is a refusal, never a chat completion.
-      if (response.status === 402) {
-        return json(res, 402, {
-          error: {
-            message: `SingIt Ask answered HTTP 402 (payment required) and the local wallet could not pay. ${fundingHint()}`,
-            type: "payment_required",
-          },
-        });
+    if (url.pathname === "/v1/messages/count_tokens") {
+      try { return json(res, 200, estimateTokenCount(body ?? {})); }
+      catch (error) { return anthropicError(res, error.status || 400, error.message); }
+    }
+
+    if (url.pathname === "/v1/messages") {
+      try {
+        const openaiBody = anthropicToChatCompletions(body ?? {}, { modelMap: config.modelMap });
+        const response = await upstreamChat(payer(), openaiBody);
+        return await sendChatResponse(res, response, { streaming: body?.stream === true, format: "anthropic" });
+      } catch (error) {
+        if (error.status) return anthropicError(res, error.status, error.message);
+        const mapped = paymentCatch(error, "anthropic");
+        return json(res, mapped.status, mapped.body);
       }
-      const text = await response.text();
-      res.writeHead(response.status, { "content-type": response.headers.get("content-type") || "application/json", ...CORS });
-      return res.end(text);
-    } catch (error) {
-      const message = error?.message || "Request failed.";
-      const status = /HTTP 402/.test(message) ? 402 : 502;
-      return json(res, status, {
+    }
+
+    const routed = routeUpstream(url.pathname, body);
+    if (!routed) {
+      return json(res, 404, {
         error: {
-          message: `${message} ${fundingHint()}`,
-          type: status === 402 ? "payment_required" : "proxy_error",
+          message: "Not found. This proxy serves OpenAI chat completions at /v1/chat/completions and Anthropic Messages at /v1/messages.",
+          type: "invalid_request_error",
         },
       });
+    }
+
+    try {
+      const response = await upstreamChat(payer(), routed.body);
+      return await sendChatResponse(res, response, { streaming: routed.body?.stream === true, format: "openai" });
+    } catch (error) {
+      const mapped = paymentCatch(error, "openai");
+      return json(res, mapped.status, mapped.body);
     }
   }
 

@@ -76,12 +76,129 @@ test("pinned /v1/chat/<id> is rewritten onto completions so the mock (and Ask) s
   assert.equal(merchant.requests[0].body.model, "claude-opus-5.5");
 });
 
-test("stream:true is rejected before payment", async t => {
+test("stream:true after a paid JSON invoice is emitted as OpenAI SSE plus [DONE]", async t => {
   const { merchant, url } = await listenProxy(t);
+  const response = await post(url, { model: "deepseek-v4.1-flash", messages: [{ role: "user", content: "Hello" }], stream: true });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /text\/event-stream/);
+  const text = await response.text();
+  assert.match(text, /Hello back\./);
+  assert.match(text, /data: \[DONE\]/);
+  assert.match(text, /chat\.completion\.chunk/);
+  assert.equal(text.includes('"object":"chat.completion"') && !text.includes("chat.completion.chunk"), false);
+  assert.deepEqual(merchant.requests.map(r => r.status), [402, 402, 200]);
+  assert.equal(merchant.requests[0].body.stream, true);
+  assert.equal(merchant.requests[2].body.stream, false);
+});
+
+test("stream:true passes through live SSE from Ask when no payment is required", async t => {
+  const { merchant, url } = await listenProxy(t, { merchantOptions: { freeSse: true } });
   const response = await post(url, { messages: [{ role: "user", content: "Hello" }], stream: true });
-  assert.equal(response.status, 400);
-  assert.match((await response.json()).error.message, /stream/);
+  assert.equal(response.status, 200);
+  const text = await response.text();
+  assert.match(text, /Hel/);
+  assert.match(text, /lo/);
+  assert.match(text, /data: \[DONE\]/);
+  assert.equal(merchant.requests.length, 1);
+  assert.equal(merchant.requests[0].headers["payment-signature"], undefined);
+});
+
+test("a refused streamed payment is an error, not SSE", async t => {
+  const { url } = await listenProxy(t, { merchantOptions: { funded: false } });
+  const response = await post(url, { messages: [{ role: "user", content: "Hello" }], stream: true });
+  assert.equal(response.status, 402);
+  const body = await response.json();
+  assert.equal(body.choices, undefined);
+  assert.match(body.error.message, /HTTP 402/);
+});
+
+test("POST /v1/messages is translated onto completions and returned as an Anthropic message", async t => {
+  const { merchant, url } = await listenProxy(t);
+  const response = await post(url, {
+    model: "deepseek-v4.1-flash", max_tokens: 32,
+    system: "Be brief.",
+    messages: [{ role: "user", content: "Hello" }],
+  }, "/v1/messages");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.type, "message");
+  assert.equal(body.role, "assistant");
+  assert.equal(body.content[0].type, "text");
+  assert.equal(body.content[0].text, "Hello back.");
+  assert.equal(body.stop_reason, "end_turn");
+  assert.equal(merchant.requests[0].path, "/v1/chat/completions");
+  assert.equal(merchant.requests[0].body.model, "deepseek-v4.1-flash");
+  assert.equal(merchant.requests[0].body.messages[0].role, "system");
+  assert.equal(merchant.requests[0].body.messages[0].content, "Be brief.");
+});
+
+test("POST /v1/messages with stream:true emits Anthropic SSE events", async t => {
+  const { url } = await listenProxy(t);
+  const response = await post(url, {
+    model: "deepseek-v4.1-flash", max_tokens: 32, stream: true,
+    messages: [{ role: "user", content: "Hello" }],
+  }, "/v1/messages");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /text\/event-stream/);
+  const text = await response.text();
+  assert.match(text, /event: message_start/);
+  assert.match(text, /event: content_block_delta/);
+  assert.match(text, /Hello back\./);
+  assert.match(text, /event: message_stop/);
+  assert.equal(text.includes('"type":"message"') && !text.includes("message_start"), false);
+});
+
+test("POST /v1/messages maps tools to tool_use blocks", async t => {
+  const { merchant, url } = await listenProxy(t, { merchantOptions: { toolReply: true } });
+  const response = await post(url, {
+    model: "deepseek-v4.1-flash", max_tokens: 32,
+    messages: [{ role: "user", content: "Look it up" }],
+    tools: [{ name: "lookup", description: "Look something up", input_schema: { type: "object", properties: { q: { type: "string" } } } }],
+  }, "/v1/messages");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.stop_reason, "tool_use");
+  assert.equal(body.content[0].type, "tool_use");
+  assert.equal(body.content[0].name, "lookup");
+  assert.equal(body.content[0].input.q, "hi");
+  assert.equal(merchant.requests[0].body.tools[0].type, "function");
+  assert.equal(merchant.requests[0].body.tools[0].function.name, "lookup");
+});
+
+test("POST /v1/messages/count_tokens returns an estimate and does not pay", async t => {
+  const { merchant, url } = await listenProxy(t);
+  const response = await post(url, {
+    model: "deepseek-v4.1-flash",
+    messages: [{ role: "user", content: "Hello there, this is a longer prompt for counting." }],
+  }, "/v1/messages/count_tokens");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(typeof body.input_tokens, "number");
+  assert.ok(body.input_tokens >= 1);
   assert.equal(merchant.requests.length, 0);
+});
+
+test("SINGIT_MODEL_MAP rewrites Anthropic model ids before they reach Ask", async t => {
+  const { merchant, url } = await listenProxy(t, { extraEnv: { SINGIT_MODEL_MAP: "claude-haiku-5.5=deepseek-v4.1-flash" } });
+  const response = await post(url, {
+    model: "claude-haiku-5.5", max_tokens: 16,
+    messages: [{ role: "user", content: "Hello" }],
+  }, "/v1/messages");
+  assert.equal(response.status, 200);
+  assert.equal(merchant.requests[0].body.model, "deepseek-v4.1-flash");
+});
+
+test("a refused /v1/messages payment is an Anthropic error, not a message", async t => {
+  const { url } = await listenProxy(t, { merchantOptions: { funded: false } });
+  const response = await post(url, {
+    model: "deepseek-v4.1-flash", max_tokens: 16,
+    messages: [{ role: "user", content: "Hello" }],
+  }, "/v1/messages");
+  assert.equal(response.status, 402);
+  const body = await response.json();
+  assert.equal(body.type, "error");
+  assert.equal(body.content, undefined);
+  assert.match(body.error.message, /HTTP 402/);
 });
 
 test("GET /wallet returns an address and never a private key; logs are not involved", async t => {

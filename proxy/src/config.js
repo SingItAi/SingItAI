@@ -8,6 +8,23 @@ export const DEFAULT_MAX_PER_CALL_USD = 0.01;
 export const DEFAULT_MAX_PER_DAY_USD = 1;
 export const SOLANA_MIN_SUCCESS_PCT = 95;
 
+
+export function readModelMap(env = process.env) {
+  const raw = env.SINGIT_MODEL_MAP;
+  if (raw == null || raw === "") return {};
+  const map = {};
+  for (const part of String(raw).split(/[,;\n]/)) {
+    const item = part.trim();
+    if (!item) continue;
+    const eq = item.indexOf("=");
+    if (eq <= 0 || eq === item.length - 1) {
+      throw new Error("SINGIT_MODEL_MAP must be comma-separated source=target pairs.");
+    }
+    map[item.slice(0, eq).trim().toLowerCase()] = item.slice(eq + 1).trim();
+  }
+  return map;
+}
+
 function usdLimit(raw, name, fallback) {
   if (raw == null || raw === "") return fallback;
   const value = Number(raw);
@@ -48,6 +65,7 @@ export function readConfig({ env = process.env, argv = [] } = {}) {
     rpcUrl: env.SINGIT_RPC_URL || undefined,
     maxPerCallUsd: usdLimit(arg(argv, "max-per-call") ?? env.SINGIT_MAX_PER_CALL_USD, "SINGIT_MAX_PER_CALL_USD", DEFAULT_MAX_PER_CALL_USD),
     maxPerDayUsd: usdLimit(arg(argv, "max-per-day") ?? env.SINGIT_MAX_PER_DAY_USD, "SINGIT_MAX_PER_DAY_USD", DEFAULT_MAX_PER_DAY_USD),
+    modelMap: readModelMap(env),
   };
 }
 

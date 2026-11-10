@@ -1,5 +1,5 @@
 // Fixed product labels only; never persist client headers or conversation data.
-export const SOURCES = ['openai-python', 'openai-node', 'langchain', 'litellm', 'vercel-ai', 'cursor', 'claude-code', 'continue', 'openclaw', 'curl', 'browser', 'singit-proxy', 'singit-mcp', 'singit-cc', 'other'];
+export const SOURCES = ['openai-python', 'openai-node', 'langchain', 'litellm', 'vercel-ai', 'cursor', 'claude-code', 'continue', 'openclaw', 'codex', 'curl', 'browser', 'singit-proxy', 'singit-mcp', 'other'];
 const FIELDS = ['calls', 'with_tools', 'with_stream', 'with_images'];
 export const emptyTraffic = () => ({ calls: 0, with_tools: 0, with_stream: 0, with_images: 0, by_source: Object.fromEntries(SOURCES.map(s => [s, 0])) });
 export function validTraffic(t) {
