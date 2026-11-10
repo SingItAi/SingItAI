@@ -83,6 +83,9 @@ test("402 wrapper exposes allowance reason and guidance from the core challenge"
   assert.equal(res.statusCode, 402);
   assert.equal(body.code, "permit2_allowance_required");
   assert.match(body.message, /Nothing was charged/);
+  // No ceiling known here (empty accepts, no signature): the amount is left out rather than invented.
+  assert.deepEqual(body.next_action, { type: "approve_allowance", missing: "permit2_allowance",
+    network: "eip155:8453", asset: "USDC", docs: "https://singitai.app/docs/errors/" });
 });
 
 // End to end through createApp: the real x402 HTTP middleware, a fake facilitator and a fake chain reader.
@@ -132,6 +135,10 @@ test("HTTP: a payment whose allowance is below the ceiling is refused before the
   assert.equal(body.action, "use_exact_or_provide_permit");
   assert.deepEqual(body.details, { scheme: "upto", network: "eip155:8453", extension: "eip2612GasSponsoring" });
   assert.match(body.request_id, /^req_[0-9a-f-]{36}$/);
+  assert.deepEqual(body.next_action, { type: "approve_allowance", missing: "permit2_allowance",
+    amountAtomic: ceiling, amountUsd: Number(ceiling) / 1e6, network: "eip155:8453", asset: "USDC",
+    docs: "https://singitai.app/docs/errors/" });
+  assert.ok(!JSON.stringify(body.next_action).toLowerCase().includes("0x"), "no contract or payer address");
   assert.equal(response.headers.get("x-singit-error"), "permit2_allowance_required");
   assert.ok(Array.isArray(body.accepts) && body.accepts.length > 0);
   assert.equal(calls.upstream, 0);
