@@ -1344,7 +1344,7 @@ class Sign402GatewayHandler(BaseHTTPRequestHandler):
             payload = self._read_json()
             telegram_user_id = _require_authenticated_user(self, payload)
             operator_limits = _operator_user_wallet_limits()
-            operator_ceilings = _operator_user_wallet_ceilings()
+            operator_ceilings = _operator_user_wallet_ceilings_for(self.server, telegram_user_id)
             if _payload_has_spending_limit_update(payload):
                 max_per_tx_atomic = _read_usdc_limit_atomic(payload, "maxPerTx")
                 daily_cap_atomic = _read_usdc_limit_atomic(payload, "dailyCap")
@@ -7158,6 +7158,22 @@ def _operator_user_wallet_limits() -> dict[str, int | None]:
     }
 
 
+def _operator_user_wallet_ceilings_for(server: Any, user_id: object) -> dict[str, int | None]:
+    """The operator's hard ceilings for one user: the daily one is raised for a top-tier SINGIT holder.
+
+    Reads the holder's balance only when a daily ceiling is set at all; an unreadable balance keeps the standard one.
+    """
+    ceilings = _operator_user_wallet_ceilings()
+    if ceilings["ceilingDailyAtomic"] is None:
+        return ceilings
+    from . import holder_limits  # noqa: PLC0415 - optional, and keeps this module's import list as it was
+
+    address = holder_limits.base_address_of(server, user_id)
+    if address is not None:
+        ceilings["ceilingDailyAtomic"] = holder_limits.raised_ceiling_daily_atomic(address, ceilings["ceilingDailyAtomic"])
+    return ceilings
+
+
 def _operator_user_wallet_ceilings() -> dict[str, int | None]:
     """Hard maximums users may never exceed, unlike the raiseable defaults.
 
@@ -7240,7 +7256,7 @@ def _user_wallet_spend_scope(
     payment_requirements: dict[str, Any],
 ) -> dict[str, Any]:
     operator_limits = _operator_user_wallet_limits()
-    operator_ceilings = _operator_user_wallet_ceilings()
+    operator_ceilings = _operator_user_wallet_ceilings_for(server, telegram_user_id)
     limits = server.user_spend_limit_store.limit_settings(
         telegram_user_id,
         operator_max_per_tx_atomic=operator_limits["maxPerTxAtomic"],

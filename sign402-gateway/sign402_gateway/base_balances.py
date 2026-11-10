@@ -1,6 +1,7 @@
 import json
 import re
 import threading
+import time
 from collections.abc import Callable, Mapping
 from decimal import Decimal, localcontext
 from typing import Any
@@ -321,6 +322,116 @@ class AlchemyBaseBalanceProvider:
 # trusted ETH/USDC/SINGIT reads, so any standard Base JSON-RPC endpoint can
 # serve this provider; keep the old name exported for existing imports.
 BaseBalanceProvider = AlchemyBaseBalanceProvider
+
+
+SINGIT_DECIMALS = 18
+DEFAULT_HOLDER_TIERS = "20000000:500,50000000:1000,150000000:1500+daily"
+_HOLDER_TIER_RE = re.compile(r"^([1-9][0-9]{0,17}):([1-9][0-9]{0,3})(\+daily)?$")
+
+
+def parse_holder_tiers(text: str) -> list[tuple[int, int, bool]]:
+    """`minWholeTokens:discountBps[+daily],...` as (min_tokens, bps, raises_daily_limit), ascending.
+
+    The same format as singit-ask's SINGIT_ASK_HOLDER_TIERS. Raises ValueError on anything unreadable.
+    """
+    parts = [p.strip() for p in str(text or "").split(",") if p.strip()]
+    if not 1 <= len(parts) <= 8:
+        raise ValueError("holder tiers: want 1 to 8 entries")
+    tiers = []
+    for part in parts:
+        match = _HOLDER_TIER_RE.fullmatch(part)
+        if not match or int(match.group(2)) >= 10_000:
+            raise ValueError(f"holder tiers: cannot read {part!r}")
+        tiers.append((int(match.group(1)), int(match.group(2)), match.group(3) is not None))
+    tiers.sort()
+    for earlier, later in zip(tiers, tiers[1:]):
+        if earlier[0] == later[0] or later[1] < earlier[1]:
+            raise ValueError("holder tiers: thresholds must be distinct and discounts must not shrink")
+    return tiers
+
+
+class HolderBalanceReader:
+    """SINGIT balance of an address as min(now, about a day ago), so a flash loan does not count.
+
+    Fails closed: any RPC error, missing historical state (a node without archive data), bad address or bad reply
+    gives None, never an exception. Results (and failures, for a shorter time) are cached and the cache is bounded.
+    """
+
+    def __init__(
+        self,
+        *,
+        rpc: JsonRpcClient,
+        token_address: str = DEFAULT_SINGIT_TOKEN_ADDRESS,
+        lookback_seconds: int = 86_400,
+        cache_seconds: float = 60.0,
+        failure_cache_seconds: float = 30.0,
+        block_cache_seconds: float = 300.0,
+        max_entries: int = 1000,
+        clock: Callable[[], float] = time.time,
+    ):
+        self.rpc = rpc
+        self.token_address = _require_address(token_address, field_name="SINGIT token address")
+        self.lookback_seconds = lookback_seconds
+        self.cache_seconds = cache_seconds
+        self.failure_cache_seconds = failure_cache_seconds
+        self.block_cache_seconds = block_cache_seconds
+        self.max_entries = max_entries
+        self.clock = clock
+        self._lock = threading.Lock()
+        self._cache: dict[str, tuple[float, float, int | None]] = {}
+        self._block: tuple[float, int] | None = None
+
+    def _old_block(self) -> int:
+        now = self.clock()
+        if self._block is not None and now - self._block[0] < self.block_cache_seconds:
+            return self._block[1]
+        latest = _parse_hex_quantity(self.rpc.call("eth_blockNumber", []))
+        estimate = latest - self.lookback_seconds // 2  # Base blocks come about 2 s apart
+        if estimate < 1:
+            raise BaseBalanceError("chain too young")
+        sample = self.rpc.call("eth_getBlockByNumber", [hex(estimate), False])
+        if not isinstance(sample, dict):
+            raise BaseBalanceError("Base RPC returned no block")
+        drift = _parse_hex_quantity(sample.get("timestamp")) - (int(now) - self.lookback_seconds)
+        estimate -= round(drift / 2) + 30  # one correction, and a minute of margin toward older
+        if estimate < 1:
+            raise BaseBalanceError("chain too young")
+        self._block = (now, estimate)
+        return estimate
+
+    def _balance_at(self, address: str, block: str) -> int:
+        data = encode_erc20_balance_of(address)
+        return _parse_uint256_hex(
+            self.rpc.call("eth_call", [{"to": self.token_address, "data": data}, block])
+        )
+
+    def effective_balance(self, address: object) -> int | None:
+        """Base units (18 decimals) held now and a day ago, whichever is lower; None when unknown."""
+        try:
+            wallet = _require_address(address, field_name="wallet address").lower()
+        except BaseBalanceError:
+            return None
+        now = self.clock()
+        with self._lock:
+            hit = self._cache.get(wallet)
+            if hit is not None and now - hit[0] < hit[1]:
+                return hit[2]
+        balance: int | None
+        try:
+            with self._lock:
+                old = self._old_block()
+            balance = min(self._balance_at(wallet, "latest"), self._balance_at(wallet, hex(old)))
+        except Exception:  # noqa: BLE001 - every failure means "no discount, no raised limit"
+            balance = None
+        with self._lock:
+            self._cache[wallet] = (now, self.cache_seconds if balance is not None else self.failure_cache_seconds, balance)
+            while len(self._cache) > self.max_entries:
+                self._cache.pop(next(iter(self._cache)))
+        return balance
+
+    def holds_at_least(self, address: object, whole_tokens: int) -> bool:
+        balance = self.effective_balance(address)
+        return balance is not None and balance >= whole_tokens * 10**SINGIT_DECIMALS
 
 
 def build_base_balance_provider_from_env(

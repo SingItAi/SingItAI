@@ -86,7 +86,9 @@ INSTRUCTIONS = (
     "Look up prices, models, web pages and market data. get_price, list_price_symbols and list_models are "
     "free and work without a key; chat_free also answers without a key. chat is paid from your key. Paid tools need a SingIt API key and are charged per call to that key's "
     "SingIt limits, in USDC on Base or Solana. web_search and read_page need the key's \"search\" scope; the "
-    "market data tools need its \"tools\" scope and a Base account for now. Keys made before paid data tools existed need a new key for those."
+    "market data tools need its \"tools\" scope and a Base account for now. Keys made before paid data tools existed need a new key for those. "
+    "SINGIT holders on Base can receive a lower USDC rate: 5, 10 or 15 percent off at 20 million, 50 million and 150 million tokens held "
+    "(the top tier also raises the daily limit). Direct x402 callers send the paying Base address in the X-SingIt-Payer header."
 )
 KEYLESS_PAID_MESSAGE = ("This tool is paid. Create a SingIt API key at https://app.singitai.app/app/ and send it "
                         "as \"Authorization: Bearer sk_singit_...\" or \"x-api-key: sk_singit_...\".")
@@ -413,8 +415,8 @@ def tools() -> list[dict[str, Any]]:
 # Catalog metadata served by web_api.py's GET dispatch, public and keyless.
 ICON_URL = "https://singitai.app/assets/icons/icon-512.png"
 DOCS_URL = "https://singitai.app/docs/mcp/"
-SERVER_CARD_DESCRIPTION = ("Free price and model lookups and short free chat answers without a key; paid chat, web search, "
-                           "page reading and x402 market data, in USDC within your API key's SingIt limits.")
+SERVER_CARD_DESCRIPTION = ("Free price and model lookups and short free chat without a key; paid chat, search, page reading "
+                           "and x402 market data within your key's limits. SINGIT holders on Base can get a lower USDC rate.")
 AUTH_INSTRUCTIONS = ("Free tools work without a key. For paid tools, create a SingIt API key in the app at "
                      "https://app.singitai.app/app/, then send it as \"Authorization: Bearer sk_singit_...\" or "
                      "\"x-api-key: sk_singit_...\".")

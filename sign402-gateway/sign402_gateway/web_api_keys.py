@@ -142,6 +142,13 @@ class ApiKeys:
     def store(self):
         return self.api.auth.store
 
+    @staticmethod
+    def _max_daily_atomic(owner: str) -> int:
+        """MAX_DAILY_ATOMIC, or the raised cap for a top-tier SINGIT holder on Base (holder_limits.py)."""
+        from . import holder_limits  # noqa: PLC0415 - optional
+
+        return holder_limits.raised_max_daily_atomic(owner, MAX_DAILY_ATOMIC)
+
     def _day(self) -> int:
         return int(self.now()) // 86400
 
@@ -163,7 +170,7 @@ class ApiKeys:
             name = str(body.get("name") or "").strip()
             if not NAME.fullmatch(name):
                 raise ValueError("Name the key in up to 40 letters, digits, spaces or simple punctuation.")
-            daily = _usd_atomic(body.get("dailyUsd"), DEFAULT_DAILY_ATOMIC, low=10_000, high=MAX_DAILY_ATOMIC,
+            daily = _usd_atomic(body.get("dailyUsd"), DEFAULT_DAILY_ATOMIC, low=10_000, high=self._max_daily_atomic(owner),
                                 what="The daily limit")
             per = _usd_atomic(body.get("perRequestUsd"), min(DEFAULT_PER_REQUEST_ATOMIC, daily), low=1_000,
                               high=min(MAX_PER_REQUEST_ATOMIC, daily), what="The per-answer limit")
