@@ -179,7 +179,7 @@
 <tr><th scope="row">List price of the model (for reference)</th><td>$0.825</td><td>$4.125</td></tr></tbody></table></div><p>The expected price is based on what answers from this model have cost us. It is an expected price, not a guarantee; you pay what each answer actually used.</p><p>Price = what the provider charges for the answer + 30% markup + a settlement fee per request ($0.001 on Base, $0.002 on Solana).</p>
 <h3>Per request, reference request</h3>
 <p>One short message, max_tokens 800 (30 characters), 12 input tokens. upto settles actual usage, so a real answer normally costs less; exact is flat, with no refund.</p><div class="table-wrap"><table class="mtable"><thead><tr><th scope="col">Network</th><th scope="col">upto ceiling (USD)</th><th scope="col">exact flat price (USD)</th></tr></thead><tbody><tr><th scope="row">Base</th><td>$0.0015</td><td>$0.0015</td></tr>
-<tr><th scope="row">Solana</th><td>$0.002115</td><td>$0.002049</td></tr></tbody></table></div><p>Prices as of 2026-11-09 12:08:15 UTC (snapshot of ask.singitai.app/v1/models and /pricing.json). Live: <a href="https://ask.singitai.app/v1/models">/v1/models</a> and <a href="https://ask.singitai.app/pricing.json">/pricing.json</a>. Live values are authoritative and the 402 response states the exact price.</p>
+<tr><th scope="row">Solana</th><td>$0.002115</td><td>$0.002049</td></tr></tbody></table></div><p>Prices as of 2026-11-10 12:03:14 UTC (snapshot of ask.singitai.app/v1/models and /pricing.json). Live: <a href="https://ask.singitai.app/v1/models">/v1/models</a> and <a href="https://ask.singitai.app/pricing.json">/pricing.json</a>. Live values are authoritative and the 402 response states the exact price.</p>
 </div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Call it with x402</h2>
 <div class="code"><pre><code>curl -i -X POST https://ask.singitai.app/v1/chat/gemini-3.8-flash \
   -H &#39;Content-Type: application/json&#39; \
@@ -191,14 +191,14 @@
 </div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Give your agent a budget</h2>
 <p><a href="/agent-spending-limits/">Agent spending limits for USDC on Base</a> · <a href="/limit-ai-agent-spending/">How to limit what an AI agent can spend</a> · <a href="/x402-budget-for-agents/">x402 payments with a budget for AI agents</a></p>
 </div></section><section class="lp-section"><div class="shell"><h2 class="section-title">Related models</h2>
-<ul><li><a href="/models/e2ee-gemma-4-26b-a4b-uncensored-p/">Gemma 4 26B A4B Uncensored (E2EE)</a></li>
+<ul><li><a href="/models/e2ee-gemma-3-27b/">Gemma 3 27B E2EE</a></li>
+<li><a href="/models/e2ee-gemma-4-26b-a4b-uncensored-p/">Gemma 4 26B A4B Uncensored (E2EE)</a></li>
 <li><a href="/models/gemini-2.5-flash/">Gemini 2.5 Flash</a></li>
 <li><a href="/models/gemini-2.5-pro/">Gemini 2.5 Pro</a></li>
 <li><a href="/models/gemini-3-5-flash/">Gemini 3.5 Flash</a></li>
 <li><a href="/models/gemini-3-5-flash-lite/">Gemini 3.5 Flash Lite</a></li>
 <li><a href="/models/gemini-3-6-flash/">Gemini 3.6 Flash</a></li>
-<li><a href="/models/gemini-3-flash-preview/">Gemini 3 Flash Preview</a></li>
-<li><a href="/models/gemini-3.1-flash-lite/">Gemini 3.1 Flash Lite</a></li></ul><p><a href="/models/all/">All model pages</a></p>
+<li><a href="/models/gemini-3-flash-preview/">Gemini 3 Flash Preview</a></li></ul><p><a href="/models/all/">All model pages</a></p>
 </div></section><section class="lp-section"><div class="shell"><h2 class="section-title">FAQ</h2>
 <dl class="faq"><div class="faq-item"><dt><h3>What is x402?</h3></dt><dd class="faq-answer">x402 is an HTTP payment protocol. An unpaid request returns HTTP 402 with a payment offer; sign one offer and retry the same request with proof of payment.</dd></div>
 <div class="faq-item"><dt><h3>Do I need an account?</h3></dt><dd class="faq-answer">No account or API key is needed for these x402 calls.</dd></div>

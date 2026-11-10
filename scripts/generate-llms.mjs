@@ -47,14 +47,20 @@ export function taskRows(routes, format) {
     return [task, paths.map(p => `${method} https://ask.singitai.app${p}`).join('; '), free ? 'Free (limited daily allowance)' : max === 0 ? 'Free' : `${format(min)}..${format(max)} USDC per call`];
   });
 }
-export function renderLlms(text, s, routes, format) {
+export function listedAliasRoutes(s, hold = { hidden: [] }) {
+  const hidden = new Set((hold.hidden ?? []).map((entry) => entry.id));
+  const live = new Set((catalog.data ?? []).map((entry) => entry.id));
+  if (Array.isArray(s?.models)) for (const model of s.models) live.add(model.id);
+  return MODEL_ALIAS_ROUTES.filter((model) => live.has(model.id) && !hidden.has(model.id));
+}
+export function renderLlms(text, s, routes, format, hold = { hidden: [] }) {
   const rows = taskRows(routes.routes, format);
   const table = '## I need to... -> Call -> Price\n\n| Task | Call | Price |\n| --- | --- | --- |\n' + rows.map(r => `| ${r.join(' | ')} |`).join('\n');
   const money = renderMoney(s, format);
   text = replaceBlock(text, 'ask-guide', table + '\n\nAliases: POST /v1/models/<id>/chat or /images; ids at https://ask.singitai.app/llms-models.txt.' + '\n\n' + money);
   text = replaceBlock(text, 'model-pages', renderModelLinks());
   if (Buffer.byteLength(text) > 14000) throw new Error('llms.txt exceeds 14000 bytes');
-  const models = renderModelList(s, format) + '\n## D4 aliases\n\n' + MODEL_ALIAS_ROUTES.map(m => `- POST https://ask.singitai.app${aliasPath(m)}`).join('\n') + '\n';
+  const models = renderModelList(s, format) + '\n## D4 aliases\n\n' + listedAliasRoutes(s, hold).map(m => `- POST https://ask.singitai.app${aliasPath(m)}`).join('\n') + '\n';
   const body = text.replace(/^<!-- generated:[^\n]+ -->\n/gm, '');
 
   const audioDraft = 'Draft Ask audio: POST /v1/audio/sound-effects and /v1/audio/generations return audio bytes after bounded server-side generation; Base-only exact USDC (Solana refused; disabled until credit, route and pricing readiness are confirmed), model capabilities and flat prices at GET /v1/audio/generation-models. Not yet published.';
@@ -121,7 +127,7 @@ async function runCli() {
     const hidden = JSON.parse(await readFile(new URL('./hidden-models.json', import.meta.url), 'utf8'));
     const routes = JSON.parse(await read('data/ask-routes.json'));
     const stale = [];
-    for (const [name, content] of renderLlms(await read('llms.txt'), visibleSnapshot(snapshot, hidden), routes, price)) {
+    for (const [name, content] of renderLlms(await read('llms.txt'), visibleSnapshot(snapshot, hidden), routes, price, hidden)) {
       if (await read(name) === content) continue;
       stale.push(name);
       if (!process.argv.includes('--check')) await writeFile(new URL(name, website), content);

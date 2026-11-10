@@ -137,7 +137,7 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 <!-- generated:model-pages:start -->
 ## Models
 
-Snapshot: 218 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search (partial offline snapshot).
+Snapshot: 219 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search (partial offline snapshot).
 
 - [Privacy policy](https://singitai.app/privacy/)
 - [Terms of service](https://singitai.app/terms/)

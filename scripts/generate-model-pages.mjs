@@ -271,7 +271,7 @@ export async function generate(check = false) {
   const llms = await readFile(path.join(website, "llms.txt"), "utf8");
   files.set("sitemap.xml", mergeBlock(sitemap, urls.map((url) => `  <url><loc>${url}</loc></url>`).join("\n"), "</urlset>"));
   const routes = JSON.parse(await readFile(path.join(website, "data/ask-routes.json"), "utf8"));
-  for (const [file, content] of renderLlms(llms, visible, routes, price)) files.set(file, content);
+  for (const [file, content] of renderLlms(llms, visible, routes, price, hold)) files.set(file, content);
   files.set("_redirects", hiddenRedirects(await readFile(path.join(website, "_redirects"), "utf8"), hold));
   const stale = [];
   // Model directories belong to this generator; removed models must not linger.

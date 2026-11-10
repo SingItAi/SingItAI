@@ -44,6 +44,7 @@
   <url><loc>https://singitai.app/models/beam-1.0-501b-a23b/</loc></url>
   <url><loc>https://singitai.app/models/claude-fable-5/</loc></url>
   <url><loc>https://singitai.app/models/claude-fable-5.1/</loc></url>
+  <url><loc>https://singitai.app/models/claude-fable-5.2/</loc></url>
   <url><loc>https://singitai.app/models/claude-haiku-4.5/</loc></url>
   <url><loc>https://singitai.app/models/claude-haiku-5.5/</loc></url>
   <url><loc>https://singitai.app/models/claude-opus-4-7-fast/</loc></url>
@@ -74,6 +75,7 @@
   <url><loc>https://singitai.app/models/deepseek-v4.1-flash-uncensored/</loc></url>
   <url><loc>https://singitai.app/models/devstral-2-123b/</loc></url>
   <url><loc>https://singitai.app/models/e2ee-deepseek-v4-flash/</loc></url>
+  <url><loc>https://singitai.app/models/e2ee-gemma-3-27b/</loc></url>
   <url><loc>https://singitai.app/models/e2ee-gemma-4-26b-a4b-uncensored-p/</loc></url>
   <url><loc>https://singitai.app/models/e2ee-glm-5-2-p/</loc></url>
   <url><loc>https://singitai.app/models/e2ee-glm-5.1/</loc></url>
@@ -177,7 +179,6 @@
   <url><loc>https://singitai.app/models/minimax-m2/</loc></url>
   <url><loc>https://singitai.app/models/minimax-m2.5/</loc></url>
   <url><loc>https://singitai.app/models/minimax-m2.7/</loc></url>
-  <url><loc>https://singitai.app/models/minimax-m2.7-highspeed/</loc></url>
   <url><loc>https://singitai.app/models/minimax-m3/</loc></url>
   <url><loc>https://singitai.app/models/minimax-m3-preview/</loc></url>
   <url><loc>https://singitai.app/models/ministral-3-14b-instruct/</loc></url>
@@ -190,6 +191,7 @@
   <url><loc>https://singitai.app/models/mistral-small-4/</loc></url>
   <url><loc>https://singitai.app/models/moondream3-preview/</loc></url>
   <url><loc>https://singitai.app/models/moondream3.1-9b-a2b/</loc></url>
+  <url><loc>https://singitai.app/models/muse-ember/</loc></url>
   <url><loc>https://singitai.app/models/muse-glimmer-30b/</loc></url>
   <url><loc>https://singitai.app/models/muse-spark-1.1/</loc></url>
   <url><loc>https://singitai.app/models/muse-spark-1.2/</loc></url>
