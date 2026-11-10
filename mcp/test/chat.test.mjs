@@ -98,7 +98,10 @@ test("singit_models is free: one GET, no payment, no wallet", async t => {
 
 test("API-key mode sends the Bearer key, signs nothing and never writes ~/.singit/session", async t => {
   const apiKey = "sk_singit_test_not_a_real_key";
-  const { merchant, env, call } = await setup(t, { acceptBearer: apiKey }, { SINGIT_API_KEY: apiKey });
+  const merchant = await startMerchant({ offer: baseOffer(), acceptBearer: apiKey });
+  t.after(() => merchant.close());
+  const env = { SINGIT_HOME: tempHome(t), SINGIT_API_KEY: apiKey, SINGIT_APP_URL: merchant.url };
+  const { call } = await connect(t, { env });
 
   const chat = await call("singit_chat", { messages });
   assert.equal(chat.isError, false, chat.text);
@@ -121,7 +124,10 @@ test("API-key mode sends the Bearer key, signs nothing and never writes ~/.singi
 
 test("API-key mode: a 402 is an error, not an answer, and no wallet is created to pay it", async t => {
   const apiKey = "sk_singit_test_not_a_real_key";
-  const { merchant, env, call } = await setup(t, {}, { SINGIT_API_KEY: apiKey }); // merchant ignores the key
+  const merchant = await startMerchant({ offer: baseOffer() }); // merchant ignores the key
+  t.after(() => merchant.close());
+  const env = { SINGIT_HOME: tempHome(t), SINGIT_API_KEY: apiKey, SINGIT_APP_URL: merchant.url };
+  const { call } = await connect(t, { env });
   const chat = await call("singit_chat", { messages });
   assert.equal(chat.isError, true);
   assert.match(chat.text, /HTTP 402/);

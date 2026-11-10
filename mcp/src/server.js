@@ -10,6 +10,7 @@ import { loadWallet, loadOrCreateWallet, sessionPath, NETWORK } from "./wallet.j
 
 export const VERSION = "0.1.0";
 export const DEFAULT_ASK_URL = "https://ask.singitai.app";
+export const DEFAULT_APP_URL = "https://app.singitai.app";
 export const DEFAULT_MODEL = "deepseek-v4.1-flash";
 export const DEFAULT_MAX_PER_CALL_USD = 0.5;
 export const DEFAULT_MAX_PER_DAY_USD = 5;
@@ -23,9 +24,12 @@ function usdLimit(env, name, fallback) {
 
 export function readConfig(env = process.env) {
   const askUrl = (env.SINGIT_ASK_URL || DEFAULT_ASK_URL).replace(/\/$/, "");
+  const appUrl = (env.SINGIT_APP_URL || DEFAULT_APP_URL).replace(/\/$/, "");
   try { new URL(askUrl); } catch { throw new Error("SINGIT_ASK_URL must be an absolute URL."); }
+  try { new URL(appUrl); } catch { throw new Error("SINGIT_APP_URL must be an absolute URL."); }
   return {
     askUrl,
+    appUrl,
     apiKey: env.SINGIT_API_KEY || null,
     rpcUrl: env.SINGIT_RPC_URL || undefined,
     maxPerCallUsd: usdLimit(env, "SINGIT_MAX_PER_CALL_USD", DEFAULT_MAX_PER_CALL_USD),
@@ -122,7 +126,8 @@ export function createServer({ env = process.env, fetchImpl = fetch } = {}) {
   }, async ({ model, messages, max_tokens }) => {
     if (config.apiKey) {
       try {
-        const response = await fetchImpl(`${config.askUrl}/v1/chat/completions`, {
+        // Keys are billed at app.singitai.app/v1, not ask.singitai.app (ask is x402-only).
+        const response = await fetchImpl(`${config.appUrl}/v1/chat/completions`, {
           method: "POST", redirect: "error", signal: AbortSignal.timeout(90000),
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
           body: JSON.stringify({ model, messages, ...(max_tokens != null ? { max_tokens } : {}), stream: false }),

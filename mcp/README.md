@@ -102,7 +102,8 @@ The payee and token are pinned too: the server signs only for SingIt's own addre
 | `SINGIT_WALLET_KEY` | none | A `0x`-prefixed EVM private key to use instead of the file. Takes precedence over it; nothing is written. |
 | `SINGIT_MAX_PER_CALL_USD` | `0.5` | Most one call may authorize, in USD. |
 | `SINGIT_MAX_PER_DAY_USD` | `5` | Most the server may spend per UTC day, in USD. |
-| `SINGIT_ASK_URL` | `https://ask.singitai.app` | SingIt Ask base URL. |
+| `SINGIT_ASK_URL` | `https://ask.singitai.app` | SingIt Ask base URL (wallet / x402 path). |
+| `SINGIT_APP_URL` | `https://app.singitai.app` | Key-billed API base (used only when `SINGIT_API_KEY` is set). |
 | `SINGIT_RPC_URL` | `https://mainnet.base.org` | Base RPC used for read-only calls while signing. |
 | `SINGIT_API_KEY` | none | Use an API key instead of a wallet (below). |
 
@@ -114,10 +115,12 @@ claude mcp add singit -s user -e SINGIT_MAX_PER_CALL_USD=0.05 -e SINGIT_MAX_PER_
 
 ## Optional: API key instead of a wallet
 
-Set `SINGIT_API_KEY` and the server sends `Authorization: Bearer <key>` to SingIt Ask instead of paying from
-a wallet. It takes priority: no wallet is created or read, `singit_wallet` says so, and the tools stay the
-same. If SingIt Ask still answers 402 for the key, `singit_chat` returns an error rather than falling back to
-a wallet.
+Set `SINGIT_API_KEY` and the server sends `Authorization: Bearer <key>` to the key-billed API at
+`https://app.singitai.app/v1` (override with `SINGIT_APP_URL`) instead of paying ask.singitai.app over x402.
+It takes priority: no wallet is created or read, `singit_wallet` says so, and the tools stay the same.
+ask.singitai.app itself is x402-only, so a Bearer key there would get HTTP 402; this path uses the app
+endpoint that already accepts SingIt API keys. If that endpoint still answers 402, `singit_chat` returns an
+error rather than falling back to a wallet.
 
 ## Not in this version
 
