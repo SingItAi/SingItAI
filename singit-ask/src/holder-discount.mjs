@@ -1,5 +1,3 @@
-import { isAddress } from "viem";
-
 // SINGIT-holder discount on Base quotes. Payment stays USDC over x402; nothing is staked and no contract is called
 // except the token's own `balanceOf`.
 //
@@ -29,6 +27,11 @@ export const DEFAULT_LOOKBACK_SECONDS = 86_400;
 export const DEFAULT_CACHE_MS = 60_000;
 const BPS = 10_000n;
 const MAX_TIERS = 8;
+// Same rule as sign402-gateway's base_balances._ADDRESS_RE. Website-tests in CI load pricing.mjs
+// (which imports this file) without installing singit-ask dependencies, so this file stays dependency-free.
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const validAddress = (value) => typeof value === "string" && ADDRESS_RE.test(value);
+
 
 const BALANCE_OF = [{ type: "function", name: "balanceOf", stateMutability: "view",
   inputs: [{ name: "owner", type: "address" }], outputs: [{ name: "", type: "uint256" }] }];
@@ -65,7 +68,7 @@ export function loadHolderConfig(env = process.env, log = () => {}) {
   }
   const token = [env.SINGIT_ASK_SINGIT_TOKEN_ADDRESS, env.SIGN402_SINGIT_TOKEN_ADDRESS]
     .map((v) => String(v ?? "").trim()).find((v) => v) ?? DEFAULT_SINGIT_TOKEN_ADDRESS;
-  return { tiers, token: isAddress(token, { strict: false }) ? token : DEFAULT_SINGIT_TOKEN_ADDRESS,
+  return { tiers, token: validAddress(token) ? token : DEFAULT_SINGIT_TOKEN_ADDRESS,
     lookbackSeconds: intEnv(env.SINGIT_ASK_HOLDER_LOOKBACK_SECONDS, DEFAULT_LOOKBACK_SECONDS, { min: 3_600, max: 30 * 86_400 }),
     cacheMs: intEnv(env.SINGIT_ASK_HOLDER_CACHE_MS, DEFAULT_CACHE_MS, { min: 1_000, max: 3_600_000 }) };
 }
@@ -92,7 +95,6 @@ export function costFloorFromTotal(total, markupBps, feeAtomic) {
 export const floorOf = (priced) => BigInt(priced.listAtomic ?? priced.exaAtomic) + BigInt(priced.feeAtomic);
 
 const decode = (header) => { try { return JSON.parse(Buffer.from(String(header), "base64").toString("utf8")); } catch { return null; } };
-const validAddress = (value) => typeof value === "string" && isAddress(value, { strict: true });
 
 // The address that signed a payment attempt, from its own payload (EIP-3009 `authorization` for exact, Permit2 for
 // upto). The facilitator proves this address signed it, so it is the only one the price may follow once a payment
