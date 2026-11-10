@@ -38,7 +38,7 @@ test('generated agent guide lists aliases within the compact guide budget', asyn
 test('an SI-62 model page calls its /v1/chat/<id> route, with no alias anywhere', async () => {
   const catalog = JSON.parse(await read('data/catalog-snapshot.json'));
   const pinned = catalog.data.filter(m => m.modality === 'chat' && m.route.startsWith('/v1/chat/') && m.route !== '/v1/chat/completions');
-  assert.equal(pinned.length, 15);
+  assert.equal(pinned.length, 19);
   const models = await read('llms-models.txt');
   for (const model of pinned) {
     const html = await read(`models/${catalogSlug(model.id)}/index.html`);
