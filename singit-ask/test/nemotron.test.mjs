@@ -106,12 +106,11 @@ for (const path of [`/v1/chat/${id}`, '/v1/chat/completions']) {
           assert.equal(sent[0].model, entry.id);
           assert.equal(sent[0].max_tokens, 656);
           assert.ok(!Object.hasOwn(sent[0], 'temperature'));
-          // Since #219 the general chat route reads requests as agent conversations: a seller that rejects
-          // the request (HTTP 400) is a 400 upstream_rejected_request, uncharged. That is the documented
-          // contract (singit-ask/ERRORS.md: "upstream_rejected_request — The upstream provider rejected the
-          // request"; src/metered.mjs; test/agent-chat.test.mjs). The per-model route keeps the 503
-          // no_billable_answer. Either way nothing settles or is charged, checked below.
-          const rejected = status === 400 && path === '/v1/chat/completions';
+          // Agent routes (completions and pinned /v1/chat/<id>) treat a seller HTTP 400 as
+          // upstream_rejected_request, uncharged. That is the documented contract (singit-ask/ERRORS.md;
+          // src/metered.mjs; test/agent-chat.test.mjs). Other upstream failures stay 503 no_billable_answer.
+          // Either way nothing settles or is charged, checked below.
+          const rejected = status === 400;
           assert.equal(result.status, status === 200 ? 200 : rejected ? 400 : 503);
           if (status !== 200) assert.deepEqual([result.body.error.type, result.body.error.code], rejected
             ? ['invalid_request_error', 'upstream_rejected_request'] : ['upstream_error', 'no_billable_answer']);

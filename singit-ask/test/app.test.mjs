@@ -333,7 +333,7 @@ test("the OpenAPI document lists the paid route the way x402scan reads it", asyn
   assert.equal(price.min, "0.001");
   // The dearest listed model (PRICEY) at the largest question and answer, on Solana's terms; `upto`'s loosest
   // input estimate (1 char/token), same as priceRange.
-  const most = ceilingAtomic(PRICEY, { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 }, SOLANA_TERMS);
+  const most = ceilingAtomic(PRICEY, { chars: AGENT_LIMITS.chars, maxTokens: AGENT_LIMITS.maxTokens, messageCount: AGENT_LIMITS.messages, charsPerToken: 1 }, SOLANA_TERMS);
   assert.equal(Number(price.max), Number(most) / 1e6);
   assert.ok(op.responses[402]);
   assert.deepEqual(op.security, [{ x402: [] }]);
