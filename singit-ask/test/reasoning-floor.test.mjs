@@ -5,7 +5,7 @@ import { askSurplus, priceRange } from '../src/app.mjs';
 import { ceilings } from '../src/metered.mjs';
 import { withHeadroom } from '../src/formats.mjs';
 import { MODEL_ROUTES, modelExample, modelPriceRange } from '../src/model-routes.mjs';
-import { LIMITS } from '../src/limits.mjs';
+import { LIMITS, AGENT_LIMITS } from '../src/limits.mjs';
 const entries = [
   { id: 'tagged', tags: ['reasoning'], headroom: 256 },
   { id: 'gemini-3.1-pro-preview', tags: ['reasoning'], headroom: 1024 },
@@ -51,7 +51,7 @@ test('all listed maximum prices cover maximum-size model quotes', async () => {
   const generic = await priceRange(catalogue);
   for (const info of entries) {
     const range = await modelPriceRange(catalogue, info);
-    const size = { chars: LIMITS.chars, messageCount: LIMITS.messages, maxTokens: LIMITS.maxTokens, charsPerToken: 1 };
+    const size = { chars: AGENT_LIMITS.chars, messageCount: AGENT_LIMITS.messages, maxTokens: AGENT_LIMITS.maxTokens, charsPerToken: 1 };
     const quote = Number(ceilingAtomic(info, size, SOLANA_TERMS));
     assert.ok(Math.round(Number(range.max) * 1e6) >= quote);
     assert.ok(Math.round(Number(generic.max) * 1e6) >= quote);
