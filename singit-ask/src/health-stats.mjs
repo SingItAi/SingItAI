@@ -12,6 +12,8 @@ import { PAYMENT_ERROR_CODES } from "./payment-codes.mjs";
 // Stats are observational only: recording or persistence failures can never affect an answer or a payment.
 // Paid-call success and answer latency are recorded only for payers known not to be ours, so nothing is
 // recorded while the own-payer list is empty. Latency keeps up to 200 integer ms samples per network and hour.
+// The same paid counts are also kept per model that was asked (up to 300 ids per network and hour); they only
+// order post-payment fallback candidates (paidModelSuccess) and are not published.
 
 import { randomBytes, createHmac } from "node:crypto";
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from "node:fs";
@@ -73,7 +75,8 @@ function validState(s) {
   const refusals = o => object(o) && Object.entries(o).every(([k, n]) => PAYMENT_ERROR_CODES.includes(k) && count(n));
   const phases = o => o === undefined || (object(o) && Object.entries(o).every(([k, v]) => ["verify", "settle"].includes(k) && refusals(v)));
   const paid = o => o === undefined || networks(o, c => object(c) && count(c.attempts) && count(c.answered)
-    && Array.isArray(c.ms) && c.ms.length <= LATENCY_CAP && c.ms.every(count));
+    && Array.isArray(c.ms) && c.ms.length <= LATENCY_CAP && c.ms.every(count)
+    && (c.models === undefined || models(c.models, m => object(m) && count(m.attempts) && count(m.answered))));
   const cwa = o => o === undefined || networks(o, count);
   const windows = o => o === undefined || (object(o) && Object.entries(o).every(([k, n]) => ["unverified", "budget", "timeout", "late"].includes(k) && count(n)));
   return object(s) && cwa(s.su) && (s.suSince === undefined || Number.isFinite(Date.parse(s.suSince))) && cwa(s.cwa) && (s.cwaSince === undefined || Number.isFinite(Date.parse(s.cwaSince))) && phases(s.paymentFailurePhases) && windows(s.windowRefusals) && (s.agent_traffic === undefined || validTraffic(s.agent_traffic)) && (s.paymentFailures === undefined || refusals(s.paymentFailures)) && (s.c402 === undefined || c402(s.c402)) && /^[a-f0-9]{64}$/.test(s.salt) && Number.isFinite(Date.parse(s.since))
@@ -101,7 +104,10 @@ export class HealthStats {
     // A loaded JSON object has a prototype; dictionaries must not interpret valid model ids such as
     // "constructor" as inherited entries. Every dictionary is rebuilt before it can observe an event.
     this.state.models = Object.assign(Object.create(null), this.state.models);
-    for (const b of Object.values(this.state.buckets)) b.models = Object.assign(Object.create(null), b.models);
+    for (const b of Object.values(this.state.buckets)) {
+      b.models = Object.assign(Object.create(null), b.models);
+      for (const p of Object.values(b.paid ?? {})) if (p.models) p.models = Object.assign(Object.create(null), p.models);
+    }
     for (const target of [this.state, ...Object.values(this.state.buckets)]) {
       target.paymentFailures ??= {};
       target.c402 ??= challengeCounts();
@@ -156,22 +162,56 @@ export class HealthStats {
     const b = this.bucket(Number.isFinite(started) ? started : this.now());
     return (b.paid ??= {})[n] ??= { attempts: 0, answered: 0, ms: [] };
   }
-  recordPaidAttempt({ network, external, started } = {}) {
+  // Per model asked within a paid call, in the same bucket; an unknown id or a full bucket is simply not kept.
+  paidModelCounts(c, model) {
+    if (typeof model !== "string" || !/^[A-Za-z0-9._:/-]{1,80}$/.test(model)) return null;
+    const models = c.models ??= Object.create(null);
+    if (!Object.hasOwn(models, model) && Object.keys(models).length >= MODEL_CAP) return null;
+    return models[model] ??= { attempts: 0, answered: 0 };
+  }
+  recordPaidAttempt({ network, external, started, model } = {}) {
     try {
       if (external !== true || this.own.size === 0) return;
       const c = this.paidCounts(network, started);
-      if (c) { c.attempts++; this.changed(); }
+      if (!c) return;
+      c.attempts++;
+      const m = this.paidModelCounts(c, model);
+      if (m) m.attempts++;
+      this.changed();
     } catch {}
   }
-  recordPaidAnswer({ network, external, started, ms } = {}) {
+  // The same paid call moved to another model (paid fallback): one more attempt for that model, none for the network.
+  recordPaidModelAttempt({ network, external, started, model } = {}) {
+    try {
+      if (external !== true || this.own.size === 0) return;
+      const c = this.paidCounts(network, started);
+      const m = c && this.paidModelCounts(c, model);
+      if (m) { m.attempts++; this.changed(); }
+    } catch {}
+  }
+  recordPaidAnswer({ network, external, started, ms, model } = {}) {
     try {
       if (external !== true || this.own.size === 0 || !Number.isSafeInteger(ms) || ms < 0) return;
       const c = this.paidCounts(network, started);
       if (!c) return;
       c.answered++;
       if (c.ms.length < LATENCY_CAP) c.ms.push(ms);
+      const m = model === undefined ? null : this.paidModelCounts(c, model);
+      if (m) m.answered++;
       this.changed();
     } catch {}
+  }
+  // External paid calls a model was asked in on one network over the last `hours` (same own-payer rule as
+  // paid_call_success): { attempts, answered }. Empty while no own-payer list is configured.
+  paidModelSuccess(model, network, hours = 24) {
+    const n = ["base", "solana"].includes(network) ? network : networkName(network);
+    const c = { attempts: 0, answered: 0 };
+    if (typeof model !== "string") return c;
+    for (const b of this.window(hours)) {
+      const m = b.paid?.[n]?.models?.[model];
+      if (m && Object.hasOwn(b.paid[n].models, model)) { c.attempts += m.attempts; c.answered += m.answered; }
+    }
+    return c;
   }
   // A successful settlement without a 2xx answer: an integrity break whoever paid, so it counts every payer.
   recordChargeWithoutAnswer(network) {
@@ -392,6 +432,32 @@ export class FacilitatorCheck {
   }
 }
 
+// paid_call_success for one window, per network, exactly as numbers.json publishes it.
+const PAID_NETWORKS = ["base", "solana"];
+function paidCounts(stats, hours, n) {
+  const c = { attempts: 0, answered: 0, ms: [] };
+  for (const b of stats.window(hours)) {
+    const p = b.paid?.[n];
+    if (p) { c.attempts += p.attempts; c.answered += p.answered; c.ms.push(...p.ms); }
+  }
+  return c;
+}
+const paidSuccess = c => c.attempts >= MIN_SAMPLES
+  ? { attempts: c.attempts, answered: c.answered, success_pct: Math.round(c.answered / c.attempts * 1000) / 10, reason: null, suppressed: false }
+  : { attempts: c.attempts, answered: c.answered, success_pct: null, reason: c.attempts ? "below_minimum_n" : "insufficient_data", suppressed: c.attempts > 0 };
+const paidUnpublished = { attempts: null, answered: null, success_pct: null, reason: "own_payers_not_configured" };
+// Rail signal for /health: the rolling last_24h paid_call_success only, so failures age out with their hour. With at
+// least MIN_SAMPLES attempts, a failure rate above DEGRADED_RATE (success_pct below 90) is "degraded", else "up";
+// fewer attempts, an empty window or no own-payer list is "unknown" and never degrades anything on its own.
+// Deliberately not outcomeStatus: no sticky last-failure rule, a resolved old failure must not hold the rail down.
+export function paidRailSuccess(stats, n) {
+  if (stats.own.size === 0) return { window: "last_24h", ...paidUnpublished, status: "unknown" };
+  const success = paidSuccess(paidCounts(stats, 24, n));
+  const status = success.success_pct == null ? "unknown"
+    : (success.attempts - success.answered) / success.attempts > DEGRADED_RATE ? "degraded" : "up";
+  return { window: "last_24h", ...success, status };
+}
+
 export function healthBody(stats, check, model, unservable = new Map(), suspended = new Map()) {
   const models = stats.models(24, unservable, suspended);
   const models_summary = { up: 0, degraded: 0, down: 0, insufficient_data: 0, unavailable: 0 };
@@ -409,7 +475,12 @@ export function healthBody(stats, check, model, unservable = new Map(), suspende
     } else if (status === "unknown" && check) {
       status = check.reachable ? "up" : "degraded"; basis = "facilitator";
     }
-    return [n, { status, basis, ...rail }];
+    // Paid answers on this rail: a well-sampled low success rate degrades a rail that settlements call up or unknown.
+    const paid_call_success = paidRailSuccess(stats, n);
+    if (paid_call_success.status === "degraded" && ["up", "unknown"].includes(status)) {
+      status = "degraded"; basis = "paid_call_success";
+    }
+    return [n, { status, basis, ...rail, paid_call_success }];
   }));
   const known = Object.values(networks).filter(n => n.status !== "unknown");
   const status = known.length && known.every(n => n.status === "down") ? "down"
@@ -427,15 +498,8 @@ export function numbersBody(stats) {
   const byNetwork = key => Object.fromEntries(["base", "solana"].map(n =>
     [n, key === "atomic" ? volume(total.byNetwork[n]?.atomic) : total.byNetwork[n]?.calls || 0]));
   // Published only with a non-empty own-payer list (only then is anything recorded); zero attempts is no rate.
-  const configured = stats.own.size > 0, NETWORKS = ["base", "solana"];
-  const paidWindow = (h, measure) => Object.fromEntries(NETWORKS.map(n => {
-    const c = { attempts: 0, answered: 0, ms: [] };
-    for (const b of stats.window(h)) {
-      const p = b.paid?.[n];
-      if (p) { c.attempts += p.attempts; c.answered += p.answered; c.ms.push(...p.ms); }
-    }
-    return [n, measure(c)];
-  }));
+  const configured = stats.own.size > 0, NETWORKS = PAID_NETWORKS;
+  const paidWindow = (h, measure) => Object.fromEntries(NETWORKS.map(n => [n, measure(paidCounts(stats, h, n))]));
   const paidWindows = (measure, unpublished) => Object.fromEntries([["last_24h", 24], ["last_7d", 168]].map(([k, h]) =>
     [k, configured ? paidWindow(h, measure) : Object.fromEntries(NETWORKS.map(n => [n, { ...unpublished, reason: "own_payers_not_configured" }]))]));
   // Nearest rank: the smallest sample with at least p% of samples at or below it.
@@ -455,10 +519,7 @@ export function numbersBody(stats) {
       : "Excludes configured own payers from now on; calls and volume recorded before the list was configured still include our own payments.",
     own_payments_excluded: total.own,
     settlement_failures: { last_24h: day.fail, last_7d: week.fail },
-    paid_call_success: paidWindows(c => c.attempts >= MIN_SAMPLES
-      ? { attempts: c.attempts, answered: c.answered, success_pct: Math.round(c.answered / c.attempts * 1000) / 10, reason: null, suppressed: false }
-      : { attempts: c.attempts, answered: c.answered, success_pct: null, reason: c.attempts ? "below_minimum_n" : "insufficient_data", suppressed: c.attempts > 0 },
-    { attempts: null, answered: null, success_pct: null }),
+    paid_call_success: paidWindows(paidSuccess, { attempts: null, answered: null, success_pct: null }),
     paid_answer_latency_ms: paidWindows(c => {
       const sorted = c.ms.sort((a, b) => a - b);
       return sorted.length >= MIN_SAMPLES ? { samples: sorted.length, p50: rank(sorted, 50), p95: rank(sorted, 95), reason: null, suppressed: false }

@@ -245,7 +245,7 @@ test('validation accepts a config without pinnedDefaultFallbacks', async () => {
   const { pinnedDefaultFallbacks, ...without } = AUTO_CONFIG;
   validateAutoConfig(without);
   assert.deepEqual(AUTO_CONFIG.pinnedDefaultFallbacks, { 'gpt-6-luna': ['gpt-6-luna-pro'], 'claude-haiku-4.5': ['claude-haiku-5.5'],
-    hy4: ['deepseek-v4.1-flash'], 'glm-5.3-flash': ['deepseek-v4.1-flash'] });
+    hy4: ['deepseek-v4-flash', 'deepseek-v4.1-flash'], 'glm-5.3-flash': ['deepseek-v4-flash', 'deepseek-v4.1-flash'] });
 });
 
 test('reviewed Haiku default substitutes a gated pin at no higher price on every scheme/network', async () => {
@@ -264,7 +264,11 @@ test('reviewed Haiku default substitutes a gated pin at no higher price on every
     const actual = ceilings(selected.info, selected);
     for (const scheme of ['upto', 'exact']) for (const net of Object.keys(original[scheme])) assert.ok(BigInt(actual[scheme][net]) <= BigInt(original[scheme][net]));
   }
-  // High-traffic pins outside every auto tier get the cheapest eco model as their only peer.
-  for (const pin of ['hy4', 'glm-5.3-flash']) assert.deepEqual(AUTO_CONFIG.pinnedDefaultFallbacks[pin], ['deepseek-v4.1-flash']);
+  // High-traffic pins outside every auto tier get two cheap peers as the cold-start order; after payment they are
+  // re-ranked by live paid success (rankPaidAlternates). No auto tier gains a member for them.
+  for (const pin of ['hy4', 'glm-5.3-flash']) {
+    assert.deepEqual(AUTO_CONFIG.pinnedDefaultFallbacks[pin], ['deepseek-v4-flash', 'deepseek-v4.1-flash']);
+    assert.ok(Object.values(AUTO_CONFIG.tiers).every(ids => !ids.includes(pin)));
+  }
   assert.equal(AUTO_CONFIG.pinnedDefaultFallbacks['deepseek-v4.1-flash'], undefined);
 });
