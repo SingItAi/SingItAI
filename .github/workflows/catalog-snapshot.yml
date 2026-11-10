@@ -7,7 +7,10 @@ name: Catalog snapshot
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 6 * * *"
+    # Off the hour: GitHub may delay or drop scheduled jobs at minute 0 under load.
+    # 06:17 UTC matches the weekday offset already used by bazaar-validate and
+    # zero-list-prices. The workflow still only opens a refresh PR; it never merges.
+    - cron: "17 6 * * *"
 
 permissions:
   contents: write

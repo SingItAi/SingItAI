@@ -182,13 +182,34 @@ test("model rate boundaries use at least five attempts", () => {
   }
 });
 
+test("Solana exact window cuts are recorded but left out of the status rate", () => {
+  const model = (ok, reasons) => {
+    const s = new HealthStats();
+    for (let i = 0; i < ok; i++) s.recordModel("text", { ok: true });
+    for (const [code, n] of Object.entries(reasons)) for (let i = 0; i < n; i++) s.recordModel("text", { ok: false, code });
+    return s.models().text;
+  };
+  let m = model(5, { solana_exact_window: 5 });
+  assert.equal(m.status, "up"); assert.equal(m.errorRatePct, 0);
+  assert.equal(m.attempts, 10); assert.equal(m.failures, 5); assert.equal(m.sellerFailures, 0);
+  assert.deepEqual(m.failureReasons, { solana_exact_window: 5 });
+  // 2/7 rated, not 7/12 raw.
+  m = model(5, { minimum_discount_not_met: 2, solana_exact_window: 5 });
+  assert.equal(m.status, "degraded"); assert.equal(m.errorRatePct, 28.6);
+  assert.equal(m.attempts, 12); assert.equal(m.failures, 7);
+  assert.equal(model(4, { solana_exact_window: 5 }).status, "insufficient_data");
+  assert.equal(model(0, { solana_exact_window: 5 }).status, "insufficient_data");
+  m = model(2, { other: 4, solana_exact_window: 1 });
+  assert.equal(m.status, "down"); assert.equal(m.errorRatePct, 66.7);
+});
+
 test("seller failures are whitelisted and latest failure survives success", () => {
   const s = new HealthStats();
-  for (const code of ["no_healthy_sellers", "minimum_discount_not_met", "private detail", undefined])
+  for (const code of ["no_healthy_sellers", "minimum_discount_not_met", "solana_exact_window", "private detail", undefined])
     s.recordModel("text", { ok: false, code });
   let m = s.models().text;
-  assert.equal(m.failures, 4); assert.equal(m.sellerFailures, 2);
-  assert.deepEqual(m.failureReasons, { no_healthy_sellers: 1, minimum_discount_not_met: 1, other: 2 });
+  assert.equal(m.failures, 5); assert.equal(m.sellerFailures, 2);
+  assert.deepEqual(m.failureReasons, { no_healthy_sellers: 1, minimum_discount_not_met: 1, solana_exact_window: 1, other: 2 });
   assert.equal(m.reason, "other"); assert.equal(m.lastOutcome, "failure");
   s.recordModel("text", { ok: false, code: "no_healthy_sellers" });
   s.recordModel("text", { ok: true }); m = s.models().text;

@@ -22,7 +22,9 @@ export const HOUR = 3600000, RETENTION_HOURS = 720, MODEL_CAP = 300, PAYER_CAP =
 export const DOWN_RATE = 0.5, DEGRADED_RATE = 0.1, DOWN_ATTEMPTS = 3;
 export const networkName = n => n === "eip155:8453" ? "base"
   : n === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" ? "solana" : "other";
-const REASONS = ["no_healthy_sellers", "minimum_discount_not_met", "other"];
+// solana_exact_window: a Solana exact answer cut off by its window (solana-exact-window.mjs). Recorded and shown,
+// but left out of the rate behind a model's status: the cut is set by our window, not by the model's health.
+const REASONS = ["no_healthy_sellers", "minimum_discount_not_met", "solana_exact_window", "other"];
 const failureReason = code => REASONS.includes(code) ? code : "other";
 const challengeCounts = () => ({ post: 0, probe: 0, refused: 0, routes: Object.create(null) });
 export const ROUTE_CAP = 100, LATENCY_CAP = 200, MIN_SAMPLES = 20;
@@ -316,11 +318,12 @@ export class HealthStats {
         || y.ok + y.fail - x.ok - x.fail || a.localeCompare(b))
       .filter(([id], i) => active.has(id) || i < 50)
       .map(([id, c]) => {
-        const attempts = c.ok + c.fail, rate = attempts ? c.fail / attempts : 0;
+        const attempts = c.ok + c.fail, windowFails = Math.min(c.fail, c.reasons.solana_exact_window || 0);
+        const ratedAttempts = attempts - windowFails, rate = ratedAttempts ? (c.fail - windowFails) / ratedAttempts : 0;
         const last = this.state.models[id], gate = active.get(id), expiry = gate?.until ?? gate;
-        return [id, { status: active.has(id) ? "unavailable" : attempts >= 5 && rate > 0.5 ? "down"
+        return [id, { status: active.has(id) ? "unavailable" : ratedAttempts >= 5 && rate > 0.5 ? "down"
           : (c.r422 >= 3 && c.r422 / (attempts + c.r422) > 0.2) ? "degraded"
-          : attempts < 5 ? "insufficient_data" : rate > 0.2 ? "degraded" : "up",
+          : ratedAttempts < 5 ? "insufficient_data" : rate > 0.2 ? "degraded" : "up",
           ...(suspended.has(id) ? { suspended: true, consecutiveRejections: suspended.get(id).count } : {}),
           windowHours: hours, reasoning422: c.r422 || 0, reasoningRetries: c.rt || 0, attempts, successes: c.ok, failures: c.fail,
           errorRatePct: Math.round(rate * 1000) / 10,

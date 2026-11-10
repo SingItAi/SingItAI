@@ -37,7 +37,7 @@ import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue, priceGuard, unservableError } from "./catalogue.mjs";
 import { normalizeAgent, toolCalls } from "./agent-chat.mjs";
 import { AGENT_LIMITS, LIMITS } from "./limits.mjs";
-import { ObservedPrices } from "./observed.mjs";
+import { ObservedPrices, KEEP as OBSERVED_KEEP, OBSERVED_MIN_N } from "./observed.mjs";
 import { paymentRequiredHeaderMiddleware } from "./payment-required-header.mjs";
 import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
@@ -431,11 +431,24 @@ export function displayPrice(m, observed, market) {
   if (!rates.some((rate) => rate > 0) || rates.some((rate) =>
     !Number.isFinite(rate * 1e6 * ours) || !Number.isFinite(rate * 1e6 * share)
     || (rate > 0 && (!(rate * 1e6 * ours > 0) || !(rate * 1e6 * share > 0))))) return null;
-  return { share, basis: seen > 0 ? "observed" : "trusted", ours };
+  if (!(seen > 0)) return { share, basis: "trusted", ours, n: 0, window: OBSERVED_KEEP };
+  // Mocks without displayCount still count one positive median as one answer.
+  const n = typeof observed.displayCount === "function" ? observed.displayCount(m.id) : 1;
+  return n >= OBSERVED_MIN_N ? { share, basis: "observed", ours, n, window: OBSERVED_KEEP }
+    : { share, basis: "observed_preliminary", ours, n, window: OBSERVED_KEEP, note: PRELIMINARY_NOTE(n) };
 }
+
+const PRELIMINARY_NOTE = (n) => `Median of only ${n} paid answer${n === 1 ? "" : "s"}; not yet a stable median `
+  + `(basis becomes observed at ${OBSERVED_MIN_N} of the last ${OBSERVED_KEEP}).`;
 
 // The same expected-price-per-million-tokens shown at GET /v1/models (observed cost if this service has answered
 // that model before, else the trusted market's cheapest qualifying share), null when neither is known.
+// The flat per-answer fee shown beside every per-token price; billing reads the same TERMS.
+const SETTLEMENT_FEE = Object.freeze({
+  base: Object.freeze({ usd: Number(usd(TERMS.settlementFeeAtomic)), atomic: TERMS.settlementFeeAtomic }),
+  solana: Object.freeze({ usd: Number(usd(SOLANA_TERMS.settlementFeeAtomic)), atomic: SOLANA_TERMS.settlementFeeAtomic }),
+});
+
 function perMillionFor(m, observed, market) {
   const price = displayPrice(m, observed, market);
   return price === null ? null : { input: m.promptUsdPerToken * 1e6 * price.ours, output: m.completionUsdPerToken * 1e6 * price.ours };
@@ -767,7 +780,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       usdPerMillionTokens: { input: model.promptUsdPerToken * 1e6, output: model.completionUsdPerToken * 1e6 },
       ...(price ? {
         expectedUsdPerMillionTokens: { input: model.promptUsdPerToken * 1e6 * price.share,
-          output: model.completionUsdPerToken * 1e6 * price.share, basis: price.basis },
+          output: model.completionUsdPerToken * 1e6 * price.share, basis: price.basis, n: price.n,
+          window: price.window, ...(price.note ? { note: price.note } : {}) },
+        settlementFee: SETTLEMENT_FEE,
         singitUsdPerMillionTokens: { input: model.promptUsdPerToken * 1e6 * price.ours,
           output: model.completionUsdPerToken * 1e6 * price.ours },
         savingsVsListPct: savingsFor(price.ours),
@@ -856,12 +871,16 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       savings: {
         field: "savingsVsListPct",
         definition: "How far SingIt's expected price per million tokens (expected price plus the 30% markup, "
-          + "settlement fees excluded) is below the model's list price. It is an estimate, not a guaranteed "
-          + "discount, and it is absent when no expected price is known.",
+          + "settlement fees excluded; see settlementFee) is below the model's list price. It is an estimate, not a "
+          + "guaranteed discount, and it is absent when no expected price is known. basis=observed requires at least "
+          + `${OBSERVED_MIN_N} paid answers in the last ${OBSERVED_KEEP}.`,
         listPrice: "usdPerMillionTokens, the list price in Surplus's model catalogue",
         expectedPrice: "expectedUsdPerMillionTokens.basis: observed = median of what SingIt's own paid answers for this "
-          + "model cost against list, last 20; trusted = Surplus's best trusted-seller offer as a share of "
-          + "list" },
+          + `model cost against list, last ${OBSERVED_KEEP}, once there are at least ${OBSERVED_MIN_N} (n counts them); `
+          + "observed_preliminary = the same median from fewer answers, with a note; trusted = Surplus's best "
+          + "trusted-seller offer as a share of list (n = 0)",
+        settlementFee: "settlementFee: the flat fee each paid answer settles on top of the per-token price, per network; "
+          + "not included in expectedUsdPerMillionTokens, singitUsdPerMillionTokens or savingsVsListPct" },
       data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
         // Virtual routes have no fixed token rate; priced-model consumers use property presence.
         { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION },
@@ -947,7 +966,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + "shown, flat, with no metering and no refund: a price for a typical-length answer (about "
         + `${Math.round((config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION) * 100)}% of max_tokens), `
         + "and the whole answer is still returned. A model with recommendedScheme upto (Claude Opus) is best paid with "
-        + "upto: its exact price carries room for thinking tokens, so it is usually dearer than the answer used.",
+        + "upto: its exact price carries room for thinking tokens, so it is usually dearer than the answer used. Per-million-token prices at GET /v1/models exclude the "
+        + "settlementFeeUsd above, charged once per paid answer; their basis is observed only after at least "
+        + `${OBSERVED_MIN_N} paid answers in the last ${OBSERVED_KEEP} (n says how many).`,
       models: [...priced, ...(catalogue ? availableAudioPrices(config, catalogue) : [])],
     });
   });
