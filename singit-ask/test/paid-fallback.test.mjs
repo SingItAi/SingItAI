@@ -17,7 +17,7 @@ const tick = () => new Promise(r => setImmediate(r));
 function gate() { let open; const opened = new Promise(r => { open = r; }); return { opened, open }; }
 
 // Like a real facilitator, one signed payment settles at most once.
-async function serve(t, { upstream, cat = catalogue }) {
+async function serve(t, { upstream, cat = catalogue, config = CONFIG }) {
   const facilitator = fakeFacilitator(), settled = new Set();
   const settle = facilitator.settle;
   let settledOk = 0;
@@ -27,7 +27,7 @@ async function serve(t, { upstream, cat = catalogue }) {
     settled.add(id); settledOk++;
     return settle(payload, requirements);
   };
-  const app = createApp(CONFIG, { facilitatorClient: facilitator, upstream, log: () => {}, catalogue: cat });
+  const app = createApp(config, { facilitatorClient: facilitator, upstream, log: () => {}, catalogue: cat });
   const listener = await new Promise((resolve, reject) => { const l = app.listen(0, '127.0.0.1', e => e ? reject(e) : resolve(l)); });
   t.after(() => listener.close());
   return { url: `http://127.0.0.1:${listener.address().port}${ROUTE}`, facilitator, settledOk: () => settledOk };
@@ -188,7 +188,7 @@ test('pinned: a catalog ceiling 3 atomic above the signed amount still answers o
   const cat = { ...catalogue, resolve: async id => id === CHEAP ? cheap : catalogue.resolve(id) };
   // Answer-once is exercised on Base upto and exact (same fits() path for every rail).
   // Solana selection math is in the unit test above: this stub cannot open a Solana upto
-  // escrow, and Solana exact disables paid fallback for the remaining window (`!win`).
+  // escrow. Solana exact falls back only while its window has time left (solana-exact-window.test.mjs).
   for (const scheme of ['upto', 'exact']) {
     cheap.completionUsdPerToken = models.find(m => m.id === CHEAP).completionUsdPerToken;
     const asked = [];
@@ -208,6 +208,35 @@ test('pinned: a catalog ceiling 3 atomic above the signed amount still answers o
     assert.equal(facilitator.calls.settle.length, 1, scheme);
     facilitator.calls.settle.length = 0;
   }
+});
+
+test('Solana exact: a fast refusal with window left falls back once, inside the window', async t => {
+  for (const [status, code] of [[404, 'minimum_discount_not_met'], [503, 'upstream_error']]) {
+    const asked = [];
+    const { url, facilitator } = await serve(t, { upstream: async (_c, _m, _n, _f, model) => {
+      asked.push(model);
+      if (model === PINNED) throw refused(status, code);
+      return answer(model);
+    } });
+    const { signed, response } = await paid(url, body(PINNED), { network: SOLANA, scheme: 'exact', signature: `0xsolexact${status}` });
+    assert.equal(response.status, 200, code);
+    assert.deepEqual(asked, [PINNED, CHEAP], code);
+    assert.equal(response.headers.get('x-singit-fallback-from'), PINNED);
+    assert.equal(response.headers.get('x-singit-fallback-policy'), 'paid');
+    assert.equal((await response.json()).billing.totalAtomic, signed);
+    assert.equal(facilitator.calls.settle.length, 1, code);
+  }
+});
+
+test('Solana exact: a window cut never starts the alternate and settles nothing', async t => {
+  const asked = [];
+  const { url, facilitator } = await serve(t, { config: { ...CONFIG, solanaExactWindowMs: 50 },
+    upstream: async (_c, _m, _n, _f, model) => { asked.push(model); return new Promise(() => {}); } });
+  const { response } = await paid(url, body(PINNED), { network: SOLANA, scheme: 'exact' });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-singit-error'), 'no_billable_answer');
+  assert.deepEqual(asked, [PINNED]);
+  assert.equal(facilitator.calls.settle.length, 0);
 });
 
 test('pinned: a dearer same-tier model is never an alternate', async t => {
