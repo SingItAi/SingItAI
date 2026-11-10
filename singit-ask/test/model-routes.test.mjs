@@ -68,14 +68,14 @@ const pay = (required, network, scheme = "upto") => ({ "PAYMENT-SIGNATURE": enco
   accepted: required.accepts.find((a) => a.network === network && a.scheme === scheme), payload: { signature: "0xsigned" },
   extensions: required.extensions }) });
 
-test("the 15 ids are URL-safe and none is \"completions\"", () => {
-  assert.equal(MODEL_ROUTES.length, 15);
+test("the 19 ids are URL-safe and none is \"completions\"", () => {
+  assert.equal(MODEL_ROUTES.length, 19);
   for (const model of MODEL_ROUTES) {
     assert.match(model.id, /^[a-z0-9.-]+$/, model.id);
     assert.notEqual(model.id, "completions");
     assert.equal(routePath(model.id), `/v1/chat/${model.id}`);
   }
-  assert.equal(new Set(modelRoutePaths()).size, 15, "no two models share a route");
+  assert.equal(new Set(modelRoutePaths()).size, 19, "no two models share a route");
   assert.ok(!modelRoutePaths().includes(ROUTE), "a model route never collides with the generic chat route");
 });
 
@@ -175,7 +175,7 @@ test("a model unknown to the catalogue still answers its probe, falling back lik
   assert.equal(required.accepts.find((a) => a.network === BASE && a.scheme === "upto").amount, "3000");
 });
 
-test("GET /openapi.json and /.well-known/x402 list all 15 model routes", async (t) => {
+test("GET /openapi.json and /.well-known/x402 list all 19 model routes", async (t) => {
   const { url } = await serve(t);
   const doc = await (await fetch(`${url}/openapi.json`)).json();
   for (const model of MODEL_ROUTES) {
@@ -194,7 +194,7 @@ test("GET /openapi.json and /.well-known/x402 list all 15 model routes", async (
   for (const route of modelRoutePaths()) assert.ok(known.resources.includes(`${url}${route}`), route);
 });
 
-test("GET / and /llms.txt list all 15 model routes", async (t) => {
+test("GET / and /llms.txt list all 19 model routes", async (t) => {
   const { url } = await serve(t);
   const index = await (await fetch(`${url}/`)).json();
   assert.equal(index.name, "SingIt Ask");
