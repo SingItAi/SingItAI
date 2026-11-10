@@ -51,8 +51,22 @@ export function snapshot(models, pricing, fetchedAt) {
         result.singitUsdPerMillionTokens = price;
     }
     if (Object.hasOwn(m.expectedUsdPerMillionTokens ?? {}, "basis")) {
-      requireShape(["observed", "trusted"].includes(m.expectedUsdPerMillionTokens.basis), "expected price basis");
-      result.expectedUsdPerMillionTokens = { basis: m.expectedUsdPerMillionTokens.basis };
+      const expected = m.expectedUsdPerMillionTokens;
+      requireShape(["observed", "observed_preliminary", "trusted"].includes(expected.basis), "expected price basis");
+      const kept = { basis: expected.basis };
+      if (Object.hasOwn(expected, "n")) {
+        requireShape(Number.isInteger(expected.n) && expected.n >= 0, "expected price n");
+        kept.n = expected.n;
+      }
+      if (Object.hasOwn(expected, "window")) {
+        requireShape(Number.isInteger(expected.window) && expected.window > 0, "expected price window");
+        kept.window = expected.window;
+      }
+      if (Object.hasOwn(expected, "note")) {
+        requireShape(typeof expected.note === "string" && expected.note.length > 0, "expected price note");
+        kept.note = expected.note;
+      }
+      result.expectedUsdPerMillionTokens = kept;
     }
     const p = byId.get(m.id);
     for (const scheme of ["upto", "exact"]) {

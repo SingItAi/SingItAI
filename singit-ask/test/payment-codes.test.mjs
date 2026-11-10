@@ -96,6 +96,7 @@ for (const scheme of ["upto", "exact"]) for (const [index, [reason, message, cod
         assert.ok(result.body.message.includes(network));
         assert.match(result.body.message, network === SOLANA ? /token account/ : /USDC on Base/);
         assert.match(result.body.message, /Nothing was charged for this request\.$/);
+        assert.equal(result.headers["x-singit-receipt"], undefined);
         for (const secret of [payer, solPayer, config.payToBase, accepted.asset, accepted.payTo])
           assert.ok(!JSON.stringify([next, result.body.message]).includes(secret), secret);
       } else assert.equal(result.body.next_action, undefined);

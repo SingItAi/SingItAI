@@ -143,3 +143,17 @@ test("POST /v1/chat/completions answers and bills an alias as its canonical mode
     assert.equal(response.headers.get("payment-required"), null, name);
   }
 });
+
+test("POST /v1/images/generations accepts grok-imagine-image as venice-grok-imagine", async t => {
+  const { url } = await serve(t, images);
+  const post = (model) => fetch(url + "/v1/images/generations", { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model, prompt: "a cat" }) });
+  for (const name of ["grok-imagine-image", "xai/grok-imagine-image", "venice-grok-imagine"]) {
+    const response = await post(name);
+    assert.equal(response.status, 402, name);
+    assert.ok(response.headers.get("payment-required"), name);
+  }
+  const missing = await post("unknown-image");
+  assert.equal(missing.status, 404);
+  assert.equal((await missing.json()).error.code, "model_not_found");
+});

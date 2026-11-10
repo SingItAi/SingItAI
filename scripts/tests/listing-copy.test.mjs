@@ -84,8 +84,10 @@ test('default discovery preserves base URLs plus D4 model aliases and shares des
   assert.equal(discovery.resourceDetails.length, expected);
   assert.doesNotMatch(JSON.stringify(openapi), /video|music|sound.effects/i);
   assert.doesNotMatch(JSON.stringify(discovery), /video|music|sound.effects/i);
-  assert.doesNotMatch(discovery.instructions, /ceiling/i);
-  assert.doesNotMatch(JSON.stringify(discovery), /ceiling|\bfees?\b|%/i);
+  assert.doesNotMatch(discovery.instructions, /ceiling|%/i);
+  assert.match(discovery.instructions, /settlement fee of \$0\.001 on Base or \$0\.002 on Solana/);
+  assert.match(llms, /settlement fee of \$0\.001 on Base or \$0\.002 on Solana/);
+  assert.doesNotMatch(JSON.stringify(discovery.resourceDetails), /ceiling|\bfees?\b|%/i);
   for (const detail of discovery.resourceDetails) {
     const path = new URL(detail.resource).pathname;
     const response = await request(url + path);
