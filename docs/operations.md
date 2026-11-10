@@ -179,6 +179,22 @@ On the VPS, under `<STATE_DIR>/`:
 Back them up before anything that touches payment state — see the recovery
 runbook.
 
+### nohumans.directory alert webhook
+
+`singit-ask` accepts signed alerts at `POST /webhooks/nohumans` (free, not in OpenAPI, x402 discovery or `llms.txt`;
+GET/HEAD answer 404). Each delivery carries `x-nohumans-timestamp` and `x-nohumans-signature: v1=<hex>`, the
+HMAC-SHA256 of `<timestamp>.<raw body>` with the hook secret; stamps older than 5 minutes or more than 60 seconds ahead
+are refused (401). Deliveries are deduplicated on `x-nohumans-delivery` and the body `id`; a replay still gets 200.
+
+The one unsigned case is the `alerts.test` event with `registration: true`, sent while the hook is created (it is signed
+with a secret we do not have yet); it is answered 200 without verification. Everything else is verified.
+
+The hook secret that nohumans.directory returns once when the hook is created goes in a mode-600 file outside git, for
+example `~/.config/singit-ask/nohumans-alert-secret` (next to the nohumans-claim file), referenced by
+`SINGIT_ASK_NOHUMANS_ALERT_SECRET_FILE`. It is read on each request, so no restart is needed. Until it exists, signed
+deliveries get 503 and are retried. Purchases are logged as `singit-ask: nohumans.listing.purchase ...`; set
+`SINGIT_ASK_NOHUMANS_ALERT_WEBHOOK_URL` for a `{"text": ...}` push, otherwise watch the journal for that line.
+
 ## Third-party surfaces that have broken before
 
 **Bitrefill ships breaking MCP changes without notice.** On 2026-07-30 the

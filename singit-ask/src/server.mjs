@@ -26,6 +26,11 @@
 //   SINGIT_ASK_TEST_FORCE_FAIL_A test only, default off: "1" lets an own payer's X-SingIt-Test-Force-Fail-A: 1 fail model A once
 //   SINGIT_ASK_X402LIST_PROOF_FILE optional x402-list ownership proof file, read on each request
 //   SINGIT_ASK_NOHUMANS_CLAIM_FILE optional nohumans.directory claim token file, read on each request
+//   SINGIT_ASK_NOHUMANS_ALERT_SECRET_FILE optional path to the nohumans.directory hook signing secret, read on each request
+//                              (so it can be written after hook registration without a restart)
+//   SINGIT_ASK_NOHUMANS_ALERT_SECRET optional inline secret, used when the file is unset (tests / fallback)
+//   SINGIT_ASK_NOHUMANS_ALERT_WEBHOOK_URL optional: POST {"text": ...} here on each new purchase alert; unset, watch the
+//                              journal line "singit-ask: nohumans.listing.purchase"
 //   SINGIT_ASK_FREE_MODELS     models answered free as "free/<id>" (comma-separated); unset means six default free models,
 //                              empty turns free answers off
 //   SINGIT_ASK_FREE_PER_VISITOR, SINGIT_ASK_FREE_PER_DAY  free answers a day per visitor and for everyone together
@@ -130,6 +135,9 @@ config.statsFile = process.env.SINGIT_ASK_STATS_FILE || `${process.env.HOME}/.co
 config.statsToken = process.env.SINGIT_ASK_STATS_TOKEN;
 config.x402listProofFile = process.env.SINGIT_ASK_X402LIST_PROOF_FILE?.trim() || null;
 config.nohumansClaimFile = process.env.SINGIT_ASK_NOHUMANS_CLAIM_FILE?.trim() || null;
+config.nohumansAlertSecretFile = process.env.SINGIT_ASK_NOHUMANS_ALERT_SECRET_FILE?.trim() || null;
+config.nohumansAlertSecret = process.env.SINGIT_ASK_NOHUMANS_ALERT_SECRET?.trim() || null;
+config.nohumansAlertWebhookUrl = process.env.SINGIT_ASK_NOHUMANS_ALERT_WEBHOOK_URL?.trim() || null;
 try {
   config.ownPayers = process.env.SINGIT_ASK_OWN_PAYERS_FILE
     ? parseOwnPayers(readFileSync(process.env.SINGIT_ASK_OWN_PAYERS_FILE, "utf8")) : [];
