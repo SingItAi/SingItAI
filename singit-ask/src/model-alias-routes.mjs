@@ -4,7 +4,7 @@ const config = load("../config/model-aliases-wave1.json");
 const names = new Map(load("../config/d4-model-aliases-first-wave.json").models.map(m => [m.id, m.name]));
 export const aliasPath = m => `/v1/models/${m.id}/${m.suffix}`;
 export function aliasDescription(m) {
-  const text = `${m.name}: ${m.modality === "image" ? "Generate images" : "Chat and reasoning"}. Pay per call in USDC within owner-set USDC limits.`;
+  const text = `${m.name}: ${m.modality === "image" ? "Generate images" : "OpenAI-compatible chat API"}. Pay per call in USDC on Base or Solana, no API key. Models: GET /v1/catalog.`;
   if (text.length > 160 || /ceiling|fee|%|0x[a-fA-F0-9]{8,}|growth|on-chain limits/i.test(text)) throw new Error(`Invalid alias description: ${m.id}`);
   return text;
 }
