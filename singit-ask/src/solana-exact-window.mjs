@@ -6,13 +6,17 @@
 // answer is thrown away. In the 24 hours to 8 November 2026 the production journal had 42 such refusals; 41 could be
 // matched to their answers, and every one of those answers took more than 30 s (p50 41 s, max 79 s).
 //
+// The window was 20 s until 10 November 2026, when it clipped production tails: 14 of the 18 unanswered Solana paid
+// chats that day were window cuts, two of them late at 20002 ms, while successful same-day Solana paid answers had a
+// p95 of 16 s. 30 s recaptures the 20-30 s tail and still refuses the historically stale (>30 s) durations above.
+//
 // So the model gets SOLANA_EXACT_WINDOW_MS from the moment verification succeeded. An answer that is not complete by
 // then is cut off and refused as 503 no_billable_answer before any settlement: nothing is charged and the payer can
 // try again. This only narrows the risk: the payer's blockhash may already be old when it is verified, and without an
 // RPC read the server cannot tell. Base and Solana `upto` (its escrow deposit settles before the model) are unchanged.
 import { paymentFailureContext } from "./payment-failure-hooks.mjs";
 
-export const SOLANA_EXACT_WINDOW_MS = 20_000;
+export const SOLANA_EXACT_WINDOW_MS = 30_000;
 export const realClock = Object.freeze({ now: () => Date.now(),
   setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id) });
 
