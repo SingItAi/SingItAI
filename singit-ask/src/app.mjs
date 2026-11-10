@@ -1373,7 +1373,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     ? [...new Set(availableAudioPrices(config, catalogue).map(m => m.route))] : [];
   app.get("/.well-known/x402", open, async (req, res) => {
     const { paths } = await openapiDocument(req);
-    res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
+    // name and description are the service-level blurb directory crawlers (agentic.market) read for the card.
+    res.json({ version: 1, name: SERVICE_NAME, description: SERVICE_DESCRIPTION, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
                          ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, ...audioRoutes().map(path => `${origin(req)}${path}`),
                          ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
