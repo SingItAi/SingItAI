@@ -69,7 +69,7 @@ const assertWindowRefusal = res => {
   assert.ok(!leaked(res));
 };
 
-test("the window is 20 seconds", () => assert.equal(T, 20_000));
+test("the window is 30 seconds", () => assert.equal(T, 30_000));
 
 for (const name of ["A-PREMODEL-STALE", "A-VERIFY-BLOCKHASH-STALE"]) {
   test(`${name}: a stale blockhash at verification is a 402 before the model; nothing runs or settles`, async () => {
@@ -205,7 +205,7 @@ test("A-MODEL-OUTCOME: chat records exactly one actual outcome per window reques
     const res = await s.send();
     await new Promise(r => setImmediate(r));
     const m = (await request(s.app, "/health")).body.models?.test;
-    return { res, s, m: m ? { attempts: m.attempts, successes: m.successes, failures: m.failures } : null };
+    return { res, s, full: m, m: m ? { attempts: m.attempts, successes: m.successes, failures: m.failures } : null };
   };
   const fast = await outcome({ clock: fakeClock(0, 1_000) });
   assert.equal(fast.res.status, 200);
@@ -217,6 +217,9 @@ test("A-MODEL-OUTCOME: chat records exactly one actual outcome per window reques
   const timeout = await outcome({ clock, upstream: () => { queueMicrotask(() => clock.fire()); return new Promise(() => {}); } });
   assertWindowRefusal(timeout.res);
   assert.deepEqual(timeout.m, { attempts: 1, successes: 0, failures: 1 }, "a cut-off call is one failure");
+  assert.deepEqual(timeout.full.failureReasons, { solana_exact_window: 1 });
+  assert.equal(timeout.full.status, "insufficient_data");
+  assert.equal(timeout.s.calls.model, 1, "no second model after the cutoff");
   clock = fakeClock(0, 1_000);
   const late = await outcome({ clock, upstream: () => new Promise(resolve => queueMicrotask(() => {
     clock.fire(); queueMicrotask(() => resolve({ content: "PRIVATE ANSWER", usage: { buyer_cost_micro: 100 } })); })) });
