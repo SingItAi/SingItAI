@@ -89,9 +89,16 @@ Where the "limits" fact is published, and what each place can say:
   SingIt's server enforces them. `website/llms.txt` and `llms-full.txt` carry the same SDK sentence.
 - **Nothing here says the limits are enforced on-chain.** The Base AgentAllowance contract limits only SingIt's own agent
   (see the site's limits pages); SDK ceilings are client-side and key limits are server-side.
-- **agentic.market** reads CDP's catalog: its card for ask.singitai.app shows `description: ""`, `category: ""` and
-  `enriched: false`, so the text cannot be set from this repository. It is a provider-side step; proposed text
-  (258 characters): "Pay-per-answer LLM chat (OpenAI, Anthropic and Responses formats), images, speech and Exa web search over x402 in USDC on Base or Solana, with no API key. The max charge is quoted before signing; the SingIt SDK adds client-side ceilings per call and per day.". Category: Inference.
+- **agentic.market** reads CDP's catalog and our discovery documents. Endpoint descriptions come from our 402
+  challenges / `resourceDetails` (deployed with #289) and are populated there. The service-level card was still empty
+  (`description: ""`, `category: ""`, `enriched: false`, name falling back to the raw domain) because
+  `/.well-known/x402` had no top-level `name` or `description`. The well-known document now publishes
+  `name` ("SingIt Ask") and `description` (the long `serviceDescription()`, the same text `GET /` serves, which
+  includes "LLM chat"), so crawlers have a service-level blurb. `category` and `enriched` are still assigned by
+  agentic.market / Coinbase: after deploy they may need to recrawl or re-enrich before the card shows category
+  Inference and `enriched: true`. Search for "chat" / "LLM" should start matching once the new description is indexed;
+  "inference" may wait until they set the Inference category (BlockRun's card uses it). The production card has not
+  been confirmed fixed; re-check it after deploy.
 
 ### L1 draft boilerplate (SI-287)
 
