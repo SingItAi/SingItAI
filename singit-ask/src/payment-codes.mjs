@@ -20,7 +20,9 @@ function classifyKnownPaymentFailure({ reason, message } = {}) {
   const text = [reason, message].filter(v => typeof v === "string").join(" ");
   if (/insufficient_funds|insufficient balance|token account is missing|InvalidAccountData|InsufficientFunds|map\[Custom:1\]/i.test(text)) return "payment_unfunded";
   if (/BlockhashNotFound|blockhash (?:expired|not found|stale)/i.test(text)) return "payment_blockhash_stale";
-  if (/already (?:submitted|used|settled|processed|on-chain)|nonce already|duplicate|replay/i.test(text)) return "payment_replay";
+  // SVM upto: facilitator settleDeposit returns invalid_upto_svm_channel_already_open
+  // when that channel PDA already exists. Same public class as other replays.
+  if (/already (?:submitted|used|settled|processed|on-chain)|nonce already|duplicate|replay|channel_already_open|channel already exists/i.test(text)) return "payment_replay";
   return null;
 }
 export function classifyPaymentFailure(input) {

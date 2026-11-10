@@ -20,6 +20,7 @@ const cases = [
   ["invalid_payload", "authorization nonce already submitted; transaction already on-chain", "payment_replay"],
   ["invalid_exact_evm_permit2_payload_allowance_required", "simulation failed", "payment_invalid"],
   ["unknown_refusal", "unknown refusal detail", "payment_invalid"],
+  ["invalid_upto_svm_channel_already_open", "channel already exists", "payment_replay"],
 ];
 test("classifies production refusals and small case-insensitive variants in priority order", () => {
   for (const [reason, message, code] of cases) for (const transform of [s => s, s => s.toUpperCase()]) {
@@ -29,7 +30,7 @@ test("classifies production refusals and small case-insensitive variants in prio
     assert.equal(classifyPaymentFailure({ message: text }), "payment_unfunded");
   for (const text of ["blockhash expired", "blockhash not found", "blockhash stale"])
     assert.equal(classifyPaymentFailure({ reason: text }), "payment_blockhash_stale");
-  for (const text of ["already submitted", "already used", "already settled", "already processed", "nonce already", "already on-chain", "duplicate", "replay"])
+  for (const text of ["already submitted", "already used", "already settled", "already processed", "nonce already", "already on-chain", "duplicate", "replay", "channel_already_open", "invalid_upto_svm_channel_already_open", "channel already exists"])
     assert.equal(classifyPaymentFailure({ message: text }), "payment_replay");
   assert.equal(classifyPaymentFailure({ message: "duplicate BlockhashNotFound InvalidAccountData" }), "payment_unfunded");
   assert.equal(classifyPaymentFailure({ message: "duplicate BlockhashNotFound" }), "payment_blockhash_stale");
