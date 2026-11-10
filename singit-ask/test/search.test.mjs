@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE, SOLANA, createApp } from "../src/app.mjs";
 import { exaPrice, searchPrice, parseExaMarkupBps, parseExaFeeAtomic, setExaMarkupBps, setExaFeeAtomic, exaPriceRange, exaRequestBody, SEARCH_ROUTES, EXA_DEFAULT_FEE_ATOMIC } from "../src/search.mjs";
+import { publicBilling } from "../src/pricing.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", surplusKey: "inf_test", model: "deepseek-v4.1-flash" };
@@ -82,7 +83,7 @@ test("a paid search asks Exa once with SingIt's key, then settles the payer", as
   const body = await paid.json();
   assert.equal(body.results[0].url, "https://x402.org");
   assert.equal(body.costDollars, undefined, "Exa's own cost stays here");
-  assert.deepEqual(body.billing, { exaAtomic: "7000", markupAtomic: "0", feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
+  assert.deepEqual(body.billing, { exaAtomic: "7000", feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
   assert.deepEqual(exa.calls.map((c) => [c.url, c.key, c.body]), [["https://api.exa.ai/search", "exa_test_key", SEARCH]]);
   assert.deepEqual(facilitator.calls.settle, [[BASE, "8000"]]);
   const again = await post(`${url}/v1/exa/search`, SEARCH, pay(required, BASE));
@@ -151,7 +152,7 @@ test("x402scan's empty, unpaid probe gets the standing offer; a payment header d
       assert.deepEqual(required.accepts.map((a) => a.amount),
         [BASE, SOLANA].map(() => String(exaPrice(route, example) + 1000)));
       assert.deepEqual(required.extensions.bazaar.info.output.example.billing,
-        { ...searchPrice(exaPrice(route, example), BASE), currency: "USDC" });
+        publicBilling({ ...searchPrice(exaPrice(route, example), BASE), currency: "USDC" }));
     }
     const paidEmpty = await fetch(`${url}${route}`, { method: "POST", headers: pay(required, BASE) });
     assert.equal(paidEmpty.status, 400, `${route}: a payment header with no body is still refused, not waved through as a probe`);
@@ -229,7 +230,7 @@ test("configured Exa probe and Bazaar billing match the example offer", async (t
     const quoted = decode((await post(`${url}${route}`, example)).headers.get("payment-required"));
     assert.deepEqual(probe.accepts.map((a) => a.amount), quoted.accepts.map((a) => a.amount));
     assert.deepEqual(probe.extensions.bazaar.info.output.example.billing,
-      { ...searchPrice(exaPrice(route, example), BASE), currency: "USDC" });
+      publicBilling({ ...searchPrice(exaPrice(route, example), BASE), currency: "USDC" }));
   }
 });
 
@@ -265,6 +266,6 @@ test("a paid Solana search bills the same single settlement fee", async (t) => {
   const paid = await post(`${url}/v1/exa/search`, SEARCH, pay(required, SOLANA));
   assert.equal(paid.status, 200);
   assert.deepEqual((await paid.json()).billing,
-    { exaAtomic: "7000", markupAtomic: "0", feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
+    { exaAtomic: "7000", feeAtomic: "1000", totalAtomic: "8000", currency: "USDC" });
   assert.deepEqual(facilitator.calls.settle, [[SOLANA, "8000"]]);
 });

@@ -91,7 +91,7 @@ Uncommitted work in `trezor-local-sidecar`; no published commit or PR for this c
 - Merchant endpoint `/v1/chat/completions/metered` deployed with private code/config
   backups. Public HTTP 402 is accepted by the real buyer's quote validator: Base
   `upto`, 3000-atomic authorization maximum, `eip2612GasSponsoring`, actual-cost
-  billing + 30% markup + 1000-atomic settlement fee. No signature/model call/payment
+  billing plus the 1000-atomic settlement fee. No signature/model call/payment
   was submitted by this live check. Legacy Base/Solana `exact` challenges remain 3000.
 - 23 local Node tests passed, including real SDK signing against mocked chain
   reads, bounded sponsored approval, one paid submission only, actual settlement
@@ -230,7 +230,7 @@ user's existing Base agent to their configured merchant receiver. Transaction
 gas was paid by a different facilitator address, not the user's agent.
 
 The returned usage records 498 prompt and 335 completion tokens. Billing is
-42 atomic units of provider cost + 13 of rounded 30% markup + 1000 of the
+42 atomic units of provider cost + 13 of configured markup + 1000 of the
 published settlement fee = 1055. The chat usage and allowance settlement ledger
 agree with the chain. The 3000-unit cap was not charged. No unresolved Ask
 journal remains for this account. This is a verified live Base metered payment;
@@ -293,7 +293,7 @@ The advertised CDP fee payer paid 10001 lamports; neither owner nor agent paid
 that transaction's network fee.
 
 Usage: 546 input + 535 output = 1081 tokens. Provider cost 53 micro-USDC + rounded
-30% markup 16 + settlement service fee 1000 = **1069 micro-USDC (0.001069 USDC)**.
+configured markup 16 + settlement service fee 1000 = **1069 micro-USDC (0.001069 USDC)**.
 The merchant receipt, independently validated transfer and allowance spend ledger
 agree. No metered hold or pending Solana Ask journal remained. Verification was
 read-only; the owner sent the paid question. The 0.003 ceiling was not charged.

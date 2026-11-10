@@ -702,7 +702,7 @@ function renderSolanaAllowance(a) {
     </div></div>`}
     <div class="bezel" style="margin-top:18px"><div class="core">
       <h2>Pay in USDC, nothing else</h2>
-      <p>SingIt Ask charges the actual token cost + 30% + 0.001 USDC per answer,
+      <p>SingIt Ask charges the price shown for the model, metered by what the answer actually used, plus a 0.001 USDC settlement fee per answer,
         directly from your wallet within your limits. Your agent needs no SOL top-up.</p>
       <p>A gift card costs its price plus 0.001 USDC for the Solana network fee, both from this wallet,
         in one transaction. SingIt pays the fee in SOL and takes it back in USDC; you pay only for your own purchases.</p>
@@ -1510,7 +1510,8 @@ function renderCard(card, key) {
     const search = card.search, data = card.data, links = ((search && search.sources) || [])
       .filter((s) => /^https?:\/\//.test(s.url || ""))
       .map((s) => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(s.title || s.url.replace(/^https?:\/\//, "").split("/")[0])}</a>`);
-    const billing = card.billing?.mode === "actual_usage" ? `Model cost: ${usd(card.billing.providerCostAtomic, 6)}; markup: ${usd(card.billing.markupAtomic, 6)}; settlement fee: ${usd(card.billing.settlementFeeAtomic, 6)}` : "";
+    const billing = card.billing?.mode === "actual_usage" && card.billing.settlementFeeAtomic
+      ? `Settlement fee: ${usd(card.billing.settlementFeeAtomic, 6)}` : "";
     return `<div class="msg-meta" title="${esc(billing)}">${esc(card.model)} · ${Number(card.tokens || 0).toLocaleString("en-US")} tokens · $${esc(card.costUsd)}`
       + (search ? ` · searched the web · $${esc(search.costUsd)}` : card.searchNote ? ` · ${esc(card.searchNote)}` : "")
       + (data ? ` · ${esc(data.name)} · $${esc(data.costUsd)}` : "")
@@ -1623,7 +1624,7 @@ function renderUsage() {
       <p>Today, in UTC — the day your limiter and Venice count in.</p></div>
     ${u.failed ? `<p class="note warn">${esc(u.failed)}</p>` : ""}
     <div class="metrics">
-      ${u.venice?.billingMode === "actual_usage" ? metric("Token billing", "Usage + 30%", `Plus ${usd(u.venice.settlementFeeAtomic, 3)} settlement fee · only what the answer cost is charged`) : metric("Chat credit", u.venice ? usd(u.venice.creditAtomic, Number(u.venice.creditAtomic) % 10000 ? 4 : 2) : "—", u.venice ? `on Venice · ${esc(u.venice.modelLabel)}` : "private chat is off")}
+      ${u.venice?.billingMode === "actual_usage" ? metric("Token billing", "Metered usage", `Plus ${usd(u.venice.settlementFeeAtomic, 3)} settlement fee · you pay what the answer actually used`) : metric("Chat credit", u.venice ? usd(u.venice.creditAtomic, Number(u.venice.creditAtomic) % 10000 ? 4 : 2) : "—", u.venice ? `on Venice · ${esc(u.venice.modelLabel)}` : "private chat is off")}
       ${metric("Spent today", spent === null ? "—" : usd(spent), a?.configured ? `of ${usd(a.dailyCapAtomic, 0)} daily limit` : "no limits yet")}
       ${metric("Messages today", String(today.messages), `${Number(today.tokens).toLocaleString("en-US")} tokens · ${usd(today.costAtomic, u.venice?.billingMode === "actual_usage" ? 6 : 4)}`)}
     </div>
@@ -1633,7 +1634,7 @@ function renderUsage() {
       <h3 style="margin-top:22px">Chat credit top-ups</h3>
       <div class="usage-rows">${rows(u.venice?.topUps || [], (t) => `<div class="usage-row"><span>${esc(t.at ? new Date(t.at).toLocaleString() : "Top-up")}</span>
         <span class="mono">${esc(t.paid || "")} ${t.transactionUrl ? `<a href="${esc(t.transactionUrl)}" target="_blank" rel="noopener">↗</a>` : ""}</span></div>`,
-        u.venice?.billingMode === "actual_usage" ? `SingIt Ask charges actual token usage + 30% + a ${usd(u.venice.settlementFeeAtomic, 3)} settlement fee through x402. On Solana, unused request reserves return to your agent. No chat top-up is needed.` : "None yet. Your agent buys $5 of Venice credit from your allowance when the chat needs it.")}</div>
+        u.venice?.billingMode === "actual_usage" ? `SingIt Ask charges the price shown for the model, metered by what the answer actually used, plus a ${usd(u.venice.settlementFeeAtomic, 3)} settlement fee through x402. On Solana, unused request reserves return to your agent. No chat top-up is needed.` : "None yet. Your agent buys $5 of Venice credit from your allowance when the chat needs it.")}</div>
     </div></div>`;
 }
 
@@ -1749,7 +1750,7 @@ function renderBalanceCard() {
           ${b.refundRequested ? "" : `· <button class="linkish" data-action="open-auto-topup">Change</button>`}</span>
         ${b.balanceUsd > 0 && !b.refundRequested ? `<button class="linkish quiet" data-action="open-refund">Ask for the balance back</button>` : ""}
       </div>
-      <p class="hint">Only your API keys spend it, on models: each request costs the model's price + 30%, nothing per call. Web search is paid per search from your wallet instead, and your chat here still pays per answer.</p>
+      <p class="hint">Only your API keys spend it, on models: each request costs the price shown for the model, metered by what it actually used, with no extra per-call fee. Web search is paid per search from your wallet instead, and your chat here still pays per answer.</p>
     </div></div>`;
 }
 

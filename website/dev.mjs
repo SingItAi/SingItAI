@@ -216,7 +216,6 @@ function initModelsPage(root, list) {
   const state = { query: "", tag: "all", key: "featured", dir: "ascending" };
   root.querySelectorAll("[data-fee-base]").forEach((el) => { el.textContent = `$${list.fees?.perAnswerUsd?.["eip155:8453"] ?? 0.001}`; });
   root.querySelectorAll("[data-fee-solana]").forEach((el) => { el.textContent = `$${list.fees?.perAnswerUsd?.["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] ?? 0.002}`; });
-  root.querySelectorAll("[data-markup]").forEach((el) => { el.textContent = `${list.fees?.markupPct ?? 30}%`; });
 
   const tags = ["all", ...(free.length ? ["free"] : []), ...tagsOf(all)];
   const label = { all: "All", free: "Free to try", vision: "Vision", code: "Code", reasoning: "Reasoning",

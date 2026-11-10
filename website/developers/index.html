@@ -111,12 +111,12 @@
           <div class="chips" data-price-chips aria-label="Model"></div>
           <p class="price-model" data-price-model>Claude Opus 5.5 · output, per 1M tokens</p>
           <b class="price-saving" data-price-saving>−75%</b>
-          <span class="price-saving-note">below the model's list price, markup included</span>
+          <span class="price-saving-note">below the model's list price</span>
           <div class="price-bars">
             <div class="price-bar-row"><span>List price</span><span class="price-bar" aria-hidden="true"><i></i></span><b data-price-list>$20.00</b></div>
             <div class="price-bar-row"><span>SingIt</span><span class="price-bar is-ours" aria-hidden="true"><i data-price-ours-bar style="width:25%"></i></span><b data-price-ours>$5.07</b></div>
           </div>
-          <p class="price-foot">Expected price: what answers from this model cost us, plus 30%. You pay what each answer actually used, and nothing without an answer. With a key, that is all; over x402, plus $0.001 per answer on Base.</p>
+          <p class="price-foot">Expected price: based on what answers from this model have cost us. You pay the price shown for each model, metered by what the answer actually used, and nothing without an answer. With a key, that is all; over x402, plus $0.001 per answer on Base.</p>
           <p class="price-foot" data-live-fallback hidden>Live prices did not load. They are at <a href="https://ask.singitai.app/v1/models">ask.singitai.app/v1/models</a>.</p>
         </figure>
       </div>
@@ -132,7 +132,7 @@
         <p class="quick-who" data-reveal>For your own code or agent. To chat, <a href="https://app.singitai.app/app/">open SingIt</a> instead.</p>
         <ol class="quick-steps" data-batch>
           <li><b>Try free <span class="status is-live">Live · free</span></b><span>Call a model at <span class="mono">ask.singitai.app</span> with no wallet and no key: one of 6 free models, for example <span class="mono">free/deepseek-v4.1-flash</span>: up to 20 answers a day per network, with a shared daily cost cap that can run out for the day. Resets at midnight UTC.</span></li>
-          <li><b>Get a key</b><span>In <a href="https://app.singitai.app/app/">the SingIt app</a> under Settings → API keys, your wallet signs the key's limits (per day, per request, how many days), and you top up $1 to $50 at a time in USDC. Each request costs what it used + 30%, with no fee per call, in the OpenAI SDK, the Anthropic SDK or Claude Code at <span class="mono">app.singitai.app/v1</span>, with any id from <a href="/models/">the model list</a>.</span></li>
+          <li><b>Get a key</b><span>In <a href="https://app.singitai.app/app/">the SingIt app</a> under Settings → API keys, your wallet signs the key's limits (per day, per request, how many days), and you top up $1 to $50 at a time in USDC. Each request costs the price shown for the model, metered by what it actually used, with no extra fee per call, in the OpenAI SDK, the Anthropic SDK or Claude Code at <span class="mono">app.singitai.app/v1</span>, with any id from <a href="/models/">the model list</a>.</span></li>
           <li><b>Plug in MCP <span class="status is-live">Live</span></b><span>Use Add to Cursor in the MCP tab, or one command in Claude Code. Prices work without a key; your key unlocks web search, page reading and market data.</span></li>
         </ol>
         <p class="tab-note" data-reveal>No key at all? Agents with a wallet pay per answer over x402: <a href="https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md" target="_blank" rel="noopener">first paid call in 60 seconds</a>.</p>
@@ -277,7 +277,7 @@ curl -i https://ask.singitai.app/v1/chat/completions \
                 <span data-copy-label>Copy</span>
               </button>
             </div>
-            <p class="tab-note">You pay the answer's actual cost + 30% + $0.001 on Base; <span class="mono">exact</span> offers follow for wallets that sign only a flat price. For Claude Opus sign <span class="mono">upto</span>: its <span class="mono">exact</span> price carries room for thinking tokens and is usually dearer than the answer used. Step by step, with the x402 fetch, Bazaar MCP and agentic wallet variants: <a href="https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md" target="_blank" rel="noopener">the first paid call guide</a>. We ran the paid step end to end on 28.10.2026: <span class="mono">deepseek-v4.1-flash</span>, <span class="mono">upto</span> on Base, HTTP 200, $0.001 settled, about 3.3 s (<a href="https://basescan.org/tx/0x419874eea3fbb4621519fe4c252bb83b7b66c1c9cb6fbba07274172bef54e2f6" target="_blank" rel="noopener">transaction</a>).</p>
+            <p class="tab-note">You pay the price shown for each model, metered by what the answer actually used, plus a $0.001 settlement fee on Base; <span class="mono">exact</span> offers follow for wallets that sign only a flat price. For Claude Opus sign <span class="mono">upto</span>: its <span class="mono">exact</span> price carries room for thinking tokens and is usually dearer than the answer used. Step by step, with the x402 fetch, Bazaar MCP and agentic wallet variants: <a href="https://github.com/SingItAi/SingItAI/blob/main/docs/first-paid-call.md" target="_blank" rel="noopener">the first paid call guide</a>. We ran the paid step end to end on 28.10.2026: <span class="mono">deepseek-v4.1-flash</span>, <span class="mono">upto</span> on Base, HTTP 200, $0.001 settled, about 3.3 s (<a href="https://basescan.org/tx/0x419874eea3fbb4621519fe4c252bb83b7b66c1c9cb6fbba07274172bef54e2f6" target="_blank" rel="noopener">transaction</a>).</p>
           </section>
 
           <section class="tab-panel" role="tabpanel" id="panel-find" aria-labelledby="tab-find" tabindex="0" hidden>
@@ -514,7 +514,7 @@ console.log(result.text);</code></pre>
       <h2 class="section-title" data-reveal>Popular models, <em>below list price.</em></h2>
       <div class="table-wrap" data-reveal>
         <table class="mtable">
-          <caption>Per million tokens. Ours is the expected price (cost + 30%); list price crossed out; <b>est.</b> means it comes from sellers' quotes, not yet from answers we paid for. With a key, nothing more; over x402, plus $0.001 per answer on Base, $0.002 on Solana. <a href="/models/">All models</a></caption>
+          <caption>Per million tokens. Ours is the expected SingIt price; list price crossed out; <b>est.</b> means it comes from sellers' quotes, not yet from answers we paid for. With a key, nothing more; over x402, plus $0.001 per answer on Base, $0.002 on Solana. <a href="/models/">All models</a></caption>
           <thead>
             <tr>
               <th scope="col">Model</th>

@@ -12,7 +12,7 @@ import { reserveChatPayment, reservationRefusal } from "./payment-reservation.mj
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
 // what Claude Code and the Anthropic SDK speak) and OpenAI's Responses (POST /v1/responses). Sold over x402 like the
 // chat route: the payer authorizes a ceiling with `upto`, worked out from the model's list price and the size of the
-// request, and is charged what the answer actually cost + 30% + the network's settlement fee, only once it came back.
+// request, and is charged the price shown for the model, metered by what the answer actually used, plus the network's settlement fee, only once it came back.
 //
 // The request goes to Surplus as it came, with this service's key, apart from the model's name (Anthropic's dated
 // names become Surplus's) and a bounded answer length. Buffered SSE is serialized only after a whole answer is ready.
@@ -27,7 +27,7 @@ import { markUnservable, unservableError, UnknownModel, priceGuard } from "./cat
 import { acceptedOf, answerLogFor, recordWhenSettled } from "./answer-log.mjs";
 import { probeInput, probeNote } from "./metered.mjs";
 import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, relaxMinDiscount, solanaOffer } from "./metered.mjs";
-import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, retryBudget, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, retryBudget, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
 
 export const FORMAT_ROUTES = { "/v1/messages": "/anthropic/v1/messages", "/v1/responses": "/v1/responses" };
 export const FORMAT_LIMITS = Object.freeze({ chars: 100_000, maxTokens: 32_000, defaultTokens: 4_096, timeoutMs: 120_000 });
@@ -195,8 +195,8 @@ const INPUT_SCHEMAS = {
 // A route's request body as openapi.json documents it: the schema and example the Bazaar listing declares.
 export const formatRequestBody = (route) => ({ required: true, content: { "application/json": {
   schema: { type: "object", ...INPUT_SCHEMAS[route] }, example: EXAMPLES[route] } } });
-// A real answer's shape and charge (Base, `upto`): 6 micro-USD of tokens, 2 markup, 1000 settlement fee.
-const BILLING_EXAMPLE = { ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" };
+// A real answer's shape and charge (Base, `upto`): settled total 1008 micro-USDC, including the 1000 settlement fee.
+const BILLING_EXAMPLE = publicBilling({ ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" });
 const OUTPUT_EXAMPLES = {
   "/v1/messages": { id: "msg_01example", type: "message", role: "assistant", model: "claude-sonnet-5.5",
     content: [{ type: "text", text: "x402 is an open standard for paying for an API call with a stablecoin over HTTP 402." }],
@@ -208,8 +208,9 @@ const OUTPUT_EXAMPLES = {
 };
 const OUTPUT_SCHEMA = { type: "object", required: ["billing"], properties: {
   billing: { type: "object", description: "What was charged, in USDC micro-units", properties: {
-    providerCostAtomic: { type: "string" }, markupAtomic: { type: "string" },
-    totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" } } } } };
+    providerCostAtomic: { type: "string" },
+    totalAtomic: { type: "string", description: "The amount settled" }, settlementFeeAtomic: { type: "string" },
+    currency: { type: "string", const: "USDC" } } } } };
 // Bazaar keeps only the first 5 (pricing.mjs's discoveryTags): the format's own category first.
 const TAGS = {
   "/v1/messages": discoveryTags("llm", "anthropic-messages", "claude", "inference", "chat", "anthropic-compatible",
@@ -362,7 +363,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms`
           + `${route === "/v1/responses" ? `, isDefault=${req.format.modelOmitted === true}` : ","} settling ${billing.totalAtomic} micro-USDC`);
         observe({ ok: true, retried });
-        res.json({ ...scrub(data), ...(retried ? { retried: true } : {}), billing });
+        res.json({ ...scrub(data), ...(retried ? { retried: true } : {}), billing: publicBilling(billing) });
       } catch (error) {
         if (error instanceof WindowExceeded) {
           // Not the seller's failure to count against it: the payment's window ran out. Nothing settles.

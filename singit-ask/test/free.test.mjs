@@ -161,7 +161,7 @@ test("the model list shows our price, the saving against list price, the fees an
   const response = await fetch(`${url}/v1/models`);
   assert.equal(response.headers.get("access-control-allow-origin"), "*");
   const list = await response.json();
-  assert.deepEqual(list.fees, { markupPct: 30, perAnswerUsd: { [BASE]: 0.001, [SOLANA]: 0.002 } });
+  assert.deepEqual(list.fees, { perAnswerUsd: { [BASE]: 0.001, [SOLANA]: 0.002 } });
   assert.deepEqual(list.free, { models: ["free/deepseek-v4.1-flash"], endpoint: ROUTE, perVisitorPerDay: 2,
     maxTokens: 400, maxChars: 4000, budgetUsdPerDay: 0.25 });
   const pro = list.data.find((m) => m.id === "pro-model");

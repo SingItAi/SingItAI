@@ -7,7 +7,7 @@ import { request as httpRequest } from "node:http";
 import { BASE, SOLANA, ROUTE, LIMITS, RequestError, UpstreamError, chooseModel, readRequest, askSurplus, createApp, REASONING_OFF } from "../src/app.mjs";
 import { AGENT_LIMITS } from "../src/limits.mjs";
 import { FORMAT_ROUTES } from "../src/formats.mjs";
-import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage } from "../src/pricing.mjs";
+import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage, publicTerms, publicBilling } from "../src/pricing.mjs";
 import { ModelCatalogue, UnknownModel, priceGuard } from "../src/catalogue.mjs";
 import { modelRoutePaths } from "../src/model-routes.mjs";
 import { aliasPaths } from "../src/model-alias-routes.mjs";
@@ -21,6 +21,21 @@ const CONFIG = {
   payToSolana: SOLANA_PAY_TO, payToBase: BASE_PAY_TO, surplusKey: "inf_test", surplusUrl: "https://surplus.test",
   model: "deepseek-v4.1-flash",
 };
+
+test("public billing omits markup fields and keeps other cost breakdowns", () => {
+  const billed = publicBilling({
+    ...TERMS, providerCostAtomic: "6", markupAtomic: "2", listAtomic: "10",
+    exaAtomic: "7", totalAtomic: "1008", currency: "USDC",
+  });
+  assert.equal(billed.markupBps, undefined);
+  assert.equal(billed.markupAtomic, undefined);
+  assert.equal(billed.providerCostAtomic, "6");
+  assert.equal(billed.listAtomic, "10");
+  assert.equal(billed.exaAtomic, "7");
+  assert.equal(billed.totalAtomic, "1008");
+  assert.equal(publicTerms(TERMS).markupBps, undefined);
+  assert.equal(publicTerms(TERMS).settlementFeeAtomic, TERMS.settlementFeeAtomic);
+});
 
 function fakeFacilitator() {
   const calls = { verify: 0, settle: [] };
@@ -111,12 +126,12 @@ test("an unpaid question is offered actual-usage payment on Solana and Base over
   assert.deepEqual(required.accepts.map((a) => [a.scheme, a.network]), [["upto", BASE], ["upto", SOLANA], ["exact", BASE], ["exact", SOLANA]]);
   assert.equal(solana.amount, "3000");
   assert.equal(solana.payTo, SOLANA_PAY_TO);
-  assert.deepEqual(solana.extra.billing, SOLANA_TERMS);
+  assert.deepEqual(solana.extra.billing, publicTerms(SOLANA_TERMS));
   assert.ok(solana.extra.feePayer, "Solana payers need CDP's fee payer");
   assert.equal(base.amount, "3000");
   assert.equal(base.payTo, BASE_PAY_TO);
   assert.equal(base.maxTimeoutSeconds, 120);
-  assert.deepEqual(base.extra.billing, TERMS);
+  assert.deepEqual(base.extra.billing, publicTerms(TERMS));
   assert.ok(required.extensions?.bazaar, "listed for discovery");
   assert.ok(required.extensions?.eip2612GasSponsoring, "Base payers need no gas");
   assert.equal(asked.length, 0);
@@ -255,9 +270,12 @@ test("the listing tells agents what to send and what comes back, within Coinbase
     assert.equal(typeof message.content, "string");
   }
   assert.ok(example.max_tokens <= body.properties.max_tokens.maximum && example.max_tokens >= body.properties.max_tokens.minimum);
-  // What comes back is described too, with a realistic charge: 6 micro-USD of tokens, 2 markup, 1000 fee.
+  // What comes back is described too, with a realistic settled charge of 1008 micro-USDC including the fee.
   assert.equal(bazaar.info.output.example.billing.totalAtomic, "1008");
-  assert.deepEqual(billUsage(bazaar.info.output.example.usage), bazaar.info.output.example.billing);
+  assert.deepEqual(publicBilling(billUsage(bazaar.info.output.example.usage)), bazaar.info.output.example.billing);
+  assert.equal(bazaar.info.output.example.billing.markupBps, undefined);
+  assert.equal(bazaar.info.output.example.billing.markupAtomic, undefined);
+  assert.equal(bazaar.info.output.example.billing.providerCostAtomic, "6");
   assert.ok(required.resource.tags.includes("claude"));
 });
 
@@ -454,7 +472,10 @@ test("health and the model list are free, and the old test page is gone", async 
   const health = await (await fetch(`${url}/health`)).json();
   assert.equal(health.ok, true);
   assert.equal(health.facilitator, "coinbase-cdp");
-  assert.deepEqual(health.pricing, { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS });
+  assert.deepEqual(health.pricing, { [SOLANA]: publicTerms(SOLANA_TERMS), [BASE]: publicTerms(TERMS) });
+  assert.deepEqual(health.metered, publicTerms(TERMS));
+  assert.equal(health.pricing[BASE].markupBps, undefined);
+  assert.equal(health.metered.markupBps, undefined);
   const models = await fetch(`${url}/v1/models`);
   assert.equal(models.status, 200);
   const modelList = await models.json();
