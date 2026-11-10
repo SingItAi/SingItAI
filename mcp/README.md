@@ -62,6 +62,9 @@ after changing the SDK.
 answer: if the payment is refused (for example an empty wallet) the tool returns an error with the wallet
 address to fund, and the request is not repeated.
 
+Requests to Ask send `x-singit-client: singit-mcp/<version>` (a fixed product token, not a user identifier)
+so `numbers.json` can attribute the traffic.
+
 ## The wallet
 
 - Created on the first `singit_chat` call or by `singit_wallet` with `action: "setup"`.
