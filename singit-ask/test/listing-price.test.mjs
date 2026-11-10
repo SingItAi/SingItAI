@@ -43,7 +43,7 @@ test('list probes bound every audit mismatch across live shares, verbs, networks
       const response = await fetch(url + path, { method });
       assert.equal(response.status, 402);
       const challenge = decode(response);
-      assert.ok(challenge.resource.description.length <= 160);
+      assert.ok(challenge.resource.description.length <= 500);
       const full = await (method === "HEAD" ? await fetch(url + path) : response).json();
       assert.match(full.extensions.bazaar.schema.properties.input.properties.body.description, /Listed price = ceiling for the example/);
       probes.push(buckets(challenge));

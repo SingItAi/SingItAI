@@ -229,7 +229,7 @@ test("pinned route schemas exclude generic-only fields while generic chat retain
   const genericBody = await genericResponse.json();
   assert.ok(genericBody.extensions.bazaar.schema.properties.input.properties.body.properties.fallback_models);
   assert.ok(generic.resource.description.length <= 500);
-  // D2 aggregate copy uses the 500-character policy; D4 alias copy has its own 160-character tests.
+  // D2 aggregate copy uses the 500-character policy; D4 alias copy has its own tests, same limit.
   assert.equal(generic.resource.description, routeCopy(ROUTE).description);
   assert.ok(doc.paths[ROUTE].post.description.startsWith(routeCopy(ROUTE).description));
   assert.match(doc.paths[ROUTE].post.description, /free\//);

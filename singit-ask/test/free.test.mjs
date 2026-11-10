@@ -317,7 +317,7 @@ for (const code of ["max_tokens_spent_reasoning", "no_text"]) {
 }
 
 
-test("all 27 directory descriptions fit 160 characters and model operations agree", async () => {
+test("all 27 directory descriptions fit 500 characters and model operations agree", async () => {
   const { modelRoutePaths } = await import("../src/model-routes.mjs");
   const { lintChallenge, challengeWithBodyExtensions } = await import("../../scripts/bazaar-lint.mjs");
   const app = createApp(CONFIG, { facilitatorClient: facilitator(), log: () => {}, exaKey: "exa_test",
@@ -334,7 +334,7 @@ test("all 27 directory descriptions fit 160 characters and model operations agre
     const challenge = JSON.parse(Buffer.from(result.headers["payment-required"], "base64"));
     const { resource } = challenge;
     assert.deepEqual(lintChallenge(challengeWithBodyExtensions(challenge, result.body), { route, networks: [BASE, SOLANA] }).filter(f => f.level === "FAIL"), [], route);
-    assert.ok(resource.description.length <= 160, route);
+    assert.ok(resource.description.length <= 500, route);
     assert.doesNotMatch(resource.description, /\b(fee|markup|ceiling|settlement)\b|%/i, route);
     assert.ok(!resource.description.startsWith("SingIt "), route);
     if (modelRoutePaths().includes(route)) assert.equal(doc.paths[route].post.description, resource.description, route);
@@ -350,7 +350,7 @@ test("agent intro and model selection guidance follow the free offer configurati
   for (const freeModels of [["deepseek-v4.1-flash"], []]) {
     const app = createApp({ ...CONFIG, freeModels }, { catalogue, facilitatorClient: facilitator(), log: () => {} });
     const text = (await request(app, "/llms.txt")).body;
-    assert.match(text, /^# SingIt Ask\n\n> OpenAI-compatible chat API/);
+    assert.match(text, /^# SingIt Ask\n\n> Pay-per-answer LLM chat, images and speech over x402 in USDC, no API key; the max charge is quoted before signing\.\n/);
     assert.match(text, /Spending limits: SingIt's limits protect only SingIt's own agent/);
     const limitsLine = text.split("\n").find(line => line.startsWith("Spending limits:"));
     assert.ok(limitsLine.includes("On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated."));

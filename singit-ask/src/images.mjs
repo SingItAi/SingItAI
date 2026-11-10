@@ -79,7 +79,7 @@ export function imagePrice(listAtomic, network) {
            totalAtomic: (list + markup + BigInt(FEES[network])).toString() };
 }
 
-// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
+// Keep discovery descriptions within 500 characters, capability first (see app.mjs).
 const DESCRIPTION = routeCopy("/v1/images/generations").description;
 
 const INPUT_SCHEMA = { properties: {

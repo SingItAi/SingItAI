@@ -11,6 +11,7 @@ import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
+import { payTail } from "./listing-copy.mjs";
 
 export const VIDEO_ROUTE = "/v1/video/generations";
 export const VIDEO_MODELS_ROUTE = "/v1/video/models";
@@ -95,12 +96,12 @@ export function publicJob(job, origin) {
     ...(job.created_at ? { created_at: job.created_at } : {}), ...(job.completed_at ? { completed_at: job.completed_at } : {}) };
 }
 
-// <=300 characters, opening with the category words, the brand once, later, and no billing talk (see app.mjs's
+// Well under CDP's 500 characters, opening with the category words, the brand once, later, and no billing talk (see app.mjs's
 // DISCOVERY_DESCRIPTION for why); prices, the job flow and the completion window are in openapi.json and on
 // GET /v1/video/models.
 const DESCRIPTION = "Video generation API, text to video: clips from 30+ models (LongCat, Grok Imagine, Wan, PixVerse, "
-  + "Seedance and more; list at GET /v1/video/models), no API key needed. Call it when an agent needs a short video from a text prompt: "
-  + "it answers once the clip is ready. Served by SingIt.";
+  + "Seedance and more; list at GET /v1/video/models). The response arrives once the clip is ready. "
+  + `${payTail("call", "Base")} Served by SingIt.`;
 
 const INPUT_SCHEMA = { properties: {
   model: { type: "string", examples: ["wan-2-2-a14b-text-to-video"], description: "A video model id from GET /v1/video/models." },
