@@ -261,7 +261,7 @@ test('workflow refreshes on a daily schedule and does not publish or merge', asy
   const opener = await readFile(new URL('../open-catalog-snapshot-pr.sh', import.meta.url), 'utf8');
   const header = workflow.split(/^jobs:/m)[0];
   assert.match(header, /workflow_dispatch:/);
-  assert.match(header, /cron: "0 6 \* \* \*"/);
+  assert.match(header, /cron: "17 6 \* \* \*"/);
   assert.doesNotMatch(header, /pull_request|push:/);
   assert.match(header, /contents: write/);
   assert.match(header, /pull-requests: write/);
