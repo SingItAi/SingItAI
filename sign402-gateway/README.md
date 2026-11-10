@@ -547,17 +547,16 @@ Tools:
 | `get_receipts` | Free, needs a key | Recent receipts, newest first: this key's charges (model, USDC, tokens, upstream reference) or the account's top-ups and refunds (`kind`), paged with `before`. Read-only |
 | `web_search` | Paid, needs `search` scope | Search the web (Exa) |
 | `read_page` | Paid, needs `search` scope | Read a web page's text (Exa) |
-| `get_weather` | Paid, needs `tools` scope | A sample forecast from GoPlausible's x402 demo (no location) |
 | `get_singit_risk_check` | Paid, needs `tools` scope | SingIt's risk check on a fixed sample request |
 | `get_x_profile` | Paid, needs `tools` scope | An X/Twitter profile by username |
 | `get_crypto_news` | Paid, needs `tools` scope | Crypto market news |
-| `get_hyperliquid_market` | Paid, needs `tools` scope | Hyperliquid perpetuals market data |
 | `get_funding_rates` | Paid, needs `tools` scope | Cross-venue funding rates |
 | `resolve_ens` | Paid, needs `tools` scope | Resolve a `.eth` name or address |
 | `get_token_price` | Paid, needs `tools` scope | A token's USD price |
 
-`get_sign402_report` (in `server.PAID_TOOLS`) is not offered over MCP: its demo upstream is not
-running in production. MCP descriptions of the paid tools live in `web_mcp.PAID_TOOL_DESCRIPTIONS`.
+`get_sign402_report`, `get_hyperliquid_market` (Otto currently returns 410) and `get_weather`
+(GoPlausible's demo is not on Base mainnet in `accepts`) stay in `server.PAID_TOOLS` but are not
+offered over MCP. MCP descriptions of the paid tools live in `web_mcp.PAID_TOOL_DESCRIPTIONS`.
 
 Every paid call is billed exactly like `/v1`: from the key's own daily and per-request caps, out of
 its account's own SingIt limits, in USDC on Base or Solana. The market data tools (`tools` scope) are
@@ -565,7 +564,7 @@ Base-only for now: a Solana account's key gets a clear refusal. Nothing here can
 (no Bitrefill, no wallet/allowance tools beyond the read-only `get_limits` — changing them stays out of MCP for now, v2 at the earliest).
 
 Every `tools/list` entry carries a `title` and MCP annotations (`readOnlyHint`, `destructiveHint`,
-`idempotentHint`, `openWorldHint`). All 19 tools are read-only and non-destructive: paid ones debit the
+`idempotentHint`, `openWorldHint`). All 17 tools are read-only and non-destructive: paid ones debit the
 key's limits but never touch external state. `get_price`, `list_price_symbols`, `list_models`,
 `get_balance`, `get_limits` and `get_receipts` read SingIt's own data, so they are idempotent and not open-world; every paid tool bills again on each call
 (not idempotent) and reaches third-party data (open-world). `chat_free` also consumes allowance and reaches an external model, so it is not idempotent and is open-world.

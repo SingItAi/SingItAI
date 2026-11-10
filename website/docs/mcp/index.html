@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SingIt MCP: setup and tool reference | SingIt</title>
-<meta name="description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 19 tools, and troubleshoot keys, scopes and spending limits.">
+<meta name="description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 17 tools, and troubleshoot keys, scopes and spending limits.">
 <link rel="canonical" href="https://singitai.app/docs/mcp/">
 <meta property="og:title" content="SingIt MCP: setup and tool reference | SingIt">
-<meta property="og:description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 19 tools, and troubleshoot keys, scopes and spending limits.">
+<meta property="og:description" content="Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 17 tools, and troubleshoot keys, scopes and spending limits.">
 <meta property="og:url" content="https://singitai.app/docs/mcp/">
 <meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
 <meta property="og:type" content="website">
@@ -29,7 +29,7 @@
       "@id": "https://singitai.app/docs/mcp/#webpage",
       "url": "https://singitai.app/docs/mcp/",
       "name": "SingIt MCP: setup and tool reference | SingIt",
-      "description": "Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 19 tools, and troubleshoot keys, scopes and spending limits.",
+      "description": "Connect SingIt MCP over HTTP. Set up Claude Code, Cursor, Codex or Windsurf, inspect 17 tools, and troubleshoot keys, scopes and spending limits.",
       "inLanguage": "en",
       "breadcrumb": {
         "@id": "https://singitai.app/docs/mcp/#breadcrumb"
@@ -163,11 +163,11 @@ bearer_token_env_var = "SINGIT_API_KEY"</code></pre></div>
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'</code></pre></div>
-<p class="lp-text">Expected: initialize returns serverInfo name singit and title SingIt x402; tools/list returns 19 tools. Both requests are free and need no key. A missing, empty or unexpanded-variable header behaves like no key. A wrong or revoked key gets HTTP 401 (verified 31 October 2026 with an invalid key).</p></div></section>
+<p class="lp-text">Expected: initialize returns serverInfo name singit and title SingIt x402; tools/list returns 17 tools. Both requests are free and need no key. A missing, empty or unexpanded-variable header behaves like no key. A wrong or revoked key gets HTTP 401 (verified 31 October 2026 with an invalid key).</p></div></section>
 <section class="lp-section" id="tools"><div class="shell"><h2 class="section-title">Tools</h2><p class="lp-text">Snapshot fetched 31 October 2026. Read-only and idempotent values below are server annotation hints. Read-only paid calls still charge; repeating a non-idempotent call charges again. Account-read tools require a key but no paid-tool scope. See the <a href="/docs/mcp-tools/">full parameters and allowed values</a> for every tool.</p>
 <!-- generated:mcp-tools:start -->
 <div class="table-wrap"><table class="mtable">
-<caption>19 tools generated from repository web_mcp.tools(). Paid tools are paid per call within the key's caps; get_limits and get_allowance show spent and remaining today.</caption>
+<caption>17 tools generated from repository web_mcp.tools(). Paid tools are paid per call within the key's caps; get_limits and get_allowance show spent and remaining today.</caption>
 <thead><tr><th>Tool</th><th>What it does</th><th>Parameters</th><th>Needs a key?</th><th>Scope</th><th>Network</th><th>Annotation hints</th></tr></thead>
 <tbody>
 <tr><th scope="row"><code>get_price</code></th><td>Current price of a major cryptocurrency, gold or silver (Chainlink on Base), or an exchange rate between two currencies.</td><td><code>kind</code>: string, required<br><code>symbol</code>: string, optional<br><code>base</code>: string, optional<br><code>quote</code>: string, optional</td><td>No</td><td>Free; none</td><td>No payment</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
@@ -181,11 +181,9 @@ bearer_token_env_var = "SINGIT_API_KEY"</code></pre></div>
 <tr><th scope="row"><code>get_receipts</code></th><td>Your recent receipts, newest first: for each, its id, time, model, USDC charged, tokens and the upstream reference (kind charge, this key only), or the account&#39;s top-ups and refunds with their transaction and network.</td><td><code>limit</code>: integer, optional<br><code>kind</code>: string, optional<br><code>before</code>: integer, optional</td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td><td>readOnlyHint: true; idempotentHint: true</td></tr>
 <tr><th scope="row"><code>web_search</code></th><td>Searches the web through Exa and returns titles, URLs and snippets of matching pages.</td><td><code>query</code>: string, required<br><code>numResults</code>: integer, optional<br><code>type</code>: string, optional</td><td>Yes; paid</td><td>search</td><td>USDC on Base or Solana</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>read_page</code></th><td>The readable text of one web page (up to 8000 characters), through Exa.</td><td><code>url</code>: string, required</td><td>Yes; paid</td><td>search</td><td>USDC on Base or Solana</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
-<tr><th scope="row"><code>get_weather</code></th><td>A sample weather forecast from GoPlausible&#39;s x402 demo service on Algorand.</td><td>None</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>get_singit_risk_check</code></th><td>SingIt&#39;s risk check on Bankr x402 Cloud, run on a fixed sample payment request (no input).</td><td>None</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>get_x_profile</code></th><td>Public profile data for an X (Twitter) account by username, from twit.sh&#39;s x402 API.</td><td><code>username</code>: string, required</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>get_crypto_news</code></th><td>Latest crypto market headlines with sentiment, from Otto AI.</td><td>None</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
-<tr><th scope="row"><code>get_hyperliquid_market</code></th><td>One Hyperliquid perpetual market (e.g. BTC): price, funding, open interest, max leverage and size rules, from Otto AI.</td><td><code>asset</code>: string, required</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>get_funding_rates</code></th><td>Funding rates for one symbol across exchanges, with open interest, long/short ratio, large positions and liquidations, from Otto AI.</td><td><code>symbol</code>: string, required</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>resolve_ens</code></th><td>Turns an ENS name (e.g. vitalik.eth) into its address, or an address into its primary ENS name.</td><td><code>input</code>: string, required<br><code>network</code>: string, optional</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
 <tr><th scope="row"><code>get_token_price</code></th><td>USD price of a major token by symbol from a paid x402 price API.</td><td><code>symbol</code>: string, required</td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td><td>readOnlyHint: true; idempotentHint: false</td></tr>
