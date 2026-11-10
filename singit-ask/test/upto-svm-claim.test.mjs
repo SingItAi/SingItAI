@@ -87,6 +87,11 @@ test('delegated facilitator without type still requires an explicit type', () =>
   assert.equal(seen.errorReason, ERR_PAYLOAD_TYPE);
 });
 
+test('createUptoSvmServerScheme keeps rpcUrl for recentSlot stamping', () => {
+  const scheme = createUptoSvmServerScheme({ withdrawDelay: 300, rpcUrl: 'https://api.mainnet-beta.solana.com' });
+  assert.equal(scheme.rpcUrl, 'https://api.mainnet-beta.solana.com');
+});
+
 test('createUptoSvmServerScheme stamps claim plus an empty voucher on after-handler', async () => {
   const scheme = createUptoSvmServerScheme({ withdrawDelay: 300 });
   const deposit = await scheme.enrichSettlementPayload({
