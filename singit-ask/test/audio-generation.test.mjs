@@ -95,7 +95,7 @@ test('audio discovery, OpenAPI and flat pricing agree without sockets; video sta
   for (const model of audioPrices()) assert.deepEqual(pricing.models.find(m => m.id === model.id).exact, model.exact);
   const doc = await generateOpenapi({ audioSold: true, audioDiscoverable: true });
   const resources = JSON.parse(await readFile(new URL('../../scripts/bazaar-resources.json', import.meta.url)));
-  assert.equal(resources.resources.length, 28);
+  assert.equal(resources.resources.length, 32);
   for (const route of AUDIO_ROUTES) {
     assert.ok(resources.resources.some(r => r.url.endsWith(route)));
     assert.deepEqual(Object.keys(doc.paths[route].post.responses).map(Number), [200, 400, 402, 409, 413, 422, 503]);
