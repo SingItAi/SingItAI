@@ -36,7 +36,7 @@ test('model cards and list share catalog membership, prices and safe examples wi
         .map(part => part.replaceAll('~1', '/').replaceAll('~0', '~'));
       assert.ok(pointer.reduce((value, key) => value?.[key], openapi), card.schemas[field]);
     }
-    for (const field of ['usdPerMillionTokens', 'expectedUsdPerMillionTokens', 'singitUsdPerMillionTokens', 'savingsVsListPct']) {
+    for (const field of ['usdPerMillionTokens', 'expectedUsdPerMillionTokens', 'settlementFee', 'singitUsdPerMillionTokens', 'savingsVsListPct']) {
       assert.deepEqual(card[field], entry[field], field);
     }
     if (entry.modality === 'chat' && !entry.router) {
@@ -115,8 +115,12 @@ test('cards preserve known expected prices and savings from the list', async t =
   for (const modelId of [id, 'free/' + id]) {
     const card = await (await request(url + '/v1/models/' + encodeURIComponent(modelId))).json();
     const entry = list.data.find(m => m.id === modelId);
-    assert.deepEqual(card.expectedUsdPerMillionTokens, { input: 1.5, output: 6, basis: 'trusted' });
-    for (const field of ['usdPerMillionTokens', 'expectedUsdPerMillionTokens', 'singitUsdPerMillionTokens', 'savingsVsListPct', 'schemas']) {
+    assert.deepEqual(card.expectedUsdPerMillionTokens, { input: 1.5, output: 6, basis: 'trusted', n: 0, window: 20 });
+    assert.equal(card.settlementFee.base.usd, 0.001);
+    assert.equal(card.settlementFee.solana.usd, 0.002);
+    assert.equal(entry.settlementFee.base.usd, 0.001);
+    assert.equal(entry.settlementFee.solana.usd, 0.002);
+    for (const field of ['usdPerMillionTokens', 'expectedUsdPerMillionTokens', 'settlementFee', 'singitUsdPerMillionTokens', 'savingsVsListPct', 'schemas']) {
       assert.deepEqual(card[field], entry[field], field);
     }
     assert.ok(card.singitUsdPerMillionTokens.input > 1.5);
