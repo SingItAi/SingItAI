@@ -41,7 +41,7 @@ test("wave config and strict discovery copy", () => {
     const d = aliasDescription(m);
     assert.ok(d.length <= 160);
     assert.ok(d.includes(m.name));
-    assert.ok(d.includes("within owner-set USDC limits"));
+    assert.ok(d.includes("Pay per call in USDC on Base or Solana, no API key"));
     assert.doesNotMatch(d, /ceiling|fee|%|0x[a-fA-F0-9]{8,}|growth|on-chain limits/i);
   }
 });
