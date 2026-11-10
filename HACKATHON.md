@@ -573,3 +573,25 @@ Post-competition speech delivery fix (2026-11-09), branch `fix/speech-wav-mp3-tr
 synchronous speech requests for default/explicit MP3, including json/b64_json envelopes,
 convert upstream WAV to MP3 via system ffmpeg before validation and settlement.
 Conversion failure keeps 503/no-charge. Discovery stays b64_json/mp3.
+
+### November 10: draft SingIt for Claude Code
+
+Post-competition SingIt API client work on `feat/singit-cc`, implemented in
+commit `29816493` (`feat(cc): local Anthropic Messages proxy for Claude Code that pays ask over x402`).
+The new `cc/` package reuses the existing SDK and session wallet; it exposes a
+local Anthropic Messages proxy, signs Base x402 payments, clamps output tokens,
+and replays paid JSON as buffered SSE. Shared client allowlists and
+`paid_calls.by_source` now recognize `singit-cc`. This is separate from imported
+SingIt functionality and the competition's Solana work; no Solana signing is added.
+
+Verification: cc 21/21, focused Ask agent-stream/health-stats 64/64, proxy 13/13;
+cc npm audit reports zero vulnerabilities and npm pack dry-run excludes tests and
+dependencies. The requested Ask npm test command expands to the whole suite:
+1151/1152 passed; solana-direct cannot load the absent local `@solana/kit`
+dependency. No dependencies were installed in singit-ask.
+
+Limitations: not on npm, installer URL not live, no live Claude/Ask payment test,
+no true token streaming, and SDK daily limits reset with the proxy process.
+Solana fails closed at the published-success gate and remains refused even above
+95% because the shared session is EVM-only. No paid calls, CI wallet secret,
+push, publication, deployment, website changes, Codex or OpenClaw product work.

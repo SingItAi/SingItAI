@@ -10,6 +10,7 @@ test("client labels are allowlisted short tokens; anything else becomes the fall
   assert.equal(sanitizeClient("openclaw"), "openclaw");
   assert.equal(sanitizeClient("Continue"), "continue");
   assert.equal(sanitizeClient("singit-proxy/0.1.0"), "singit-proxy");
+  assert.equal(sanitizeClient("singit-cc/0.1.0"), "singit-cc");
   assert.equal(sanitizeClient("not a label"), "singit-proxy");
   assert.equal(sanitizeClient("user@example.com"), "singit-proxy");
   assert.equal(sanitizeClient("x".repeat(40)), "singit-proxy");

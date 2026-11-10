@@ -4,7 +4,7 @@
 export const CLIENTS = Object.freeze([
   "openai-python", "openai-node", "langchain", "litellm", "vercel-ai",
   "cursor", "claude-code", "continue", "openclaw", "curl", "browser",
-  "singit-proxy", "singit-mcp", "other",
+  "singit-proxy", "singit-mcp", "singit-cc", "other",
 ]);
 
 const TOKEN = /^[a-z0-9._-]{1,32}$/;
