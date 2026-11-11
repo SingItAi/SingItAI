@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import express from "express";
 import { request } from "./helpers/http-request.mjs";
-import { PAYMENT_ERROR_CODES, ACTIONS, classifyPaymentFailure } from "../src/payment-codes.mjs";
+import { PAYMENT_ERROR_CODES, ACTIONS, classifyPaymentFailure, nextAction, unfundedMessage } from "../src/payment-codes.mjs";
 import { attachPaymentFailureCodes, paymentFailureContext, paymentCodesMiddleware } from "../src/payment-failure-hooks.mjs";
 import { withFacilitatorHints } from "../src/facilitator-hints.mjs";
 import { createApp, BASE, SOLANA } from "../src/app.mjs";
@@ -83,6 +83,23 @@ for (const scheme of ["upto", "exact"]) for (const [index, [reason, message, cod
       assert.match(result.body.message, /Nothing was charged for this request/);
       assert.ok(!JSON.stringify(result.body).includes("PRIVATE ANSWER"));
       assert.ok(!JSON.stringify(result.body).includes(message));
+      if (code === "payment_unfunded") {
+        // SI-296: what is missing, how much (the signed amount) and where, with no addresses.
+        const next = result.body.next_action;
+        assert.equal(next.type, "fund_wallet");
+        assert.equal(next.asset, "USDC");
+        assert.equal(next.docs, "https://singitai.app/docs/errors/");
+        assert.equal(next.network, network);
+        assert.equal(next.missing, network === SOLANA ? "usdc_token_account" : "USDC");
+        assert.equal(next.amountAtomic, accepted.amount);
+        assert.equal(next.amountUsd, Number(accepted.amount) / 1e6);
+        assert.ok(result.body.message.includes(network));
+        assert.match(result.body.message, network === SOLANA ? /token account/ : /USDC on Base/);
+        assert.match(result.body.message, /Nothing was charged for this request\.$/);
+        assert.equal(result.headers["x-singit-receipt"], undefined);
+        for (const secret of [payer, solPayer, config.payToBase, accepted.asset, accepted.payTo])
+          assert.ok(!JSON.stringify([next, result.body.message]).includes(secret), secret);
+      } else assert.equal(result.body.next_action, undefined);
       if (phase === "verify") {
         assert.equal(settles, 0);
         assert.equal(upstreamCalls, 0);
@@ -96,6 +113,17 @@ for (const scheme of ["upto", "exact"]) for (const [index, [reason, message, cod
     });
   }
 }
+test("next_action omits an amount it cannot read and the unfunded message falls back without one", () => {
+  for (const amount of [undefined, "", "1.5", "-1", "0x10", 10])
+    assert.deepEqual(nextAction({ type: "fund_wallet", missing: "USDC", amount, network: BASE }),
+      { type: "fund_wallet", missing: "USDC", network: BASE, asset: "USDC", docs: "https://singitai.app/docs/errors/" });
+  assert.deepEqual(nextAction({ type: "fund_wallet", missing: "USDC", amount: "2500", network: BASE }),
+    { type: "fund_wallet", missing: "USDC", amountAtomic: "2500", amountUsd: 0.0025, network: BASE, asset: "USDC", docs: "https://singitai.app/docs/errors/" });
+  assert.equal(unfundedMessage({ missing: "USDC", network: BASE }), `Fund the wallet with enough USDC on Base (${BASE}). Nothing was charged for this request.`);
+  assert.equal(unfundedMessage({ missing: "USDC", amount: "1500", network: SOLANA }),
+    `Fund the wallet's USDC token account with at least 0.0015 USDC on Solana (${SOLANA}). Nothing was charged for this request.`);
+  assert.equal(unfundedMessage({ missing: "USDC" }), "Fund the wallet and its token account. Nothing was charged for this request.");
+});
 test("hooks tolerate garbage contexts and absent ALS without affecting behavior", () => {
   const hooks = [];
   attachPaymentFailureCodes(Object.fromEntries(["onVerifyFailure", "onAfterVerify", "onSettleFailure"].map(k => [k, fn => hooks.push(fn)])));
@@ -156,6 +184,7 @@ test("OpenAPI describes refusal enums, headers and examples without a socket", a
   assert.ok(response.headers["X-SingIt-Error"]);
   assert.equal(response.content["application/json"].examples.unfunded.value.code, "payment_unfunded");
   assert.equal(response.content["application/json"].examples.unfunded.value.accepts, undefined);
+  assert.equal(response.content["application/json"].examples.unfunded.value.next_action.type, "fund_wallet");
 });
 
 test("real stale permit and local duplicate envelopes keep their serialized bodies", async () => {

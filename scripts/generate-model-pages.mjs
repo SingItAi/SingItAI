@@ -149,17 +149,31 @@ function page(shell, { slug, title, h1, description, body, faq = [], nodes = [] 
 function table(headers, rows) {
   return `<div class="table-wrap"><table class="mtable"><thead><tr>${headers.map((v) => `<th scope="col">${e(v)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((v, i) => i ? `<td>${e(v)}</td>` : `<th scope="row">${e(v)}</th>`).join("")}</tr>`).join("\n")}</tbody></table></div>`;
 }
+export function expectedPriceCopy(expected) {
+  const basis = expected?.basis;
+  const basisText = basis === "observed" || basis === "observed_preliminary"
+    ? "based on what answers from this model have cost us"
+    : "estimate from sellers' quotes, not yet confirmed by answers we paid for, so the real price can be higher";
+  let sample = "";
+  if (Number.isInteger(expected?.n)) {
+    sample = Number.isInteger(expected.window) && expected.window > 0
+      ? ` Sample size n = ${expected.n} of the last ${expected.window} paid answers.`
+      : ` Sample size n = ${expected.n}.`;
+    if (basis === "observed_preliminary") sample += " This is a preliminary sample, not yet a stable median.";
+  }
+  return { basisText, sample };
+}
 function modelPage(shell, s, m) {
   const name = displayName(m);
   const p = hasTokenPrice(m) ? m.singitUsdPerMillionTokens : null;
   const priceTable = m.priceBasis === "reference" ? table(["Conservative reference estimate per 1M tokens", "Input", "Output"], [
     ["The published list price is 0; no list-price savings claimed", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
   ]) : p ? table(["USD per 1M tokens", "Input", "Output"], [
-    ["SingIt price (expected, markup included)", `$${price(p.input)}`, `$${price(p.output)}`],
+    ["SingIt price (expected)", `$${price(p.input)}`, `$${price(p.output)}`],
     ["List price of the model (for reference)", `$${price(m.usdPerMillionTokens.input)}`, `$${price(m.usdPerMillionTokens.output)}`],
   ]) : "<p>No per-token price is listed for this model. A request costs the minimum request price below.</p>";
   const basis = m.expectedUsdPerMillionTokens?.basis;
-  const basisText = basis === "observed" ? "based on what answers from this model have cost us" : "estimate from sellers' quotes, not yet confirmed by answers we paid for, so the real price can be higher";
+  const { basisText, sample } = expectedPriceCopy(m.expectedUsdPerMillionTokens);
   const tags = (m.tags ?? []).filter((tag) => pageCopyAllowed(tag));
   const facts = [`Modality: ${e(m.modality ?? "chat")}`, m.owned_by !== undefined && pageCopyAllowed(m.owned_by) && `Provider: ${e(m.owned_by)}`, m.contextLength !== undefined && `Context window: ${m.contextLength.toLocaleString("en-US")} tokens`, tags.length && `Tags: ${tags.map(e).join(", ")}`].filter(Boolean).join(" · ");
   const date = new Date(s.fetchedAt).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
@@ -172,8 +186,8 @@ function modelPage(shell, s, m) {
     ["Which network? Base?", "Base or Solana, paid in USDC. This page focuses on Base."],
   ];
   let body = section("Pay per request", `<p>Send a request to ask.singitai.app, get HTTP 402 with the exact price, pay in USDC on Base, get the answer. No signup, no monthly plan.</p>${facts ? `<p>${facts}</p>` : ""}`);
-  body += section("Price", priceTable + (basis ? `<p>The expected price is ${e(basisText)}. It is an expected price, not a guarantee; you pay what each answer actually used.</p>` : "") +
-    `<p>Price = what the provider charges for the answer + ${price(s.fees.markupPct)}% markup + a settlement fee per request ($${price(s.fees.perAnswerUsd[s.networks.base.chain])} on Base, $${price(s.fees.perAnswerUsd[s.networks.solana.chain])} on Solana).</p>
+  body += section("Price", priceTable + (basis ? `<p>The expected price is ${e(basisText)}.${sample} It is an expected price, not a guarantee; you pay what each answer actually used.</p>` : "") +
+    `<p>You pay the price shown for each model, metered by what the answer actually used, plus a settlement fee per request ($${price(s.fees.perAnswerUsd[s.networks.base.chain])} on Base, $${price(s.fees.perAnswerUsd[s.networks.solana.chain])} on Solana).</p>
 <h3>Per request, reference request</h3>
 <p>${s.referenceRequest.messages === 1 ? "One short message" : `${e(s.referenceRequest.messages)} messages`}, max_tokens ${e(s.referenceRequest.maxOutputTokens)}${s.referenceRequest.chars !== undefined ? ` (${e(s.referenceRequest.chars)} characters)` : ""}${s.referenceRequest.inputTokens !== undefined ? `, ${e(s.referenceRequest.inputTokens)} input tokens` : ""}. upto settles actual usage, so a real answer normally costs less; exact is flat, with no refund.</p>` +
     table(["Network", "upto ceiling (USD)", "exact flat price (USD)"], ["base", "solana"].map((n) => [n === "base" ? "Base" : "Solana", `$${price(m.upto[n].usd)}`, `$${price(m.exact[n].usd)}`])) +

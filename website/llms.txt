@@ -41,7 +41,7 @@ Unpaid calls: HTTP 402 includes PAYMENT-REQUIRED (base64 JSON, x402Version 2). D
 
 `upto` is listed first: pay the actual cost up to the signed ceiling. `exact` is priced for a typical answer (~30% of max_tokens), settled at that flat price whatever length the answer turns out to be. Never sign above budget.
 
-LLM/image/speech: model cost plus 30% markup, plus a settlement fee of $0.001 on Base or $0.002 on Solana. Base and Solana share API URLs. Exa: own price, no markup, plus settlement fee of $0.001 on both Base and Solana. Route ranges are USDC; the request's 402 offer is authoritative.
+You pay the shown model price (metered by actual usage), plus a settlement fee of $0.001 on Base or $0.002 on Solana. Base and Solana share API URLs. Exa: its listed price plus a settlement fee of $0.001 on both Base and Solana. Route ranges are USDC; the request's 402 offer is authoritative.
 
 Only billable answers charge; upstream 503s never charge. For 400/413/422, fix the request; do not switch models. 409: payment signature already used. For 503, wait Retry-After if supplied; for free-tier 429, wait Retry-After.
 
@@ -73,16 +73,16 @@ Connect your wallet, sign daily and per-purchase limits, and let your agent buy 
 fallback_models: paid pinned chat accepts 1–3 unique model ids excluding the pinned model and singit/auto. Before payment, an unavailable model can use the first healthy priced candidate with no higher Base upto ceiling, in the same auto tier where applicable. X-SingIt-Model and X-SingIt-Fallback-From identify the replacement.
 
 1. Free: POST https://ask.singitai.app/v1/chat/completions with model "free/deepseek-v4.1-flash". One of 6 free models; 20 answers/day/network, shared $0.25/day cost cap. May run out (free_budget_exhausted); resets at midnight UTC. No wallet or key.
-2. API key: in the SingIt app (https://app.singitai.app/app/), Settings → API keys. The wallet signs the key's limits (per day, per request, how many days); top up $1 to $50 at a time in USDC. With a key, OpenAI SDK, Anthropic SDK and Claude Code work at https://app.singitai.app/v1 (cost + 30%, no per-call fee).
+2. API key: in the SingIt app (https://app.singitai.app/app/), Settings → API keys. The wallet signs the key's limits (per day, per request, how many days); top up $1 to $50 at a time in USDC. With a key, OpenAI SDK, Anthropic SDK and Claude Code work at https://app.singitai.app/v1 (shown model price, no per-call fee).
 3. MCP: https://app.singitai.app/mcp (Streamable HTTP), official MCP Registry name app.singitai/singit.
    - Free, no key: get_price, list_price_symbols, list_models, chat_free.
    - Free with a key (read-only): get_balance, get_limits, get_allowance, get_receipts.
    - Paid per call from the key's limits (USDC on Base or Solana): chat, web_search, read_page.
-   - Paid, Base accounts for now: get_x_profile, get_crypto_news, get_hyperliquid_market, get_funding_rates, resolve_ens, get_token_price; demo calls get_weather, get_singit_risk_check.
+   - Paid, Base accounts for now: get_x_profile, get_crypto_news, get_funding_rates, resolve_ens, get_token_price.
    - Claude Code: claude mcp add --transport http singit https://app.singitai.app/mcp --header 'Authorization: Bearer ${SINGIT_API_KEY}'
      Single quotes keep ${SINGIT_API_KEY} as a reference so the key is not written into Claude Code's configuration.
    - Install guide: https://github.com/SingItAi/SingItAI/blob/main/llms-install.md
-   - Tool reference (all 19 tools, parameters, scopes): https://singitai.app/docs/mcp-tools/
+   - Tool reference (all 16 tools, parameters, scopes): https://singitai.app/docs/mcp-tools/
 
 Own wallet: pay per answer over x402 at https://ask.singitai.app.
 
@@ -137,7 +137,7 @@ A 402 challenge body includes x402Version and accepts, equal to the correspondin
 <!-- generated:model-pages:start -->
 ## Models
 
-Snapshot: 219 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search (partial offline snapshot).
+Snapshot: 220 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search (partial offline snapshot).
 
 - [Privacy policy](https://singitai.app/privacy/)
 - [Terms of service](https://singitai.app/terms/)

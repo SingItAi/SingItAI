@@ -7,7 +7,7 @@ import { request as httpRequest } from "node:http";
 import { BASE, SOLANA, ROUTE, LIMITS, RequestError, UpstreamError, chooseModel, readRequest, askSurplus, createApp, REASONING_OFF } from "../src/app.mjs";
 import { AGENT_LIMITS } from "../src/limits.mjs";
 import { FORMAT_ROUTES } from "../src/formats.mjs";
-import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage } from "../src/pricing.mjs";
+import { METERED_ROUTE, SOLANA_TERMS, TERMS, MIN_CEILING_ATOMIC, ceilingAtomic, billUsage, publicTerms, publicBilling } from "../src/pricing.mjs";
 import { ModelCatalogue, UnknownModel, priceGuard } from "../src/catalogue.mjs";
 import { modelRoutePaths } from "../src/model-routes.mjs";
 import { aliasPaths } from "../src/model-alias-routes.mjs";
@@ -21,6 +21,21 @@ const CONFIG = {
   payToSolana: SOLANA_PAY_TO, payToBase: BASE_PAY_TO, surplusKey: "inf_test", surplusUrl: "https://surplus.test",
   model: "deepseek-v4.1-flash",
 };
+
+test("public billing omits markup fields and keeps other cost breakdowns", () => {
+  const billed = publicBilling({
+    ...TERMS, providerCostAtomic: "6", markupAtomic: "2", listAtomic: "10",
+    exaAtomic: "7", totalAtomic: "1008", currency: "USDC",
+  });
+  assert.equal(billed.markupBps, undefined);
+  assert.equal(billed.markupAtomic, undefined);
+  assert.equal(billed.providerCostAtomic, "6");
+  assert.equal(billed.listAtomic, "10");
+  assert.equal(billed.exaAtomic, "7");
+  assert.equal(billed.totalAtomic, "1008");
+  assert.equal(publicTerms(TERMS).markupBps, undefined);
+  assert.equal(publicTerms(TERMS).settlementFeeAtomic, TERMS.settlementFeeAtomic);
+});
 
 function fakeFacilitator() {
   const calls = { verify: 0, settle: [] };
@@ -111,12 +126,12 @@ test("an unpaid question is offered actual-usage payment on Solana and Base over
   assert.deepEqual(required.accepts.map((a) => [a.scheme, a.network]), [["upto", BASE], ["upto", SOLANA], ["exact", BASE], ["exact", SOLANA]]);
   assert.equal(solana.amount, "3000");
   assert.equal(solana.payTo, SOLANA_PAY_TO);
-  assert.deepEqual(solana.extra.billing, SOLANA_TERMS);
+  assert.deepEqual(solana.extra.billing, publicTerms(SOLANA_TERMS));
   assert.ok(solana.extra.feePayer, "Solana payers need CDP's fee payer");
   assert.equal(base.amount, "3000");
   assert.equal(base.payTo, BASE_PAY_TO);
   assert.equal(base.maxTimeoutSeconds, 120);
-  assert.deepEqual(base.extra.billing, TERMS);
+  assert.deepEqual(base.extra.billing, publicTerms(TERMS));
   assert.ok(required.extensions?.bazaar, "listed for discovery");
   assert.ok(required.extensions?.eip2612GasSponsoring, "Base payers need no gas");
   assert.equal(asked.length, 0);
@@ -239,8 +254,8 @@ test("an empty unpaid request gets the standing offer, so directories can regist
 test("the listing tells agents what to send and what comes back, within Coinbase's limits", async (t) => {
   const { url } = await serve(t);
   const required = await offer(url);
-  // Directory descriptions stay short even though CDP accepts up to 500 characters.
-  assert.ok(required.resource.description.length <= 160, `description is ${required.resource.description.length} characters`);
+  // CDP's facilitator rejects descriptions over 500 characters.
+  assert.ok(required.resource.description.length <= 500, `description is ${required.resource.description.length} characters`);
   assert.match(required.resource.description, /^OpenAI-compatible chat API/);
   const bazaar = required.extensions.bazaar;
   const response = await fetch(`${url}${ROUTE}`);
@@ -255,9 +270,12 @@ test("the listing tells agents what to send and what comes back, within Coinbase
     assert.equal(typeof message.content, "string");
   }
   assert.ok(example.max_tokens <= body.properties.max_tokens.maximum && example.max_tokens >= body.properties.max_tokens.minimum);
-  // What comes back is described too, with a realistic charge: 6 micro-USD of tokens, 2 markup, 1000 fee.
+  // What comes back is described too, with a realistic settled charge of 1008 micro-USDC including the fee.
   assert.equal(bazaar.info.output.example.billing.totalAtomic, "1008");
-  assert.deepEqual(billUsage(bazaar.info.output.example.usage), bazaar.info.output.example.billing);
+  assert.deepEqual(publicBilling(billUsage(bazaar.info.output.example.usage)), bazaar.info.output.example.billing);
+  assert.equal(bazaar.info.output.example.billing.markupBps, undefined);
+  assert.equal(bazaar.info.output.example.billing.markupAtomic, undefined);
+  assert.equal(bazaar.info.output.example.billing.providerCostAtomic, "6");
   assert.ok(required.resource.tags.includes("claude"));
 });
 
@@ -315,7 +333,7 @@ test("the OpenAPI document lists the paid route the way x402scan reads it", asyn
   assert.equal(price.min, "0.001");
   // The dearest listed model (PRICEY) at the largest question and answer, on Solana's terms; `upto`'s loosest
   // input estimate (1 char/token), same as priceRange.
-  const most = ceilingAtomic(PRICEY, { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 }, SOLANA_TERMS);
+  const most = ceilingAtomic(PRICEY, { chars: AGENT_LIMITS.chars, maxTokens: AGENT_LIMITS.maxTokens, messageCount: AGENT_LIMITS.messages, charsPerToken: 1 }, SOLANA_TERMS);
   assert.equal(Number(price.max), Number(most) / 1e6);
   assert.ok(op.responses[402]);
   assert.deepEqual(op.security, [{ x402: [] }]);
@@ -454,7 +472,10 @@ test("health and the model list are free, and the old test page is gone", async 
   const health = await (await fetch(`${url}/health`)).json();
   assert.equal(health.ok, true);
   assert.equal(health.facilitator, "coinbase-cdp");
-  assert.deepEqual(health.pricing, { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS });
+  assert.deepEqual(health.pricing, { [SOLANA]: publicTerms(SOLANA_TERMS), [BASE]: publicTerms(TERMS) });
+  assert.deepEqual(health.metered, publicTerms(TERMS));
+  assert.equal(health.pricing[BASE].markupBps, undefined);
+  assert.equal(health.metered.markupBps, undefined);
   const models = await fetch(`${url}/v1/models`);
   assert.equal(models.status, 200);
   const modelList = await models.json();
@@ -774,7 +795,8 @@ test("the model list carries the price an answer is expected to cost, from trust
   const { url } = await serve(t);
   const list = await (await fetch(`${url}/v1/models`)).json();
   const pro = list.data.find((m) => m.id === "pro-model");
-  assert.deepEqual(pro.expectedUsdPerMillionTokens, { input: 30 * 0.25, output: 180 * 0.25, basis: "trusted" });
+  assert.deepEqual(pro.expectedUsdPerMillionTokens, { input: 30 * 0.25, output: 180 * 0.25, basis: "trusted", n: 0, window: 20 });
+  assert.deepEqual(pro.settlementFee, { base: { usd: 0.001, atomic: "1000" }, solana: { usd: 0.002, atomic: "2000" } });
   assert.equal(list.data.find((m) => m.id === "cheap-model").expectedUsdPerMillionTokens, undefined);
   assert.equal(list.data.some((m) => "marketUsdPerMillionTokens" in m), false, "the unreachable best offer is never shown");
 });
@@ -787,7 +809,11 @@ test("every answer that comes back teaches the price of its model", async (t) =>
   await new Promise((r) => setTimeout(r, 20));
   const pro = (await (await fetch(`${url}/v1/models`)).json()).data.find((m) => m.id === "pro-model");
   // At list price those tokens cost 100*30 + 1000*180 = 183,000 micro-USD; the answer cost 30,000: 16.39%.
-  assert.equal(pro.expectedUsdPerMillionTokens.basis, "observed");
+  // One answer is a preliminary median: shown, but never labelled plainly "observed".
+  assert.equal(pro.expectedUsdPerMillionTokens.basis, "observed_preliminary");
+  assert.equal(pro.expectedUsdPerMillionTokens.n, 1);
+  assert.equal(pro.expectedUsdPerMillionTokens.window, 20);
+  assert.match(pro.expectedUsdPerMillionTokens.note, /not yet a stable median/);
   assert.equal(pro.expectedUsdPerMillionTokens.output, 180 * 0.1639);
 });
 
@@ -1218,6 +1244,42 @@ test("display prices ignore rounded zeros and never promise free tokens", async 
   assert.equal(savingsFor(1.3), -30);
   assert.equal(savingsFor(0.39), 61);
   assert.equal(displayPrice({ ...CHEAP, promptUsdPerToken: Number.MIN_VALUE }, { displayShare: () => Number.MIN_VALUE }, new Map()), null);
+});
+
+test("display prices are observed only from five positive answers in the window", async () => {
+  const { ObservedPrices, KEEP, OBSERVED_MIN_N } = await import("../src/observed.mjs");
+  const { displayPrice } = await import("../src/app.mjs");
+  assert.equal(KEEP, 20);
+  assert.equal(OBSERVED_MIN_N, 5);
+  const observed = new ObservedPrices();
+  const trusted = new Map([[CHEAP.id, { trustedShare: 0.5 }]]);
+  observed.shares.set(CHEAP.id, [0.3]);
+  let price = displayPrice(CHEAP, observed, trusted);
+  assert.equal(price.basis, "observed_preliminary");
+  assert.equal(price.n, 1);
+  assert.equal(price.window, 20);
+  assert.match(price.note, /1 paid answer;/);
+  assert.equal(price.share, 0.3, "a real paid sample beats the trusted share");
+  observed.shares.set(CHEAP.id, [0, 0.1, 0.2, 0.3, 0.4, 0]);
+  price = displayPrice(CHEAP, observed, trusted);
+  assert.equal(observed.displayCount(CHEAP.id), 4, "zeros are not counted");
+  assert.equal(price.basis, "observed_preliminary");
+  assert.equal(price.n, 4);
+  assert.ok(price.note);
+  observed.shares.set(CHEAP.id, [0.1, 0.2, 0.3, 0.4, 0.5]);
+  price = displayPrice(CHEAP, observed, trusted);
+  assert.equal(price.basis, "observed");
+  assert.equal(price.n, 5);
+  assert.equal(price.share, 0.3);
+  assert.equal("note" in price, false);
+  observed.shares.set(CHEAP.id, Array(25).fill(0.1));
+  assert.equal(observed.displayCount(CHEAP.id), 20);
+  observed.shares.set(CHEAP.id, [0, 0]);
+  price = displayPrice(CHEAP, observed, trusted);
+  assert.deepEqual([price.basis, price.n, price.window, price.share, "note" in price], ["trusted", 0, 20, 0.5, false]);
+  // A mock without displayCount counts one positive median as one answer.
+  price = displayPrice(CHEAP, { displayShare: () => 0.3 }, trusted);
+  assert.deepEqual([price.basis, price.n], ["observed_preliminary", 1]);
 });
 
 test("discovery endpoints agree on positive prices and omit unknown prices", async (t) => {

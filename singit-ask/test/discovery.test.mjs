@@ -15,6 +15,7 @@ import { VIDEO_ROUTE } from "../src/video.mjs";
 import { CREDIT_ROUTE } from "../src/credit.mjs";
 import { METERED_ROUTE } from "../src/pricing.mjs";
 import { MODEL_ROUTES, modelRoutePaths, routePath } from "../src/model-routes.mjs";
+import { aliasPaths } from "../src/model-alias-routes.mjs";
 
 const CONFIG = { payToSolana: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
   payToBase: "0x1111111111111111111111111111111111111111", audioSold: true, audioDiscoverable: true, audioGenerationReady: () => true, surplusKey: "inf_test", surplusUrl: "https://surplus.test",
@@ -173,28 +174,85 @@ test("a browser opening a discoverable route with GET gets the same paywall page
 // Coinbase's Bazaar ranks listings by metadata completeness; a description that spends half its budget on billing
 // reads as incomplete on what the endpoint does. Every discoverable route's resource description must stay short
 // and billing-free (billing lives in openapi.json and /.well-known/x402 instead).
-// All listed routes stay within 160 characters; CDP rejects over 500.
-const limit = () => 160;
+// CDP's facilitator rejects a description over 500 characters; the copy itself stays well under that.
+const limit = () => 500;
 const BILLING_WORDS = /\b(fee|markup|ceiling|settlement)\b|%/i;
+// The markup never shows on a public 402, as a field or as a share, in any spelling.
+const MARKUP_WORDS = /markup(Bps|Atomic|Pct|Percent)|\b30\s*%|\b(30|thirty)\s*percent\b/i;
+// A description says what the endpoint does; it does not tell an agent what to do (CDP's content policy).
+const AGENT_COMMANDS = /\bcall it when\b|\b(call|use) (it|this)\b[^.]*\bagent\b|\byou (should|must|need to)\b|\bagents? (should|must|can use)\b/i;
+// Bazaar renders raster icons only: an https URL whose path ends in .png, .jpg or .jpeg.
+const rasterIcon = (value) => { try { const u = new URL(value); return u.protocol === "https:" && /\.(png|jpe?g)$/i.test(u.pathname); } catch { return false; } };
 
 test("every discoverable route's 402 resource description is short and billing-free", async (t) => {
   const { url } = await serve(t);
   const doc = await (await fetch(`${url}/openapi.json`)).json();
   for (const route of DISCOVERABLE) {
     if (route.startsWith("/v1/chat/") && route !== ROUTE)
-      assert.ok(doc.paths[route].post.description.length <= 160, route);
+      assert.ok(doc.paths[route].post.description.length <= limit(route), route);
     const required = decode((await fetch(`${url}${route}`, { method: "GET" })).headers.get("payment-required"));
     const description = required.resource.description;
+    assert.ok(description.length >= 1, `${route}: description is empty`);
     assert.ok(description.length <= limit(route), `${route}: description is ${description.length} chars, over ${limit(route)}`);
     assert.doesNotMatch(description, BILLING_WORDS, `${route}: description mentions billing (${description})`);
   }
 });
 
+// Every route a directory can index: the listed ones, video with its discovery switched on, and the per-model
+// aliases (/v1/models/<id>/chat and /images).
+const INDEXED = [...DISCOVERABLE, VIDEO_ROUTE, ...aliasPaths()];
+const INDEXED_CONFIG = { ...CONFIG, videoSold: true, videoDiscoverable: true };
+
+test("every indexed route's 402 describes the endpoint: 1 to 500 characters, no markup wording, no commands to an agent", async (t) => {
+  const { url } = await serve(t, INDEXED_CONFIG);
+  for (const route of INDEXED) {
+    const got = await fetch(`${url}${route}`, { method: "GET" });
+    assert.equal(got.status, 402, route);
+    const required = decode(got.headers.get("payment-required"));
+    const body = await got.json();
+    const { description, serviceName, tags } = required.resource;
+    assert.equal(typeof description, "string", route);
+    assert.ok(description.length >= 1 && description.length <= 500, `${route}: description is ${description.length} chars`);
+    assert.doesNotMatch(description, AGENT_COMMANDS, `${route}: description instructs an agent (${description})`);
+    assert.doesNotMatch(description, /0x[0-9a-fA-F]{8,}|\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/, `${route}: description carries an address`);
+    for (const [name, text] of [["description", description], ["serviceName", serviceName], ["tags", JSON.stringify(tags)],
+      ["header accepts", JSON.stringify(required.accepts)], ["header bazaar", JSON.stringify(required.extensions?.bazaar)],
+      ["body accepts", JSON.stringify(body.accepts)], ["body bazaar", JSON.stringify(body.extensions?.bazaar)],
+      ["body resource", JSON.stringify(body.resource ?? {})]]) {
+      assert.doesNotMatch(text ?? "", MARKUP_WORDS, `${route}: ${name} shows the markup`);
+    }
+    // The body keeps what Bazaar indexes: the input and output examples and the full JSON Schema.
+    const bazaar = body.extensions?.bazaar;
+    assert.ok(bazaar?.info?.input, `${route}: bazaar info.input`);
+    assert.ok(bazaar?.info?.output, `${route}: bazaar info.output`);
+    assert.ok(bazaar?.schema, `${route}: bazaar schema`);
+  }
+});
+
+test("the checks themselves catch markup wording, agent commands and vector icons", () => {
+  for (const text of ["markupBps", "markupAtomic", "markupPct", "markupPercent", "a 30% cut", "30 %", "30 percent", "Thirty percent"])
+    assert.match(text, MARKUP_WORDS, text);
+  for (const text of ["buyer_cost_micro", "costAtomic", "providerCostAtomic", "listAtomic", "feeAtomic", "totalAtomic", "130% of", "within 30 seconds"])
+    assert.doesNotMatch(text, MARKUP_WORDS, text);
+  for (const text of ["Call it when an agent needs a short video", "Use this when your agent needs search", "You should call this first",
+    "you must pay before asking", "Agents can use client-side limits", "Agents should retry"])
+    assert.match(text, AGENT_COMMANDS, text);
+  for (const text of ["The SingIt SDK supports client-side per-call and per-day spend limits", "The response arrives once the clip is ready.",
+    "Pay-per-answer in USDC on Base or Solana, no API key; the max charge is quoted before signing."])
+    assert.doesNotMatch(text, AGENT_COMMANDS, text);
+  for (const icon of ["https://singitai.app/assets/icons/icon-512.png", "https://example.com/a.jpg", "https://example.com/a.JPEG?v=2"])
+    assert.ok(rasterIcon(icon), icon);
+  for (const icon of ["https://singitai.app/icon.svg", "http://singitai.app/icon.png", "https://singitai.app/icon.png.svg",
+    "https://singitai.app/icon?f=.png", "/assets/icons/icon-512.png", "", undefined])
+    assert.ok(!rasterIcon(icon), String(icon));
+});
+
 test("every discoverable route's resource carries a PNG icon and a service name", async (t) => {
-  const { url } = await serve(t);
-  for (const route of DISCOVERABLE) {
+  const { url } = await serve(t, INDEXED_CONFIG);
+  for (const route of INDEXED) {
     const required = decode((await fetch(`${url}${route}`, { method: "GET" })).headers.get("payment-required"));
     assert.match(required.resource.iconUrl ?? "", /\.png$/, route);
+    assert.ok(rasterIcon(required.resource.iconUrl), `${route}: iconUrl must be an https .png, .jpg or .jpeg`);
     assert.ok(required.resource.serviceName, route);
   }
 });
@@ -232,8 +290,7 @@ test("every discoverable route is named and described by what it is, with its ca
     const expected = EXPECTED[route];
     assert.equal(serviceName, expected.serviceName, route);
     assert.ok(serviceName.length <= 60, `${route}: serviceName is ${serviceName.length} chars`);
-    if (route !== VIDEO_ROUTE)
-      assert.ok(description.length <= limit(route), `${route}: description is ${description.length} chars, over ${limit(route)}`);
+    assert.ok(description.length <= limit(route), `${route}: description is ${description.length} chars, over ${limit(route)}`);
     assert.ok(!description.startsWith("SingIt "), `${route}: description opens with the brand (${description})`);
     assert.match(description, expected.opens, route);
     assert.ok(tags.length <= 10, `${route}: ${tags.length} tags`);

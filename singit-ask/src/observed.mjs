@@ -5,7 +5,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const KEEP = 20;          // the most recent answers per model
+export const KEEP = 20;          // the most recent answers per model
+// Fewer positive answers than this in the window is a preliminary median, never labelled plainly "observed".
+export const OBSERVED_MIN_N = 5;
 const MIN_LIST_MICRO = 100; // below this, Surplus's whole-micro-USD rounding is larger than what is measured
 
 export class ObservedPrices {
@@ -43,6 +45,11 @@ export class ObservedPrices {
     if (!list.length) return null;
     const middle = list.length >> 1;
     return list.length % 2 ? list[middle] : (list[middle - 1] + list[middle]) / 2;
+  }
+
+  // How many positive shares displayShare's median is taken over (at most KEEP).
+  displayCount(model) {
+    return Math.min(KEEP, (this.shares.get(model) ?? []).filter((x) => x > 0).length);
   }
 
   save() {

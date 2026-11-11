@@ -161,7 +161,7 @@ test("the model list shows our price, the saving against list price, the fees an
   const response = await fetch(`${url}/v1/models`);
   assert.equal(response.headers.get("access-control-allow-origin"), "*");
   const list = await response.json();
-  assert.deepEqual(list.fees, { markupPct: 30, perAnswerUsd: { [BASE]: 0.001, [SOLANA]: 0.002 } });
+  assert.deepEqual(list.fees, { perAnswerUsd: { [BASE]: 0.001, [SOLANA]: 0.002 } });
   assert.deepEqual(list.free, { models: ["free/deepseek-v4.1-flash"], endpoint: ROUTE, perVisitorPerDay: 2,
     maxTokens: 400, maxChars: 4000, budgetUsdPerDay: 0.25 });
   const pro = list.data.find((m) => m.id === "pro-model");
@@ -317,7 +317,7 @@ for (const code of ["max_tokens_spent_reasoning", "no_text"]) {
 }
 
 
-test("all 23 directory descriptions fit 160 characters and model operations agree", async () => {
+test("all 28 directory descriptions fit 500 characters and model operations agree", async () => {
   const { modelRoutePaths } = await import("../src/model-routes.mjs");
   const { lintChallenge, challengeWithBodyExtensions } = await import("../../scripts/bazaar-lint.mjs");
   const app = createApp(CONFIG, { facilitatorClient: facilitator(), log: () => {}, exaKey: "exa_test",
@@ -326,7 +326,7 @@ test("all 23 directory descriptions fit 160 characters and model operations agre
     fetchImpl: async () => { throw new Error("no upstream calls"); } });
   const routes = [ROUTE, "/v1/messages", "/v1/responses", "/v1/images/generations", "/v1/audio/speech",
     "/v1/exa/search", "/v1/exa/contents", "/v1/exa/answer", ...modelRoutePaths()];
-  assert.equal(routes.length, 23);
+  assert.equal(routes.length, 28);
   const doc = (await request(app, "/openapi.json")).body;
   for (const route of routes) {
     const result = await request(app, route, { headers: { "x-forwarded-proto": "https" } });
@@ -334,7 +334,7 @@ test("all 23 directory descriptions fit 160 characters and model operations agre
     const challenge = JSON.parse(Buffer.from(result.headers["payment-required"], "base64"));
     const { resource } = challenge;
     assert.deepEqual(lintChallenge(challengeWithBodyExtensions(challenge, result.body), { route, networks: [BASE, SOLANA] }).filter(f => f.level === "FAIL"), [], route);
-    assert.ok(resource.description.length <= 160, route);
+    assert.ok(resource.description.length <= 500, route);
     assert.doesNotMatch(resource.description, /\b(fee|markup|ceiling|settlement)\b|%/i, route);
     assert.ok(!resource.description.startsWith("SingIt "), route);
     if (modelRoutePaths().includes(route)) assert.equal(doc.paths[route].post.description, resource.description, route);
@@ -350,7 +350,7 @@ test("agent intro and model selection guidance follow the free offer configurati
   for (const freeModels of [["deepseek-v4.1-flash"], []]) {
     const app = createApp({ ...CONFIG, freeModels }, { catalogue, facilitatorClient: facilitator(), log: () => {} });
     const text = (await request(app, "/llms.txt")).body;
-    assert.match(text, /^# SingIt Ask\n\n> OpenAI-compatible chat API/);
+    assert.match(text, /^# SingIt Ask\n\n> Pay-per-answer LLM chat, images and speech over x402 in USDC, no API key; the max charge is quoted before signing\.\n/);
     assert.match(text, /Spending limits: SingIt's limits protect only SingIt's own agent/);
     const limitsLine = text.split("\n").find(line => line.startsWith("Spending limits:"));
     assert.ok(limitsLine.includes("On Solana, SingIt's server checks the daily and per-purchase limits; the chain only caps the total delegated."));

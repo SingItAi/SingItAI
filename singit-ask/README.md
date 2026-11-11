@@ -2,15 +2,14 @@
 
 OpenAI-compatible model answers with USDC payments over x402, settled by
 [Coinbase CDP](https://docs.cdp.coinbase.com/x402/seller/facilitator). Every answer is paid for
-what it actually cost; nothing is charged without an answer.
+what the answer actually used; nothing is charged without an answer.
 
-- **Price:** actual Surplus token cost + 30% markup (rounded up to one USDC micro-unit)
-  + the network's settlement fee: **0.001 USDC on Base**, **0.002 USDC on Solana**
+- **Price:** you pay the price shown for each model, metered by what the answer actually used (rounded up to one USDC micro-unit),
+  plus the network's settlement fee: **0.001 USDC on Base**, **0.002 USDC on Solana**
   for public x402 agents (its `upto` escrow takes two CDP transactions), **0.001 USDC**
   on the web agent's direct Solana path. The most any answer can cost is **0.003 USDC**:
   a ceiling, not a price.
-- **Example:** a short answer, 0.0001 USDC model cost + 0.00003 markup + 0.001 fee =
-  **0.00113 USDC** on Base.
+- **Example:** a short answer settled at **0.00113 USDC** on Base, including the 0.001 USDC settlement fee.
 - **Public API:** `POST /v1/chat/completions`. Any x402 agent pays with `upto`: on Base
   a bounded, gas-sponsored Permit2 signature; on Solana a 0.003 USDC escrow from which
   CDP settles the actual amount and refunds the rest. Listed for discovery (Bazaar) and on
@@ -84,8 +83,8 @@ Zero-list-price models are sold only through the reviewed allowlist in `src/refe
 
 Chat models are offered as `GET /v1/models` lists them, including some whose names
 contain uncensored, heretic or role-play. Uncensored image, speech, transcription
-and video-catalogue models are offered like chat models, with the same 30% markup
-and network settlement fee. Only model IDs matching `/edit|remover|upscale/i` are
+and video-catalogue models are offered like chat models, on the same terms,
+including the network settlement fee. Only model IDs matching `/edit|remover|upscale/i` are
 excluded by name from image, speech, transcription and video lists: these take an
 image in and belong to another service. Video remains disabled by default
 (`video_disabled`).
@@ -167,7 +166,7 @@ this update.
 When video is enabled, a free order-book read checks seller health (cached for 60 seconds). A model with no
 qualifying seller and no compatible healthy substitute returns 503 `no_healthy_sellers` before any 402; unhealthy models are hidden from
 `/v1/video/models`. Unreadable books keep the last known health; unknown health is allowed for the requested model.
-Clips have a $0.20 list floor: with 30% markup and settlement fee the minimum is $0.261 on Base.
+Clips have a $0.20 list floor: with the settlement fee the minimum listed price is $0.261 on Base.
 Video is Base only: Solana is refused (`unsupported_network`) because a recent blockhash (~60–90 s) can expire
 during the hold and settlement. Future Solana needs settle-before-submit plus durable refund/recovery.
 The paid response waits for a finished clip: up to about 85 seconds on Base. Failed or late jobs return 503 `video_failed`
@@ -213,6 +212,9 @@ node --env-file=.env src/server.mjs
 | Variable | Meaning |
 | --- | --- |
 | `SINGIT_ASK_UNSERVABLE_TTL_MINUTES` | Seller rejection cache in minutes; default 15, 0 disables, invalid values use 15. |
+| `SINGIT_ASK_NOHUMANS_ALERT_SECRET_FILE` | Optional path to the nohumans.directory hook signing secret for `POST /webhooks/nohumans`. The file lives outside git, mode 600, and is read on each request, so it can be written after hook registration without a restart. If both are set, the file wins. Unset and no inline secret: signed deliveries get 503 (retried later); the registration test is still answered 2xx. |
+| `SINGIT_ASK_NOHUMANS_ALERT_SECRET` | Optional inline secret, used only when the file variable is unset (tests / fallback). |
+| `SINGIT_ASK_NOHUMANS_ALERT_WEBHOOK_URL` | Optional. A new `listing.purchase` alert POSTs `{"text": "..."}` here (fire-and-forget, 3 s timeout). Unset: watch the journal for `singit-ask: nohumans.listing.purchase`. |
 | `SINGIT_ASK_PAY_TO_SOLANA` | Wallet that receives Solana payments. Its USDC token account must already exist. |
 | `SINGIT_ASK_PAY_TO_BASE` | Address that receives Base payments. |
 | `SIGN402_BASE_BUILDER_CODE` | Optional. Base Builder Code (base.dev). When set, every Base-payable 402 declares it as the x402 `builder-code` app code (`a`), and the CDP facilitator appends it to the settlement calldata as an ERC-8021 suffix. Unset or invalid: no extension. Keep it in the service env, never in git. |
@@ -568,7 +570,7 @@ models/pricing URLs and direct POST works, but x402 resource lists omit both rou
 | minimax/music-2.5 | venice-minimax-music-v25 | 0.313 |
 | minimax/music-2.6 | venice-minimax-music-v26 | 0.313 |
 
-These are offline reference list costs + 30% (rounded upward to micro-USDC) +
+These are offline reference SingIt prices (rounded upward to micro-USDC) plus the
 0.001 Base settlement fee, not a live price feed. OpenAPI bounds are derived from
 the same calculation. Do not enable a model when its price or duration billing is
 unconfirmed or changed. `GET /v1/audio/generation-models`, `/v1/models` and

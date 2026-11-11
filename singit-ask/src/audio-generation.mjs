@@ -4,6 +4,7 @@ import { declareDiscoveryExtension } from './binary-discovery.mjs';
 import { attachPaymentFailureCodes } from './payment-failure-hooks.mjs';
 import { addPaymentRoute, isDiscoveryProbe } from './metered.mjs';
 import { ASSET, BASE, ICON_URL, discoveryTags } from './pricing.mjs';
+import { payTail } from './listing-copy.mjs';
 import { imagePrice } from './images.mjs';
 import { paymentDigest, reservePayment } from './media-payment-replay.mjs';
 import { runMediaJob } from './media-jobs.mjs';
@@ -85,7 +86,7 @@ export const audioOpenapi = (paidErrors, invalidResponse) => Object.fromEntries(
   const kind = i ? 'music' : 'sound-effects';
   const prices = audioPrices().filter(m => m.kind === kind).map(m => m.exact.base.usd);
   return [route, { post: { operationId: i ? 'createMusic' : 'createSoundEffects', summary: i ? 'Generate music from a text prompt' : 'Generate sound effects from text',
-    description: `Exact per job on Base only (Solana is refused): list price + 30% + network fee. Audio bytes, as with speech. Server polls up to ${i ? 180 : 60} seconds, then downloads at most ${i ? 25 : 5} MiB; any failure returns 503 without settlement. See ${MEDIA_MODELS_ROUTE} for prices and capabilities.`,
+    description: `Exact per job on Base only (Solana is refused): you pay the price shown for the model, plus a settlement fee. Audio bytes, as with speech. Server polls up to ${i ? 180 : 60} seconds, then downloads at most ${i ? 25 : 5} MiB; any failure returns 503 without settlement. See ${MEDIA_MODELS_ROUTE} for prices and capabilities.`,
     security: [{ x402: [] }],
     'x-payment-info': { price: { mode: Math.min(...prices) === Math.max(...prices) ? 'fixed' : 'dynamic', currency: 'USD', min: String(Math.min(...prices)), max: String(Math.max(...prices)) }, protocols: [{ x402: {} }] },
     requestBody: { required: true, content: { 'application/json': { schema: audioSchema(kind), example: audioExample(kind) } } },
@@ -126,7 +127,7 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
     };
     addPaymentRoute(app, { [`POST ${route}`]: {
       accepts: [BASE].map(network => ({ scheme: 'exact', network, payTo: config.payToBase, maxTimeoutSeconds: i ? 240 : 120, price: price(network) })),
-      mimeType: 'audio/mpeg', description: i ? 'Music generation API: MiniMax songs or instrumental audio. USDC on Base only, no key.' : 'Sound effects API: ElevenLabs or Sonilo audio from text. USDC on Base only, no key.',
+      mimeType: 'audio/mpeg', description: i ? `Music generation API: MiniMax songs or instrumental audio. ${payTail('call', 'Base')}` : `Sound effects API: ElevenLabs or Sonilo audio from text. ${payTail('call', 'Base')}`,
       serviceName: i ? 'SingIt Music' : 'SingIt Sound Effects', iconUrl: ICON_URL, tags: discoveryTags(kind, 'audio', 'base'),
       extensions: declareDiscoveryExtension({ bodyType: 'json', input: audioExample(kind), inputSchema: audioSchema(kind), output: { type: "audio/mpeg", format: "binary" } }),
     } }, server, { log, publicClient });

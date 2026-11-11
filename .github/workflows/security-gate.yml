@@ -50,7 +50,7 @@ jobs:
       matrix:
         component: [cdp-x402-service, singit-risk-check, tools/ledger-approve, sdk/typescript,
           integrations/elizaos-plugin, integrations/examples/langchain, integrations/examples/vercel-ai-sdk,
-          singit-ask]
+          singit-ask, mcp, proxy]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -130,6 +130,16 @@ jobs:
       - name: singit-risk-check audit
         working-directory: singit-risk-check
         run: npm audit --audit-level=moderate
+      - name: mcp audit
+        working-directory: mcp
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=moderate
+      - name: proxy audit
+        working-directory: proxy
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=moderate
 
   sdk-package-checks:
     runs-on: ubuntu-latest
@@ -152,6 +162,30 @@ jobs:
           const files = JSON.parse(readFileSync('/tmp/sdk-pack.json'))[0].files.map(f => f.path);
           for (const file of ['index.d.ts', 'README.md', 'LICENSE', 'src/index.js']) assert(files.includes(file), file);
           assert(files.some(f => f.startsWith('src/')));
+          assert(files.every(f => !/(^|\/)(test|tests|node_modules)(\/|$)/.test(f)));
+          JS
+      - name: Check mcp npm package contents
+        working-directory: mcp
+        run: |
+          npm ci --ignore-scripts
+          npm pack --dry-run --json > /tmp/mcp-pack.json
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const files = JSON.parse(readFileSync('/tmp/mcp-pack.json'))[0].files.map(f => f.path);
+          for (const file of ['README.md', 'LICENSE', 'src/index.js', 'src/server.js', 'src/wallet.js']) assert(files.includes(file), file);
+          assert(files.every(f => !/(^|\/)(test|tests|node_modules)(\/|$)/.test(f)));
+          JS
+      - name: Check proxy npm package contents
+        working-directory: proxy
+        run: |
+          npm ci --ignore-scripts
+          npm pack --dry-run --json > /tmp/proxy-pack.json
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const files = JSON.parse(readFileSync('/tmp/proxy-pack.json'))[0].files.map(f => f.path);
+          for (const file of ['README.md', 'LICENSE', 'src/index.js', 'src/server.js', 'src/config.js', 'src/headers.js', 'src/cc.js', 'src/qr.js', 'src/codex.js', 'src/responses.js', 'src/openclaw.js', 'src/models.js']) assert(files.includes(file), file);
           assert(files.every(f => !/(^|\/)(test|tests|node_modules)(\/|$)/.test(f)));
           JS
       - name: Build and check Python distributions

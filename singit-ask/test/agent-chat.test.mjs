@@ -153,14 +153,14 @@ for (const status of [400,500]) test(`upstream HTTP ${status} preserves no-charg
   assert.deepEqual(facilitator.calls.settle, []);
   assert.equal(numbersBody(app.locals.healthStats).paid_calls.total, 0);
 });
-test('free and per-model routes refuse agent fields with actionable errors', async t => {
-  const { url, facilitator } = await serve(t, { config: { ...CONFIG, freeModels: [CONFIG.model] } });
-  for (const input of [{ ...body, model: 'free/deepseek-v4.1-flash' }, body]) {
-    const path = input.model ? ROUTE : modelRoutePaths({ id: 'deepseek-v4.1-flash' })[0];
-    const res = await url(input, {}, path);
-    assert.equal(res.status, 400); const error = (await res.json()).error;
-    assert.equal(error.code, 'tools_unsupported'); assert.match(error.message, /POST \/v1\/chat\/completions/);
-  }
+test('free route refuses agent fields; pinned model routes accept them', async t => {
+  const { url, facilitator } = await serve(t, { config: { ...CONFIG, freeModels: [CONFIG.model] },
+    catalogue: { ...fakeCatalogue, resolve: async () => ({ ...DEFAULT, id: 'deepseek-v4.1-flash' }), canAnswer: async () => true } });
+  const free = await url({ ...body, model: 'free/deepseek-v4.1-flash' }, {}, ROUTE);
+  assert.equal(free.status, 400); const error = (await free.json()).error;
+  assert.equal(error.code, 'tools_unsupported'); assert.match(error.message, /POST \/v1\/chat\/completions/);
+  const pinned = await url(body, {}, '/v1/chat/deepseek-v4.1-flash');
+  assert.equal(pinned.status, 402);
   assert.equal(facilitator.calls.verify, 0);
 });
 test('auto excludes proven incapable candidates and refuses when all are incapable', async t => {
@@ -185,7 +185,7 @@ test('settled tool request answer log contains only accounting metadata', async 
   assert.equal(line.trim().split('\n').length, 1);
   for (const secret of ['lookup','secret','argument','private prompt','call_1']) assert.ok(!line.includes(secret));
 });
-test('chat schema advertises agent envelope without changing model routes', async t => {
+test('chat schema advertises the agent envelope on completions and pinned model routes', async t => {
   const { url } = await serve(t);
   const res = await url({}, {}, '/openapi.json'); assert.equal(res.status, 200);
   const doc = await res.json();
@@ -193,7 +193,7 @@ test('chat schema advertises agent envelope without changing model routes', asyn
   assert.equal(schema.properties.max_tokens.maximum, 8192);
   assert.equal(schema.properties.messages.maxItems, 200);
   const pinned = doc.paths[modelRoutePaths()[0]].post.requestBody.content['application/json'].schema;
-  assert.equal(pinned.properties.max_tokens.maximum, 1200); assert.equal(pinned.properties.tools, undefined);
+  assert.equal(pinned.properties.max_tokens.maximum, 8192); assert.ok(pinned.properties.tools);
   assert.ok(schema.properties.tools); assert.deepEqual(schema.properties.stream.enum, [false, true]);
 });
 

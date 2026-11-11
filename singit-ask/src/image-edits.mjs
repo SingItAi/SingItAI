@@ -8,7 +8,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { UnknownModel } from "./catalogue.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
-import { ASSET, BASE, SOLANA, SOLANA_ASSET, ICON_URL, discoveryTags } from "./pricing.mjs";
+import { ASSET, BASE, SOLANA, SOLANA_ASSET, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
 
 export const ROUTE = "/v1/images/edits";
 import { imagePrice } from "./images.mjs";
@@ -17,7 +17,7 @@ class RequestError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
+// Keep discovery descriptions within 500 characters, capability first (see app.mjs).
 const DESCRIPTION = routeCopy("/v1/images/edits").description;
 
 import { readEditRequest, INPUT_SCHEMA, EXAMPLE, OUTPUT_SCHEMA, OUTPUT_EXAMPLE, listAtomic as estimateListAtomic, maxListAtomic, catalogueCeiling } from "./image-edits-request.mjs";
@@ -105,7 +105,7 @@ export function addRoutes(app, config, { facilitatorClient, publicClient, catalo
     }
     const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: upstream cost ${cost} micro-USD, listed ${listAtomic}`);
-    const billing = { ...imagePrice(listAtomic, network), currency: "USDC" };
+    const billing = publicBilling({ ...imagePrice(listAtomic, network), currency: "USDC" });
     log(`singit-ask: ${images.length} image(s) in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
     res.json({ created: data.created ?? Math.floor(started / 1000), data: images, model: request.model, billing });
   });

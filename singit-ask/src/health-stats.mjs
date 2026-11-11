@@ -1,4 +1,4 @@
-import { validTraffic, recordTraffic, trafficNumbers } from './agent-traffic.mjs';
+import { validTraffic, recordTraffic, trafficNumbers, SOURCES } from './agent-traffic.mjs';
 
 import { PAYMENT_ERROR_CODES } from "./payment-codes.mjs";
 // Observed model and payment-rail health and settled usage counters: public status and numbers should
@@ -301,7 +301,7 @@ export class HealthStats {
       this.changed();
     } catch {}
   }
-  recordSettlement({ route, network, ok, amount, payer } = {}) {
+  recordSettlement({ route, network, ok, amount, payer, source } = {}) {
     try {
       const n = networkName(network), b = this.bucket();
       const rail = b.networks[n] ??= { ok: 0, fail: 0 };
@@ -320,6 +320,12 @@ export class HealthStats {
               || (typeof amount === "number" && Number.isSafeInteger(amount) && amount >= 0)) {
               t.atomic = String(BigInt(t.atomic) + BigInt(amount));
             } else t.noAmount++;
+          }
+          const token = typeof source === 'string' ? source.trim().toLowerCase().split('/')[0] : '';
+          const label = SOURCES.includes(token) ? token : 'other';
+          for (const target of [this.state, b]) {
+            target.paidBySource ??= Object.fromEntries(SOURCES.map(k => [k, 0]));
+            target.paidBySource[label] = (target.paidBySource[label] ?? 0) + 1;
           }
           if (typeof payer === "string" && payer.trim()) {
             const hash = createHmac("sha256", this.state.salt).update(normalize(payer)).digest("hex").slice(0, 16);
@@ -506,10 +512,16 @@ export function numbersBody(stats) {
   const rank = (sorted, p) => sorted[Math.ceil(p / 100 * sorted.length) - 1];
   const integrity = (entries, key) => entries.reduce((sum, b) => sum + Object.values(b[key] ?? {}).reduce((a, n) => a + n, 0), 0);
   const notMeasured = { p50: null, p95: null, reason: "not_measured" };
+  const emptySource = () => Object.fromEntries(SOURCES.map(k => [k, 0]));
+  const sumSource = targets => targets.reduce((a, t) => {
+    for (const k of SOURCES) a[k] += t?.paidBySource?.[k] ?? 0;
+    return a;
+  }, emptySource());
   return { schema: 1, agent_traffic: trafficNumbers(stats), generated_at: new Date(stats.now()).toISOString(), since,
     scope: "Settled payments on publicly listed x402 routes; own payers are excluded only once an own-payer list is configured (see counts_basis).",
     settlement_failures_by_code: { total: refusals([stats.state]), last_24h: refusals(stats.window(24)), last_7d: refusals(stats.window(168)) },
-    paid_calls: { ...fields("calls"), by_network: byNetwork("calls") },
+    paid_calls: { ...fields("calls"), by_network: byNetwork("calls"),
+      by_source: { total: sumSource([stats.state]), last_24h: sumSource(stats.window(24)), last_7d: sumSource(stats.window(168)) } },
     usdc_volume: { unit: "USDC", total: volume(total.atomic), last_24h: volume(day.atomic),
       last_7d: volume(week.atomic), by_network: byNetwork("atomic"), calls_without_amount: total.noAmount },
     unique_payers: fields("unique"), own_payers_configured: stats.own.size > 0,
@@ -534,7 +546,7 @@ export function numbersBody(stats) {
       schema: "Version of this response format.", generated_at: "Time this response was generated.",
       scope: "Only settled payments on publicly listed x402 routes count; internal web-app routes are excluded; own payers are excluded only once an own-payer list is configured (see counts_basis).",
       since: "Measured only since the counters started; history before the counters existed is not included.",
-      paid_calls: "Successful public settlements, counted once per settlement; own payers are excluded only once an own-payer list is configured (see counts_basis).",
+      paid_calls: "Successful public settlements, counted once per settlement; own payers are excluded only once an own-payer list is configured (see counts_basis). by_source splits those settlements by a sanitized allowlisted x-singit-client or User-Agent product label (anything else is other); counted since this breakdown started, so earlier settlements are not attributed. No raw headers are stored.",
       total: "Lifetime observations since the counters started, not historical service totals.",
       last_24h: "Observations in the current UTC hour and the preceding 23 UTC hourly buckets.",
       last_7d: "Observations in the current UTC hour and the preceding 167 UTC hourly buckets.",

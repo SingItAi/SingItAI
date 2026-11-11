@@ -1,0 +1,6 @@
+{
+  "id": "singit",
+  "name": "SingIt",
+  "providers": ["singit"],
+  "configSchema": { "type": "object", "additionalProperties": false, "properties": {} }
+}

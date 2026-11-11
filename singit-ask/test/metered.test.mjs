@@ -34,7 +34,7 @@ test('changed payment terms are refused before signing',()=>{
   for(const [key,value] of [['payTo',account.address],['amount','3001'],['asset',account.address],['network','eip155:1']]){
     const q=offer();q.accepts[0][key]=value;assert.throws(()=>selectOffer(q));
   }
-  for(const [key,value] of [['facilitatorAddress','0x'+'0'.repeat(40)],['billing',{...TERMS,markupBps:4000}]]){
+  for(const [key,value] of [['facilitatorAddress','0x'+'0'.repeat(40)],['billing',{...TERMS,settlementFeeAtomic:'2000'}]]){
     const q=offer();q.accepts[0].extra[key]=value;assert.throws(()=>selectOffer(q));
   }
 });

@@ -1,6 +1,8 @@
 import { samplingAllowed } from "./model-policy.mjs";
 import { MODEL_ALIAS_ROUTES, aliasPath, aliasDescription, aliasPaths, aliasCopy } from "./model-alias-routes.mjs";
+import { aliasCandidates, aliasesFor, resolveDiscoveryId } from "./discovery-aliases.mjs";
 import { routeCopy as baseRouteCopy } from "./listing-snapshot.mjs";
+import { serviceDescription } from "./listing-copy.mjs";
 const routeCopy = path => aliasCopy(path) ?? baseRouteCopy(path);
 import { buildCatalog, catalogResponse, MODALITIES } from './catalog.mjs';
 import { validateStream, agentResponses } from './agent-stream.mjs';
@@ -12,7 +14,7 @@ import { EXAMPLE as EDIT_REFERENCE, readEditRequest, listAtomic as editListAtomi
 import { EXAMPLE as EMBEDDING_REFERENCE, readEmbeddingRequest, listAtomic as embeddingListAtomic, catalogueCeiling as embeddingCeiling, OUTPUT_SCHEMA as EMBEDDING_OUTPUT, OUTPUT_EXAMPLE as EMBEDDING_EXAMPLE } from "./embeddings-request.mjs";
 const EXTRA_PAID = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings"];
 // SingIt Ask: one answer from a language model, paid over x402 in USDC on Solana or Base for what it
-// actually cost: model tokens + 30% + the network's settlement fee, up to a ceiling that follows the model's
+// actually used, plus the network's settlement fee, up to a ceiling that follows the model's
 // price (0.003 USDC for the default and cheap ones). Coinbase CDP settles.
 //
 // The payer is charged only when the answer came back: @x402/express holds the response, and a
@@ -37,7 +39,7 @@ import { addSolanaQuotedRoute } from "./solana-quoted.mjs";
 import { UnknownModel, ModelCatalogue, priceGuard, unservableError } from "./catalogue.mjs";
 import { normalizeAgent, toolCalls } from "./agent-chat.mjs";
 import { AGENT_LIMITS, LIMITS } from "./limits.mjs";
-import { ObservedPrices } from "./observed.mjs";
+import { ObservedPrices, KEEP as OBSERVED_KEEP, OBSERVED_MIN_N } from "./observed.mjs";
 import { paymentRequiredHeaderMiddleware } from "./payment-required-header.mjs";
 import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
@@ -50,7 +52,8 @@ import { addPriceRoutes } from "./prices.mjs";
 import { VIDEO_ROUTE, addVideoRoutes } from "./video.mjs";
 import { FORMAT_ROUTES, formatRequestBody, addFormatRoutes } from "./formats.mjs";
 import { withRejectLog } from "./reject-log.mjs";
-import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY } from "./pricing.mjs";
+import { NOHUMANS_PATH, nohumansAlertHandlers } from "./nohumans-alerts.mjs";
+import { DIRECT_TERMS, QUOTED_ROUTE, TERMS, METERED_ROUTE, SOLANA_TERMS, ceilingAtomic, reasoningHeadroom, retryBudget, SERVICE_NAME, SERVICE_NAMES, ICON_URL, discoveryTags, usd, DEFAULT_EXACT_OUTPUT_FRACTION, isUptoPrimary, UPTO_PRIMARY, publicTerms, publicBilling } from "./pricing.mjs";
 import { addModelRoutes, addModelAliasRoutes, chatAliasOpenapiPaths, modelRoutePaths, modelOpenapiPaths } from "./model-routes.mjs";
 import { paymentCodesMiddleware } from "./payment-failure-hooks.mjs";
 
@@ -147,6 +150,19 @@ export async function chooseModel(config, catalogue, input) {
     if (error instanceof UnknownModel) throw Object.assign(new RequestError(400, error.message), { code: "model_not_found" });
     throw error;
   }
+}
+
+// A chat model asked for by an alternate name (discovery-aliases.mjs) is answered and billed as its catalog id. The
+// exact id always wins; the default, routers and free/ ids are never renamed; a name nothing resolves stays as asked,
+// so chooseModel refuses it as before.
+export async function canonicalChatModel(config, catalogue, input) {
+  const asked = input.model;
+  if (!asked || !catalogue || asked === config.model || asked === AUTO_ID || asked.startsWith(FREE_PREFIX)) return input;
+  if (await catalogue.resolve(asked).then(() => true, error => !(error instanceof UnknownModel))) return input;
+  for (const id of [asked.toLowerCase(), ...aliasCandidates(asked)]) {
+    if (id !== asked && id !== AUTO_ID && await catalogue.resolve(id).then(() => true, () => false)) return { ...input, model: id };
+  }
+  return input;
 }
 
 // `status` is the HTTP status Surplus answered (0 when it never did), `code` its error.code (never its message,
@@ -369,8 +385,9 @@ const OUTPUT_SCHEMA = {
       remainingToday: { type: "integer", minimum: 0, description: "Free answers left today for this network, limited by the network and whole-day answer counts; the shared cost budget may end free answers sooner" },
       resetsAt: { type: "string", description: "Next UTC midnight (ISO 8601) for the free answer allowance" },
       hint: { type: "string", const: "drop the free/ prefix to pay", description: "How to request a paid answer" },
-      providerCostAtomic: { type: "string" }, markupAtomic: { type: "string" },
-      totalAtomic: { type: "string", description: "The amount settled" }, currency: { type: "string", const: "USDC" },
+      providerCostAtomic: { type: "string" },
+      totalAtomic: { type: "string", description: "The amount settled" }, settlementFeeAtomic: { type: "string" },
+      currency: { type: "string", const: "USDC" },
     } },
   },
 };
@@ -431,11 +448,25 @@ export function displayPrice(m, observed, market) {
   if (!rates.some((rate) => rate > 0) || rates.some((rate) =>
     !Number.isFinite(rate * 1e6 * ours) || !Number.isFinite(rate * 1e6 * share)
     || (rate > 0 && (!(rate * 1e6 * ours > 0) || !(rate * 1e6 * share > 0))))) return null;
-  return { share, basis: seen > 0 ? "observed" : "trusted", ours };
+  if (!(seen > 0)) return { share, basis: "trusted", ours, n: 0, window: OBSERVED_KEEP };
+  // Mocks without displayCount still count one positive median as one answer.
+  const n = typeof observed.displayCount === "function" ? observed.displayCount(m.id) : 1;
+  return n >= OBSERVED_MIN_N ? { share, basis: "observed", ours, n, window: OBSERVED_KEEP }
+    : { share, basis: "observed_preliminary", ours, n, window: OBSERVED_KEEP, note: PRELIMINARY_NOTE(n) };
 }
+
+const PRELIMINARY_NOTE = (n) => `Median of only ${n} paid answer${n === 1 ? "" : "s"}; not yet a stable median `
+  + `(basis becomes observed at ${OBSERVED_MIN_N} of the last ${OBSERVED_KEEP}).`;
 
 // The same expected-price-per-million-tokens shown at GET /v1/models (observed cost if this service has answered
 // that model before, else the trusted market's cheapest qualifying share), null when neither is known.
+// The flat per-answer fee shown beside every per-token price; billing reads the same TERMS.
+const SETTLEMENT_FEE = Object.freeze({
+  base: Object.freeze({ usd: Number(usd(TERMS.settlementFeeAtomic)), atomic: TERMS.settlementFeeAtomic }),
+  solana: Object.freeze({ usd: Number(usd(SOLANA_TERMS.settlementFeeAtomic)), atomic: SOLANA_TERMS.settlementFeeAtomic }),
+});
+const SETTLEMENT_FEE_SENTENCE = `Each paid answer includes a settlement fee of $${SETTLEMENT_FEE.base.usd} on Base or $${SETTLEMENT_FEE.solana.usd} on Solana.`;
+
 function perMillionFor(m, observed, market) {
   const price = displayPrice(m, observed, market);
   return price === null ? null : { input: m.promptUsdPerToken * 1e6 * price.ours, output: m.completionUsdPerToken * 1e6 * price.ours };
@@ -446,7 +477,7 @@ function perMillionFor(m, observed, market) {
 // `charsPerToken: 1` matches the `upto` authorization this max actually describes (see pricing.mjs's
 // `ceilingAtomic`): the loosest input estimate, so a dense worst-case prompt is never quoted below what it costs.
 export async function priceRange(catalogue) {
-  const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 };
+  const size = { chars: AGENT_LIMITS.chars, maxTokens: AGENT_LIMITS.maxTokens, messageCount: AGENT_LIMITS.messages, charsPerToken: 1 };
   const listed = catalogue ? await catalogue.list().catch(() => []) : [];
   const most = listed.reduce((top, m) => {
     const c = BigInt(ceilingAtomic(m, size, SOLANA_TERMS));
@@ -479,14 +510,14 @@ const RECONCILIATION_SCHEMA = {
 
 const EXAMPLE = {
   input: { messages: [{ role: "user", content: "Where is good coffee near the Colosseum?" }], max_tokens: 400 },
-  // A real answer's shape and charge (default model, Base): 6 micro-USD of tokens, 2 markup, 1000 settlement fee.
+  // A real answer's shape and charge (default model, Base): settled total 1008 micro-USDC, including the 1000 settlement fee.
   output: {
     id: "singit-ask-1791932400000", object: "chat.completion", created: 1791932400, model: "singit-ask",
     choices: [{ index: 0, message: { role: "assistant",
       content: "Around the Colosseum, try Caffè Propaganda on Via Claudia or Bar Martini for an espresso with a view." },
       finish_reason: "stop" }],
     usage: { prompt_tokens: 14, completion_tokens: 31, total_tokens: 45, buyer_cost_micro: 6 },
-    billing: { ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" },
+    billing: publicBilling({ ...TERMS, providerCostAtomic: "6", markupAtomic: "2", totalAtomic: "1008", currency: "USDC" }),
   },
 };
 
@@ -505,10 +536,10 @@ const errorExample = (type, message, code, schema) => ({
 const chatExampleOffers = [
   { scheme: "upto", network: BASE, payTo: "<pay-to address>", maxTimeoutSeconds: 120,
     asset: "<USDC contract on Base>", amount: "1500", extra: { name: "USD Coin", version: "2",
-      billing: { version: 1, mode: "actual_usage", markupBps: 3000, settlementFeeAtomic: "1000", maxChargeAtomic: "1500" } } },
+      billing: { ...publicTerms(TERMS), maxChargeAtomic: "1500" } } },
   { scheme: "exact", network: BASE, payTo: "<pay-to address>", maxTimeoutSeconds: 120,
     asset: "<USDC contract on Base>", amount: "1500", extra: { name: "USD Coin", version: "2",
-      billing: { version: 1, mode: "exact_ceiling", markupBps: 3000, settlementFeeAtomic: "1000", maxChargeAtomic: "1500" } } },
+      billing: { ...publicTerms(TERMS), mode: "exact_ceiling", maxChargeAtomic: "1500" } } },
 ];
 const exactExampleOffers = timeout => [
   { scheme: "exact", network: BASE, amount: "<amount in USDC micro-units>", asset: "<USDC contract on Base>",
@@ -527,7 +558,9 @@ const PAYMENT_REQUIRED = (exactTimeout) => ({ description: "Payment Required: th
     challenge: { value: { x402Version: 2, accepts: exactTimeout ? exactExampleOffers(exactTimeout) : chatExampleOffers,
       error: "payment_required", code: "payment_required" } },
     unfunded: { value: { error: "payment_required", code: "payment_unfunded", action: "fund_wallet",
-      message: "Fund the wallet and its token account. Nothing was charged for this request." } },
+      message: "Fund the wallet with at least 0.01 USDC on Base (eip155:8453). Nothing was charged for this request.",
+      next_action: { type: "fund_wallet", missing: "USDC", amountAtomic: "10000", amountUsd: 0.01,
+        network: "eip155:8453", asset: "USDC", docs: "https://singitai.app/docs/errors/" } } },
   } } } });
 const BAD_REQUEST = "The request cannot be answered here (unreadable JSON, a field out of range, or a model that is not offered); nothing was charged";
 const TOO_LARGE = "The JSON body is over 128 kB; nothing was charged";
@@ -635,6 +668,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   }
   // Four images (or one image plus mask), base64 expansion and JSON overhead; other routes stay at 128 KB.
   app.post(EXTRA_PAID.slice(0, 2), express.json({ limit: Math.ceil((config.maxEditImageBytes ?? 8 * 1024 * 1024) * 4 / 3) * 4 + 65536 }));
+  // nohumans.directory alerts: signed over the raw bytes, so this route reads them itself, before the global parser.
+  app.post(NOHUMANS_PATH, ...nohumansAlertHandlers(config, { log, fetchImpl, clock: clock ?? Date }));
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
   // ...with a JSON body like every other refusal, not Express's HTML page (documented in openapi.json).
   app.use((error, req, res, next) => {
@@ -656,7 +691,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   app.use(paymentRequiredHeaderMiddleware({ log }));
   app.use(spendLimitMiddleware({ reader: spendLimits, log }));
 
-  const pricing = { [SOLANA]: SOLANA_TERMS, [BASE]: TERMS };
+  const pricing = { [SOLANA]: publicTerms(SOLANA_TERMS), [BASE]: publicTerms(TERMS) };
   const free = freeTerms(config);
   // Free models are advertised in several places and keep the plain 15 minute rule, never a suspension.
   for (const m of free.models) catalogue?.neverHide?.add(m);
@@ -670,16 +705,19 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   const inputSchema = freeOffer ? { ...baseInputSchema, properties: { ...AGENT_INPUT_SCHEMA.properties,
     model: { ...INPUT_SCHEMA.properties.model, description: `${INPUT_SCHEMA.properties.model.description} `
       + `Free to try, no payment: ${freeOffer.models.join(", ")}.` } } } : baseInputSchema;
-  // What a payer pays on top of the model's own cost: the markup, and one settlement fee per answer.
-  const fees = { markupPct: TERMS.markupBps / 100,
+  // What a payer pays on top of the listed model price: one settlement fee per answer.
+  const fees = {
     perAnswerUsd: { [BASE]: Number(usd(TERMS.settlementFeeAtomic)), [SOLANA]: Number(usd(SOLANA_TERMS.settlementFeeAtomic)) } };
   const origin = req => `${req.protocol}://${req.get("host")}`;
   // Public, read-only documents: the website reads them straight from the browser.
   const open = (_req, res, next) => { res.set("Access-Control-Allow-Origin", "*"); next(); };
-  // Listing descriptions stay within 160 characters.
+  // Listing descriptions stay within 500 characters (CDP's limit), capability first. DISCOVERY_DESCRIPTION is
+  // this route's own 402 description; the service as a whole is described by SERVICE_DESCRIPTION and LLMS_INTRO.
   const DESCRIPTION = routeCopy(ROUTE).description;
   const DISCOVERY_DESCRIPTION = DESCRIPTION;
-  const LLMS_INTRO = DESCRIPTION;
+  const sells = { formats: Boolean(catalogue), search: Boolean(exaKey) };
+  const SERVICE_DESCRIPTION = serviceDescription({ ...sells, long: true });
+  const LLMS_INTRO = serviceDescription(sells);
   const AUTO_GUIDE = "\"model\":\"singit/auto\" on POST /v1/chat/completions picks an eco, standard or premium model for "
     + "text prompts by simple rules; optional \"min_tier\" (eco, standard or premium) sets the minimum "
     + "tier. X-SingIt-Model and X-SingIt-Tier identify the model and tier that answered. If the chosen "
@@ -698,7 +736,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.set("Cache-Control", "no-store");
     res.json({ ...healthBody(app.locals.healthStats, app.locals.facilitatorCheck.get(), config.model, catalogue?.unservableSnapshot?.(), catalogue?.suspensionSnapshot?.()),
                ok: true, service: "singit-ask", model: config.model, facilitator: "coinbase-cdp", pricing, free: freeOffer,
-               metered: TERMS, ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...DIRECT_TERMS } } : {}) });
+               metered: publicTerms(TERMS), ...(config.directSolana ? { directSolana: { endpoint: QUOTED_ROUTE, ...publicTerms(DIRECT_TERMS) } } : {}) });
   });
   app.get("/numbers.json", open, (_req, res) => {
     res.set("Cache-Control", "public, max-age=60").json(numbersBody(app.locals.healthStats));
@@ -765,7 +803,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       usdPerMillionTokens: { input: model.promptUsdPerToken * 1e6, output: model.completionUsdPerToken * 1e6 },
       ...(price ? {
         expectedUsdPerMillionTokens: { input: model.promptUsdPerToken * 1e6 * price.share,
-          output: model.completionUsdPerToken * 1e6 * price.share, basis: price.basis },
+          output: model.completionUsdPerToken * 1e6 * price.share, basis: price.basis, n: price.n,
+          window: price.window, ...(price.note ? { note: price.note } : {}) },
+        settlementFee: SETTLEMENT_FEE,
         singitUsdPerMillionTokens: { input: model.promptUsdPerToken * 1e6 * price.ours,
           output: model.completionUsdPerToken * 1e6 * price.ours },
         savingsVsListPct: savingsFor(price.ours),
@@ -830,15 +870,22 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
       ? chatTokenPrices(source, market ?? await catalogue?.market?.().catch(() => new Map()) ?? new Map())
       : entry.modality === 'embeddings' && source?.usdPerMillionTokens !== undefined
         ? { usdPerMillionTokens: source.usdPerMillionTokens } : {};
-    return { ...entry, price, schemas, ...tokenPrices, inputModalities: source?.inputs ?? io[0], outputModalities: io[1],
+    const aliases = aliasesFor(entry.id);
+    return { ...entry, ...(aliases.length ? { aliases } : {}), price, schemas, ...tokenPrices, inputModalities: source?.inputs ?? io[0], outputModalities: io[1],
       ...(source?.contextLength ? { contextLength: source.contextLength, context: { length: source.contextLength } } : {}),
       ...(limits ? { limits } : {}), ...(source?.sizes ? { sizes: source.sizes } : {}),
       exampleCall: { method: 'POST', path: entry.route, body } };
   };
   app.get(/^\/v1\/models\/(.+)$/, open, async (req, res, next) => {
-    const entry = (await discoveryCatalog()).find(m => m.id === req.params[0]);
+    const entries = await discoveryCatalog();
+    let entry = entries.find(m => m.id === req.params[0]);
     // Paid aliases share this prefix; let their GET discovery challenges handle them.
     if (!entry && aliasPaths(catalogue).includes(req.path)) return next();
+    // Alternate names (discovery-aliases.mjs) answer with the canonical card.
+    if (!entry) {
+      const id = resolveDiscoveryId(req.params[0], entries.map(m => m.id));
+      entry = id === null ? undefined : entries.find(m => m.id === id);
+    }
     if (!entry) return res.status(404).json({ error: { message: 'Unknown model', type: 'invalid_request_error', code: 'not_found' } });
     res.json(await modelCard(entry));
   });
@@ -853,13 +900,17 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     const legacy = { object: "list", default: config.model, endpoint: ROUTE, pricing, fees, free: freeOffer,
       savings: {
         field: "savingsVsListPct",
-        definition: "How far SingIt's expected price per million tokens (expected price plus the 30% markup, "
-          + "settlement fees excluded) is below the model's list price. It is an estimate, not a guaranteed "
-          + "discount, and it is absent when no expected price is known.",
+        definition: "How far SingIt's expected price per million tokens (settlement fees excluded; see settlementFee) "
+          + "is below the model's list price. It is an estimate, not a "
+          + "guaranteed discount, and it is absent when no expected price is known. basis=observed requires at least "
+          + `${OBSERVED_MIN_N} paid answers in the last ${OBSERVED_KEEP}.`,
         listPrice: "usdPerMillionTokens, the list price in Surplus's model catalogue",
         expectedPrice: "expectedUsdPerMillionTokens.basis: observed = median of what SingIt's own paid answers for this "
-          + "model cost against list, last 20; trusted = Surplus's best trusted-seller offer as a share of "
-          + "list" },
+          + `model cost against list, last ${OBSERVED_KEEP}, once there are at least ${OBSERVED_MIN_N} (n counts them); `
+          + "observed_preliminary = the same median from fewer answers, with a note; trusted = Surplus's best "
+          + "trusted-seller offer as a share of list (n = 0)",
+        settlementFee: "settlementFee: the flat fee each paid answer settles on top of the per-token price, per network; "
+          + "not included in expectedUsdPerMillionTokens, singitUsdPerMillionTokens or savingsVsListPct" },
       data: [{ id: "singit-ask", object: "model", owned_by: "singit", upstream: config.model },
         // Virtual routes have no fixed token rate; priced-model consumers use property presence.
         { id: AUTO_ID, object: "model", owned_by: "singit", description: AUTO_DESCRIPTION },
@@ -945,7 +996,9 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + "shown, flat, with no metering and no refund: a price for a typical-length answer (about "
         + `${Math.round((config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION) * 100)}% of max_tokens), `
         + "and the whole answer is still returned. A model with recommendedScheme upto (Claude Opus) is best paid with "
-        + "upto: its exact price carries room for thinking tokens, so it is usually dearer than the answer used.",
+        + "upto: its exact price carries room for thinking tokens, so it is usually dearer than the answer used. Per-million-token prices at GET /v1/models exclude the "
+        + "settlementFeeUsd above, charged once per paid answer; their basis is observed only after at least "
+        + `${OBSERVED_MIN_N} paid answers in the last ${OBSERVED_KEEP} (n says how many).`,
       models: [...priced, ...(catalogue ? availableAudioPrices(config, catalogue) : [])],
     });
   });
@@ -1019,8 +1072,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         } }])) : {}),
         // Per-model routes (#66) answer the same errors as /v1/chat/completions minus the free tier's 429, plus 404
         // for a model the catalogue does not list; documented with the shared JSON error shapes (SI-63).
-        ...(catalogue ? Object.fromEntries(Object.entries({ ...await chatAliasOpenapiPaths(catalogue, { inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }), ...await modelOpenapiPaths(catalogue, { inputSchema: INPUT_SCHEMA,
-          outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }) }).map(([route, item]) => [route,
+        ...(catalogue ? Object.fromEntries(Object.entries({ ...await chatAliasOpenapiPaths(catalogue, { inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }), ...await modelOpenapiPaths(catalogue, { inputSchema: baseInputSchema,
+          outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output, fallbackPrice: price, config }) }).map(([route, item]) => [route,
           { post: { ...item.post, responses: { 200: item.post.responses[200],
             ...paidErrors({ notFound: "This model is not available; nothing was charged",
                             noAnswer: "No billable answer came back; nothing was charged", reasoning: true }) } } }])) : {}),
@@ -1079,7 +1132,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           [VIDEO_ROUTE]: { post: {
             operationId: "createVideo", summary: "Generate a video clip with any of 30+ text-to-video models",
             description: "Body: model, prompt, and optionally duration_seconds, resolution, aspect_ratio, audio, fallback. "
-              + "Paid per clip over x402: the model's list price (minimum $0.20) + 30% + a settlement fee "
+              + "Paid per clip over x402: you pay the price shown for the model, plus a settlement fee "
               + "(0.001 USDC on Base, 0.002 on Solana), charged "
               + "once the clip is ready. Answers once the clip is ready (up to about 85 seconds); if it is not, "
               + "or the job fails, you get a 503 and are not charged; the response carries the job id, token and file URLs. "
@@ -1359,7 +1412,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     ? [...new Set(availableAudioPrices(config, catalogue).map(m => m.route))] : [];
   app.get("/.well-known/x402", open, async (req, res) => {
     const { paths } = await openapiDocument(req);
-    res.json({ version: 1, resources: [`${origin(req)}${ROUTE}`,
+    // name and description are the service-level blurb directory crawlers (agentic.market) read for the card.
+    res.json({ version: 1, name: SERVICE_NAME, description: SERVICE_DESCRIPTION, resources: [`${origin(req)}${ROUTE}`,
         ...(catalogue ? [...Object.keys(FORMAT_ROUTES).map((route) => `${origin(req)}${route}`),
                          ...EXTRA_PAID.map(path => `${origin(req)}${path}`), `${origin(req)}${IMAGE_ROUTE}`, `${origin(req)}${SPEECH_ROUTE}`, ...audioRoutes().map(path => `${origin(req)}${path}`),
                          ...(config.videoSold && config.videoDiscoverable ? [`${origin(req)}${VIDEO_ROUTE}`] : []),
@@ -1375,6 +1429,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         llmsTxt: `${origin(req)}/llms.txt`,
       },
       instructions: `${DESCRIPTION} Models and prices: GET ${origin(req)}/v1/models. Free single-model price and schemas: GET ${origin(req)}/v1/models/{id}. ${AUTO_GUIDE} ${FALLBACK_GUIDE}`        + " Owner-set server-side spend limits apply to MCP/API keys; check get_allowance or get_limits before spending and get_receipts for receipts. On Base, the owner can use Emergency stop / Revoke on their agent allowance. Charged only when answered; direct wallet payments here require your own signature and are not covered by those agent limits."
+        + ` ${SETTLEMENT_FEE_SENTENCE}`
         + (freeOffer ? ` Free to try with no payment: model ${freeOffer.models.join(", ")}, ${freeOffer.perVisitorPerDay} answers a day.` : "") });
   });
   // Every discoverable paid route that is actually enabled: what DISCOVERABLE in test/discovery.test.mjs checks,
@@ -1394,7 +1449,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // Express answers HEAD the same way automatically. Open CORS, like the other public documents.
   app.get("/", open, (req, res) => {
     const base = origin(req);
-    res.json({ name: SERVICE_NAME, description: DISCOVERY_DESCRIPTION, icon: ICON_URL,
+    res.json({ name: SERVICE_NAME, description: SERVICE_DESCRIPTION, icon: ICON_URL,
       links: { openapi: `${base}/openapi.json`, x402: `${base}/.well-known/x402`, llmsTxt: `${base}/llms.txt`,
         models: `${base}/v1/models`, docs: "https://singitai.app/developers/",
         terms: "https://singitai.app/terms/", privacy: "https://singitai.app/privacy/" } });
@@ -1421,7 +1476,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + "and retry with the signature in the PAYMENT-SIGNATURE header. Live prices and models: "
         + `${base}/openapi.json and ${base}/v1/models. For Claude Opus, sign \`upto\`: its \`exact\` price carries room `
         + "for thinking tokens and is usually dearer than the answer used (recommendedScheme in "
-        + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC}`, "",
+        + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC} ${SETTLEMENT_FEE_SENTENCE}`, "",
       "## Agent chat and streams", "",
       "Paid /v1/chat/completions: up to 200 messages, 100000 estimated characters including tools and 8000 per image, 64 tools/calls, four images and 8192 output tokens (default 800; 128 kB JSON body). Tools/images depend on model capabilities. Messages and Responses support tools and up to 32000 output tokens.", "",
       "Chat, Messages and Responses accept stream:true as complete buffered SSE after settlement, not token by token. Billing and PAYMENT-RESPONSE are retained; errors remain JSON. Chat stream_options accepts only include_usage:boolean and requires stream:true. Free and per-model chat retain their existing text-only limits and also support buffered SSE.", "",
@@ -1467,9 +1522,13 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     res.set("Content-Type", "text/plain; charset=utf-8").send(lines.join("\n") + "\n");
   });
 
-  const choose = input => input.model === AUTO_ID
-    ? chooseAuto(config, catalogue, input, RequestError, log) : chooseModel(config, catalogue, input);
+  const choose = async input => {
+    input = await canonicalChatModel(config, catalogue, input);
+    return input.model === AUTO_ID
+      ? chooseAuto(config, catalogue, input, RequestError, log) : chooseModel(config, catalogue, input);
+  };
   const chooseChat = async (input, req) => {
+    input = await canonicalChatModel(config, catalogue, input);
     if (!input.model || input.model === AUTO_ID) return choose(input);
     // Server-chosen substitutes (reviewed defaults before payment, same-tier equivalents after it): never for the
     // default model, and off with the operator switch or X-SingIt-Fallback: off. A request's fallback_models always apply.
@@ -1530,8 +1589,10 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   if (catalogue) addFormatRoutes(app, config, { publicClient, facilitatorClient, catalogue, fetchImpl, log, record: (model, outcome) => app.locals.healthStats.recordModel(model, outcome) });
   // One x402 resource per popular model (SI-62), so a Bazaar search for a model name finds a dedicated listing
   // instead of only the generic chat route where the model is a body field a search engine cannot see.
-  if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: readOtherRequest, upstream: learning, fetchImpl, log,
-    inputSchema: INPUT_SCHEMA, outputSchema: OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
+  // Pinned chat routes take the same agent envelope as /v1/chat/completions and the aliases (tools, content
+  // blocks, 8192-token cap); only fallback_models / min_tier stay off, because the model is in the path.
+  if (catalogue) addModelRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: body => readRequest(body, { agent: true, allowFallback: false }), upstream: learning, fetchImpl, log,
+    inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
   // Aliases read a request as /v1/chat/completions does, so the same body gets the same limits and the same price.
   if (catalogue) addModelAliasRoutes(app, config, { publicClient, facilitatorClient, catalogue, readRequest: body => readRequest(body, { agent: true, allowFallback: false }), upstream: learning, fetchImpl, log,
     inputSchema: baseInputSchema, outputSchema: AGENT_OUTPUT_SCHEMA, exampleOutput: EXAMPLE.output });
@@ -1570,7 +1631,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // builds its own `upto` requirements and signs nothing else). `exact` is offered alongside it for buyers such
   // as vet402 that only sign `exact`; they pay the same ceiling flat instead of metered actual usage.
   addUsageRoute(app, METERED_ROUTE, quotes => [baseOffer(config, quotes), exactBaseOffer(config, quotes)], {
-    description: "SingIt Ask: actual model cost + 30% markup + 0.001 USDC settlement fee. Authorize at most 0.003 USDC. "
+    description: "SingIt Ask: you pay the price shown for the model, metered by what the answer actually used, plus a 0.001 USDC settlement fee. Authorize at most 0.003 USDC. "
       + "Exact payers are instead charged that ceiling flat, with no metering.",
     extensions: declareEip2612GasSponsoringExtension(),
   }, { ...route, readRequest: readOtherRequest, choose });

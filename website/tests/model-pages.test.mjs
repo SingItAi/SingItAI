@@ -135,8 +135,9 @@ test("renderer handles hostile source text and changed snapshot values determini
   assert.deepEqual(pages, renderPages(s, shell));
   const html = pages.get("models/fixture-0/index.html");
   assert.ok(html.includes("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; $&amp;"));
-  assert.ok(html.includes("40% markup"));
+  assert.ok(html.includes("You pay the price shown for each model, metered by what the answer actually used, plus a settlement fee per request"));
   assert.ok(html.includes("$0.003 on Base"));
+  assert.ok(!html.includes("% markup"));
   assert.ok(html.includes("&lt;read&gt; &amp; decide"));
   assert.ok(html.includes("\\u003cscript>"));
   assert.doesNotMatch(html, /\bvideo\b/);

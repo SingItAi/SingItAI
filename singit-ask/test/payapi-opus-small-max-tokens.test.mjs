@@ -102,22 +102,25 @@ for (const effort of [undefined, "none"]) test(`example paid route with simulate
   assert.equal(asked[0].max_tokens, 656);
 });
 
-test("example quotes match discovery and pricing; larger caps clamp at 1200 on both networks", async (t) => {
+test("example quotes match discovery and pricing; larger caps clamp at 8192 on both networks", async (t) => {
   const { url } = await serve(t);
   const endpoint = url + routePath(PRICEY.id);
   const body = modelExample(OPUS);
   const quote = async (body) => decode((await post(endpoint, body)).headers.get("payment-required"));
   const small = await quote(body);
   const probe = decode((await fetch(endpoint)).headers.get("payment-required"));
-  const large = await quote({ ...body, max_tokens: 1200 });
-  const clamped = await quote({ ...body, max_tokens: 2000 });
+  const mid = await quote({ ...body, max_tokens: 1200 });
+  const large = await quote({ ...body, max_tokens: 8192 });
+  const clamped = await quote({ ...body, max_tokens: 20000 });
   const amount = (q, network, scheme) => q.accepts.find((a) => a.network === network && a.scheme === scheme).amount;
   for (const network of [BASE, SOLANA]) for (const scheme of ["upto", "exact"]) {
     const value = Number(amount(small, network, scheme));
+    const middle = Number(amount(mid, network, scheme));
     const bigger = Number(amount(large, network, scheme));
     assert.equal(amount(small, network, scheme), amount(probe, network, scheme));
     assert.equal(amount(large, network, scheme), amount(clamped, network, scheme));
-    assert.ok(bigger > value && bigger < value * 3);
+    assert.ok(middle > value);
+    assert.ok(bigger > middle);
     if (scheme === "upto") assert.equal(amount(small, network, scheme), ceilingAtomic(PRICEY,
       { chars: body.messages[0].content.length, maxTokens: 400, messageCount: 1, charsPerToken: 1 },
       network === BASE ? TERMS : SOLANA_TERMS, 1));
@@ -134,15 +137,15 @@ test("all examples request one sentence and OpenAPI explains the cap without len
     assert.equal(example.model, model.id);
     const required = decode((await fetch(url + routePath(model.id))).headers.get("payment-required"));
     assert.equal(required.resource.description, discoveryDescription(model));
-    assert.ok(required.resource.description.length <= 160);
+    assert.ok(required.resource.description.length <= 500);
     assert.deepEqual(required.extensions.bazaar.info.input.body, example);
   }
   const operation = doc.paths[routePath(PRICEY.id)].post;
-  assert.ok(operation.description.length <= 160);
+  assert.ok(operation.description.length <= 500);
   const maxTokens = operation.requestBody.content["application/json"].schema.properties.max_tokens;
   assert.match(maxTokens.description, /ceiling grows with it/);
-  assert.match(maxTokens.description, /larger value counts as 1200/);
-  assert.equal(maxTokens.maximum, 1200);
+  assert.match(maxTokens.description, /larger value counts as 8192/);
+  assert.equal(maxTokens.maximum, 8192);
 });
 
 // The free first call. Surplus lists no reasoning control for openai-gpt-oss-20b and it thinks about 200 tokens every

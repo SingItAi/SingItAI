@@ -68,14 +68,14 @@ const pay = (required, network, scheme = "upto") => ({ "PAYMENT-SIGNATURE": enco
   accepted: required.accepts.find((a) => a.network === network && a.scheme === scheme), payload: { signature: "0xsigned" },
   extensions: required.extensions }) });
 
-test("the 15 ids are URL-safe and none is \"completions\"", () => {
-  assert.equal(MODEL_ROUTES.length, 15);
+test("the 20 ids are URL-safe and none is \"completions\"", () => {
+  assert.equal(MODEL_ROUTES.length, 20);
   for (const model of MODEL_ROUTES) {
     assert.match(model.id, /^[a-z0-9.-]+$/, model.id);
     assert.notEqual(model.id, "completions");
     assert.equal(routePath(model.id), `/v1/chat/${model.id}`);
   }
-  assert.equal(new Set(modelRoutePaths()).size, 15, "no two models share a route");
+  assert.equal(new Set(modelRoutePaths()).size, 20, "no two models share a route");
   assert.ok(!modelRoutePaths().includes(ROUTE), "a model route never collides with the generic chat route");
 });
 
@@ -175,7 +175,7 @@ test("a model unknown to the catalogue still answers its probe, falling back lik
   assert.equal(required.accepts.find((a) => a.network === BASE && a.scheme === "upto").amount, "3000");
 });
 
-test("GET /openapi.json and /.well-known/x402 list all 15 model routes", async (t) => {
+test("GET /openapi.json and /.well-known/x402 list all 20 model routes", async (t) => {
   const { url } = await serve(t);
   const doc = await (await fetch(`${url}/openapi.json`)).json();
   for (const model of MODEL_ROUTES) {
@@ -194,12 +194,35 @@ test("GET /openapi.json and /.well-known/x402 list all 15 model routes", async (
   for (const route of modelRoutePaths()) assert.ok(known.resources.includes(`${url}${route}`), route);
 });
 
-test("GET / and /llms.txt list all 15 model routes", async (t) => {
+test("GET / and /llms.txt list all 20 model routes", async (t) => {
   const { url } = await serve(t);
   const index = await (await fetch(`${url}/`)).json();
   assert.equal(index.name, "SingIt Ask");
   const llmsTxt = await (await fetch(`${url}/llms.txt`)).text();
   for (const route of modelRoutePaths()) assert.ok(llmsTxt.includes(`POST ${url}${route}`), route);
+});
+
+test("a pinned model route matches /v1/chat/completions for tools and agent token limits", async (t) => {
+  const { url, asked } = await serve(t);
+  const path = routePath(CHEAP.id);
+  const hello = [{ role: "user", content: "Hello" }];
+  const tool = { type: "function", function: { name: "lookup", description: "Look up", parameters: { type: "object", properties: {} } } };
+  const offers = (r) => decode(r.headers.get("payment-required")).accepts.map((a) => [a.scheme, a.network, a.amount, a.payTo]);
+  for (const extra of [{}, { max_tokens: 200 }, { max_tokens: 1200 }, { max_tokens: 4000 }, { max_tokens: 8192 }, { max_tokens: 99999 }, { tools: [tool] }]) {
+    const body = { model: CHEAP.id, messages: hello, ...extra };
+    const base = await post(`${url}${ROUTE}`, body);
+    const pinned = await post(`${url}${path}`, body);
+    const omitted = await post(`${url}${path}`, { messages: hello, ...extra });
+    assert.equal(base.status, 402, JSON.stringify(extra));
+    assert.equal(pinned.status, 402, JSON.stringify(extra));
+    assert.deepEqual(offers(pinned), offers(base), JSON.stringify(extra));
+    assert.deepEqual(offers(omitted), offers(base), JSON.stringify(extra));
+  }
+  const required = decode((await post(`${url}${path}`, { messages: hello, max_tokens: 99999, tools: [tool] })).headers.get("payment-required"));
+  const paid = await post(`${url}${path}`, { messages: hello, max_tokens: 99999, tools: [tool] }, pay(required, BASE));
+  assert.equal(paid.status, 200);
+  assert.equal(asked.at(-1).model, CHEAP.id);
+  assert.equal(asked.at(-1).maxTokens, 8192);
 });
 
 test("/v1/chat/completions keeps taking model in the body, unaffected by the per-model routes", async (t) => {
@@ -221,6 +244,8 @@ test("pinned route schemas exclude generic-only fields while generic chat retain
     for (const fields of [schema.properties, challenge.extensions.bazaar.schema.properties.input.properties.body.properties]) {
       assert.ok(!Object.hasOwn(fields, "fallback_models"), route);
       assert.ok(!Object.hasOwn(fields, "min_tier"), route);
+      assert.ok(fields.tools, route);
+      assert.equal(fields.max_tokens.maximum, 8192, route);
     }
   }
   assert.ok(doc.paths[ROUTE].post.requestBody.content["application/json"].schema.properties.fallback_models);
@@ -229,7 +254,7 @@ test("pinned route schemas exclude generic-only fields while generic chat retain
   const genericBody = await genericResponse.json();
   assert.ok(genericBody.extensions.bazaar.schema.properties.input.properties.body.properties.fallback_models);
   assert.ok(generic.resource.description.length <= 500);
-  // D2 aggregate copy uses the 500-character policy; D4 alias copy has its own 160-character tests.
+  // D2 aggregate copy uses the 500-character policy; D4 alias copy has its own tests, same limit.
   assert.equal(generic.resource.description, routeCopy(ROUTE).description);
   assert.ok(doc.paths[ROUTE].post.description.startsWith(routeCopy(ROUTE).description));
   assert.match(doc.paths[ROUTE].post.description, /free\//);

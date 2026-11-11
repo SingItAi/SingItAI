@@ -1,0 +1,12 @@
+{
+  "name": "@singitai/session-wallet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Base wallet stored in ~/.singit/session. Shared by @singitai/mcp and @singitai/proxy. Not published separately.",
+  "type": "module",
+  "main": "index.js",
+  "exports": { ".": "./index.js" },
+  "files": ["index.js"],
+  "engines": { "node": ">=20" },
+  "dependencies": { "viem": "^2.48.11" }
+}

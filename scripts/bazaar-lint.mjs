@@ -197,6 +197,7 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
   const { SPEECH_ROUTE } = await import(pathToFileURL(path.join(ASK, "speech.mjs")));
   const { SEARCH_ROUTES } = await import(pathToFileURL(path.join(ASK, "search.mjs")));
   const { MODEL_ROUTES, routePath } = await import(pathToFileURL(path.join(ASK, "model-routes.mjs")));
+  const { aliasPaths } = await import(pathToFileURL(path.join(ASK, "model-alias-routes.mjs")));
   const { VIDEO_ROUTE } = await import(pathToFileURL(path.join(ASK, "video.mjs")));
 
   const never = () => { throw new Error("offline lint: no upstream is ever called"); };
@@ -221,7 +222,7 @@ export async function lintApp({ resourcesFile = path.join(HERE, "bazaar-resource
   const { registerApp, request } = await import("../singit-ask/test/fixtures/listing-harness.mjs");
   const server = registerApp(app);
 
-  const routes = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings", ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, "/v1/audio/sound-effects", "/v1/audio/generations", ...Object.keys(SEARCH_ROUTES), ...MODEL_ROUTES.map(m => routePath(m.id))];
+  const routes = ["/v1/images/edits", "/v1/images/image2image", "/v1/embeddings", ROUTE, ...Object.keys(FORMAT_ROUTES), IMAGE_ROUTE, SPEECH_ROUTE, "/v1/audio/sound-effects", "/v1/audio/generations", ...Object.keys(SEARCH_ROUTES), ...MODEL_ROUTES.map(m => routePath(m.id)), ...aliasPaths(catalogue)];
   const global = [];
   const results = [];
   try {

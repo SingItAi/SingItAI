@@ -71,6 +71,8 @@ test('traffic fixed sources, windows, persistence, old and invalid files', () =>
     const req = (ua, client) => ({ get: k => k === 'x-singit-client' ? client : ua, body: { stream: true, tools, messages: [{ content: [{ type: 'image_url' }] }] } });
     for (const [ua, label] of [['openai-python/1.0', 'openai-python'], ['openai-node/6', 'openai-node'], ['curl/8', 'curl'], ['Mozilla/5.0', 'browser'], ['private secret', 'other']]) { assert.equal(clientSource(req(ua)), label); stats.recordAgent(req(ua)); }
     assert.equal(clientSource(req('curl/8', 'BAD secret')), 'other'); assert.equal(clientSource(req('curl/8', 'cursor')), 'cursor');
+    assert.equal(clientSource(req('curl/8', 'singit-proxy/0.1.0')), 'singit-proxy'); assert.equal(clientSource(req('curl/8', 'singit-mcp')), 'singit-mcp');
+    assert.equal(clientSource(req('curl/8', 'codex')), 'codex');
     stats.flush(); assert.ok(!readFileSync(file, 'utf8').includes('private secret'));
     const loaded = new HealthStats({ file, now: () => now }); assert.equal(numbersBody(loaded).agent_traffic.total.with_images, 5);
     now += 8 * 86400000; assert.equal(numbersBody(loaded).agent_traffic.last_7d.calls, 0);
@@ -80,7 +82,7 @@ test('traffic fixed sources, windows, persistence, old and invalid files', () =>
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('per-model SSE retains legacy limits; chat usage is opt-in', async t => {
+test('per-model SSE uses agent limits; chat usage is opt-in', async t => {
   const id = 'deepseek-v4.1-flash';
   const catalogue = { async list() { return []; }, async resolve() { return { id, promptUsdPerToken: 1e-6, completionUsdPerToken: 1e-6 }; }, async canAnswer() { return true; } };
   const { url, asked } = await serve(t, { catalogue });
@@ -90,7 +92,7 @@ test('per-model SSE retains legacy limits; chat usage is opt-in', async t => {
     const res = await url(body, { 'payment-signature': signature(decode(quote.headers.get('payment-required')), BASE, 'upto') }, path);
     assert.equal(res.status, 200); const events = frames(await res.text());
     assert.equal(events.length, 3); assert.equal(events.at(-1), '[DONE]'); assert.ok(events[1].billing);
-    assert.equal(asked.at(-1).maxTokens, path === '/v1/chat/completions' ? 8000 : 1200);
+    assert.equal(asked.at(-1).maxTokens, 8000);
   }
 });
 

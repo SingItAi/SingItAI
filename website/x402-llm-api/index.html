@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pay-per-Answer LLM API over x402 | SingIt</title>
-<meta name="description" content="219 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
+<meta name="description" content="220 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
 <link rel="canonical" href="https://singitai.app/x402-llm-api/">
 <meta property="og:title" content="Pay-per-Answer LLM API over x402 | SingIt">
-<meta property="og:description" content="219 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
+<meta property="og:description" content="220 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.">
 <meta property="og:url" content="https://singitai.app/x402-llm-api/">
 <meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
 <meta property="og:type" content="website">
@@ -42,7 +42,7 @@
       "@id": "https://singitai.app/x402-llm-api/#webpage",
       "url": "https://singitai.app/x402-llm-api/",
       "name": "Pay-per-Answer LLM API over x402 | SingIt",
-      "description": "219 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.",
+      "description": "220 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search, paid per answer in USDC over x402. No key, no account: you pay only what each answer used.",
       "isPartOf": { "@id": "https://singitai.app/#website" },
       "about": { "@id": "https://singitai.app/x402-llm-api/#api" },
       "breadcrumb": { "@id": "https://singitai.app/x402-llm-api/#breadcrumb" },
@@ -85,7 +85,7 @@
         {
           "@type": "Question",
           "name": "How much does it cost?",
-          "acceptedAnswer": { "@type": "Answer", "text": "The answer's actual cost + 30%, plus $0.001 per answer on Base or $0.002 on Solana over x402. Live prices against list prices are on /models/." }
+          "acceptedAnswer": { "@type": "Answer", "text": "You pay the price shown for each model, metered by what the answer actually used, plus $0.001 per answer on Base or $0.002 on Solana over x402. Live prices against list prices are on /models/." }
         },
         {
           "@type": "Question",
@@ -151,7 +151,7 @@
       <div class="hero-copy" data-hero-reveal>
         <p class="eyebrow">Pay per answer over x402</p>
         <h1>A pay-per-answer LLM API <em>over x402</em></h1>
-        <p class="hero-sub"><a href="https://ask.singitai.app/v1/models">219 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search</a>. Your agent pays per answer in USDC from its own wallet: no account and no key. You pay only what the answer used.</p>
+        <p class="hero-sub"><a href="https://ask.singitai.app/v1/models">220 chat, 54 image, 24 image_edit, 1 embeddings, 14 speech, 3 search</a>. Your agent pays per answer in USDC from its own wallet: no account and no key. You pay only what the answer used.</p>
         <div class="hero-cta">
           <a class="btn btn-primary" href="#quickstart">
             Try it free
@@ -180,7 +180,7 @@
       <ul class="works-grid" data-batch>
         <li><b>One endpoint, OpenAI format:</b><p><span class="mono">POST https://ask.singitai.app/v1/chat/completions</span>. Anthropic's Messages (<span class="mono">/v1/messages</span>) and OpenAI's Responses (<span class="mono">/v1/responses</span>) formats work too.</p></li>
         <li><b>402, then pay:</b><p>a request without payment returns <span class="mono">402 Payment Required</span> with a ceiling. Your agent signs an <b>upto</b> payment for that ceiling, and Coinbase's facilitator settles only what the answer used.</p></li>
-        <li><b>Price:</b><p>the answer's actual cost + 30%, plus a settlement fee of $0.001 per answer on Base or $0.002 on Solana. A failed answer is never settled.</p></li>
+        <li><b>Price:</b><p>You pay the price shown for each model, metered by what the answer actually used, plus a settlement fee of $0.001 per answer on Base or $0.002 on Solana. A failed answer is never settled.</p></li>
         <li><b>No ETH needed on Base:</b><p>the facilitator pays the gas. The agent just needs a little USDC.</p></li>
         <li><b>Discoverable:</b><p>listed on Coinbase's x402 Bazaar and on x402scan.</p></li>
       </ul>
@@ -282,7 +282,7 @@ GET https://ask.singitai.app/.well-known/x402 <span class="c"># x402 resource li
     <div class="shell">
       <h2 class="section-title" data-reveal>Prefer a key? Or a budget?</h2>
       <ul class="works-grid is-2" data-batch>
-        <li><b>API key:</b><p>get one in the SingIt app (Settings &rarr; API keys). Your wallet signs the key's limits. Top up $1 to $50 at a time in USDC; each request costs what it used + 30%, with no fee per call. Works with the OpenAI SDK, the Anthropic SDK and Claude Code at <span class="mono">https://app.singitai.app/v1</span>. <a href="/developers/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=keys">Developer docs</a></p></li>
+        <li><b>API key:</b><p>get one in the SingIt app (Settings &rarr; API keys). Your wallet signs the key's limits. Top up $1 to $50 at a time in USDC; each request costs the price shown for the model, metered by what it actually used, with no extra fee per call. Works with the OpenAI SDK, the Anthropic SDK and Claude Code at <span class="mono">https://app.singitai.app/v1</span>. <a href="/developers/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=keys">Developer docs</a></p></li>
         <li><b>Budget from your own wallet:</b><p>pay answers from SingIt's daily and per-purchase limits (<a href="/agent-spending-limits/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=body">how the limits work</a>).</p></li>
       </ul>
     </div>
@@ -306,7 +306,7 @@ GET https://ask.singitai.app/.well-known/x402 <span class="c"># x402 resource li
         </div>
         <div class="faq-item">
           <dt><h3>How much does it cost?</h3></dt>
-          <dd class="faq-answer">The answer's actual cost + 30%, plus $0.001 per answer on Base or $0.002 on Solana over x402. Live prices against list prices are on <a href="/models/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=faq">/models/</a>.</dd>
+          <dd class="faq-answer">You pay the price shown for each model, metered by what the answer actually used, plus $0.001 per answer on Base or $0.002 on Solana over x402. Live prices against list prices are on <a href="/models/?utm_source=singitai&amp;utm_medium=landing&amp;utm_campaign=x402-llm-api&amp;utm_content=faq">/models/</a>.</dd>
         </div>
         <div class="faq-item">
           <dt><h3>Can I try it before paying?</h3></dt>

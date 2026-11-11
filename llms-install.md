@@ -77,3 +77,27 @@ unexpanded `Bearer ${env:SINGIT_API_KEY}` header is treated as no key: `initiali
 `tools/list` and the free tools in step 3 still work. Alternatively use the Remote Servers tab:
 URL `https://app.singitai.app/mcp`, transport **Streamable HTTP**, and the optional `Authorization` header.
 Then run step 3.
+
+## Alternative: local server, no API key (pays from a wallet)
+
+`@singitai/mcp` is a local stdio server that needs no Bearer key. On first use it creates a wallet on your
+machine (`~/.singit/session`, mode 0600; the key never leaves it) and pays each `singit_chat` call in USDC on
+Base over x402, within per-call and per-day limits. Tools: `singit_wallet`, `singit_models`, `singit_chat`.
+
+**Not published to npm yet.** Until it is, run it from this repo: `cd mcp && npm install`, then use
+`node /absolute/path/to/mcp/src/index.js` as the command. Once published, the one-liner is:
+
+```sh
+claude mcp add singit -s user -- npx -y @singitai/mcp
+```
+
+```json
+{
+  "mcpServers": {
+    "singit": { "command": "npx", "args": ["-y", "@singitai/mcp"] }
+  }
+}
+```
+
+Fund the address `singit_wallet` reports with USDC on Base before the first paid call. Details, environment
+variables and limits: `mcp/README.md`.

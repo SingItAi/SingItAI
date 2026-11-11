@@ -13,7 +13,7 @@ function pair(v) {
 export function snapshot(models, pricing, fetchedAt) {
   requireShape(models.object === "list" && Array.isArray(models.data) && Array.isArray(pricing.models), "model lists");
   requireShape(typeof fetchedAt === "string" && /T.*Z$/.test(fetchedAt) && Number.isFinite(Date.parse(fetchedAt)), "UTC fetchedAt");
-  requireShape(object(models.fees) && number(models.fees.markupPct) && object(models.fees.perAnswerUsd), "fees");
+  requireShape(object(models.fees) && object(models.fees.perAnswerUsd), "fees");
   requireShape(object(pricing.networks) && object(pricing.referenceRequest), "networks/referenceRequest");
   for (const network of ["base", "solana"]) {
     const n = pricing.networks[network];
@@ -51,8 +51,22 @@ export function snapshot(models, pricing, fetchedAt) {
         result.singitUsdPerMillionTokens = price;
     }
     if (Object.hasOwn(m.expectedUsdPerMillionTokens ?? {}, "basis")) {
-      requireShape(["observed", "trusted"].includes(m.expectedUsdPerMillionTokens.basis), "expected price basis");
-      result.expectedUsdPerMillionTokens = { basis: m.expectedUsdPerMillionTokens.basis };
+      const expected = m.expectedUsdPerMillionTokens;
+      requireShape(["observed", "observed_preliminary", "trusted"].includes(expected.basis), "expected price basis");
+      const kept = { basis: expected.basis };
+      if (Object.hasOwn(expected, "n")) {
+        requireShape(Number.isInteger(expected.n) && expected.n >= 0, "expected price n");
+        kept.n = expected.n;
+      }
+      if (Object.hasOwn(expected, "window")) {
+        requireShape(Number.isInteger(expected.window) && expected.window > 0, "expected price window");
+        kept.window = expected.window;
+      }
+      if (Object.hasOwn(expected, "note")) {
+        requireShape(typeof expected.note === "string" && expected.note.length > 0, "expected price note");
+        kept.note = expected.note;
+      }
+      result.expectedUsdPerMillionTokens = kept;
     }
     const p = byId.get(m.id);
     for (const scheme of ["upto", "exact"]) {
@@ -71,7 +85,8 @@ export function snapshot(models, pricing, fetchedAt) {
     kept.push(result);
   }
   requireShape(kept.length >= 50, "fewer than 50 priced models");
-  const result = { fetchedAt, sources, fees: models.fees, networks: pricing.networks, referenceRequest: pricing.referenceRequest, models: kept.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0) };
+  const { markupPct: _ignoredMarkupPct, ...publicFees } = models.fees;
+  const result = { fetchedAt, sources, fees: publicFees, networks: pricing.networks, referenceRequest: pricing.referenceRequest, models: kept.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0) };
   // Keep the free offer's source so the generator never invents its limits.
   if (models.free !== undefined) {
     requireShape(Array.isArray(models.free.models) && models.free.models.every((v) => typeof v === "string") && number(models.free.perVisitorPerDay), "free offer");

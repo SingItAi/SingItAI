@@ -1,0 +1,62 @@
+{
+  "name": "@singitai/mcp",
+  "version": "0.1.0",
+  "description": "SingIt MCP server over stdio: chat with any SingIt Ask model and pay per call in USDC on Base over x402 from a local wallet. No API key needed.",
+  "keywords": [
+    "singit",
+    "mcp",
+    "model-context-protocol",
+    "x402",
+    "usdc",
+    "base",
+    "ai-agents",
+    "llm",
+    "payments",
+    "claude",
+    "cursor"
+  ],
+  "homepage": "https://singitai.app/developers/",
+  "bugs": {
+    "url": "https://github.com/SingItAi/SingItAI/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SingItAi/SingItAI.git",
+    "directory": "mcp"
+  },
+  "license": "MIT",
+  "author": "SingIt <contact@singitai.app>",
+  "type": "module",
+  "main": "src/server.js",
+  "bin": {
+    "singit-mcp": "src/index.js"
+  },
+  "exports": {
+    ".": "./src/server.js"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "@singitai/sdk": "file:../sdk/typescript",
+    "viem": "^2.48.11",
+    "zod": "^4.6.7",
+    "@singitai/session-wallet": "file:../session-wallet"
+  },
+  "overrides": {
+    "zod": "^4.6.7"
+  }
+}

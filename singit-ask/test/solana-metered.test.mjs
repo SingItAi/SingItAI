@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createKeyPairSignerFromPrivateKeyBytes} from '@solana/kit';
 import {TOKEN_PROGRAM_ADDRESS} from '@solana-program/token';
 import {createApp,ROUTE} from '../src/app.mjs';
-import {BASE,SOLANA,SOLANA_TERMS,SOLANA_ASSET,SOLANA_PAY_TO,billUsage} from '../src/pricing.mjs';
+import {BASE,SOLANA,SOLANA_TERMS,SOLANA_ASSET,SOLANA_PAY_TO,billUsage,publicTerms} from '../src/pricing.mjs';
 import {ENDPOINT,CHANNEL_PROGRAM,ata,selectSolanaOffer,paySolana,validateSolanaSettlement} from '../src/solana-buyer.mjs';
 const feePayer='Hc3sdEAsCGQcpgfivywog9uwtk8gUBUZgsxdME1EJy88',authorizer='9dpHxn3XFZMZv59vE5MKxhfwGUCCgkcCUzYZLpdEm7ox';
 const encode=v=>Buffer.from(JSON.stringify(v)).toString('base64');
@@ -80,7 +80,7 @@ for(const fail of [false,true])test(`public route: Solana deposits before the mo
   const send=h=>fetch(`http://127.0.0.1:${listener.address().port}${ROUTE}`,{method:'POST',headers:{'Content-Type':'application/json',...h},body:JSON.stringify({messages:[{role:'user',content:'Hi'}]})});
   const first=await send({});assert.equal(first.status,402);const q=decode(first.headers.get('payment-required'));
   const p={from:signer.address,channelId:authorizer,maxAmount:'3000',deposit:'3000',nonce:'1',openSlot:'123',openTransaction:'mock',expiresAt:Math.floor(Date.now()/1000)+300,validAfter:Math.floor(Date.now()/1000),authorizedSigner:authorizer};
-  const accepted=q.accepts.find(a=>a.network===SOLANA);assert.equal(accepted.scheme,'upto');assert.deepEqual(accepted.extra.billing,SOLANA_TERMS);
+  const accepted=q.accepts.find(a=>a.network===SOLANA);assert.equal(accepted.scheme,'upto');assert.deepEqual(accepted.extra.billing,publicTerms(SOLANA_TERMS));
   const response=await send({'PAYMENT-SIGNATURE':encode({x402Version:2,resource:q.resource,accepted,payload:p})});
   assert.equal(response.status,fail?503:200);assert.equal(decode(response.headers.get('payment-response')).amount,fail?'0':'2130');assert.deepEqual(settles,[{type:'deposit',amount:'3000'},{type:'claim',amount:fail?'0':'2130'}]);
 });

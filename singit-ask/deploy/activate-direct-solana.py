@@ -183,7 +183,7 @@ def main():
         if any(digest(ROOT / name) != hashes['after'] for name, hashes in MANIFEST.items()):
             raise RuntimeError('Installed source verification failed')
         print('Direct Solana Ask is active. Existing wallet identities preserved.')
-        print('Actual token cost + 30% + 0.001 USDC; no agent SOL funding. No real payment was made.')
+        print('You pay the price shown for the model, metered by what the answer actually used, plus 0.001 USDC; no agent SOL funding. No real payment was made.')
     except BaseException:
         subprocess.run(['sudo', 'systemctl', 'stop', 'sign402-web-api', 'sign402-gateway'], check=False)
         subprocess.run(['systemctl', '--user', 'stop', 'singit-ask'], check=False)

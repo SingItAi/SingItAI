@@ -1,0 +1,12 @@
+{
+  "name": "@singitai/openclaw",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SingIt local proxy provider; NOT the official OpenClaw clawrouter and NOT @blockrun/clawrouter.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "files": ["index.js", "openclaw.plugin.json", "README.md", "LICENSE"],
+  "openclaw": { "extensions": ["./index.js"], "providers": ["singit"] },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}

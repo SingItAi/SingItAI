@@ -160,7 +160,7 @@ test('reviewed default config validation', async () => {
   validateAutoConfig({ ...AUTO_CONFIG, pinnedDefaultFallbacks: { pin: ['unknown'] } });
 });
 
-for (const path of ['/v1/chat/gpt-6-luna', '/v1/messages', '/v1/responses']) test(`reviewed default stays out of ${path}`, async t => {
+for (const path of ['/v1/chat/not-a-model-route', '/v1/messages', '/v1/responses']) test(`reviewed default stays out of ${path}`, async t => {
   const { url, facilitator } = await serve(t, { catalogue: defaultCat() });
   const response = await post(url + path, { ...defaultBody(), input: 'hi' });
   assert.ok([404, 503].includes(response.status));

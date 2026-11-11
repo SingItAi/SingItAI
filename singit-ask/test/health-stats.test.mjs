@@ -344,3 +344,23 @@ test("reasoning degradation threshold is strict and never improves down status",
   for (let i = 0; i < 20; i++) s.recordModel("text", { ok: false });
   assert.equal(s.models().text.status, "down");
 });
+
+test("paid_calls.by_source counts sanitized client labels and ignores junk", () => {
+  const s = new HealthStats({ now: () => Date.UTC(2026, 10, 9, 10, 0) });
+  s.recordSettlement({ route: "/public", network: BASE, ok: true, amount: "1000", payer: "0x" + "b".repeat(40), source: "openclaw" });
+  s.recordSettlement({ route: "/public", network: BASE, ok: true, amount: "1000", payer: "0x" + "c".repeat(40), source: "singit-proxy/0.1.0" });
+  s.recordSettlement({ route: "/public", network: BASE, ok: true, amount: "1000", payer: "0x" + "d".repeat(40), source: "not a label" });
+  s.recordSettlement({ route: "/public", network: BASE, ok: true, amount: "1000", payer: "0x" + "e".repeat(40), source: "codex" });
+  const n = numbersBody(s);
+  assert.equal(n.paid_calls.total, 4);
+  assert.equal(n.paid_calls.by_source.total["codex"], 1);
+  assert.equal(n.paid_calls.by_source.last_24h["codex"], 1);
+  assert.equal(n.paid_calls.by_source.last_7d["codex"], 1);
+  assert.equal(n.paid_calls.by_source.total.openclaw, 1);
+  assert.equal(n.paid_calls.by_source.total["singit-proxy"], 1);
+  assert.equal(n.paid_calls.by_source.total.other, 1);
+  assert.equal(n.paid_calls.by_source.last_7d.continue, 0);
+  assert.ok(!JSON.stringify(n).includes("not a label"));
+  assert.match(n.definitions.paid_calls, /by_source/);
+});
+

@@ -33,14 +33,22 @@ export const MODEL_ROUTES = [
     blurb: "Another GPT-5.6 variant from OpenAI: general-purpose chat, coding and reasoning" },
   { id: "gpt-5.5", name: "GPT-5.5", provider: "OpenAI", family: ["gpt"],
     blurb: "OpenAI's GPT-5.5 model: general-purpose chat, coding and reasoning" },
+  { id: "gpt-6-luna", name: "GPT-6 Luna", provider: "OpenAI", family: ["gpt"],
+    blurb: "One of OpenAI's GPT-6 model variants: general-purpose chat, coding and reasoning" },
   { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro", provider: "Google", family: ["gemini"],
     blurb: "Google's Gemini 3.1 Pro preview model: long-context reasoning and multimodal input" },
   { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", provider: "Google", family: ["gemini"],
     blurb: "Google's fast, lower-cost Gemini model: high-volume or latency-sensitive tasks" },
+  { id: "gemini-4-argon", name: "Gemini 4 Argon", provider: "Google", family: ["gemini"],
+    blurb: "Google's Gemini 4 Argon model: long-context reasoning and multimodal input" },
+  { id: "gemini-4-carbon", name: "Gemini 4 Carbon", provider: "Google", family: ["gemini"],
+    blurb: "Google's Gemini 4 Carbon model: long-context reasoning and multimodal input" },
   { id: "grok-4.7", name: "Grok 4.7", provider: "xAI", family: ["grok"],
     blurb: "xAI's Grok 4.7 model: general-purpose chat and reasoning" },
   { id: "kimi-k3", name: "Kimi K3", provider: "Moonshot AI", family: ["kimi"],
     blurb: "Moonshot AI's Kimi K3 model: long-context chat and reasoning" },
+  { id: "kimi-k3.1-pro", name: "Kimi K3.1 Pro", provider: "Moonshot AI", family: ["kimi"],
+    blurb: "Moonshot AI's Kimi K3.1 Pro model, a different model from Kimi K3: long-context chat, coding and agentic tasks" },
   { id: "deepseek-v4-pro", name: "DeepSeek V4 Pro", provider: "DeepSeek", family: ["deepseek"],
     blurb: "DeepSeek's larger V4 model: coding and reasoning tasks" },
   { id: "deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", provider: "DeepSeek", family: ["deepseek"],
@@ -49,6 +57,8 @@ export const MODEL_ROUTES = [
     blurb: "Alibaba's largest Qwen 3.8 model: coding and reasoning tasks" },
   { id: "glm-5.3", name: "GLM 5.3", provider: "Zhipu AI", family: ["glm"],
     blurb: "Zhipu AI's GLM 5.3 model: general-purpose chat and reasoning" },
+  { id: "minimax-m3", name: "MiniMax M3", provider: "MiniMax", family: ["minimax"],
+    blurb: "MiniMax's M3 model: long-context chat, coding and agentic tasks" },
   { id: "nemotron-3.5-lightning", name: "NVIDIA Nemotron 3.5 Lightning", provider: "NVIDIA", family: ["nemotron"],
     blurb: "NVIDIA's fast 30B mixture-of-experts model: long-context coding and agentic tasks" },
 ];
@@ -125,7 +135,7 @@ export async function modelPriceRange(catalogue, model) {
     ? await catalogue.resolve(model.id).catch(() => null)
     : null;
   if (!info) return null;
-  const size = { chars: LIMITS.chars, maxTokens: LIMITS.maxTokens, messageCount: LIMITS.messages, charsPerToken: 1 };
+  const size = { chars: AGENT_LIMITS.chars, maxTokens: AGENT_LIMITS.maxTokens, messageCount: AGENT_LIMITS.messages, charsPerToken: 1 };
   return { min: usd(TERMS.settlementFeeAtomic), max: usd(ceilingAtomic(info, size, SOLANA_TERMS)) };
 }
 
@@ -134,11 +144,12 @@ export async function modelPriceRange(catalogue, model) {
 // Registered only when there is a catalogue to resolve models against, same gate as addFormatRoutes/addImageRoutes.
 // Pinned routes ignore fallback_models and cannot select singit/auto for min_tier.
 // max_tokens says what it does to the price: the cap a payer signs follows it (so the example's 400 quotes less than a
-// larger value), and anything above LIMITS.maxTokens counts as LIMITS.maxTokens. No dollar figures: they follow the seller market.
-const modelInputSchema = (schema, config = {}) => ({ ...schema, description: probeNote(400, config),
+// larger value), and anything above AGENT_LIMITS.maxTokens counts as AGENT_LIMITS.maxTokens. No dollar figures: they follow the seller market.
+const modelInputSchema = (schema, config = {}) => ({ ...schema,
+  description: probeNote(400, config).replace(`above ${LIMITS.maxTokens} counts as ${LIMITS.maxTokens}`, `above ${AGENT_LIMITS.maxTokens} counts as ${AGENT_LIMITS.maxTokens}`),
   properties: Object.fromEntries(Object.entries(schema.properties).filter(([name]) => !["fallback_models", "min_tier"].includes(name))
     .map(([name, property]) => [name, name !== "max_tokens" ? property : { ...property,
-      description: `The longest answer, in tokens; ${LIMITS.maxTokens} is the most, and a larger value counts as ${LIMITS.maxTokens}. `
+      description: `The longest answer, in tokens; ${AGENT_LIMITS.maxTokens} is the most, and a larger value counts as ${AGENT_LIMITS.maxTokens}. `
         + "The ceiling grows with it (the 402 states the amount to sign for your request); the charge follows what was used." }])),
 });
 
@@ -192,7 +203,7 @@ export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, 
     const own = await modelPriceRange(catalogue, model);
     return [pathFor(model), { post: {
       operationId: prefix + operationId(model), summary: `Generate a ${model.name} chat completion`, description: describe(model),
-      "x-payment-info": { notes: probeNote(400, config), price: { mode: "dynamic", currency: "USD", ...(own ?? fallbackPrice) }, protocols: [{ x402: {} }] },
+      "x-payment-info": { notes: inputSchema.description ?? probeNote(400, config), price: { mode: "dynamic", currency: "USD", ...(own ?? fallbackPrice) }, protocols: [{ x402: {} }] },
       requestBody: { required: true, content: { "application/json": {
         schema: { type: "object", ...schemaOf(inputSchema, model) }, example: modelExample(model) } } },
       responses: {

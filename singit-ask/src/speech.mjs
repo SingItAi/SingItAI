@@ -1,7 +1,7 @@
 import { routeCopy } from "./listing-snapshot.mjs";
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
-// SingIt speech: text read aloud by any of Surplus's voice models, sold over x402 at the model's list price for the
-// text's length + 30% + the network's settlement fee, and made on Surplus with this service's own key.
+// SingIt speech: text read aloud by any of Surplus's voice models, sold over x402 at the price shown for the model
+// for the text's length, plus the network's settlement fee, and made on Surplus with this service's own key.
 //
 // The price follows from the text before the payer is asked (the models are priced per 1000 characters); the
 // payment is verified, Surplus makes the audio, and only then is the payment settled: no audio, no charge. The audio
@@ -113,7 +113,7 @@ export function speechPrice(listAtomic, network) {
            totalAtomic: (list + markup + BigInt(FEES[network])).toString() };
 }
 
-// Keep discovery descriptions within 160 characters, capability first (see app.mjs).
+// Keep discovery descriptions within 500 characters, capability first (see app.mjs).
 const DESCRIPTION = routeCopy("/v1/audio/speech").description;
 
 const INPUT_SCHEMA = { properties: {
@@ -164,7 +164,7 @@ export function addSpeechRoutes(app, config, { facilitatorClient, publicClient, 
       singitUsdPerMinute: Number((m.usdPerUnit * (1 + SPEECH_TERMS.markupBps / 10000)).toFixed(6)) }));
     res.json({ object: "list", endpoint: SPEECH_ROUTE,
       note: "Transcription models are priced here for API-key use and are not payable on /v1/audio/speech over x402.",
-      fees: { markupPct: SPEECH_TERMS.markupBps / 100,
+      fees: {
       perRequestUsd: { [BASE]: Number(TERMS.settlementFeeAtomic) / 1e6, [SOLANA]: Number(SOLANA_TERMS.settlementFeeAtomic) / 1e6 } },
       data: [...speech.sort((a, b) => (a.listUsdPerJob ?? a.listUsdPer1kChars) - (b.listUsdPerJob ?? b.listUsdPer1kChars)),
              ...transcription.sort((a, b) => a.listUsdPerMinute - b.listUsdPerMinute)] });

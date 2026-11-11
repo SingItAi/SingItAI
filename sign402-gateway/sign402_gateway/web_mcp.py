@@ -124,8 +124,11 @@ FREE_NON_IDEMPOTENT = OPEN_WORLD_FREE = frozenset({"chat_free"})
 RECEIPT_KINDS = ("charge", "topup", "refund")
 RECEIPTS_DEFAULT, RECEIPTS_MAX = 10, 50
 # server.PAID_TOOLS entries kept out of MCP: get_sign402_report's upstream is a local demo service
-# (SIGN402_BASE_REPORT_URL, 127.0.0.1:4021) that is not running in production, so it could only fail.
-MCP_HIDDEN_TOOLS = frozenset({"get_sign402_report"})
+# (SIGN402_BASE_REPORT_URL, 127.0.0.1:4021) that is not running in production; get_hyperliquid_market's
+# Otto upstream currently returns 410; get_weather's GoPlausible demo is not on Base mainnet in accepts;
+# get_singit_risk_check's Bankr upstream URL returns 404.
+MCP_HIDDEN_TOOLS = frozenset({"get_sign402_report", "get_hyperliquid_market", "get_weather",
+                              "get_singit_risk_check"})
 # MCP-facing descriptions for server.PAID_TOOLS, by mcpStyleName: what it returns, when to use it, and how it
 # differs from its neighbours (MCP directories score exactly that). The gateway's own descriptions stay as they are.
 PAID_TOOL_DESCRIPTIONS: dict[str, str] = {
@@ -141,8 +144,7 @@ PAID_TOOL_DESCRIPTIONS: dict[str, str] = {
                               "leverage and size rules, from Otto AI. Use for Hyperliquid's own contract details; "
                               "use get_funding_rates to compare venues.",
     "get_funding_rates": "Funding rates for one symbol across exchanges, with open interest, long/short ratio, large "
-                         "positions and liquidations, from Otto AI. Use to compare venues or gauge positioning; use "
-                         "get_hyperliquid_market for one Hyperliquid contract.",
+                         "positions and liquidations, from Otto AI. Use to compare venues or gauge positioning.",
     "resolve_ens": "Turns an ENS name (e.g. vitalik.eth) into its address, or an address into its primary ENS name.",
     "get_token_price": "USD price of a major token by symbol from a paid x402 price API. get_price is free and "
                        "covers the same majors, so prefer it; use this as a second source.",
