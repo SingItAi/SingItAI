@@ -36,6 +36,8 @@ export const RATE_LIMIT_HEADERS = Object.fromEntries(["Limit", "Remaining", "Res
 ]));
 const detail = { type: "object", required: ["type", "message", "code"], properties: {
   type: { type: "string" }, message: { type: "string" }, code: { type: "string", examples: ERROR_CODES },
+  next_action: { type: "object", required: ["type", "field", "minimum"], description: "Present on max_tokens_too_small: the field to raise and a size that has answered such models. Not charged.",
+    properties: { type: { const: "raise_max_tokens" }, field: { enum: ["max_tokens", "max_output_tokens"] }, minimum: { type: "integer" } } },
 } };
 export const ERROR_SCHEMAS = {
   ErrorResponse: { type: "object", required: ["error"], properties: { error: detail } },

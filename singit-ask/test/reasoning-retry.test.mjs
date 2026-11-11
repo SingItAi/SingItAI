@@ -44,7 +44,7 @@ test('no retry when disabled, under eight seconds remain, or a different failure
 });
 
 import { fixture, response, invoke, exhaustedFormat, answeredFormat } from './helpers/reasoning-routes.mjs';
-import { FORMAT_LIMITS } from '../src/formats.mjs';
+import { FORMAT_LIMITS, REASONING_MIN_UPSTREAM_TOKENS } from '../src/formats.mjs';
 import { addFreeRoute } from '../src/free.mjs';
 for (const route of ['/v1/messages', '/v1/responses']) {
   test(`${route}: retry success is delivered with a clamped upto bill`, async () => {
@@ -57,7 +57,8 @@ for (const route of ['/v1/messages', '/v1/responses']) {
     assert.equal(res.statusCode, 200); assert.equal(res.body.retried, true);
     assert.equal(res.body.billing.totalAtomic, '1500'); assert.equal(res.body.billing.overrunAtomic, '6000');
     const field = route === '/v1/messages' ? 'max_tokens' : 'max_output_tokens';
-    assert.equal(bodies[0][field], 288); assert.equal(bodies[1][field], 576);
+    // 32 + 256 headroom = 288 is raised to the minimum reasoning budget (the model is cheap, so the raise stays within the exposure bound); the retry doubles that.
+    assert.equal(bodies[0][field], REASONING_MIN_UPSTREAM_TOKENS); assert.equal(bodies[1][field], retryBudget(REASONING_MIN_UPSTREAM_TOKENS));
   });
   test(`${route}: second exhaustion returns 422 with no settlement override`, async () => {
     let calls = 0;
