@@ -8,10 +8,11 @@ import { loadOrCreateWallet, loadWallet, sessionPath, NETWORK } from "@singitai/
 import { readConfig, assertNetworkAllowed, VERSION } from "./config.js";
 export { VERSION };
 import { withClientHeader, withRetries } from "./headers.js";
+import { responsesToChatCompletions, chatCompletionToResponse } from "./responses.js";
 import { anthropicToChatCompletions, chatCompletionToMessage, estimateTokenCount } from "./anthropic.js";
 import {
   completionToOpenAiSse, messageToAnthropicSse, openaiSseToAnthropicSse,
-  looksLikeSse, ensureOpenAiDone,
+  looksLikeSse, ensureOpenAiDone, responseToSse, openaiSseToResponsesSse, responsesErrorSse,
 } from "./sse.js";
 
 const BODY_LIMIT = 1_000_000;
@@ -86,6 +87,12 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
   const config = given ?? readConfig({ env });
   const limits = { maxPerCallUsd: config.maxPerCallUsd, maxPerDayUsd: config.maxPerDayUsd };
   const tagged = withRetries(withClientHeader(fetchImpl, { client: config.client, version: VERSION }));
+  let catalogPromise;
+  function catalog() {
+    catalogPromise ??= tagged(`${config.askUrl}/v1/models`, { signal: AbortSignal.timeout(5000) })
+      .then(response => response.ok ? response.json() : undefined).catch(() => undefined);
+    return catalogPromise;
+  }
   let singit = null;
   let singitAddress = null;
 
@@ -124,6 +131,12 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
     const contentType = response.headers.get("content-type") || "";
     const text = await response.text();
     if (response.status !== 200) {
+      if (format === "responses") {
+        let message = `Upstream request failed (HTTP ${response.status}).`;
+        try { message = JSON.parse(text)?.error?.message || message; } catch { /* keep safe fallback */ }
+        return streaming ? writeSse(res, responsesErrorSse(message))
+          : json(res, response.status, { error: { type: "api_error", message } });
+      }
       if (format === "anthropic") {
         let message = text;
         try {
@@ -134,6 +147,18 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
       }
       res.writeHead(response.status, { "content-type": contentType || "application/json", ...CORS });
       return res.end(text);
+    }
+
+    if (format === "responses") {
+      if (/text\/event-stream/i.test(contentType) || looksLikeSse(text)) return writeSse(res, openaiSseToResponsesSse(text));
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { parsed = { error: { message: "Upstream returned an unreadable answer." } }; }
+      if (parsed?.error || !Array.isArray(parsed?.choices)) {
+        const message = parsed?.error?.message || "Upstream request failed.";
+        return streaming ? writeSse(res, responsesErrorSse(message)) : json(res, 502, { error: { type: "api_error", message } });
+      }
+      const answer = chatCompletionToResponse(parsed);
+      return streaming ? writeSse(res, responseToSse(answer)) : json(res, 200, answer);
     }
 
     if (format === "openai") {
@@ -170,7 +195,9 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
 
   function paymentCatch(error, format) {
     const message = error?.message || "Request failed.";
-    const status = /HTTP 402/.test(message) ? 402 : 502;
+    // SDK pre-sign refusals are unpayable challenges, not failed model turns.
+    const refused = format === "responses" && /per-call ceiling|Daily spend cap reached|refusing to sign|payment challenge|payment header|offer on|payment asset|payee|facilitator address|timeout window/i.test(message);
+    const status = /HTTP 402/.test(message) || refused ? 402 : 502;
     const wrapped = `${message} ${fundingHint()}`;
     if (format === "anthropic") return { status, body: { type: "error", error: { type: "api_error", message: wrapped } } };
     return { status, body: { error: { message: wrapped, type: status === 402 ? "payment_required" : "proxy_error" } } };
@@ -188,7 +215,7 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
         name: "singit-proxy", version: VERSION, ok: true,
         listen: `http://${config.host}:${config.port}/v1/`,
         upstream: `${config.askUrl}/v1/chat/completions`,
-        routes: ["/v1/chat/completions", "/v1/messages", "/v1/messages/count_tokens"],
+        routes: ["/v1/responses", "/v1/chat/completions", "/v1/messages", "/v1/messages/count_tokens"],
         network: config.network, client: config.client, limits,
         wallet: "GET /wallet",
       });
@@ -235,6 +262,22 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
       catch (error) { return anthropicError(res, error.status || 400, error.message); }
     }
 
+    if (url.pathname === "/v1/responses") {
+      try {
+        // Validate before any upstream I/O.
+        const preview = responsesToChatCompletions(body, { modelMap: config.modelMap });
+        const models = ["auto", "singit/auto"].includes(preview.model) ? await catalog() : undefined;
+        const openaiBody = responsesToChatCompletions(body, { modelMap: config.modelMap, catalog: models });
+        const response = await upstreamChat(payer(), openaiBody);
+        return await sendChatResponse(res, response, { streaming: body.stream === true, format: "responses" });
+      } catch (error) {
+        if (error.status) return json(res, error.status, { error: { type: "invalid_request_error", message: error.message } });
+        const mapped = paymentCatch(error, "responses");
+        if (mapped.status !== 402 && body?.stream === true) return writeSse(res, responsesErrorSse(mapped.body.error.message));
+        return json(res, mapped.status, mapped.body);
+      }
+    }
+
     if (url.pathname === "/v1/messages") {
       try {
         const openaiBody = anthropicToChatCompletions(body ?? {}, { modelMap: config.modelMap });
@@ -251,7 +294,7 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
     if (!routed) {
       return json(res, 404, {
         error: {
-          message: "Not found. This proxy serves OpenAI chat completions at /v1/chat/completions and Anthropic Messages at /v1/messages.",
+          message: "Not found. This proxy serves OpenAI chat completions at /v1/chat/completions and Anthropic Messages at /v1/messages, plus OpenAI Responses at /v1/responses.",
           type: "invalid_request_error",
         },
       });

@@ -1,4 +1,5 @@
-// OpenAI chat-completion SSE and Anthropic Messages SSE helpers.
+// OpenAI chat-completion, Anthropic Messages and Responses SSE helpers.
+import { chatCompletionToResponse } from "./responses.js";
 function frame(data, event) {
   const payload = typeof data === "string" ? data : JSON.stringify(data);
   return `${event ? `event: ${event}\n` : ""}data: ${payload}\n\n`;
@@ -169,4 +170,54 @@ export function openaiSseToAnthropicSse(text) {
   emit(tail, "message_delta");
   emit({ type: "message_stop" }, "message_stop");
   return out;
+}
+
+/** Responses SSE is buffered, with an active item before each delta. */
+export function responseToSse(response) {
+  let sequence = 0;
+  const emit = (type, data) => frame({ type, sequence_number: sequence++, ...data }, type);
+  let out = emit("response.created", { response: { ...response, status: "in_progress", output: [], usage: null } });
+  for (const [output_index, item] of response.output.entries()) {
+    out += emit("response.output_item.added", { output_index, item: { ...item, status: "in_progress", ...(item.type === "message" ? { content: [] } : { arguments: "" }) } });
+    if (item.type === "message") {
+      for (const [content_index, part] of item.content.entries()) {
+        out += emit("response.content_part.added", { output_index, item_id: item.id, content_index, part: { ...part, text: "" } });
+        out += emit("response.output_text.delta", { output_index, item_id: item.id, content_index, delta: part.text });
+        out += emit("response.output_text.done", { output_index, item_id: item.id, content_index, text: part.text });
+        out += emit("response.content_part.done", { output_index, item_id: item.id, content_index, part });
+      }
+    } else out += emit("response.function_call_arguments.delta", { output_index, item_id: item.id, delta: item.arguments });
+    out += emit("response.output_item.done", { output_index, item });
+  }
+  return out + emit("response.completed", { response });
+}
+
+export function responsesErrorSse(message) {
+  return frame({ type: "response.failed", sequence_number: 0, response: { id: "resp_proxy_error", object: "response", status: "failed", error: { code: "upstream_error", message } } }, "response.failed");
+}
+
+export function openaiSseToResponsesSse(text) {
+  const completion = { choices: [{ message: { content: "", tool_calls: [] } }] };
+  const tools = new Map();
+  let hasChoice = false;
+  for (const { data } of parseSseData(text)) {
+    if (!data) continue;
+    if (data.error) return responsesErrorSse(data.error.message || "Upstream request failed.");
+    for (const key of ["id", "model", "created", "usage", "billing"]) if (data[key] != null) completion[key] = data[key];
+    if (data.choices?.length) hasChoice = true;
+    const delta = data.choices?.[0]?.delta;
+    if (!delta) continue;
+    completion.choices[0].message.content += delta.content ?? "";
+    for (const call of delta.tool_calls ?? []) {
+      const index = call.index ?? 0;
+      const accumulated = tools.get(index) ?? { type: "function", function: { name: "", arguments: "" } };
+      if (call.id) accumulated.id = call.id;
+      accumulated.function.name += call.function?.name ?? "";
+      accumulated.function.arguments += call.function?.arguments ?? "";
+      tools.set(index, accumulated);
+    }
+  }
+  if (!hasChoice) return responsesErrorSse("Upstream returned an unreadable stream.");
+  completion.choices[0].message.tool_calls = [...tools.values()];
+  return responseToSse(chatCompletionToResponse(completion));
 }

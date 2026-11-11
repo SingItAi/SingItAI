@@ -260,3 +260,84 @@ test("Solana is refused unless numbers.json reports paid success at or above the
   };
   await assertNetworkAllowed("solana", { askUrl: "https://ask.test", fetchImpl: ok });
 });
+
+test("Responses routes to chat completions with instructions and function outputs", async t => {
+  const { merchant, url } = await listenProxy(t, { merchantOptions: { toolReply: true } });
+  const response = await post(url, { model: "deepseek-v4.1-flash", instructions: "Be brief",
+    input: ["Hi", { type: "function_call", call_id: "old", name: "lookup", arguments: "{}" },
+      { type: "function_call_output", call_id: "old", output: "result" }],
+    tools: [{ type: "function", name: "lookup", parameters: { type: "object" } }],
+  }, "/v1/responses");
+  assert.equal(response.status, 200);
+  const answer = await response.json();
+  assert.equal(answer.output[0].type, "function_call");
+  assert.equal(answer.output[0].name, "lookup");
+  assert.equal(merchant.requests[0].path, "/v1/chat/completions");
+  const request = merchant.requests[0];
+  assert.equal(request.body.messages[0].content, "Be brief");
+  assert.equal(request.body.messages.at(-1).tool_call_id, "old");
+  assert.equal(request.body.tools[0].function.name, "lookup");
+});
+
+test("Responses resolves auto catalog once and synthesizes paid SSE", async t => {
+  const { merchant, url } = await listenProxy(t);
+  for (const model of ["auto", "singit/auto"]) {
+    const response = await post(url, { model, input: ["Hello"], stream: true }, "/v1/responses");
+    assert.equal(response.status, 200);
+    const text = await response.text();
+    assert.match(text, /event: response.created/);
+    assert.match(text, /Hello back\./);
+    assert.ok(text.indexOf("event: response.output_item.added") < text.indexOf("event: response.output_text.delta"));
+    assert.match(text, /event: response.completed/);
+    assert.match(text, /"usage":/);
+  }
+  assert.equal(merchant.requests.filter(item => item.path === "/v1/models").length, 1);
+  for (const request of merchant.requests.filter(item => item.path === "/v1/chat/completions")) assert.equal(request.body.model, "deepseek-v4.1-flash");
+});
+
+test("Responses translates free SSE and refuses unpaid 402 as JSON", async t => {
+  const free = await listenProxy(t, { merchantOptions: { freeSse: true } });
+  const response = await post(free.url, { model: "free/model", input: ["Hi"], stream: true }, "/v1/responses");
+  assert.match(await response.text(), /event: response.completed/);
+  const unpaid = await listenProxy(t, { merchantOptions: { funded: false } });
+  const refused = await post(unpaid.url, { model: "x", input: ["Hi"], stream: true }, "/v1/responses");
+  assert.equal(refused.status, 402);
+  assert.equal((await refused.json()).error.type, "payment_required");
+});
+
+test("Responses catalog failure passes model through; upstream errors fail SSE", async t => {
+  const seen = [];
+  const { url } = await listenProxy(t, { fetchImpl: async (url, options) => {
+    if (String(url).endsWith("/v1/models")) throw new Error("offline");
+    seen.push(JSON.parse(options.body));
+    return new Response('{"error":{"message":"Unavailable"}}', { status: 400 });
+  } });
+  const response = await post(url, { model: "auto", input: ["Hi"], stream: true }, "/v1/responses");
+  const text = await response.text();
+  assert.match(text, /response.failed/);
+  assert.doesNotMatch(text, /response.completed/);
+  assert.equal(seen[0].model, "auto");
+});
+
+test("Responses cap refusal is HTTP 402 JSON, with no signed retry", async t => {
+  const { merchant, url } = await listenProxy(t, { extraEnv: { SINGIT_MAX_PER_CALL_USD: "0.001" } });
+  const response = await post(url, { model: "x", input: ["Hi"], stream: true }, "/v1/responses");
+  assert.equal(response.status, 402);
+  assert.equal((await response.json()).error.type, "payment_required");
+  assert.deepEqual(merchant.requests.map(item => item.status), [402, 402]);
+  assert.ok(merchant.requests.every(item => !item.headers["payment-signature"]));
+});
+
+test("Responses non-stream upstream errors stay JSON; invalid input never reaches Ask", async t => {
+  let calls = 0;
+  const { url } = await listenProxy(t, { fetchImpl: async () => {
+    calls++;
+    return new Response("Unavailable", { status: 503 });
+  } });
+  const invalid = await post(url, { model: "x", stream: true }, "/v1/responses");
+  assert.equal(invalid.status, 400);
+  assert.equal(calls, 0);
+  const response = await post(url, { model: "x", input: ["Hi"] }, "/v1/responses");
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.type, "api_error");
+});

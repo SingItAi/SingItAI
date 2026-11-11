@@ -42,13 +42,14 @@ copied from another product.
 | POST | `/v1/chat/<model>` | Rewritten to `/v1/chat/completions` with that model (so agents get tools and the 8192-token cap). |
 | POST | `/v1/models/<model>/chat` | Same rewrite. |
 | POST | `/v1/messages` | Anthropic Messages API, translated to Ask `/v1/chat/completions` (including `tools` / `tool_use` and `stream: true`). |
+| POST | `/v1/responses` | OpenAI Responses API translated to Ask chat completions, including function calls and Responses SSE. |
 | POST | `/v1/messages/count_tokens` | Local token estimate (`input_tokens`); does not call Ask or pay. |
 
 `stream: true` is accepted. When Ask streams (`text/event-stream`) the proxy passes those SSE chunks
 through (and translates them to Anthropic `message_start` / `content_block_delta` / `message_stop`
-on `/v1/messages`). After a paid settlement the SingIt SDK still requires a JSON invoice with
+on `/v1/messages`, or Responses events on `/v1/responses`). After a paid settlement the SingIt SDK still requires a JSON invoice with
 `billing.totalAtomic`, so the proxy requests `stream: false` from Ask, then emits the correct SSE
-chunks plus `[DONE]` (OpenAI) or the Anthropic event sequence. HTTP 402 is never a successful
+chunks plus `[DONE]` (OpenAI), the Anthropic event sequence, or Responses events ending in `response.completed` with usage. Responses output items are added before text or function argument deltas; streamed errors emit `response.failed`. HTTP 402 is never a successful
 completion or `type: "message"`.
 
 ## Environment and flags
@@ -60,7 +61,7 @@ completion or `type: "message"`.
 | `SINGIT_ASK_URL` / `--ask-url` | `https://ask.singitai.app` | Upstream Ask origin. |
 | `SINGIT_NETWORK` / `--network` | `base` | Payment rail. `solana` is accepted only when Ask's `numbers.json` reports paid success of at least 95%. |
 | `SINGIT_CLIENT` / `--client` | `singit-proxy` | Product label sent as `x-singit-client` (allowlisted short token, for example `openclaw`, `continue` or `codex`). |
-| `SINGIT_MODEL_MAP` | unset | Optional `source=target` pairs (comma-separated) that rewrite Anthropic `model` ids before they are sent to Ask. Unmapped ids are passed through. |
+| `SINGIT_MODEL_MAP` | unset | Optional `source=target` pairs (comma-separated) that rewrite Anthropic and Responses `model` ids before they are sent to Ask. Unmapped ids are passed through. |
 | `SINGIT_MAX_PER_CALL_USD` | `0.01` | Per-call ceiling in USD. Required by the SDK; the proxy will not start without a ceiling. |
 | `SINGIT_MAX_PER_DAY_USD` | `1` | Per-UTC-day ceiling in USD. |
 | `SINGIT_HOME` | `~/.singit` | Directory for the `session` wallet file. |
@@ -98,8 +99,7 @@ models:
 ```
 
 `apiKey` is only a non-empty stub Continue expects; the proxy signs x402 and ignores that value.
-`useResponsesApi: false` keeps the client on `/v1/chat/completions` (this proxy does not serve
-`/responses`). Start the proxy with `--client continue` so Ask records those paid calls under
+`useResponsesApi: false` keeps this Continue configuration on `/v1/chat/completions`. Start the proxy with `--client continue` so Ask records those paid calls under
 `continue`.
 
 A native `provider: singit` in Continue itself would be a separate upstream PR, only after an
@@ -148,3 +148,13 @@ Launcher caps are $0.05/call and $2/day, overridable with `SINGIT_MAX_PER_CALL_U
 The wallet is `~/.singit/session` (or under `SINGIT_HOME`). Only the public address, a Base USDC funding hint, and a terminal QR are printed. Fund with USDC on Base (`eip155:8453`); the facilitator pays gas, no ETH needed. Never print or pass the private key on argv. `SINGIT_WALLET_KEY` is env-only for the proxy and is removed from Claude’s child environment. HTTP 402 is never success.
 
 The intended future installer command `curl -fsSL https://singitai.app/singit-cc-install | bash` is **NOT LIVE**. Today use the repository script above. After publication the script can detect npm availability and install `@singitai/proxy`; checkout runs always use the local package.
+
+## Codex / singit-codex
+
+**Not on npm yet.** The `singit-codex` bin lives in this package and wraps the same `startProxy` and payment path. From the repository root run `bash install/singit-codex-install.sh` (`--dry-run` prints instructions without creating a wallet), then `cd proxy && node src/codex.js start`. Install Codex from https://developers.openai.com/codex; Node 20+ is required.
+
+Use `setup`, `doctor`, `start --no-launch`, `--help`, `--version`, `--client label`, or `start -- ...codex arguments`. Start launches `codex --profile singit`. Setup writes `$CODEX_HOME/singit.config.toml` (default `~/.codex/singit.config.toml`), backing up an existing profile; start writes only when missing. The base `config.toml` is never modified. The profile uses provider `singit`, model `singit/auto`, Responses wire format, and `http://127.0.0.1:8787/v1` with the configured port. Separate profile loading by real Codex remains a manual compatibility check.
+
+The launcher is Base only and requires host `127.0.0.1`. Defaults are $0.05/call, $2/day and client `codex`, with user env overrides. The shared wallet remains `~/.singit/session`; only its public funding data and QR are printed. `SINGIT_WALLET_KEY` is removed from the child environment. Standalone proxy and MCP defaults are unchanged.
+
+Responses translation is stateless and buffered; reasoning and non-chat input items are dropped. Function calls and usage are preserved. Auto models resolve against a cached free catalog; on catalog failure the mapped id passes through. HTTP 402 remains a JSON payment error. See [the Codex guide](../docs/codex.md) for profile, MCP and compatibility limits. The future `curl -fsSL https://singitai.app/singit-codex-install | bash` URL is **NOT LIVE**.
