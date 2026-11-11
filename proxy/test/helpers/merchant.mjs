@@ -50,7 +50,7 @@ async function verifyUpto(payment) {
   return { ok, payer: auth.from };
 }
 
-export function startMerchant({ offer, funded = true, acceptBearer } = {}) {
+export function startMerchant({ offer, funded = true, acceptBearer, freeSse = false, toolReply = false } = {}) {
   const requests = [];
   let resourceUrl;
   const server = http.createServer(async (req, res) => {
@@ -76,6 +76,21 @@ export function startMerchant({ offer, funded = true, acceptBearer } = {}) {
     if (acceptBearer && req.headers.authorization === `Bearer ${acceptBearer}`) return reply(200, completion({}));
     const paymentHeader = req.headers["payment-signature"];
     if (!paymentHeader) {
+      if (freeSse && body?.stream === true) {
+        entry.status = 200;
+        const chunk = (delta, finish = null) => JSON.stringify({
+          id: "singit-ask-mock-1", object: "chat.completion.chunk", created: 0, model: body.model,
+          choices: [{ index: 0, delta, finish_reason: finish }],
+        });
+        const sse = [
+          `data: ${chunk({ role: "assistant", content: "Hel" })}`,
+          `data: ${chunk({ content: "lo" })}`,
+          `data: ${chunk({}, "stop")}`,
+          "data: [DONE]",
+        ].join("\n\n") + "\n\n";
+        res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8" });
+        return res.end(sse);
+      }
       return reply(402, { error: "Payment required." },
         { "PAYMENT-REQUIRED": encode({ x402Version: 2, resource: { url: resourceUrl }, accepts: [offer] }) });
     }
@@ -84,9 +99,25 @@ export function startMerchant({ offer, funded = true, acceptBearer } = {}) {
     entry.payer = payer ?? null;
     if (!ok || !funded) return reply(402, { error: "Payment refused." });
     const billed = (BigInt(payment.accepted.amount) / 2n).toString();
-    return reply(200, completion({ billing: { totalAtomic: billed } }), {
+    const paidHeaders = {
       "payment-response": encode({ success: true, network: payment.accepted.network, payer, transaction: `0x${"ab".repeat(32)}` }),
-    });
+    };
+    if (toolReply && Array.isArray(body.tools) && body.tools.length) {
+      const name = body.tools[0].function?.name ?? "lookup";
+      return reply(200, {
+        id: "singit-ask-mock-1", object: "chat.completion", created: 0, model: body.model,
+        choices: [{
+          index: 0,
+          message: {
+            role: "assistant", content: null,
+            tool_calls: [{ id: "call_1", type: "function", function: { name, arguments: "{\"q\":\"hi\"}" } }],
+          },
+          finish_reason: "tool_calls",
+        }],
+        billing: { totalAtomic: billed },
+      }, paidHeaders);
+    }
+    return reply(200, completion({ billing: { totalAtomic: billed } }), paidHeaders);
   });
   return new Promise(resolve => {
     server.listen(0, "127.0.0.1", () => {

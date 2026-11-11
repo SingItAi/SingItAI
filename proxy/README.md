@@ -1,10 +1,12 @@
 # @singitai/proxy
 
 A local [OpenAI-compatible](https://platform.openai.com/docs/api-reference/chat) proxy for
-[SingIt Ask](https://ask.singitai.app). Point Cursor, Continue, OpenClaw or any client that takes a
-`baseURL` at this process. It needs no API key: on first start it creates a wallet on your machine
-(the same `~/.singit/session` file as `@singitai/mcp`) and pays each chat call in USDC on Base over
-x402, inside per-call and per-day limits you control.
+[SingIt Ask](https://ask.singitai.app). Point Cursor, Continue, OpenClaw, Codex or any client that
+takes a `baseURL` at this process. The same process also speaks the Anthropic Messages API at
+`/v1/messages` (Claude Code can set `ANTHROPIC_BASE_URL=http://127.0.0.1:8787`) by translating those
+calls to Ask's `/v1/chat/completions`. It needs no API key: on first start it creates a wallet on
+your machine (the same `~/.singit/session` file as `@singitai/mcp`) and pays each chat call in USDC
+on Base over x402, inside per-call and per-day limits you control.
 
 > **Not on npm yet.** Publishing `@singitai/proxy` is a separate step that has not happened. Until it
 > does, `npx @singitai/proxy` will not resolve; use [Run from this repo](#run-from-this-repo).
@@ -36,12 +38,18 @@ copied from another product.
 | GET | `/` or `/health` | Process status (no wallet address, no keys). |
 | GET or POST | `/wallet` | Public address, Base network and a funding hint. Never returns the private key. |
 | GET | `/v1/models` | The upstream catalogue (free). |
-| POST | `/v1/chat/completions` | Paid chat, including `tools`. |
+| POST | `/v1/chat/completions` | Paid chat, including `tools` and `stream: true`. |
 | POST | `/v1/chat/<model>` | Rewritten to `/v1/chat/completions` with that model (so agents get tools and the 8192-token cap). |
 | POST | `/v1/models/<model>/chat` | Same rewrite. |
+| POST | `/v1/messages` | Anthropic Messages API, translated to Ask `/v1/chat/completions` (including `tools` / `tool_use` and `stream: true`). |
+| POST | `/v1/messages/count_tokens` | Local token estimate (`input_tokens`); does not call Ask or pay. |
 
-JSON answers only: `stream: true` is rejected. The billed amount is read from the JSON invoice after
-settlement.
+`stream: true` is accepted. When Ask streams (`text/event-stream`) the proxy passes those SSE chunks
+through (and translates them to Anthropic `message_start` / `content_block_delta` / `message_stop`
+on `/v1/messages`). After a paid settlement the SingIt SDK still requires a JSON invoice with
+`billing.totalAtomic`, so the proxy requests `stream: false` from Ask, then emits the correct SSE
+chunks plus `[DONE]` (OpenAI) or the Anthropic event sequence. HTTP 402 is never a successful
+completion or `type: "message"`.
 
 ## Environment and flags
 
@@ -51,7 +59,8 @@ settlement.
 | `SINGIT_PROXY_HOST` / `--host` | `127.0.0.1` | Listen host (loopback by default). |
 | `SINGIT_ASK_URL` / `--ask-url` | `https://ask.singitai.app` | Upstream Ask origin. |
 | `SINGIT_NETWORK` / `--network` | `base` | Payment rail. `solana` is accepted only when Ask's `numbers.json` reports paid success of at least 95%. |
-| `SINGIT_CLIENT` / `--client` | `singit-proxy` | Product label sent as `x-singit-client` (allowlisted short token, for example `openclaw` or `continue`). |
+| `SINGIT_CLIENT` / `--client` | `singit-proxy` | Product label sent as `x-singit-client` (allowlisted short token, for example `openclaw`, `continue` or `codex`). |
+| `SINGIT_MODEL_MAP` | unset | Optional `source=target` pairs (comma-separated) that rewrite Anthropic `model` ids before they are sent to Ask. Unmapped ids are passed through. |
 | `SINGIT_MAX_PER_CALL_USD` | `0.01` | Per-call ceiling in USD. Required by the SDK; the proxy will not start without a ceiling. |
 | `SINGIT_MAX_PER_DAY_USD` | `1` | Per-UTC-day ceiling in USD. |
 | `SINGIT_HOME` | `~/.singit` | Directory for the `session` wallet file. |

@@ -72,6 +72,7 @@ test('traffic fixed sources, windows, persistence, old and invalid files', () =>
     for (const [ua, label] of [['openai-python/1.0', 'openai-python'], ['openai-node/6', 'openai-node'], ['curl/8', 'curl'], ['Mozilla/5.0', 'browser'], ['private secret', 'other']]) { assert.equal(clientSource(req(ua)), label); stats.recordAgent(req(ua)); }
     assert.equal(clientSource(req('curl/8', 'BAD secret')), 'other'); assert.equal(clientSource(req('curl/8', 'cursor')), 'cursor');
     assert.equal(clientSource(req('curl/8', 'singit-proxy/0.1.0')), 'singit-proxy'); assert.equal(clientSource(req('curl/8', 'singit-mcp')), 'singit-mcp');
+    assert.equal(clientSource(req('curl/8', 'codex')), 'codex');
     stats.flush(); assert.ok(!readFileSync(file, 'utf8').includes('private secret'));
     const loaded = new HealthStats({ file, now: () => now }); assert.equal(numbersBody(loaded).agent_traffic.total.with_images, 5);
     now += 8 * 86400000; assert.equal(numbersBody(loaded).agent_traffic.last_7d.calls, 0);
