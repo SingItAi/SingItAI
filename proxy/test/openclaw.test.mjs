@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { main, installerEnv, openclawEnv, profilePath, writeProfile } from "../src/openclaw.js";
+import { main, installerEnv, openclawEnv, profilePath, writeProfile, uninstallProfile } from "../src/openclaw.js";
 import { readConfig } from "../src/config.js";
 import { startProxy } from "../src/server.js";
 import { terminalQr } from "../src/qr.js";
@@ -91,8 +91,10 @@ test("installer dry run creates no wallet", t => {
   const script = fileURLToPath(new URL("../../install/singit-openclaw-install.sh", import.meta.url));
   const result = spawnSync("bash", [script, "--dry-run"], { env, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Not on npm yet/);
-  assert.match(result.stdout, /cd proxy && npm install && node src\/openclaw.js setup/);
+  assert.match(result.stdout, /Install: npm i -g @singitai\/proxy/);
+  assert.doesNotMatch(result.stdout, /NOT LIVE|Not on npm/);
+  const checkout = spawnSync("bash", [script, "--dry-run"], { env: { ...env, SINGIT_OPENCLAW_FROM: "checkout" }, encoding: "utf8" });
+  assert.match(checkout.stdout, /cd proxy && npm install && node src\/openclaw.js setup/);
   assert.equal(existsSync(env.SINGIT_HOME), false);
 });
 
@@ -238,4 +240,71 @@ test("a failed atomic config replacement restores the original and leaves no tem
   const files = readdirSync(path.dirname(file));
   assert.ok(files.some(name => name.endsWith(".bak")));
   assert.ok(!files.some(name => name.endsWith(".tmp")));
+});
+
+const clawFile = env => path.join(env.HOME, ".openclaw", "openclaw.json");
+
+test("uninstall restores the newest non-SingIt backup and leaves the wallet", async t => {
+  const { home, env } = fixture(t);
+  mkdirSync(path.dirname(clawFile(env)));
+  const user = { agents: { defaults: { model: { primary: "anthropic/x" } } }, models: { providers: { other: { baseUrl: "http://o" } } } };
+  writeFileSync(clawFile(env), JSON.stringify(user));
+  await main(["setup", "--default-model"], { env, stdout: capture() });
+  await main(["setup"], { env, stdout: capture() });
+  const session = readFileSync(path.join(env.SINGIT_HOME, "session"), "utf8");
+  const stdout = capture();
+  await main(["uninstall"], { env, stdout });
+  assert.deepEqual(JSON.parse(readFileSync(clawFile(env), "utf8")), user);
+  assert.equal(readFileSync(path.join(env.SINGIT_HOME, "session"), "utf8"), session);
+  assert.ok(!stdout.text.includes(JSON.parse(session).privateKey));
+  assert.equal(existsSync(path.join(home, ".claude/settings.json")), false);
+});
+
+test("uninstall without a backup removes only SingIt entries", async t => {
+  const { env } = fixture(t);
+  mkdirSync(path.dirname(clawFile(env)));
+  writeFileSync(clawFile(env), "{}");
+  await main(["setup", "--default-model"], { env, stdout: capture() });
+  // Drop the backup setup made so the no-backup path runs against a SingIt-edited file.
+  for (const name of readdirSync(path.dirname(clawFile(env)))) if (name.endsWith(".bak")) rmSync(path.join(path.dirname(clawFile(env)), name));
+  const data = JSON.parse(readFileSync(clawFile(env), "utf8"));
+  data.models.providers.other = { baseUrl: "http://o" };
+  data.mcp.servers.mine = { url: "http://m" };
+  data.agents.defaults.model.primary = "singit/auto";
+  writeFileSync(clawFile(env), JSON.stringify(data));
+  await main(["uninstall"], { env, stdout: capture() });
+  assert.deepEqual(JSON.parse(readFileSync(clawFile(env), "utf8")), {
+    models: { mode: "merge", providers: { other: { baseUrl: "http://o" } } },
+    mcp: { servers: { mine: { url: "http://m" } } },
+  });
+});
+
+test("uninstall deletes a file we created from scratch and keeps the wallet", async t => {
+  const { env } = fixture(t);
+  await main(["setup"], { env, stdout: capture() });
+  assert.equal(existsSync(clawFile(env)), true);
+  await main(["uninstall"], { env, stdout: capture() });
+  assert.equal(existsSync(clawFile(env)), false);
+  assert.equal(existsSync(path.join(env.SINGIT_HOME, "session")), true);
+  const again = capture();
+  await main(["uninstall"], { env, stdout: again });
+  assert.match(again.text, /nothing to do/);
+});
+
+test("uninstall rejects invalid JSON without changing the file", async t => {
+  const { env } = fixture(t);
+  mkdirSync(path.dirname(clawFile(env)));
+  writeFileSync(clawFile(env), "{ not json");
+  await assert.rejects(main(["uninstall"], { env, stdout: capture() }), /not valid JSON/);
+  assert.equal(readFileSync(clawFile(env), "utf8"), "{ not json");
+});
+
+test("a failed uninstall write keeps the original and leaves no temporary file", async t => {
+  const { env } = fixture(t);
+  mkdirSync(path.dirname(clawFile(env)));
+  const body = JSON.stringify({ models: { providers: { singit: {}, other: {} } } });
+  writeFileSync(clawFile(env), body);
+  assert.throws(() => uninstallProfile(env, { renameImpl: () => { throw new Error("rename failed"); } }), /rename failed/);
+  assert.equal(readFileSync(clawFile(env), "utf8"), body);
+  assert.deepEqual(readdirSync(path.dirname(clawFile(env))), ["openclaw.json"]);
 });

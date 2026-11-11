@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -117,8 +117,10 @@ test("installer dry run creates no wallet", t => {
   const script = fileURLToPath(new URL("../../install/singit-cc-install.sh", import.meta.url));
   const result = spawnSync("bash", [script, "--dry-run"], { env, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Not on npm yet/);
-  assert.match(result.stdout, /cd proxy && npm install && node src\/cc.js setup/);
+  assert.match(result.stdout, /Install: npm i -g @singitai\/proxy/);
+  assert.doesNotMatch(result.stdout, /NOT LIVE|Not on npm/);
+  const checkout = spawnSync("bash", [script, "--dry-run"], { env: { ...env, SINGIT_CC_FROM: "checkout" }, encoding: "utf8" });
+  assert.match(checkout.stdout, /cd proxy && npm install && node src\/cc.js setup/);
   assert.equal(existsSync(env.SINGIT_HOME), false);
 });
 
@@ -174,4 +176,72 @@ test("SIGINT and SIGTERM close no-launch proxy and remove signal handlers", asyn
     assert.equal(server.listening, false);
     assert.equal(process.listenerCount(signal), initial);
   }
+});
+
+test("uninstall leaves Claude settings and the wallet alone", async t => {
+  const { home, env } = fixture(t);
+  await main(["setup"], { env, stdout: capture() });
+  const session = path.join(env.SINGIT_HOME, "session");
+  const original = readFileSync(session, "utf8");
+  const stdout = capture();
+  await main(["uninstall"], { env, stdout });
+  assert.match(stdout.text, /Claude settings were not changed/);
+  assert.match(stdout.text, /wallet.*left in place/);
+  assert.equal(readFileSync(session, "utf8"), original);
+  assert.ok(!stdout.text.includes(JSON.parse(original).privateKey));
+  assert.equal(existsSync(path.join(home, ".claude/settings.json")), false);
+  assert.equal(existsSync(path.join(home, ".claude.json")), false);
+});
+
+// Fake npm/singit-cc on PATH record what the curl installer would do.
+function fakeInstallerEnv(home, env, { viewFails = false } = {}) {
+  const bin = path.join(home, "fakebin");
+  mkdirSync(bin);
+  const log = path.join(home, "calls.log");
+  writeFileSync(path.join(bin, "npm"), `#!/bin/bash\necho "npm $*" >> "${log}"\n[ "$1" = view ] && ${viewFails ? "exit 1" : "echo 0.1.0"}\n[ "$1 $2" = "prefix -g" ] && echo "${home}/g"\nexit 0\n`, { mode: 0o755 });
+  writeFileSync(path.join(bin, "singit-cc"), `#!/bin/bash\necho "singit-cc $* caps=$SINGIT_MAX_PER_CALL_USD/$SINGIT_MAX_PER_DAY_USD" >> "${log}"\n`, { mode: 0o755 });
+  return { env: { ...env, PATH: `${bin}:${env.PATH}` }, log };
+}
+const installer = fileURLToPath(new URL("../../website/singit-cc-install", import.meta.url));
+
+test("installer installs from npm by default and applies caps only when unset", t => {
+  const { home, env } = fixture(t);
+  const fake = fakeInstallerEnv(home, env);
+  const result = spawnSync("bash", [installer, "--skip-claude"], { env: { ...fake.env, SINGIT_MAX_PER_DAY_USD: "4" }, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = readFileSync(fake.log, "utf8");
+  assert.match(calls, /npm i -g @singitai\/proxy\n/);
+  assert.match(calls, /singit-cc setup caps=0.05\/4/);
+});
+
+test("installer honours SINGIT_PROXY_TARBALL and never defaults to a nearby checkout", t => {
+  const { home, env } = fixture(t);
+  const fake = fakeInstallerEnv(home, env);
+  const tgz = path.join(home, "singitai-proxy-0.1.0.tgz");
+  writeFileSync(tgz, "");
+  const result = spawnSync("bash", [installer, "--skip-claude"], { env: { ...fake.env, SINGIT_PROXY_TARBALL: tgz }, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stderr);
+  const calls = readFileSync(fake.log, "utf8");
+  assert.ok(calls.includes(`npm i -g ${tgz}\n`));
+  assert.doesNotMatch(calls, /npm view|npm install/);
+  const missing = spawnSync("bash", [installer], { env: { ...fake.env, SINGIT_PROXY_TARBALL: path.join(home, "nope.tgz") }, encoding: "utf8" });
+  assert.notEqual(missing.status, 0);
+});
+
+test("installer exits non-zero with the tarball hint when the package is not on npm", t => {
+  const { home, env } = fixture(t);
+  const fake = fakeInstallerEnv(home, env, { viewFails: true });
+  const result = spawnSync("bash", [installer, "--skip-claude"], { env: fake.env, encoding: "utf8" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /not on npm yet.*SINGIT_PROXY_TARBALL/);
+  assert.doesNotMatch(readFileSync(fake.log, "utf8"), /npm i -g/);
+  assert.equal(existsSync(env.SINGIT_HOME), false);
+});
+
+test("a symlinked bin (npm i -g) still runs the launcher", t => {
+  const { home } = fixture(t);
+  const link = path.join(home, "singit-cc");
+  symlinkSync(fileURLToPath(new URL("../src/cc.js", import.meta.url)), link);
+  const result = spawnSync(process.execPath, [link, "--help"], { encoding: "utf8" });
+  assert.match(result.stdout, /Usage: singit-cc/);
 });

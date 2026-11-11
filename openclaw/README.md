@@ -1,8 +1,8 @@
 # SingIt OpenClaw provider
 
-Not on npm yet. This repository-only package is not the official OpenClaw `clawrouter` and is not `@blockrun/clawrouter`. It registers only `singit` and never enables or changes the bundled provider.
+This repository-only package (`@singitai/openclaw`, not published) is not the official OpenClaw `clawrouter` and is not `@blockrun/clawrouter`. It registers only `singit` and never enables or changes the bundled provider.
 
-Use the local `singit-openclaw` launcher and config merge described in [the setup guide](../docs/openclaw.md). This plugin only describes models; the existing `@singitai/proxy` handles inference at `http://127.0.0.1:8787/v1`. It holds no wallet. Set `SINGIT_PROXY_PORT` for a different local port, or configure `models.providers.singit.baseUrl` in OpenClaw. Auth is `none` in the provider config; the registration has no interactive auth methods. Dynamic model preparation reads the local catalog; synchronous resolution passes unknown IDs through. Auto/free aliases also resolve in the proxy.
+Install with `curl -fsSL https://singitai.app/singit-openclaw-install | bash` (live after merge, Pages deploy and the `@singitai/proxy` npm publish; tarball and checkout alternatives are in [the setup guide](../docs/openclaw.md)), and roll back with `singit-openclaw uninstall` (restores the newest `openclaw.json` backup or removes only the SingIt entries; the wallet is kept). The launcher and config merge are described in [the setup guide](../docs/openclaw.md). This plugin only describes models; the existing `@singitai/proxy` handles inference at `http://127.0.0.1:8787/v1`. It holds no wallet. Set `SINGIT_PROXY_PORT` for a different local port, or configure `models.providers.singit.baseUrl` in OpenClaw. Auth is `none` in the provider config; the registration has no interactive auth methods. Dynamic model preparation reads the local catalog; synchronous resolution passes unknown IDs through. Auto/free aliases also resolve in the proxy.
 
 The zero cost metadata is a routing placeholder, not a promise of free paid models. Paid service usage is capped by the proxy.
 

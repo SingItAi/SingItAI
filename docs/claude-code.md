@@ -1,25 +1,41 @@
 # Claude Code with singit-cc
 
-**Not on npm yet.** `singit-cc` is a thin launcher in the existing `@singitai/proxy` package. It starts that same proxy process; all payments stay there. It supports Base only.
+`singit-cc` is a thin launcher in the existing `@singitai/proxy` package. It starts that same proxy process (127.0.0.1:8787); all payments stay there. It supports Base only.
 
-From the repository checkout:
+## Install
 
-```sh
-bash install/singit-cc-install.sh --dry-run
-bash install/singit-cc-install.sh
-cd proxy
-node src/cc.js start
-# Forward arguments to Claude:
-node src/cc.js start -- -p "say hi"
-```
-
-The installer requires Node 20+. Install Claude Code using the official installer at https://claude.ai/install.sh. `--skip-claude` skips its installer hint. `node src/cc.js setup` creates/reuses the wallet without starting a server; `doctor` checks local prerequisites. `start --no-launch` runs just the proxy. SIGINT/SIGTERM stop the launcher’s child and proxy.
-
-The intended future command is **NOT LIVE**:
+Production command (live once this change is merged and Cloudflare Pages has deployed, and `@singitai/proxy` has been published to npm, which needs a separate OK):
 
 ```sh
 curl -fsSL https://singitai.app/singit-cc-install | bash
 ```
+
+It runs `npm i -g @singitai/proxy` and then `singit-cc setup`. Node 20+ is required. Options: `--dry-run` (prints the plan; no install, no wallet, no client config), `--skip-claude` (skip the Claude Code installer hint). If the package is not on npm yet the script exits non-zero and says so.
+
+Test before publish: build tarballs with `scripts/pack-harness-release.sh <dir>` and install one with `SINGIT_PROXY_TARBALL=<dir>/singitai-proxy-0.1.0.tgz bash install/singit-cc-install.sh` (or pipe the website script through `bash`). The tarball bundles the SDK and session wallet, so it installs on a machine without the repo.
+
+Developer escape hatch: `SINGIT_CC_FROM=checkout bash install/singit-cc-install.sh` runs `cd proxy && npm install && node src/cc.js setup` from the checkout. It is never the default.
+
+The installer exports `SINGIT_MAX_PER_CALL_USD=0.05` and `SINGIT_MAX_PER_DAY_USD=2` for its `setup` run only when those variables are unset; the launcher applies the same caps whenever you start it. The package defaults stay $0.01/call and $1/day.
+
+Then:
+
+```sh
+singit-cc start
+# Forward arguments to Claude:
+singit-cc start -- -p "say hi"
+```
+
+Install Claude Code using the official installer at https://claude.ai/install.sh. `singit-cc setup` creates/reuses the wallet without starting a server; `doctor` checks local prerequisites. `start --no-launch` runs just the proxy. SIGINT/SIGTERM stop the launcher’s child and proxy.
+
+## Uninstall and rollback
+
+```sh
+singit-cc uninstall            # nothing to revert; says so
+npm uninstall -g @singitai/proxy   # optional, removes the package
+```
+
+`singit-cc` never writes `~/.claude/settings.json` or `~/.claude.json`; it only sets environment variables for the Claude child process. So there is no backup to restore and `uninstall` changes no file. It does not run `npm uninstall` itself. The wallet in `~/.singit/session` is never removed; delete it by hand only after moving any USDC out.
 
 The launcher uses port 8787 by default (`SINGIT_PROXY_PORT` overrides it). Claude receives `ANTHROPIC_BASE_URL=http://127.0.0.1:8787`, without `/api`, and dummy `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` values of `singit-proxy-handles-auth`. Inherited Anthropic credentials and `CLAUDE_CODE_OAUTH*` variables are removed from the child environment. Start and setup do not write global Claude settings.
 

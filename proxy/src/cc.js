@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
-import { constants, copyFileSync, existsSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { constants, copyFileSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { isMain } from "./is-main.js";
 import { loadOrCreateWallet, sessionPath } from "@singitai/session-wallet";
 import { startProxy, VERSION } from "./server.js";
 import { readConfig } from "./config.js";
@@ -42,6 +43,20 @@ export function restoreClaudeSettings(backup, file) {
   if (backup) copyFileSync(backup, file);
 }
 
+// Newest timestamped backup of `file` that is not itself a SingIt profile (a
+// repeated setup backs up our own earlier profile; restoring that undoes nothing).
+export function newestBackup(file, isOurs) {
+  const dir = path.dirname(file);
+  const prefix = `${path.basename(file)}.`;
+  if (!existsSync(dir)) return null;
+  const found = readdirSync(dir)
+    .map(name => ({ name, ts: name.startsWith(prefix) && name.endsWith(".bak") ? name.slice(prefix.length, -4) : "" }))
+    .filter(({ ts }) => /^\d+$/.test(ts))
+    .sort((a, b) => Number(b.ts) - Number(a.ts))
+    .map(({ name }) => path.join(dir, name))
+    .find(backup => !isOurs(readFileSync(backup, "utf8")));
+  return found ?? null;
+}
 export function printWallet(env, stdout = process.stdout) {
   const { address } = loadOrCreateWallet(env);
   stdout.write(`${address}\nTop up with USDC on Base (eip155:8453). The facilitator pays gas; no ETH needed.\n${terminalQr(address)}`);
@@ -57,11 +72,16 @@ export async function main(argv = process.argv.slice(2), { env = process.env, st
   const forwarded = split < 0 ? [] : argv.slice(split + 1);
   const command = options[0]?.startsWith("-") ? "start" : (options[0] || "start");
   if (options.includes("--help")) {
-    stdout.write("Usage: singit-cc [start|setup|doctor] [--no-launch] [--client label] [-- ...claude arguments]\nNot on npm yet. Uses the existing @singitai/proxy; Base only.\n");
+    stdout.write("Usage: singit-cc [start|setup|doctor|uninstall] [--no-launch] [--client label] [-- ...claude arguments]\nUses the one @singitai/proxy on 127.0.0.1:8787; Base only.\nuninstall: Claude settings were never written, so nothing is reverted; the wallet in ~/.singit/session is kept.\nTo remove the package too: npm uninstall -g @singitai/proxy\n");
     return;
   }
   if (options.includes("--version")) { stdout.write(`${VERSION}\n`); return; }
-  if (!["start", "setup", "doctor"].includes(command)) throw new Error("Unknown command. Use --help.");
+  if (!["start", "setup", "doctor", "uninstall"].includes(command)) throw new Error("Unknown command. Use --help.");
+  if (command === "uninstall") {
+    // Nothing to roll back: we never write ~/.claude/settings.json or ~/.claude.json.
+    stdout.write("Global Claude settings were not changed (singit-cc never writes them).\nThe wallet in ~/.singit/session was left in place.\nTo remove the package: npm uninstall -g @singitai/proxy\n");
+    return;
+  }
   const configured = installerEnv(env);
   const clientIndex = options.indexOf("--client");
   if (clientIndex >= 0) {
@@ -118,7 +138,7 @@ export async function main(argv = process.argv.slice(2), { env = process.env, st
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   main().catch(() => {
     // Upstream errors can contain sensitive configuration; never echo them.
     process.stderr.write("singit-cc could not start. Check Node 20+, Base configuration, port, and wallet permissions; use --help.\n");
