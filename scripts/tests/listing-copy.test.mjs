@@ -82,7 +82,7 @@ test('default discovery preserves base URLs plus D4 model aliases and shares des
   assert.doesNotMatch(llms, /video|music|sound.effects/i);
   assert.match(llms, /transcription is API-key only/);
   const openapi = await (await request(url + '/openapi.json')).json();
-  const expected = 30 + aliasPaths().length;
+  const expected = 31 + aliasPaths().length;
   assert.equal(discovery.resources.length, expected);
   assert.equal(discovery.resourceDetails.length, expected);
   assert.doesNotMatch(JSON.stringify(openapi), /video|music|sound.effects/i);

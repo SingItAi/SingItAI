@@ -2375,6 +2375,50 @@
       }
     },
     {
+      "id": "gemini-4-carbon",
+      "name": "Google: Gemini 4 Carbon",
+      "owned_by": "Google",
+      "contextLength": 1048576,
+      "tags": [
+        "vision",
+        "reasoning",
+        "audio"
+      ],
+      "usdPerMillionTokens": {
+        "input": 2,
+        "output": 10
+      },
+      "singitUsdPerMillionTokens": {
+        "input": 0.49400000000000005,
+        "output": 2.47
+      },
+      "expectedUsdPerMillionTokens": {
+        "basis": "trusted",
+        "n": 0,
+        "window": 20
+      },
+      "upto": {
+        "base": {
+          "priceAtomic": "3764",
+          "usd": 0.003764
+        },
+        "solana": {
+          "priceAtomic": "4764",
+          "usd": 0.004764
+        }
+      },
+      "exact": {
+        "base": {
+          "ceilingAtomic": "2151",
+          "usd": 0.002151
+        },
+        "solana": {
+          "ceilingAtomic": "3151",
+          "usd": 0.003151
+        }
+      }
+    },
+    {
       "id": "gemma-3-12b-it",
       "name": "Gemma 3 12B IT",
       "owned_by": "Google",

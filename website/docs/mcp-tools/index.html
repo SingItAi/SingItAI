@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SingIt MCP tools reference: 17 tools | SingIt</title>
+<title>SingIt MCP tools reference: 16 tools | SingIt</title>
 <meta name="description" content="Full parameters, allowed values, scopes, networks and annotation hints for all 19 SingIt MCP tools, with key requirements and spending limits.">
 <link rel="canonical" href="https://singitai.app/docs/mcp-tools/">
-<meta property="og:title" content="SingIt MCP tools reference: 17 tools | SingIt">
+<meta property="og:title" content="SingIt MCP tools reference: 16 tools | SingIt">
 <meta property="og:description" content="Full parameters, allowed values, scopes, networks and annotation hints for all 19 SingIt MCP tools, with key requirements and spending limits.">
 <meta property="og:url" content="https://singitai.app/docs/mcp-tools/">
 <meta property="og:image" content="https://singitai.app/assets/singit-social-preview-v3.png">
@@ -28,7 +28,7 @@
       "@type": "WebPage",
       "@id": "https://singitai.app/docs/mcp-tools/#webpage",
       "url": "https://singitai.app/docs/mcp-tools/",
-      "name": "SingIt MCP tools reference: 17 tools | SingIt",
+      "name": "SingIt MCP tools reference: 16 tools | SingIt",
       "description": "Full parameters, allowed values, scopes, networks and annotation hints for all 19 SingIt MCP tools, with key requirements and spending limits.",
       "inLanguage": "en",
       "breadcrumb": {
@@ -111,7 +111,7 @@
 
 <main id="top">
 <section class="lp-section" id="overview"><div class="shell"><h1 class="section-title">SingIt MCP tools reference</h1>
-<p class="lp-text">All 17 tools at <a href="https://app.singitai.app/mcp">https://app.singitai.app/mcp</a>: remote Streamable HTTP, JSON only. See <a href="/docs/mcp/">MCP setup</a> and <a href="/docs/mcp-key/">get a key</a>.</p>
+<p class="lp-text">All 16 tools at <a href="https://app.singitai.app/mcp">https://app.singitai.app/mcp</a>: remote Streamable HTTP, JSON only. See <a href="/docs/mcp/">MCP setup</a> and <a href="/docs/mcp-key/">get a key</a>.</p>
 <!-- generated:mcp-tools-overview:start -->
 <div class="table-wrap"><table class="mtable">
 <caption>Tool groups</caption>
@@ -121,12 +121,12 @@
 <tr><th scope="row">Chat, paid per call, no extra scope, USDC on Base or Solana</th><td><a href="#chat"><code>chat</code></a></td><td>Yes; paid</td><td>No extra scope</td><td>USDC on Base or Solana</td></tr>
 <tr><th scope="row">Your account, free and read-only, needs a key</th><td><a href="#get_balance"><code>get_balance</code></a>, <a href="#get_limits"><code>get_limits</code></a>, <a href="#get_allowance"><code>get_allowance</code></a>, <a href="#get_receipts"><code>get_receipts</code></a></td><td>Yes; free, read-only</td><td>Account read; no paid-tool scope</td><td>Account data</td></tr>
 <tr><th scope="row">Web, paid per call, search scope, USDC on Base or Solana</th><td><a href="#web_search"><code>web_search</code></a>, <a href="#read_page"><code>read_page</code></a></td><td>Yes; paid</td><td>search</td><td>USDC on Base or Solana</td></tr>
-<tr><th scope="row">Market and data, paid per call, tools scope, Base accounts for now</th><td><a href="#get_singit_risk_check"><code>get_singit_risk_check</code></a>, <a href="#get_x_profile"><code>get_x_profile</code></a>, <a href="#get_crypto_news"><code>get_crypto_news</code></a>, <a href="#get_funding_rates"><code>get_funding_rates</code></a>, <a href="#resolve_ens"><code>resolve_ens</code></a>, <a href="#get_token_price"><code>get_token_price</code></a></td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td></tr>
+<tr><th scope="row">Market and data, paid per call, tools scope, Base accounts for now</th><td><a href="#get_x_profile"><code>get_x_profile</code></a>, <a href="#get_crypto_news"><code>get_crypto_news</code></a>, <a href="#get_funding_rates"><code>get_funding_rates</code></a>, <a href="#resolve_ens"><code>resolve_ens</code></a>, <a href="#get_token_price"><code>get_token_price</code></a></td><td>Yes; paid</td><td>tools</td><td>USDC on Base only for now</td></tr>
 </tbody></table></div>
 <!-- generated:mcp-tools-overview:end -->
 </div></section>
 <section class="lp-section" id="checked"><div class="shell"><h2 class="section-title">How this list was checked</h2>
-<p class="lp-text">This reference is generated from the repository's tool list (17 tools, including the free chat_free and the paid chat). The live server keeps listing the earlier 16 tools at version 0.1.3 until the gateway is restarted with this release; nothing here was checked against it again.</p></div></section>
+<p class="lp-text">This reference is generated from the repository's tool list (16 tools, including the free chat_free and the paid chat). The live server keeps listing 17 tools until sign402-web-api is restarted with this code; nothing here was checked against it again.</p></div></section>
 <section class="lp-section" id="spending-limits"><div class="shell"><h2 class="section-title">Spending limits</h2>
 <p class="lp-text">The key's daily and per-request caps are enforced by SingIt's server for calls made with that key to SingIt's MCP and the same key's /v1 endpoint. They do not limit what an agent spends anywhere else. SingIt's contracts do not protect other people's agents' own wallets.</p>
 <p class="lp-text">Paid calls are charged to the key's own limits in USDC. A refused call returns isError true and nothing is charged. Repeating a paid call charges again. Read-only tools can still cost money. get_limits shows what is spent and left today. See <a href="/docs/mcp-key/">MCP key setup</a> and <a href="/agent-spending-limits/">agent spending limits</a>.</p></div></section>
@@ -230,10 +230,6 @@
 </tbody></table></div>
 <p class="lp-text">Key needed? Yes; paid; scope: search; network: USDC on Base or Solana; readOnlyHint: true; idempotentHint: false.</p>
 <h2 class="section-title">Market and data, paid per call, tools scope, Base accounts for now</h2>
-<h3 id="get_singit_risk_check">get_singit_risk_check</h3>
-<p class="lp-text">SingIt&#39;s risk check on Bankr x402 Cloud, run on a fixed sample payment request (no input). Mainly useful to try a paid call end to end. Paid per call from your key&#39;s SingIt limits in USDC; Base accounts only for now.</p>
-<p class="lp-text">Parameters: None</p>
-<p class="lp-text">Key needed? Yes; paid; scope: tools; network: USDC on Base only for now; readOnlyHint: true; idempotentHint: false.</p>
 <h3 id="get_x_profile">get_x_profile</h3>
 <p class="lp-text">Public profile data for an X (Twitter) account by username, from twit.sh&#39;s x402 API. Use to check who is behind a handle. Paid per call from your key&#39;s SingIt limits in USDC; Base accounts only for now.</p>
 <div class="table-wrap"><table class="mtable">

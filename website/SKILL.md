@@ -66,7 +66,6 @@ Verification: configuration from the repository; not run live for this guide.
 | chat | Paid from the key’s limits, Base or Solana | No extra scope |
 | web_search, read_page | Paid per call within key caps | search; Base or Solana |
 | get_x_profile, get_crypto_news, get_funding_rates, resolve_ens, get_token_price | Paid per call within key caps | tools; Base only for now |
-| get_singit_risk_check | Paid demo calls within key caps | tools; Base only for now |
 
 New keys include search and tools scopes. Keys made before data tools existed
 need a new key. Call get_allowance (or get_limits) before spending: it shows what is

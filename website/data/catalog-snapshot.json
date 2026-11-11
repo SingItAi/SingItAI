@@ -10,7 +10,7 @@
   ],
   "object": "list",
   "counts": {
-    "chat": 219,
+    "chat": 220,
     "image": 54,
     "image_edit": 24,
     "embeddings": 1,
@@ -2348,6 +2348,44 @@
           "solana": {
             "ceilingAtomic": "2116",
             "usd": 0.002116
+          }
+        }
+      }
+    },
+    {
+      "id": "gemini-4-carbon",
+      "name": "Google: Gemini 4 Carbon",
+      "modality": "chat",
+      "route": "/v1/chat/gemini-4-carbon",
+      "payment": "x402",
+      "access": "x402",
+      "available": true,
+      "router": false,
+      "free": false,
+      "networks": [
+        "eip155:8453",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ],
+      "kind": "model",
+      "price": {
+        "upto": {
+          "base": {
+            "priceAtomic": "3764",
+            "usd": 0.003764
+          },
+          "solana": {
+            "priceAtomic": "4764",
+            "usd": 0.004764
+          }
+        },
+        "exact": {
+          "base": {
+            "ceilingAtomic": "2151",
+            "usd": 0.002151
+          },
+          "solana": {
+            "ceilingAtomic": "3151",
+            "usd": 0.003151
           }
         }
       }
