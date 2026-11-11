@@ -8,7 +8,7 @@ import { withFacilitatorHints } from "../src/facilitator-hints.mjs";
 import { createApp, BASE, SOLANA } from "../src/app.mjs";
 import { parseModels } from "../src/catalogue.mjs";
 import { numbersBody, privateStatsBody } from "../src/health-stats.mjs";
-import { SOLANA_EXACT_WINDOW_MS, WindowExceeded, withinWindow } from "../src/solana-exact-window.mjs";
+import { SOLANA_EXACT_WINDOW_MS, SOLANA_EXACT_FALLBACK_RESERVE_MS, WindowExceeded, fallbackReserveMs, withinWindow } from "../src/solana-exact-window.mjs";
 
 const T = SOLANA_EXACT_WINDOW_MS;
 const payer = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
@@ -70,6 +70,16 @@ const assertWindowRefusal = res => {
 };
 
 test("the window is 30 seconds", () => assert.equal(T, 30_000));
+
+test("fallbackReserveMs holds back 10s in a 30s window when an alternate exists", () => {
+  assert.equal(SOLANA_EXACT_FALLBACK_RESERVE_MS, 10_000);
+  assert.equal(fallbackReserveMs({}, 30_000, true), 10_000);
+  assert.equal(fallbackReserveMs({}, 30_000, false), 0);
+  assert.equal(fallbackReserveMs({ solanaExactFallbackReserveMs: 0 }, 30_000, true), 0);
+  // A 50ms test window cannot be split, so a full-window hang still skips the alternate.
+  assert.equal(fallbackReserveMs({}, 50, true), 0);
+  assert.equal(fallbackReserveMs({ solanaExactFallbackReserveMs: 80 }, 200, true), 80);
+});
 
 for (const name of ["A-PREMODEL-STALE", "A-VERIFY-BLOCKHASH-STALE"]) {
   test(`${name}: a stale blockhash at verification is a 402 before the model; nothing runs or settles`, async () => {

@@ -6,7 +6,7 @@ import { unsupportedCapability, capabilityError } from "./agent-chat.mjs";
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 import { randomUUID } from "node:crypto";
-import { solanaExactWindow, withinWindow, windowRefusal, WindowExceeded } from "./solana-exact-window.mjs";
+import { solanaExactWindow, withinWindow, windowRefusal, WindowExceeded, fallbackReserveMs } from "./solana-exact-window.mjs";
 import { reserveChatPayment, reservationRefusal } from "./payment-reservation.mjs";
 // Pay for actual usage: the payer authorizes a ceiling with x402 `upto`, and CDP settles only what the
 // answer cost, after it came back. A request that ends in 400 or above is never charged.
@@ -149,9 +149,12 @@ export function relaxMinDiscount(input, error, { exact, network, maxChargeAtomic
   if (error?.code !== "minimum_discount_not_met") return null;
   const best = error.bestDiscountPct;
   if (typeof best !== "number" || !Number.isFinite(best) || best < 0 || best > 100) return null;
-  if (input?.minDiscount == null || !(best < input.minDiscount)) return null;
+  // Surplus rejects a fractional X-Min-Discount (invalid_min_discount_header). priceGuard already sends a
+  // whole percent; never raise the retry floor above the live best they reported.
+  const floor = Math.floor(best);
+  if (input?.minDiscount == null || !(floor < input.minDiscount)) return null;
   if (!input.info || !network || maxChargeAtomic == null) return null;
-  const relaxed = { ...input, share: (100 - best) / 100, minDiscount: best };
+  const relaxed = { ...input, share: (100 - floor) / 100, minDiscount: floor };
   const bucket = exact ? "exact" : "upto";
   try {
     if (BigInt(ceilings(relaxed.info, relaxed, exactOutputFraction)[bucket][network]) > BigInt(maxChargeAtomic)) return null;
@@ -485,14 +488,27 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         { ...(input.request ? { agent: input.request } : {}), minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: !win,  // Solana exact: no reasoning retry inside the window
           ...(win ? { windowObserved: true } : {}),
           timeoutMs: Math.max(1, deadline - Date.now()), deadline });
+      const reservedFailure = () => Object.assign(new Error("model reserved for fallback"),
+        { name: "UpstreamError", status: 503, code: "upstream_unavailable", singitReserved: true });
       let answer;
       // Only the first model is forced; the alternate below is asked for real.
       const forced = forceFailA(req);
       if (forced) log(`singit-ask: test force-fail model=${req.askInput.model}`);
       // One gated model call, its outcome observed once the gate has decided.
-      const ask = async (input, force) => {
+      // `reserve` cuts a slow first model before the Solana exact cutoff so one fallback can still finish.
+      const ask = async (input, force, { reserve = false } = {}) => {
         try {
-          const result = await inWindow(() => force ? Promise.reject(forcedFailure()) : attempt(input));
+          const result = await inWindow(remainingMs => {
+            const work = () => force ? Promise.reject(forcedFailure()) : attempt(input);
+            const reserveMs = reserve ? fallbackReserveMs(config, remainingMs, true) : 0;
+            if (!(reserveMs > 0 && remainingMs > reserveMs)) return work();
+            let timer;
+            const cut = new Promise((_, reject) => {
+              timer = win.clock.setTimeout(() => reject(reservedFailure()), remainingMs - reserveMs);
+            });
+            cut.catch(() => {});
+            return Promise.race([work(), cut]).finally(() => win.clock.clearTimeout(timer));
+          });
           observeWindow(input.model, { ok: true, retried: result.retried });
           return result;
         } catch (error) {
@@ -503,8 +519,11 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
           throw error;
         }
       };
+      // Reserve is computed from the remaining already read by withinWindow: do not call the clock again
+      // (solana-exact-window tests script each now() tick).
+      const hasAlternate = (req.askInput.autoAlternates?.length > 0) || (req.askInput.paidAlternates?.length > 0);
       try {
-        answer = await ask(req.askInput, forced);
+        answer = await ask(req.askInput, forced, { reserve: Boolean(win && hasAlternate) });
       }
       catch (error) {
         // No time is left after the cutoff: no retry and no fallback.
@@ -530,7 +549,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
           log(`singit-ask: discount retry model=${req.askInput.model} minDiscount ${req.askInput.minDiscount} -> ${error.bestDiscountPct}`);
           req.askInput = discountRetry;
         } else {
-          if (!error.singitForced) markUnservable(catalogue, req.askInput.model, error, log);
+          if (!error.singitForced && !error.singitReserved) markUnservable(catalogue, req.askInput.model, error, log);
           log(`singit-ask: ${auto ? "auto" : "paid"} fallback from=${req.askInput.model} to=${alternate.model} code=${error.code} status=${error.status}`);
           // One retry, sequential: the alternates are dropped, so a second failure is final.
           req.askInput = auto ? alternate
@@ -576,7 +595,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       if (req.askInput?.request && error.status === 400) return res.status(400).json({ error: {
         type: "invalid_request_error", code: "upstream_rejected_request",
         message: "The seller rejected this request (tools, images or length). You were not charged." } });
-      if (!error.singitForced) markUnservable(catalogue, req.askInput?.model, error, log);
+      if (!error.singitForced && !error.singitReserved) markUnservable(catalogue, req.askInput?.model, error, log);
       // Not settled (status >= 400): on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
       // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
       log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);

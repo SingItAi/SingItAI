@@ -326,7 +326,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
             response = await send(); data = await response.json().catch(() => null);
           }
           const code = typeof data?.error?.code === "string" ? data.error.code : null;
-          if (!win && code === "minimum_discount_not_met" && limitAt - Date.now() > 1000) {
+          if (code === "minimum_discount_not_met" && limitAt - Date.now() > 1000) {
             const discountError = Object.assign(new NoAnswer(response.status, code), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
             const relaxed = relaxMinDiscount(req.format, discountError, {
               exact, network: accepted.network, maxChargeAtomic: terms.maxChargeAtomic, exactOutputFraction,

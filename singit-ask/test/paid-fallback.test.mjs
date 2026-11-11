@@ -239,6 +239,25 @@ test('Solana exact: a window cut never starts the alternate and settles nothing'
   assert.equal(facilitator.calls.settle.length, 0);
 });
 
+test('Solana exact: a first model that overruns the reserved slice falls back inside the window', async t => {
+  const asked = [];
+  const { url, facilitator } = await serve(t, {
+    config: { ...CONFIG, solanaExactWindowMs: 200, solanaExactFallbackReserveMs: 80 },
+    upstream: async (_c, _m, _n, _f, model) => {
+      asked.push(model);
+      if (model === PINNED) return new Promise(() => {});
+      return answer(model);
+    },
+  });
+  const { signed, response } = await paid(url, body(PINNED), { network: SOLANA, scheme: 'exact', signature: '0xsolreserve' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(asked, [PINNED, CHEAP]);
+  assert.equal(response.headers.get('x-singit-fallback-from'), PINNED);
+  assert.equal(response.headers.get('x-singit-fallback-policy'), 'paid');
+  assert.equal((await response.json()).billing.totalAtomic, signed);
+  assert.equal(facilitator.calls.settle.length, 1);
+});
+
 test('pinned: a dearer same-tier model is never an alternate', async t => {
   let calls = 0;
   const { url, facilitator } = await serve(t, { upstream: async () => { calls++; throw refused(); } });
@@ -401,8 +420,10 @@ test('relaxMinDiscount only lowers a floor that was actually sent', () => {
     { exact: true, network: BASE, maxChargeAtomic: '1500' }), null);
   const ok = relaxMinDiscount(input, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 91.3189 }),
     { exact: true, network: BASE, maxChargeAtomic: '1500' });
-  assert.equal(ok.minDiscount, 91.3189);
-  assert.equal(ok.share, (100 - 91.3189) / 100);
+  assert.equal(ok.minDiscount, 91);
+  assert.equal(ok.share, (100 - 91) / 100);
+  assert.equal(relaxMinDiscount(input, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 98.9 }),
+    { exact: true, network: BASE, maxChargeAtomic: '1500' }), null, 'floor must be strictly below the sent floor');
   const tooDear = relaxMinDiscount(input, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 0 }),
     { exact: false, network: BASE, maxChargeAtomic: '1500' });
   assert.equal(tooDear, null);
@@ -424,7 +445,7 @@ for (const scheme of ['upto', 'exact']) {
     assert.equal(response.status, 200);
     assert.deepEqual(asked.map(a => a.model), [CHEAP, CHEAP]);
     assert.equal(asked[0].minDiscount, 98);
-    assert.equal(asked[1].minDiscount, 91.3189);
+    assert.equal(asked[1].minDiscount, 91);
     assert.equal(facilitator.calls.settle.length, 1);
     assert.equal(response.headers.get('x-singit-fallback-from'), null);
     assert.deepEqual(learned, [[CHEAP, { bestDiscountPct: 91.3189 }]]);
