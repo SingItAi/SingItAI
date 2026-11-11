@@ -1,6 +1,7 @@
 import { isFable52, samplingAllowed, forcedToolError } from "./model-policy.mjs";
 import { routeCopy } from "./listing-snapshot.mjs";
-import { validateStream } from './agent-stream.mjs';
+import { validateStream, consumeMessagesStream, consumeResponsesStream, terminalSSE, StreamBreak } from './agent-stream.mjs';
+import { isEventStream } from './sse-read.mjs';
 import { upstreamModelId } from "./model-aliases.mjs";
 
 import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
@@ -15,7 +16,7 @@ import { reserveChatPayment, reservationRefusal } from "./payment-reservation.mj
 // request, and is charged the price shown for the model, metered by what the answer actually used, plus the network's settlement fee, only once it came back.
 //
 // The request goes to Surplus as it came, with this service's key, apart from the model's name (Anthropic's dated
-// names become Surplus's) and a bounded answer length. Buffered SSE is serialized only after a whole answer is ready.
+// names become Surplus's) and a bounded answer length. stream:true is relayed live (agent-stream.mjs); only the terminal events wait for settlement.
 import { x402ResourceServer, setSettlementOverrides } from "@x402/express";
 import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { createUptoSvmServerScheme } from "./upto-svm-claim.mjs";
@@ -113,7 +114,7 @@ export function readFormatRequest(route, body) {
   if (typeof body.model !== "string" || !body.model.trim() || body.model.length > 120) {
     throw new FormatError(400, "Name a model from GET /v1/models.");
   }
-  const request = { ...body, stream: false, stream_options: undefined, model: surplusModel(body.model.trim()) };
+  const request = { ...body, stream: body.stream === true, stream_options: undefined, model: surplusModel(body.model.trim()) };
   const forced = forcedToolError(request.model, body.tool_choice);
   if (forced) throw new FormatError(forced.status, forced.message);
   let maxTokens, sized, messageCount;
@@ -167,7 +168,7 @@ const EXAMPLES = {
 // What each field is, for the Bazaar listing: the fields readFormatRequest() checks, nothing it would refuse.
 const MODEL_FIELD = { type: "string", maxLength: 120, examples: ["claude-sonnet-5.5", "deepseek-v4.1-flash", "gemini-3.8-flash"],
   description: "Any model id from GET /v1/models; Anthropic's dashed names (claude-sonnet-5-5) work too." };
-const STREAM_FIELD = { type: "boolean", enum: [false, true], description: "Buffered SSE: a complete answer released after settlement, not token by token." };
+const STREAM_FIELD = { type: "boolean", enum: [false, true], description: "Live SSE: tokens are relayed as the model writes them once payment is verified; billing is on the terminal event, released after settlement." };
 const INPUT_SCHEMAS = {
   "/v1/messages": { properties: {
     model: MODEL_FIELD,
@@ -290,6 +291,11 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
     app.post(route, async (req, res) => {
       const started = Date.now();
       let retried = false, recorded = false;
+      // Live streaming (agent-stream.mjs). A model that answers with JSON anyway takes the buffered path.
+      const live = res.locals?.live ?? null;
+      const refuse = (status, body) => live?.started ? live.abort(status) : res.status(status).json(body);
+      const liveAttempt = live?.attempt();
+      if (live) live.arm();
       const observe = outcome => {
         if (recorded) return;
         recorded = true;
@@ -312,18 +318,25 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
                      ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
                      ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify({ ...body, model: upstreamModelId(body.model) }), signal: AbortSignal.timeout(Math.max(1, limitAt - Date.now())) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
+          body: JSON.stringify({ ...body, model: upstreamModelId(body.model) }), signal: ((signal) => liveAttempt ? AbortSignal.any([signal, liveAttempt.signal]) : signal)(AbortSignal.timeout(Math.max(1, limitAt - Date.now()))) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
+        const consume = route === "/v1/messages" ? consumeMessagesStream : consumeResponsesStream;
+        // What a response holds: the event stream is relayed to the client as it arrives, anything else is read whole.
+        const read = async response => {
+          if (!(liveAttempt && response.ok && isEventStream(response))) return response.json().catch(() => null);
+          try { return await consume(response, liveAttempt); }
+          catch (error) { throw new NoAnswer(error instanceof StreamBreak ? error.status || 503 : 503, error instanceof StreamBreak ? error.code : "unreachable"); }
+        };
         const exchange = async () => {
           let response = await send();
           // Read for every status: a long request can come back HTTP 200 with an error body.
-          let data = await response.json().catch(() => null);
+          let data = await read(response);
           // Solana exact gets one upstream attempt (no retry inside its window).
           if (!win && response.ok && data && !data.error && data.type !== "error" && data.status !== "failed" && spentOnReasoning(route, data)
               && limitAt - Date.now() > 8000) {
             // One extra call at <= 2x budget; the service absorbs the first attempt and any overrun.
             const field = Number.isInteger(body.max_output_tokens) ? "max_output_tokens" : "max_tokens";
             body = { ...body, [field]: retryBudget(body[field]) }; retried = true;
-            response = await send(); data = await response.json().catch(() => null);
+            response = await send(); data = await read(response);
           }
           const code = typeof data?.error?.code === "string" ? data.error.code : null;
           if (code === "minimum_discount_not_met" && limitAt - Date.now() > 1000) {
@@ -336,7 +349,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
               log(`singit-ask: discount retry ${route} model=${req.format.model} minDiscount ${req.format.minDiscount} -> ${discountError.bestDiscountPct}`);
               req.format = relaxed;
               minDiscount = minDiscountFor(req.format, terms);
-              response = await send(); data = await response.json().catch(() => null);
+              response = await send(); data = await read(response);
             }
           }
           return { response, data };
@@ -363,23 +376,30 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         log(`singit-ask: ${route} answer ready by ${req.format.model} in ${Date.now() - started} ms`
           + `${route === "/v1/responses" ? `, isDefault=${req.format.modelOmitted === true}` : ","} settling ${billing.totalAtomic} micro-USDC`);
         observe({ ok: true, retried });
+        if (liveAttempt?.committed) {
+          // The tokens are out; the terminal event with the billing waits for settlement (end() is the middleware's one settle).
+          live.final = terminalSSE(route, { answer: data, billing: publicBilling(billing) });
+          return res.end();
+        }
         res.json({ ...scrub(data), ...(retried ? { retried: true } : {}), billing: publicBilling(billing) });
       } catch (error) {
+        liveAttempt?.abandon();
         if (error instanceof WindowExceeded) {
           // Not the seller's failure to count against it: the payment's window ran out. Nothing settles.
           observe({ ok: false, code: error.code, status: 503, retried });
           log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (solana exact window, ${error.phase})`);
           try { app.locals?.healthStats?.recordWindowRefusal?.(error.phase); } catch {}
-          return res.status(503).json({ ...refusal(route, 503, "The answer did not complete in time for this Solana exact payment. You were not charged; try again.", "no_billable_answer"),
-            ...windowRefusal(res, `req_${randomUUID()}`) });
+          return refuse(503, { ...refusal(route, 503, "The answer did not complete in time for this Solana exact payment. You were not charged; try again.", "no_billable_answer"),
+            ...(live?.started ? {} : windowRefusal(res, `req_${randomUUID()}`)) });
         }
         observe({ ok: false, code: error.code, status: error.status, retried });
-        markUnservable(catalogue, req.format?.model, error, log);
+        if (!live?.dataSent) markUnservable(catalogue, req.format?.model, error, log);
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
         log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
         if (error.code === "max_tokens_spent_reasoning") {
-          return res.status(422).json(refusal(route, 422, MAX_TOKENS_TOO_SMALL, "max_tokens_too_small"));
+          return refuse(422, refusal(route, 422, MAX_TOKENS_TOO_SMALL, "max_tokens_too_small"));
         }
+        if (live?.started) return live.abort(503);
         // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
         res.set("Retry-After", "30").status(503).json(refusal(route, 503, "No billable answer was produced. You were not charged; try again.", "no_billable_answer"));
       }

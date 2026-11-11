@@ -231,6 +231,7 @@ node --env-file=.env src/server.mjs
 | `SINGIT_ASK_DEFAULT_FALLBACKS` | `off` disables reviewed pinned defaults; any other value enables them. |
 | `SINGIT_ASK_MODEL` | Upstream model. Default: `deepseek-v4.1-flash`. |
 | `SINGIT_ASK_PORT` | Loopback port. Default: `8140`. |
+| `SINGIT_ASK_STREAM_KEEPALIVE_MS` | Milliseconds a `stream:true` answer may stay silent before a `: keepalive` SSE comment is sent (default 15000, `0` turns them off). Comments are not data: a failure after one can only end the stream. |
 | `SINGIT_ASK_REASONING_EFFORT` | `model=effort,...` (`none`, `minimal`, `low`, `medium`, `high`) overrides the model default: `claude-opus-5.5` defaults to `low`, other models to `none`. Set `claude-opus-5.5=none` to restore the old behaviour. A value that cannot be read stops the process at start. |
 | `SINGIT_ASK_REASONING_HEADROOM` | Measurement only; unset (default) changes nothing. `model=tokens,...` replaces the model's thinking headroom (the reasoning-tag floor plus explicit overrides in `src/pricing.mjs`) in both the ceiling the 402 offers and the `max_tokens` sent upstream, e.g. `claude-opus-5.5=128`. Use only on a temporary loopback process for a paid test; it does not change the price formula. |
 | `SINGIT_ASK_EXA_MARKUP_BPS` | Exa markup in basis points: integer 0..10000, default `0`. Invalid values use the default. |
@@ -479,7 +480,7 @@ they are priced here for API-key use, not payable on `/v1/audio/speech` over x40
 The top-level note explains this distinction; existing model IDs, kinds and price
 fields remain available to the key gateway and MCP consumers.
 
-## Agent conversations and buffered SSE
+## Agent conversations and live SSE
 
 Paid `/v1/chat/completions` accepts system/developer/user/assistant/tool roles,
 function tools and text/image blocks: 200 messages, 100000 estimated characters
@@ -490,14 +491,36 @@ keep their behavior. Messages and Responses already supported tools and 32000
 output tokens before this change.
 
 Chat (including free and per-model routes), Messages and Responses accept
-`stream:true`. This is buffered SSE: the seller answer is produced as for JSON,
-then the complete SSE body is sent together after successful settlement. It is
-not token-by-token streaming. The pricing, ceilings, billing object, model/tier/
-fallback headers and PAYMENT-RESPONSE are unchanged. Errors remain JSON and do
-not expose SSE answers. Chat ends with `[DONE]`, Messages with `message_stop`,
-and Responses with `response.completed`. Chat `stream_options` accepts only
-`{include_usage: boolean}`, only with `stream:true`. Free/per-model routes keep
-their existing text-only limits and free routes still refuse tools/images.
+`stream:true`. This is live SSE: Ask asks the seller to stream (chat also asks
+for usage, whether or not the client did) and relays its tokens to the client as
+they arrive, after the x402 payment is verified. `@x402/express` holds every
+`res.write` until after settlement, so the stream is written past that buffer
+(see `LiveSSE` in `src/agent-stream.mjs`); the middleware still gets exactly one
+`res.end()`, settles once (or cancels when the status is >= 400) and then
+releases the terminal events. Pricing, ceilings, the billing object and the
+model/tier/fallback headers are unchanged, and `exact` still settles its signed
+ceiling (`mode: "exact_ceiling"`). The billing object stays on the terminal event:
+the last chat chunk, Messages' `message_delta`, Responses' `response.completed`
+(a usage chunk follows on chat only when the client set `include_usage`).
+`PAYMENT-RESPONSE` is present only when settlement headers can still be set; a
+live stream's head leaves before settlement, so it usually is not.
+
+The first data event commits the stream. Until then a failure keeps the existing
+paths: fallback models, the discount retry, the reasoning retry and the Solana
+`exact` window reserve apply, errors are JSON and nothing is charged. A model that
+is slow to start gets `: keepalive` comments (about every 15 s,
+`SINGIT_ASK_STREAM_KEEPALIVE_MS`) which are not data and do not commit; after
+one, a failure can only end the stream. After the first data event there is no
+fallback, no second payment and no second settlement: if the model's stream
+breaks, the connection ends without the terminal events (no JSON error, the head
+is already out) and nothing is charged (`upto` cancelled or refunded, `exact`
+never settled). On Solana `exact` the whole stream must finish inside the
+payment's window or it is cut and not charged. Chat ends with `[DONE]`, Messages
+with `message_stop`, Responses with `response.completed`. Chat `stream_options`
+accepts only `{include_usage: boolean}`, only with `stream:true`. Free/per-model
+routes keep their existing text-only limits and free routes still refuse
+tools/images. A seller that answers a streaming request with whole JSON is still
+served as complete SSE after settlement.
 
 `numbers.json` adds `agent_traffic`: total, last_24h and last_7d each contain
 calls, with_tools, with_stream, with_images, and by_source. Calls count served

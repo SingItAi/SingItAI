@@ -88,3 +88,24 @@ test("errors fail and invalid requests throw status 400", () => {
     assert.doesNotMatch(sse, /response.completed/);
   }
 });
+
+test("stateful translators emit per chunk and hold the closing events for end()", async () => {
+  const { OpenAiToAnthropic, OpenAiToResponses, sseFrames } = await import("../src/sse.js");
+  const chunk = (delta, extra = {}) => ({ id: "c1", object: "chat.completion.chunk", model: "m", choices: [{ index: 0, delta }], ...extra });
+  const anthropic = new OpenAiToAnthropic();
+  assert.match(anthropic.push(chunk({ role: "assistant", content: "Hi" })), /message_start[\s\S]*content_block_start[\s\S]*text_delta/);
+  assert.doesNotMatch(anthropic.push(chunk({ content: "!" })), /message_start|content_block_start/);
+  // A tool call closes the open text block before its own block starts.
+  assert.match(anthropic.push(chunk({ tool_calls: [{ index: 0, id: "t", function: { name: "f", arguments: "{" } }] })), /content_block_stop[\s\S]*"type":"tool_use"/);
+  const tail = anthropic.push(chunk({}, { usage: { prompt_tokens: 2, completion_tokens: 3 }, billing: { totalAtomic: "7" } })) + anthropic.end();
+  assert.match(tail, /message_delta[\s\S]*"input_tokens":2[\s\S]*"billing":\{"totalAtomic":"7"\}[\s\S]*message_stop/);
+  const responses = new OpenAiToResponses();
+  assert.match(responses.push(chunk({ content: "Hi" })), /response\.created[\s\S]*output_item\.added[\s\S]*output_text\.delta/);
+  assert.doesNotMatch(responses.push(chunk({ content: "!" })), /response\.created|output_item\.added/);
+  assert.match(responses.end(), /output_text\.done[\s\S]*output_item\.done[\s\S]*response\.completed/);
+  // Frames are cut across chunk boundaries and keepalive comments are reported.
+  const body = new ReadableStream({ start(c) { const e = new TextEncoder(); for (const part of [": keep", "alive\n\ndata: {\"a\"", ":1}\n\ndata: [DONE]\n\n"]) c.enqueue(e.encode(part)); c.close(); } });
+  const seen = [];
+  for await (const item of sseFrames(body)) seen.push(item);
+  assert.deepEqual(seen, [{ comment: true }, { event: undefined, data: { a: 1 } }, { event: undefined, done: true }]);
+});

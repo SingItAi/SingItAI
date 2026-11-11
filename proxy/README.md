@@ -48,9 +48,14 @@ copied from another product.
 
 `stream: true` is accepted. When Ask streams (`text/event-stream`) the proxy passes those SSE chunks
 through (and translates them to Anthropic `message_start` / `content_block_delta` / `message_stop`
-on `/v1/messages`, or Responses events on `/v1/responses`). After a paid settlement the SingIt SDK still requires a JSON invoice with
-`billing.totalAtomic`, so the proxy requests `stream: false` from Ask, then emits the correct SSE
-chunks plus `[DONE]` (OpenAI), the Anthropic event sequence, or Responses events ending in `response.completed` with usage. Responses output items are added before text or function argument deltas; streamed errors emit `response.failed`. HTTP 402 is never a successful
+on `/v1/messages`, or Responses events on `/v1/responses`). A paid `stream: true` is paid as `stream: true`
+(through the SDK's `paidFetch()`, the only payment code here): Ask streams after verifying the payment, the proxy
+relays the chunks as they arrive (translating each one for Messages and Responses) and the SDK reads
+`billing.totalAtomic` from the terminal event as it passes. Billing rides on the final chat chunk, Messages'
+`message_delta` and `response.completed`; `: keepalive` comments from Ask are relayed. Responses output items are
+added before text or function argument deltas; a stream that breaks after the head went out ends with that format's
+error event (`event: error`, `response.failed`). If Ask answers a stream request with whole JSON instead, the
+proxy still synthesizes the SSE from it. HTTP 402 is never a successful
 completion or `type: "message"`.
 
 ## Environment and flags
@@ -173,7 +178,7 @@ Use `setup`, `doctor`, `start --no-launch`, `--help`, `--version`, `--client lab
 
 The launcher is Base only and requires host `127.0.0.1`. Defaults are $0.05/call, $2/day and client `codex`, with user env overrides. The shared wallet remains `~/.singit/session`; only its public funding data and QR are printed. `SINGIT_WALLET_KEY` is removed from the child environment. Standalone proxy and MCP defaults are unchanged.
 
-Responses translation is stateless and buffered; reasoning and non-chat input items are dropped. Function calls and usage are preserved. Auto models resolve against a cached free catalog; on catalog failure the mapped id passes through. HTTP 402 remains a JSON payment error. See [the Codex guide](../docs/codex.md) for profile, MCP and compatibility limits.
+Responses translation is stateless (streams are translated event by event); reasoning and non-chat input items are dropped. Function calls and usage are preserved. Auto models resolve against a cached free catalog; on catalog failure the mapped id passes through. HTTP 402 remains a JSON payment error. See [the Codex guide](../docs/codex.md) for profile, MCP and compatibility limits.
 
 ## OpenClaw
 

@@ -90,86 +90,93 @@ function finishReason(reason) {
   return "end_turn";
 }
 
-/** Translate a complete OpenAI chat SSE body into Anthropic Messages SSE. */
-export function openaiSseToAnthropicSse(text) {
-  const items = parseSseData(text);
-  let out = "";
-  const emit = (payload, event) => { out += frame(payload, event); };
-  let started = false;
-  let textIndex = null;
-  const tools = new Map();
-  let nextIndex = 0;
-  let model;
-  let id;
-  let stop_reason = "end_turn";
-  let usage;
-  for (const item of items) {
-    if (item.done || !item.data || typeof item.data !== "object") continue;
-    const chunk = item.data;
-    if (chunk.object && chunk.object !== "chat.completion.chunk") continue;
-    id = chunk.id ?? id;
-    model = chunk.model ?? model;
-    if (chunk.usage) {
-      usage = { input_tokens: chunk.usage.prompt_tokens ?? 0, output_tokens: chunk.usage.completion_tokens ?? 0 };
+/**
+ * OpenAI chat chunks to Anthropic Messages events, one chunk at a time: push() returns the SSE text for that chunk
+ * and end() the closing events, so a live stream is translated as it arrives. message_delta (stop reason, usage,
+ * billing) and message_stop wait for end(), because the usage and billing chunks come last.
+ */
+export class OpenAiToAnthropic {
+  #started = false; #nextIndex = 0; #current = null; #tools = new Map();
+  #id; #model; #stop = "end_turn"; #usage; #billing; ended = false;
+  #closeCurrent() {
+    if (!this.#current) return "";
+    const out = frame({ type: "content_block_stop", index: this.#current.index }, "content_block_stop");
+    this.#current = null;
+    return out;
+  }
+  #start() {
+    if (this.#started) return "";
+    this.#started = true;
+    return frame({
+      type: "message_start",
+      message: {
+        id: this.#id || "msg_proxy", type: "message", role: "assistant", model: this.#model,
+        content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 },
+      },
+    }, "message_start");
+  }
+  push(chunk) {
+    if (this.ended || !chunk || typeof chunk !== "object") return "";
+    if (chunk.error) {
+      this.ended = true;
+      return frame({ type: "error", error: { type: "api_error", message: chunk.error.message || "Upstream request failed." } }, "error");
     }
-    if (!started) {
-      started = true;
-      emit({
-        type: "message_start",
-        message: {
-          id: id || "msg_proxy", type: "message", role: "assistant", model,
-          content: [], stop_reason: null, stop_sequence: null,
-          usage: { input_tokens: 0, output_tokens: 0 },
-        },
-      }, "message_start");
-    }
+    if (chunk.object && chunk.object !== "chat.completion.chunk") return "";
+    this.#id = chunk.id ?? this.#id;
+    this.#model = chunk.model ?? this.#model;
+    if (chunk.usage) this.#usage = { input_tokens: chunk.usage.prompt_tokens ?? 0, output_tokens: chunk.usage.completion_tokens ?? 0 };
+    if (chunk.billing) this.#billing = chunk.billing;
+    let out = this.#start();
     const choice = chunk.choices?.[0] ?? {};
     const delta = choice.delta ?? {};
     if (typeof delta.content === "string" && delta.content) {
-      if (textIndex == null) {
-        textIndex = nextIndex++;
-        emit({ type: "content_block_start", index: textIndex, content_block: { type: "text", text: "" } }, "content_block_start");
+      if (this.#current?.kind !== "text") {
+        out += this.#closeCurrent();
+        this.#current = { kind: "text", index: this.#nextIndex++ };
+        out += frame({ type: "content_block_start", index: this.#current.index, content_block: { type: "text", text: "" } }, "content_block_start");
       }
-      emit({ type: "content_block_delta", index: textIndex, delta: { type: "text_delta", text: delta.content } }, "content_block_delta");
+      out += frame({ type: "content_block_delta", index: this.#current.index, delta: { type: "text_delta", text: delta.content } }, "content_block_delta");
     }
     if (Array.isArray(delta.tool_calls)) {
       for (const call of delta.tool_calls) {
         const oi = call.index ?? 0;
-        if (!tools.has(oi)) {
-          const idx = nextIndex++;
-          tools.set(oi, idx);
-          emit({
-            type: "content_block_start", index: idx,
+        if (!this.#tools.has(oi)) {
+          out += this.#closeCurrent();
+          this.#current = { kind: "tool", oi, index: this.#nextIndex++ };
+          this.#tools.set(oi, this.#current.index);
+          out += frame({
+            type: "content_block_start", index: this.#current.index,
             content_block: { type: "tool_use", id: call.id, name: call.function?.name, input: {} },
           }, "content_block_start");
         }
         if (call.function?.arguments) {
-          emit({
-            type: "content_block_delta", index: tools.get(oi),
+          out += frame({
+            type: "content_block_delta", index: this.#tools.get(oi),
             delta: { type: "input_json_delta", partial_json: call.function.arguments },
           }, "content_block_delta");
         }
       }
     }
-    if (choice.finish_reason) stop_reason = finishReason(choice.finish_reason);
+    if (choice.finish_reason) this.#stop = finishReason(choice.finish_reason);
+    return out;
   }
-  if (!started) {
-    emit({
-      type: "message_start",
-      message: {
-        id: "msg_proxy", type: "message", role: "assistant",
-        content: [], stop_reason: null, stop_sequence: null,
-        usage: { input_tokens: 0, output_tokens: 0 },
-      },
-    }, "message_start");
+  end() {
+    if (this.ended) return "";
+    this.ended = true;
+    let out = this.#start() + this.#closeCurrent();
+    const tail = { type: "message_delta", delta: { stop_reason: this.#stop, stop_sequence: null } };
+    if (this.#usage) tail.usage = this.#usage;
+    if (this.#billing) tail.billing = this.#billing;
+    return out + frame(tail, "message_delta") + frame({ type: "message_stop" }, "message_stop");
   }
-  if (textIndex != null) emit({ type: "content_block_stop", index: textIndex }, "content_block_stop");
-  for (const idx of tools.values()) emit({ type: "content_block_stop", index: idx }, "content_block_stop");
-  const tail = { type: "message_delta", delta: { stop_reason, stop_sequence: null } };
-  if (usage) tail.usage = usage;
-  emit(tail, "message_delta");
-  emit({ type: "message_stop" }, "message_stop");
-  return out;
+}
+
+/** Translate a complete OpenAI chat SSE body into Anthropic Messages SSE. */
+export function openaiSseToAnthropicSse(text) {
+  const translator = new OpenAiToAnthropic();
+  let out = "";
+  for (const item of parseSseData(text)) if (!item.done && item.data) out += translator.push(item.data);
+  return out + translator.end();
 }
 
 /** Responses SSE is buffered, with an active item before each delta. */
@@ -196,28 +203,123 @@ export function responsesErrorSse(message) {
   return frame({ type: "response.failed", sequence_number: 0, response: { id: "resp_proxy_error", object: "response", status: "failed", error: { code: "upstream_error", message } } }, "response.failed");
 }
 
-export function openaiSseToResponsesSse(text) {
-  const completion = { choices: [{ message: { content: "", tool_calls: [] } }] };
-  const tools = new Map();
-  let hasChoice = false;
-  for (const { data } of parseSseData(text)) {
-    if (!data) continue;
-    if (data.error) return responsesErrorSse(data.error.message || "Upstream request failed.");
-    for (const key of ["id", "model", "created", "usage", "billing"]) if (data[key] != null) completion[key] = data[key];
-    if (data.choices?.length) hasChoice = true;
-    const delta = data.choices?.[0]?.delta;
-    if (!delta) continue;
-    completion.choices[0].message.content += delta.content ?? "";
+/**
+ * OpenAI chat chunks to Responses events as they arrive: output items open on the first delta that needs them, text
+ * and argument deltas are relayed immediately, and the closing events plus response.completed (usage, billing) come
+ * from end(), once the whole answer is known.
+ */
+export class OpenAiToResponses {
+  #sequence = 0; #started = false; #meta = {}; #text = ""; #message = null; #calls = new Map(); #order = [];
+  #usage; #billing; ended = false;
+  #emit(type, data) { return frame({ type, sequence_number: this.#sequence++, ...data }, type); }
+  get #id() { return this.#meta.id || "resp_proxy"; }
+  #completion() {
+    const tool_calls = [...this.#calls.values()].map(call => ({ id: call.call_id, function: { name: call.name, arguments: call.arguments } }));
+    return { ...this.#meta, choices: [{ message: { content: this.#text, tool_calls } }],
+      ...(this.#usage ? { usage: this.#usage } : {}), ...(this.#billing ? { billing: this.#billing } : {}) };
+  }
+  #openMessage() {
+    if (this.#message) return "";
+    this.#message = { output_index: this.#order.length };
+    this.#order.push("message");
+    const item = { id: `${this.#id}_message`, type: "message", status: "in_progress", role: "assistant", content: [] };
+    return this.#emit("response.output_item.added", { output_index: this.#message.output_index, item })
+      + this.#emit("response.content_part.added", { output_index: this.#message.output_index, item_id: item.id, content_index: 0, part: { type: "output_text", text: "", annotations: [] } });
+  }
+  push(chunk) {
+    if (this.ended || !chunk || typeof chunk !== "object") return "";
+    if (chunk.error) { this.ended = true; return responsesErrorSse(chunk.error.message || "Upstream request failed."); }
+    for (const key of ["id", "model", "created"]) if (chunk[key] != null) this.#meta[key] = chunk[key];
+    if (chunk.usage) this.#usage = chunk.usage;
+    if (chunk.billing) this.#billing = chunk.billing;
+    let out = "";
+    if (!this.#started) {
+      this.#started = true;
+      out += this.#emit("response.created", { response: { id: this.#id, object: "response", created_at: this.#meta.created ?? 0, status: "in_progress", model: this.#meta.model, output: [], usage: null } });
+    }
+    const delta = chunk.choices?.[0]?.delta ?? {};
+    if (typeof delta.content === "string" && delta.content) {
+      out += this.#openMessage();
+      this.#text += delta.content;
+      out += this.#emit("response.output_text.delta", { output_index: this.#message.output_index, item_id: `${this.#id}_message`, content_index: 0, delta: delta.content });
+    }
     for (const call of delta.tool_calls ?? []) {
       const index = call.index ?? 0;
-      const accumulated = tools.get(index) ?? { type: "function", function: { name: "", arguments: "" } };
-      if (call.id) accumulated.id = call.id;
-      accumulated.function.name += call.function?.name ?? "";
-      accumulated.function.arguments += call.function?.arguments ?? "";
-      tools.set(index, accumulated);
+      let have = this.#calls.get(index);
+      if (!have) {
+        have = { n: this.#calls.size, output_index: this.#order.length, call_id: call.id, name: call.function?.name ?? "", arguments: "" };
+        this.#calls.set(index, have);
+        this.#order.push("call");
+        out += this.#emit("response.output_item.added", { output_index: have.output_index,
+          item: { id: `${this.#id}_call_${have.n}`, type: "function_call", status: "in_progress", call_id: have.call_id, name: have.name, arguments: "" } });
+      } else {
+        if (call.id && !have.call_id) have.call_id = call.id;
+        if (call.function?.name) have.name += call.function.name;
+      }
+      const piece = call.function?.arguments;
+      if (piece) {
+        have.arguments += piece;
+        out += this.#emit("response.function_call_arguments.delta", { output_index: have.output_index, item_id: `${this.#id}_call_${have.n}`, delta: piece });
+      }
+    }
+    return out;
+  }
+  end() {
+    if (this.ended) return "";
+    this.ended = true;
+    if (!this.#started) return responsesErrorSse("Upstream returned an unreadable stream.");
+    let out = "";
+    if (!this.#message && !this.#calls.size) out += this.#openMessage();
+    const response = chatCompletionToResponse(this.#completion());
+    for (const [output_index, item] of response.output.entries()) {
+      if (item.type === "message") {
+        const part = item.content[0];
+        out += this.#emit("response.output_text.done", { output_index, item_id: item.id, content_index: 0, text: part.text });
+        out += this.#emit("response.content_part.done", { output_index, item_id: item.id, content_index: 0, part });
+      } else out += this.#emit("response.function_call_arguments.done", { output_index, item_id: item.id, arguments: item.arguments });
+      out += this.#emit("response.output_item.done", { output_index, item });
+    }
+    return out + this.#emit("response.completed", { response });
+  }
+}
+
+export function openaiSseToResponsesSse(text) {
+  const translator = new OpenAiToResponses();
+  let out = "";
+  for (const item of parseSseData(text)) {
+    if (item.done || !item.data) continue;
+    out += translator.push(item.data);
+    if (translator.ended) return out;
+  }
+  return out + translator.end();
+}
+
+/** Frames of a live SSE body as they complete. `comment` frames (keepalives) are reported so they can be relayed. */
+export async function* sseFrames(body) {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const parse = block => {
+    const data = [];
+    let event, comment = false;
+    for (const line of block.split("\n")) {
+      if (line.startsWith(":")) comment = true;
+      else if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (!data.length) return comment ? { comment: true } : null;
+    const raw = data.join("\n");
+    if (raw === "[DONE]") return { event, done: true };
+    try { return { event, data: JSON.parse(raw) }; } catch { return { event, raw }; }
+  };
+  for await (const chunk of body) {
+    buffer += decoder.decode(chunk, { stream: true }).replace(/\r\n?/g, "\n");
+    for (let end; (end = buffer.indexOf("\n\n")) >= 0;) {
+      const item = parse(buffer.slice(0, end));
+      buffer = buffer.slice(end + 2);
+      if (item) yield item;
     }
   }
-  if (!hasChoice) return responsesErrorSse("Upstream returned an unreadable stream.");
-  completion.choices[0].message.tool_calls = [...tools.values()];
-  return responseToSse(chatCompletionToResponse(completion));
+  buffer += decoder.decode().replace(/\r\n?/g, "\n");
+  const tail = buffer.trim() ? parse(buffer) : null;
+  if (tail) yield tail;
 }

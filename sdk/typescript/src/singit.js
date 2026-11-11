@@ -23,6 +23,11 @@ function samePayer(family, a, b) {
   return family === "evm" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
+// The billed amount in a streamed paid answer travels on its terminal event: the last chat chunk (`billing`), Messages'
+// message_delta (`billing`) or Responses' response.completed (`response.billing`).
+const billingOf = event => (event?.billing && typeof event.billing === "object" ? event.billing
+  : event?.response?.billing && typeof event.response.billing === "object" ? event.response.billing : null);
+
 async function readJsonOrThrow(response) {
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -131,7 +136,7 @@ export class SingIt {
    * chat() and paidFetch() so both enforce the same guards before anything is signed. Returns the paid
    * response, its text (already validated as an invoice no larger than the offered ceiling), and validated receipt.
    */
-  async _payOffer({ first, scheme, url, send }) {
+  async _payOffer({ first, scheme, url, send, allowStream = false }) {
     const header = first.headers.get("payment-required");
     if (!header) throw new SingItPaymentError("Got HTTP 402 with no PAYMENT-REQUIRED header.");
     const challenge = decodeHeader(header);
@@ -173,6 +178,11 @@ export class SingIt {
       throw new SingItPaymentError(`Paid request returned HTTP ${response.status}; it was not repeated, and its ceiling `
         + "stays counted against the daily cap in case it settled.");
     }
+    if (allowStream && /^text\/event-stream/i.test(response.headers.get("content-type") ?? "")) {
+      // The body is not read here: the invoice rides on its terminal event and is checked as the stream passes through.
+      const receipt = this._checkReceipt(response, payload);
+      return { response, offer, payload, receipt, stream: this._watchInvoice(response, { scheme, offer, release }) };
+    }
     const text = await response.text().catch(() => "");
     let result = null;
     try { result = JSON.parse(text); } catch { /* treated as an unreadable invoice below */ }
@@ -185,6 +195,48 @@ export class SingIt {
     const receipt = this._checkReceipt(response, payload);
     if (scheme === "upto") this.limiter.settle(release, totalAtomic, offer.amount);
     return { response, offer, payload, text, receipt };
+  }
+
+  /**
+   * The paid answer's body, passed through untouched while its SSE events are read for `billing.totalAtomic`. The
+   * invoice follows the same rules as a JSON answer (atomic amount, not above the offer, equal to it on `exact`);
+   * `upto` reservations settle down to it the moment it is seen. A stream that ends, or breaks, without a valid
+   * invoice errors the body and leaves the ceiling counted against the daily cap, as an unreadable JSON invoice does.
+   */
+  _watchInvoice(response, { scheme, offer, release }) {
+    const decoder = new TextDecoder();
+    let buffer = "", settled = false;
+    const unresolved = why => new SingItPaymentError(`${why}; treating the payment as unresolved `
+      + "(its ceiling stays counted against the daily cap).");
+    const read = frame => {
+      const data = frame.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).replace(/^ /, "")).join("\n");
+      if (!data || data === "[DONE]") return;
+      let event;
+      try { event = JSON.parse(data); } catch { return; }
+      const billing = billingOf(event);
+      if (!billing) return;
+      const totalAtomic = billing.totalAtomic;
+      if (!isAtomicAmount(totalAtomic) || BigInt(totalAtomic) > BigInt(offer.amount)
+        || (scheme === "exact" && BigInt(totalAtomic) !== BigInt(offer.amount))) {
+        throw unresolved("The invoice does not match the offered ceiling");
+      }
+      if (!settled) {
+        settled = true;
+        if (scheme === "upto") this.limiter.settle(release, totalAtomic, offer.amount);
+      }
+    };
+    const scan = (text, last = false) => {
+      buffer += text.replace(/\r\n?/g, "\n");
+      for (let end; (end = buffer.indexOf("\n\n")) >= 0;) { read(buffer.slice(0, end)); buffer = buffer.slice(end + 2); }
+      if (last && buffer.trim()) { read(buffer); buffer = ""; }
+    };
+    return response.body.pipeThrough(new TransformStream({
+      transform(chunk, controller) { controller.enqueue(chunk); scan(decoder.decode(chunk, { stream: true })); },
+      flush() {
+        scan(decoder.decode(), true);
+        if (!settled) throw unresolved("The stream ended without an invoice");
+      },
+    }));
   }
 
   _checkReceipt(response, payload) {
@@ -202,9 +254,12 @@ export class SingIt {
    * `configuration.fetch`, the AI SDK's `createOpenAICompatible({ fetch })`, the OpenAI SDK's `fetch`).
    * A request to SingIt Ask that gets HTTP 402 is paid exactly like chat(): same pins, same per-call and
    * per-day ceilings (shared with chat() on this instance), signed once, never repeated. Requests to any other
-   * origin pass through untouched and unpaid. Non-streaming JSON answers only: the billed amount is read from
-   * the answer's `billing.totalAtomic`, so a paid answer without it counts as unresolved and the framework must
-   * not retry (set maxRetries to 0).
+   * origin pass through untouched and unpaid. The billed amount is read from the answer's `billing.totalAtomic`,
+   * so a paid answer without it counts as unresolved and the framework must not retry (set maxRetries to 0).
+   * A JSON answer is returned whole. A `text/event-stream` answer (stream:true) is returned as a live stream: tokens
+   * reach the caller as the model writes them, `billing.totalAtomic` is read from the terminal event as it passes,
+   * and a stream that ends without a valid invoice errors its body. PAYMENT-RESPONSE is checked when present, but
+   * a live stream's head leaves before settlement, so it usually is not.
    */
   paidFetch({ scheme = "upto" } = {}) {
     if (scheme !== "upto" && scheme !== "exact") throw new SingItPaymentError('scheme must be "upto" or "exact".');
@@ -221,7 +276,8 @@ export class SingIt {
         for (const [name, value] of Object.entries(headers)) paid.headers.set(name, value);
         return this.fetchImpl(paid);
       };
-      const { response, text } = await this._payOffer({ first, scheme, url: request.url, send });
+      const { response, text, stream } = await this._payOffer({ first, scheme, url: request.url, send, allowStream: true });
+      if (stream) return new Response(stream, { status: response.status, statusText: response.statusText, headers: response.headers });
       return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
     };
   }

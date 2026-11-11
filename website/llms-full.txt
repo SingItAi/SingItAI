@@ -48,7 +48,7 @@ Free tier: 6 free models, 20 answers/day/network, shared daily cost cap $0.25. T
 
 Paid /v1/chat/completions: 200 messages, 100000 estimated characters (tools included; 8000 per image), 64 tools/calls, four images, max_tokens 8192 (default 800), 128 kB JSON body. Model capabilities constrain tools/images. Messages/Responses support tools and 32000 output tokens.
 
-Chat/Messages/Responses stream:true returns buffered SSE after settlement with billing and PAYMENT-RESPONSE. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
+Chat/Messages/Responses stream:true streams live after payment verifies; billing is on the final event, after settlement. Pre-token errors are JSON; a later break is uncharged. Chat ends with [DONE]; Responses with response.completed. Chat stream_options accepts only {include_usage:boolean} with stream:true. Free/per-model streams retain text-only limits; free refuses tools/images.
 
 /numbers.json: aggregate traffic only.
 

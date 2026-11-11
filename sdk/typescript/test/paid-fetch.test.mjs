@@ -101,7 +101,7 @@ test("paidFetch() passes other origins and non-402 answers through, never paying
   }
 });
 
-test("paidFetch() treats a paid answer without a billing invoice as unresolved and keeps its ceiling counted", async () => {
+test("paidFetch() treats a paid stream without a billing invoice as unresolved and keeps its ceiling counted", async () => {
   let paidRequests = 0;
   const server = http.createServer(async (req, res) => {
     if (!req.headers["payment-signature"]) {
@@ -120,7 +120,8 @@ test("paidFetch() treats a paid answer without a billing invoice as unresolved a
     const singit = new SingIt({ evmPrivateKey: privateKey, network: "base-sepolia", baseUrl: url, payTo: PAY_TO,
       maxPerCallUsd: 0.01, maxPerDayUsd: 0.006 });
     const pay = singit.paidFetch();
-    await assert.rejects(post(pay, url), /invoice does not match/);
+    // The stream is handed back live; its body errors when it ends without an invoice.
+    await assert.rejects(post(pay, url).then(response => response.text()), /ended without an invoice.*unresolved/);
     await assert.rejects(post(pay, url), /Daily spend cap/); // the first ceiling (4000) is still counted
     assert.equal(paidRequests, 1);
   } finally {
@@ -152,3 +153,94 @@ for (const billed of ["1000", "4001"]) {
     }
   });
 }
+
+// A merchant that pays out an SSE answer in pieces: the first token, a pause, then the terminal event with the invoice.
+async function streamingMerchant({ amount = "4000", billed = "1500", scheme = "upto", pauseMs = 150, terminal } = {}) {
+  const wrote = {};
+  const server = http.createServer((req, res) => {
+    if (!req.headers["payment-signature"]) {
+      const offer = scheme === "exact" ? exactOffer({ network: NETWORK, asset: ASSET, payTo: PAY_TO, amount })
+        : uptoOffer({ network: NETWORK, asset: ASSET, payTo: PAY_TO, amount, facilitatorAddress: FACILITATOR });
+      const challenge = { x402Version: 2, resource: { url: `http://127.0.0.1:${server.address().port}/v1/chat/completions` }, accepts: [offer] };
+      res.writeHead(402, { "payment-required": Buffer.from(JSON.stringify(challenge)).toString("base64") });
+      return res.end("{}");
+    }
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "Hel" } }] })}\n\n`);
+    wrote.first = performance.now();
+    setTimeout(() => {
+      res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "lo" } }] })}\n\n`);
+      res.write(terminal ?? `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }], billing: { totalAtomic: billed } })}\n\n`);
+      wrote.last = performance.now();
+      res.end("data: [DONE]\n\n");
+    }, pauseMs);
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  return { url: `http://127.0.0.1:${server.address().port}`, wrote, close: () => new Promise(resolve => server.close(resolve)) };
+}
+const client = (merchant, maxPerDayUsd = 0.006) => new SingIt({ evmPrivateKey: privateKey, network: "base-sepolia", baseUrl: merchant.url, payTo: PAY_TO, maxPerCallUsd: 0.01, maxPerDayUsd });
+const askStream = (pay, url) => pay(`${url}/v1/chat/completions`, { method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ messages: [{ role: "user", content: "Hello" }], stream: true }) });
+
+test("paidFetch() returns a live stream and reads the invoice from a later SSE event", async () => {
+  const merchant = await streamingMerchant({ billed: "1500" });
+  try {
+    const singit = client(merchant);
+    const response = await askStream(singit.paidFetch(), merchant.url);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /text\/event-stream/);
+    const reader = response.body.getReader();
+    const first = await reader.read();
+    const firstAt = performance.now();
+    assert.match(new TextDecoder().decode(first.value), /Hel/);
+    assert.ok(!merchant.wrote.last, "the first token arrived before the merchant wrote its last event");
+    assert.ok(firstAt < merchant.wrote.first + 100);
+    let rest = "";
+    for (let chunk; !(chunk = await reader.read()).done;) rest += new TextDecoder().decode(chunk.value);
+    assert.match(rest, /billing/);
+    // The reservation (4000) settled down to the billed 1500: 6000 - 1500 left, so a 4000 call still fits twice.
+    assert.equal(singit.limiter.remainingAtomic(), 4500n);
+  } finally {
+    await merchant.close();
+  }
+});
+
+for (const [name, options] of [["above the offer", { billed: "4001" }], ["not atomic", { billed: "1.5" }], ["off a flat exact offer", { scheme: "exact", billed: "1000" }]]) {
+  test(`paidFetch() errors a stream whose invoice is ${name} and keeps the ceiling counted`, async () => {
+    const merchant = await streamingMerchant({ pauseMs: 10, ...options });
+    try {
+      const singit = client(merchant);
+      const response = await askStream(singit.paidFetch({ scheme: options.scheme ?? "upto" }), merchant.url);
+      await assert.rejects(response.text(), /invoice does not match.*unresolved/);
+      assert.equal(singit.limiter.remainingAtomic(), 2000n);
+    } finally {
+      await merchant.close();
+    }
+  });
+}
+
+test("paidFetch() accepts an exact stream billed at the signed amount", async () => {
+  const merchant = await streamingMerchant({ scheme: "exact", amount: "4000", billed: "4000", pauseMs: 10 });
+  try {
+    const response = await askStream(client(merchant).paidFetch({ scheme: "exact" }), merchant.url);
+    assert.match(await response.text(), /"totalAtomic":"4000"/);
+  } finally {
+    await merchant.close();
+  }
+});
+
+test("paidFetch() finds the invoice in Messages and Responses terminal events", async () => {
+  for (const terminal of [
+    `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: {}, billing: { totalAtomic: "900" } })}\n\n`,
+    `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { billing: { totalAtomic: "900" } } })}\n\n`,
+  ]) {
+    const merchant = await streamingMerchant({ pauseMs: 5, terminal });
+    try {
+      const singit = client(merchant);
+      await (await askStream(singit.paidFetch(), merchant.url)).text();
+      assert.equal(singit.limiter.remainingAtomic(), 5100n);
+    } finally {
+      await merchant.close();
+    }
+  }
+});

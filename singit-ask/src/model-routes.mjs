@@ -208,7 +208,7 @@ export async function modelOpenapiPaths(catalogue, { inputSchema, outputSchema, 
         schema: { type: "object", ...schemaOf(inputSchema, model) }, example: modelExample(model) } } },
       responses: {
         200: { description: "The answer, with what it was charged",
-               content: { "application/json": { schema: outputSchema, example: exampleOutput }, "text/event-stream": { schema: { type: "string" }, description: "Complete buffered chat SSE after settlement, ending with [DONE]." } } },
+               content: { "application/json": { schema: outputSchema, example: exampleOutput }, "text/event-stream": { schema: { type: "string" }, description: "Live chat SSE: tokens as the model writes them once payment is verified; billing in the final chunk, released after settlement; ends with [DONE]." } } },
         400: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "model does not match this route's model, or the question cannot be answered; nothing was charged" },
         402: { content: { "application/json": { schema: errorRef("PaymentRequired402") } }, description: "Payment Required: x402 challenge in the PAYMENT-REQUIRED header" },
         404: { content: { "application/json": { schema: errorRef("ErrorResponse") } }, description: "This model is not available; nothing was charged" },

@@ -1,4 +1,5 @@
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
+import { terminalSSE } from "./agent-stream.mjs";
 // Free answers, to try SingIt Ask before paying: a model asked for as "free/<id>" answers with no payment, within
 // small limits per visitor and per day. Anything else on the route is paid as before, so an unpaid question without
 // the prefix still gets the 402 offer that directories and paying agents expect.
@@ -236,8 +237,13 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
         code: turn.reason === "budget" ? "free_budget_exhausted" : turn.reason === "busy" ? "free_tier_busy" : "free_tier_exhausted" } });
     }
     const started = Date.now();
+    // stream:true is relayed live (agent-stream.mjs); an upstream that answers whole takes the buffered path below.
+    const live = res.locals?.live ?? null;
+    const liveAttempt = live ? Object.assign(live.attempt(), { base: () => ({ id: `singit-ask-free-${started}`, object: "chat.completion.chunk", created: Math.floor(started / 1000), model: asked }) }) : null;
+    const freeHeaders = () => res.set({ "X-SingIt-Free": "true", "X-SingIt-Free-Remaining": String(turn.left) });
     try {
-      const answer = await upstream(config, input.messages, maxTokens, fetchImpl, model, { info, retryOnReasoning: false });
+      if (live) live.onCommit = freeHeaders;
+      const answer = await upstream(config, input.messages, maxTokens, fetchImpl, model, { info, retryOnReasoning: false, ...(liveAttempt ? { live: liveAttempt } : {}) });
       if (terms.budgetUsdPerDay > 0) {
         const cost = freeAnswerCost(answer.usage, info, input, maxTokens, observedShare(model));
         allowance.spend(cost, turn);
@@ -250,13 +256,21 @@ export function addFreeRoute(app, route, { config, terms, allowance, readRequest
         }
       }
       log(`singit-ask: free answer in ${Date.now() - started} ms`);
-      res.set({ "X-SingIt-Free": "true", "X-SingIt-Free-Remaining": String(turn.left) });
+      const billing = { free: true, remainingToday: turn.left,
+        resetsAt: new Date((turn.day + 1) * 86_400_000).toISOString(), hint: "drop the free/ prefix to pay" };
+      if (answer.streamed) {
+        live.final = terminalSSE("/v1/chat/completions", { base: liveAttempt.base(), billing, includeUsage: live.includeUsage,
+          answer: { choices: [{ finish_reason: answer.finishReason }], usage: answer.usage } });
+        return res.end();
+      }
+      freeHeaders();
       res.json({ id: `singit-ask-free-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: asked, choices: [{ index: 0, message: { role: "assistant", content: answer.content },
-          finish_reason: answer.finishReason }], usage: answer.usage, billing: { free: true, remainingToday: turn.left,
-            resetsAt: new Date((turn.day + 1) * 86_400_000).toISOString(), hint: "drop the free/ prefix to pay" } });
+          finish_reason: answer.finishReason }], usage: answer.usage, billing });
     } catch (error) {
+      liveAttempt?.abandon();
       allowance.giveBack(visitor, turn);
+      if (live?.started) return live.abort(503);
       log(`singit-ask: no free answer after ${Date.now() - started} ms (${safeDiagnostic(error.name)}${error.name === "UpstreamError" ? ` code=${safeDiagnostic(error.code)} status=${safeDiagnostic(error.status)}` : ""})`);
       if (error.code === "max_tokens_spent_reasoning") {
         return res.status(422).json({ error: { type: "invalid_request_error", code: "max_tokens_too_small", message: MAX_TOKENS_TOO_SMALL } });
