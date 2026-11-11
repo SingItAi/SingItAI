@@ -12,11 +12,33 @@
 //
 // So the model gets SOLANA_EXACT_WINDOW_MS from the moment verification succeeded. An answer that is not complete by
 // then is cut off and refused as 503 no_billable_answer before any settlement: nothing is charged and the payer can
-// try again. This only narrows the risk: the payer's blockhash may already be old when it is verified, and without an
-// RPC read the server cannot tell. Base and Solana `upto` (its escrow deposit settles before the model) are unchanged.
+// try again. When a paid or auto alternate is attached, the first model is cut off
+// SOLANA_EXACT_FALLBACK_RESERVE_MS before the cutoff (default 10 s, leaving 20 s for the first model) so one
+// in-window fallback can still run. A first model that would have used the whole window otherwise left no time for
+// the alternate: 15 of 20 unanswered external Solana paid chats in the 7 days to 11 November 2026 were window cuts,
+// including one at the 30 s cutoff after #279. This only narrows the risk: the payer's blockhash may already be old
+// when it is verified, and without an RPC read the server cannot tell. Base and Solana `upto` (its escrow deposit
+// settles before the model) are unchanged.
 import { paymentFailureContext } from "./payment-failure-hooks.mjs";
 
 export const SOLANA_EXACT_WINDOW_MS = 30_000;
+// Time left in the window for one paid/auto fallback after a slow first model. 10 s is above the recent Solana paid
+// p50 (~6 s) and keeps a 20 s first-model slice, the window that was already in production until 10 November.
+export const SOLANA_EXACT_FALLBACK_RESERVE_MS = 10_000;
+export const SOLANA_EXACT_MIN_PRIMARY_MS = 8_000;
+
+// How many milliseconds to hold back from the first model so a fallback can still finish inside `remaining`.
+// Zero when there is no alternate, the reserve is disabled, or the window is too short to split.
+export function fallbackReserveMs(config = {}, remaining, hasAlternate) {
+  if (!hasAlternate || !Number.isFinite(remaining) || remaining <= 0) return 0;
+  const reserve = Number.isSafeInteger(config.solanaExactFallbackReserveMs) && config.solanaExactFallbackReserveMs >= 0
+    ? config.solanaExactFallbackReserveMs : SOLANA_EXACT_FALLBACK_RESERVE_MS;
+  if (reserve <= 0) return 0;
+  const minPrimary = Math.min(SOLANA_EXACT_MIN_PRIMARY_MS, Math.max(1, Math.floor(remaining / 2)));
+  if (remaining <= reserve + minPrimary) return 0;
+  return reserve;
+}
+
 export const realClock = Object.freeze({ now: () => Date.now(),
   setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id) });
 
