@@ -1,5 +1,5 @@
 // Stateless Responses <-> Chat Completions translation. No network or wallet I/O.
-import { mapModel } from "./anthropic.js";
+import { resolveModel } from "./models.js";
 const bad = message => Object.assign(new Error(message), { status: 400 });
 const text = value => typeof value === "string" ? value : Array.isArray(value)
   ? value.map(part => typeof part === "string" ? part : ["input_text", "output_text", "text"].includes(part?.type) ? part.text ?? "" : "").join("") : "";
@@ -8,10 +8,7 @@ export function responsesToChatCompletions(body, { modelMap = {}, catalog } = {}
   if (!body || typeof body !== "object" || Array.isArray(body)) throw bad("Send a JSON body.");
   if (typeof body.model !== "string" || !body.model.trim()) throw bad("model is required.");
   if (!Array.isArray(body.input) && typeof body.input !== "string") throw bad("input must be a string or array.");
-  let model = mapModel(body.model, modelMap);
-  if (catalog && ["auto", "singit/auto"].includes(model)) {
-    model = catalog.default || (Array.isArray(catalog.data) ? catalog.data : []).find(item => typeof item?.id === "string" && !/music|sound|embed|image|video|speech|transcri/i.test(item.id))?.id || model;
-  }
+  const model = resolveModel(body.model, { modelMap, catalog });
   const messages = [];
   if (body.instructions != null) {
     if (typeof body.instructions !== "string") throw bad("instructions must be a string.");
