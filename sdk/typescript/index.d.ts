@@ -79,3 +79,10 @@ export declare class SingIt {
   /** walletReport(address, options).allowance */
   allowance(address: string, options?: { days?: number; apiKey?: string }): Promise<any>;
 }
+
+export type WalletNetwork = "base" | "solana";
+export interface WalletOptions { network?: WalletNetwork; outPath?: string; home?: string; includeKey?: boolean; }
+export interface CreatedWallet { network: WalletNetwork; address: string; keyPath: string; }
+export declare function createWallet(options: WalletOptions & { includeKey: true }): Promise<CreatedWallet & { privateKey: string }>;
+export declare function createWallet(options?: WalletOptions): Promise<CreatedWallet & { privateKey?: string }>;
+export declare function fundingUri(options: { network: WalletNetwork; address: string; amount?: string }): string;

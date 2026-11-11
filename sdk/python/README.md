@@ -116,3 +116,51 @@ caller to check independently if needed.
   has no testnet deployment to pay.
 
 Framework fetch adapters are currently available only in the TypeScript SDK.
+
+## Create a funding wallet
+
+### No wallet yet? Quickstart in 8 lines
+
+Run once in a new directory. The command refuses to replace an existing key.
+
+```sh
+pip install "singit[qr]"
+singit wallet new --out "$HOME/.singit/wallets/quickstart.key"
+# Fund the printed address / scan the QR with USDC on Base before continuing.
+export AGENT_PRIVATE_KEY="$(cat "$HOME/.singit/wallets/quickstart.key")"
+python -c '
+import os; from singit import SingIt
+client = SingIt(network="base", evm_private_key=os.environ["AGENT_PRIVATE_KEY"], max_per_call_usd=0.01, max_per_day_usd=1)
+print(client.chat(messages=[{"role": "user", "content": "Hello"}]))'
+```
+
+### Wallet command reference
+
+Use `npx @singitai/sdk wallet new`, `singit wallet new`, or `python -m singit wallet new`.
+Python terminal QR support: `pip install "singit[qr]"`; Solana also requires `pip install "singit[svm]"`.
+
+| Option | Behavior |
+|---|---|
+| `--network base\|solana` | Network; default `base`. |
+| `--out PATH` | Key file path; default `$SINGIT_HOME/wallets/<network>-<address-prefix>.key`, with `SINGIT_HOME` defaulting to `~/.singit`. |
+| `--uri` | Encode an EIP-681 transfer request on Base or Solana Pay request instead of the plain address. |
+| `--amount USDC` | With `--uri` only: positive decimal, at most six decimal places. |
+| `--no-qr` | Print funding text without the QR. |
+| `--show-key` | Explicitly print the private key after a warning. |
+| `-h`, `--help` | Show help. |
+
+Send USDC on Base (not Ethereum mainnet or other chains), or USDC on Solana for
+`--network solana`. The encoded text is printed below the QR. Without `--uri`, it is just
+the address. For Base, load the file with `AGENT_PRIVATE_KEY=$(cat <file>)`; for Solana,
+keep the Solana CLI JSON keypair file path for loading your `solanaSigner` (`solana_signer` in Python).
+
+New key files use mode 0600 and new directories use 0700; permissions are best-effort on
+Windows. Existing files are never overwritten. Keys are never printed unless you explicitly
+use `--show-key`. The key file is the only copy: back it up, never commit or share it.
+Anyone who has it can spend the funds. Fund only what you are willing to spend.
+`maxPerCallUsd` / `maxPerDayUsd` are client-side limits (Python: `max_per_call_usd` / `max_per_day_usd`).
+
+The library exports `createWallet({network, outPath, home, includeKey})` /
+`create_wallet(network, out_path=None, home=None, include_key=False)` and
+`fundingUri({network, address, amount})` / `funding_uri(network, address, amount=None)`.
+Creation returns `network`, `address`, and `keyPath`; `privateKey` is included only when explicitly requested.

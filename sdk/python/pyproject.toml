@@ -24,13 +24,19 @@ dependencies = [
   "x402[evm]>=2.25.0,<3",
 ]
 
+[project.scripts]
+singit = "singit.cli:main"
+
 [project.optional-dependencies]
+qr = ["segno>=1.6,<2"]
 # Solana exact-scheme payments. The official x402 package has no Solana upto client yet (see README).
 svm = [
   "x402[svm]>=2.25.0,<3",
 ]
 test = [
   "pytest>=8",
+  "segno>=1.6,<2",
+  "x402[svm]>=2.25.0,<3",
   "tomli>=2; python_version < '3.11'",
 ]
 
