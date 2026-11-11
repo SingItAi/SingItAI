@@ -47,6 +47,12 @@ test('paid fallback allowlist accepts availability failures only', () => {
   }
   for (const status of [400, 413, 422]) assert.equal(canRetryPaidFallback(refused(status, 'no_healthy_sellers')), false);
   assert.equal(canRetryPaidFallback({ name: 'Error', status: 503, code: 'no_healthy_sellers' }), false);
+  // An error body on an HTTP 200 (native formats) is recognised by its machine code alone.
+  for (const code of ['overloaded_error', 'not_found_error']) {
+    assert.equal(canRetryPaidFallback(refused(200, code)), true);
+    for (const status of [400, 413, 422]) assert.equal(canRetryPaidFallback(refused(status, code)), false);
+    assert.equal(canRetryPaidFallback({ name: 'Error', status: 200, code }), false);
+  }
 });
 
 // Quote, then pay that quote.

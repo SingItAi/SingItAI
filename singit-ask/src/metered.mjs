@@ -45,7 +45,8 @@ export function canRetryPaidFallback(error) {
   if (status === 404 || status === 429 || (status >= 500 && status <= 599)) return true;
   // Client/request failures must never be sent to a different model.
   if (status >= 400 && status < 500) return false;
-  return code === "no_healthy_sellers";
+  // Below 400 only the machine code says the seller refused (a long request can come back HTTP 200 with an error body).
+  return ["no_healthy_sellers", "overloaded_error", "not_found_error"].includes(code);
 }
 
 // Test-only (R2): with SINGIT_ASK_TEST_FORCE_FAIL_A=1, a paid request from an own payer that sends

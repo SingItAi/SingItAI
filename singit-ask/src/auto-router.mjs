@@ -99,7 +99,7 @@ const dearer = (candidate, pinned) => Object.entries(pinned).some(([scheme, byNe
 const unpriced = model => !Number.isFinite(model.promptUsdPerToken) || !Number.isFinite(model.completionUsdPerToken)
   || model.promptUsdPerToken < 0 || model.completionUsdPerToken < 0
   || !(model.promptUsdPerToken > 0 || model.completionUsdPerToken > 0) || model.unpriced === true;
-const signalFor = async (catalogue, candidate) => catalogue.isUnservable?.(candidate.model) ? "unhealthy"
+export const signalFor = async (catalogue, candidate) => catalogue.isUnservable?.(candidate.model) ? "unhealthy"
   : catalogue.isSuspended?.(candidate.model) ? "unhealthy"
   : catalogue.canAnswer && !await catalogue.canAnswer(candidate.model) ? "unhealthy"
   : unpriced(candidate.info) ? "unpriced" : await priceProtectionSignal(catalogue, candidate);

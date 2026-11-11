@@ -8,7 +8,9 @@ import { attachPaymentFailureCodes } from "./payment-failure-hooks.mjs";
 import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 import { randomUUID } from "node:crypto";
-import { solanaExactWindow, withinWindow, windowRefusal, WindowExceeded } from "./solana-exact-window.mjs";
+import { solanaExactWindow, withinWindow, windowRefusal, WindowExceeded, fallbackReserveMs } from "./solana-exact-window.mjs";
+import { rankPaidAlternates } from "./auto-router.mjs";
+import { FormatUnserved, formatAlternates, asUpstreamError, isReasoningModel } from "./format-fallback.mjs";
 import { reserveChatPayment, reservationRefusal } from "./payment-reservation.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
 // what Claude Code and the Anthropic SDK speak) and OpenAI's Responses (POST /v1/responses). Sold over x402 like the
@@ -26,7 +28,7 @@ import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { markUnservable, unservableError, UnknownModel, priceGuard } from "./catalogue.mjs";
 import { acceptedOf, answerLogFor, recordWhenSettled } from "./answer-log.mjs";
-import { probeInput, probeNote } from "./metered.mjs";
+import { probeInput, probeNote, canRetryPaidFallback, fitsSignedCatalogCeiling } from "./metered.mjs";
 import { billWithDiagnostics, addPaymentRoute, baseOffer, ceilings, exactBaseOffer, exactSolanaOffer, isDiscoveryProbe, perRequest, relaxMinDiscount, solanaOffer } from "./metered.mjs";
 import { BASE, SOLANA, TERMS, SOLANA_TERMS, minDiscountFor, reasoningHeadroom, retryBudget, DEFAULT_EXACT_OUTPUT_FRACTION, SERVICE_NAMES, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
 
@@ -70,6 +72,27 @@ export function withHeadroom(request, info) {
   if (!extra) return request;
   const field = Number.isInteger(request.max_output_tokens) ? "max_output_tokens" : Number.isInteger(request.max_tokens) ? "max_tokens" : null;
   return field ? { ...request, [field]: request[field] + extra } : request;
+}
+
+// A reasoning model asked for a small answer spends all of it thinking (qwen3-5-9b at max_tokens 150, 11 November 2026).
+// So it is asked for at least this many tokens upstream, without touching the quoted ceiling: an answer that costs more than
+// was signed is billed at the signed amount and the service absorbs the rest (billUsage allowOverrun, as for a
+// reasoning retry). Only when the dearest the raised budget could cost stays within MIN_BUDGET_EXPOSURE times what
+// the request was quoted, so an expensive model is never asked for more than its payer priced.
+export const REASONING_MIN_UPSTREAM_TOKENS = 1024;
+const MIN_BUDGET_EXPOSURE = 3n;
+const budgetField = request => (Number.isInteger(request.max_output_tokens) ? "max_output_tokens" : "max_tokens");
+export function withMinBudget(request, format, exactOutputFraction) {
+  const field = budgetField(request);
+  if (!isReasoningModel(format.info) || !Number.isInteger(request[field]) || request[field] >= REASONING_MIN_UPSTREAM_TOKENS) return { request, raised: false };
+  // `ceilings` prices the headroom already in `request` as overhead, so price the raised budget without counting it twice.
+  const headroom = reasoningHeadroom(request.model, format.info);
+  try {
+    const quoted = ceilings(format.info, format, exactOutputFraction).upto[BASE];
+    const raised = ceilings(format.info, { ...format, maxTokens: Math.max(1, REASONING_MIN_UPSTREAM_TOKENS - headroom) }, exactOutputFraction).upto[BASE];
+    if (BigInt(raised) > MIN_BUDGET_EXPOSURE * BigInt(quoted)) return { request, raised: false };
+  } catch { return { request, raised: false }; }
+  return { request: { ...request, [field]: REASONING_MIN_UPSTREAM_TOKENS }, raised: true };
 }
 
 // Whether a reasoning model spent the whole answer budget thinking and wrote nothing usable: Messages stops on
@@ -155,9 +178,9 @@ export function scrub(data) {
   return data;
 }
 
-const refusal = (route, status, message, code) => (route === "/v1/messages"
-  ? { type: "error", error: { type: status === 400 || status === 422 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message, code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request") } }
-  : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request"), message } });
+const refusal = (route, status, message, code, extra = {}) => (route === "/v1/messages"
+  ? { type: "error", error: { type: status === 400 || status === 422 ? "invalid_request_error" : status === 404 ? "not_found_error" : "api_error", message, code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request"), ...extra } }
+  : { error: { type: status >= 500 ? "upstream_error" : "invalid_request_error", code: code ?? (status === 404 ? "model_not_found" : status >= 500 ? "upstream_unavailable" : "invalid_request"), message, ...extra } });
 
 // Keep discovery descriptions within 500 characters, capability first (see app.mjs).
 const DESCRIPTIONS = Object.fromEntries(['/v1/messages', '/v1/responses'].map(path => [path, routeCopy(path).description]));
@@ -288,14 +311,21 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         ...declareDiscoveryExtension({ bodyType: "json", input: EXAMPLES[route], inputSchema: { ...INPUT_SCHEMAS[route], description: probeNote(300, config, true) },
           output: { example: OUTPUT_EXAMPLES[route], schema: OUTPUT_SCHEMA } }) },
     } }, server, { log, publicClient });
+    const unserved = new FormatUnserved();
     app.post(route, async (req, res) => {
       const started = Date.now();
       let retried = false, recorded = false;
       // Live streaming (agent-stream.mjs). A model that answers with JSON anyway takes the buffered path.
       const live = res.locals?.live ?? null;
       const refuse = (status, body) => live?.started ? live.abort(status) : res.status(status).json(body);
-      const liveAttempt = live?.attempt();
-      if (live) live.arm();
+      let liveAttempt = null;
+      const modelHeaders = () => {
+        if (!req.format?.fallbackFrom) return;
+        res.set("X-SingIt-Model", req.format.model);
+        res.set("X-SingIt-Fallback-From", req.format.fallbackFrom);
+        res.set("X-SingIt-Fallback-Policy", "paid");
+      };
+      if (live) { live.onCommit = modelHeaders; live.arm(); }
       const observe = outcome => {
         if (recorded) return;
         recorded = true;
@@ -308,60 +338,147 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         const bucket = exact ? req.askCeilings?.exact : req.askCeilings?.upto;
         const terms = TERMS_BY_NETWORK[accepted.network] && bucket && { ...TERMS_BY_NETWORK[accepted.network], maxChargeAtomic: bucket[accepted.network] };
         if (!terms) throw new Error("payment on an unknown network");
-        // The price floor only when the model's list-price worst case would not fit what was paid (pricing.mjs).
-        let minDiscount = minDiscountFor(req.format, terms);
-        let body = withHeadroom(fitRequest(req.format.request, req.format.info?.params), req.format.info);
         // Solana `exact`: the answer must be complete within the window from verification (solana-exact-window.mjs).
         const win = solanaExactWindow(req, config);
         const limitAt = Math.min(started + FORMAT_LIMITS.timeoutMs, win?.cutoff ?? Infinity);
-        const send = () => fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
-                     ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
-                     ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
-          body: JSON.stringify({ ...body, model: upstreamModelId(body.model) }), signal: ((signal) => liveAttempt ? AbortSignal.any([signal, liveAttempt.signal]) : signal)(AbortSignal.timeout(Math.max(1, limitAt - Date.now()))) }).catch(() => { throw new NoAnswer(503, "unreachable"); });
         const consume = route === "/v1/messages" ? consumeMessagesStream : consumeResponsesStream;
-        // What a response holds: the event stream is relayed to the client as it arrives, anything else is read whole.
-        const read = async response => {
-          if (!(liveAttempt && response.ok && isEventStream(response))) return response.json().catch(() => null);
-          try { return await consume(response, liveAttempt); }
-          catch (error) { throw new NoAnswer(error instanceof StreamBreak ? error.status || 503 : 503, error instanceof StreamBreak ? error.code : "unreachable"); }
+        // A raised reasoning budget may cost more than was signed; that is billed at the signed amount (see withMinBudget).
+        let absorb = false;
+        // After payment a different model may answer once, only within the amount signed. Off with the operator switch
+        // or X-SingIt-Fallback: off, exactly as on /v1/chat/completions.
+        const fallbackOff = config.defaultFallbacks === false
+          || String(req.get("X-SingIt-Fallback") ?? "").split(",").some(value => value.trim().toLowerCase() === "off");
+        const pools = new Map();
+        const poolFor = (nonReasoning = false) => {
+          if (fallbackOff) return Promise.resolve([]);
+          if (!pools.has(nonReasoning)) pools.set(nonReasoning, formatAlternates({ config, catalogue, route, format: req.format,
+            request: req.body, unserved, nonReasoning }).catch(() => []));
+          return pools.get(nonReasoning);
         };
-        const exchange = async () => {
-          let response = await send();
-          // Read for every status: a long request can come back HTTP 200 with an error body.
-          let data = await read(response);
-          // Solana exact gets one upstream attempt (no retry inside its window).
-          if (!win && response.ok && data && !data.error && data.type !== "error" && data.status !== "failed" && spentOnReasoning(route, data)
-              && limitAt - Date.now() > 8000) {
-            // One extra call at <= 2x budget; the service absorbs the first attempt and any overrun.
-            const field = Number.isInteger(body.max_output_tokens) ? "max_output_tokens" : "max_tokens";
-            body = { ...body, [field]: retryBudget(body[field]) }; retried = true;
-            response = await send(); data = await read(response);
-          }
-          const code = typeof data?.error?.code === "string" ? data.error.code : null;
-          if (code === "minimum_discount_not_met" && limitAt - Date.now() > 1000) {
-            const discountError = Object.assign(new NoAnswer(response.status, code), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
-            const relaxed = relaxMinDiscount(req.format, discountError, {
-              exact, network: accepted.network, maxChargeAtomic: terms.maxChargeAtomic, exactOutputFraction,
+        const fits = candidate => fitsSignedCatalogCeiling(
+          ceilings(candidate.info, candidate, exactOutputFraction)[exact ? "exact" : "upto"][accepted.network], terms.maxChargeAtomic);
+        const ranked = pool => rankPaidAlternates(pool, id => app.locals?.healthStats?.paidModelSuccess?.(id, accepted.network));
+        const reservedFailure = () => Object.assign(new NoAnswer(503, "upstream_unavailable"), { singitReserved: true });
+
+        // One model's try: the request as it stands in req.format, its discount and reasoning retries, and the check that
+        // what came back is an answer. Everything that makes it not one is a NoAnswer.
+        const attempt = async ({ reserve }) => {
+          retried = false;
+          const controller = new AbortController();
+          liveAttempt = live?.attempt() ?? null;
+          const mine = liveAttempt;
+          try {
+            // The price floor only when the model's list-price worst case would not fit what was paid (pricing.mjs).
+            let minDiscount = minDiscountFor(req.format, terms);
+            const fitted = withHeadroom(fitRequest(req.format.request, req.format.info?.params), req.format.info);
+            const budget = withMinBudget(fitted, req.format, exactOutputFraction);
+            let body = budget.request;
+            absorb = budget.raised;
+            const send = () => fetchImpl(`${config.surplusUrl}${upstreamPath}`, { method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.surplusKey}`,
+                         ...(minDiscount != null ? { "X-Min-Discount": String(minDiscount) } : {}),
+                         ...(route === "/v1/messages" ? { "anthropic-version": req.get("anthropic-version") ?? "2023-06-01" } : {}) },
+              body: JSON.stringify({ ...body, model: upstreamModelId(body.model) }),
+              signal: AbortSignal.any([AbortSignal.timeout(Math.max(1, limitAt - Date.now())), controller.signal, ...(mine ? [mine.signal] : [])]) })
+              .catch(() => { throw new NoAnswer(503, "unreachable"); });
+            // What a response holds: the event stream is relayed to the client as it arrives, anything else is read whole.
+            const read = async response => {
+              if (!(mine && response.ok && isEventStream(response))) return response.json().catch(() => null);
+              try { return await consume(response, mine); }
+              catch (error) { throw new NoAnswer(error instanceof StreamBreak ? error.status || 503 : 503, error instanceof StreamBreak ? error.code : "unreachable"); }
+            };
+            const exchange = async () => {
+              let response = await send();
+              // Read for every status: a long request can come back HTTP 200 with an error body.
+              let data = await read(response);
+              // Solana exact gets one upstream attempt (no retry inside its window).
+              if (!win && response.ok && data && !data.error && data.type !== "error" && data.status !== "failed" && spentOnReasoning(route, data)
+                  && limitAt - Date.now() > 8000) {
+                // One extra call at <= 2x budget; the service absorbs the first attempt and any overrun.
+                const field = budgetField(body);
+                body = { ...body, [field]: retryBudget(body[field]) }; retried = true;
+                response = await send(); data = await read(response);
+              }
+              const code = typeof data?.error?.code === "string" ? data.error.code : null;
+              if (code === "minimum_discount_not_met" && limitAt - Date.now() > 1000) {
+                const discountError = Object.assign(new NoAnswer(response.status, code), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
+                const relaxed = relaxMinDiscount(req.format, discountError, {
+                  exact, network: accepted.network, maxChargeAtomic: terms.maxChargeAtomic, exactOutputFraction,
+                });
+                if (relaxed) {
+                  try { catalogue?.markPriceRejected?.(req.format.model, { bestDiscountPct: discountError.bestDiscountPct }); } catch {}
+                  log(`singit-ask: discount retry ${route} model=${req.format.model} minDiscount ${req.format.minDiscount} -> ${discountError.bestDiscountPct}`);
+                  req.format = relaxed;
+                  minDiscount = minDiscountFor(req.format, terms);
+                  response = await send(); data = await read(response);
+                }
+              }
+              return { response, data };
+            };
+            const answer = async () => {
+              const { response, data } = await exchange();
+              if (!response.ok || !data || typeof data !== "object" || data.error || data.type === "error" || data.status === "failed") {
+                const code = typeof data?.error?.code === "string" ? data.error.code
+                  : typeof data?.error?.type === "string" ? data.error.type : "upstream_error";
+                throw Object.assign(new NoAnswer(response.status, code), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
+              }
+              if (spentOnReasoning(route, data)) throw new NoAnswer(response.status, "max_tokens_spent_reasoning");
+              if (!hasAnswer(route, data)) throw new NoAnswer(response.status, "no_text");
+              return { response, data };
+            };
+            if (!win) return await answer();
+            return await withinWindow(win, remaining => {
+              // Like chat: hold back the end of the window from a first model, so one alternate can still finish. It only
+              // protects a fallback; once the client has data there is none to protect.
+              const reserveMs = reserve ? fallbackReserveMs(config, remaining, true) : 0;
+              if (!(reserveMs > 0 && remaining > reserveMs)) return answer();
+              let timer;
+              const cut = new Promise((_, reject) => {
+                timer = win.clock.setTimeout(() => { if (!live?.dataSent) reject(reservedFailure()); }, remaining - reserveMs);
+              });
+              cut.catch(() => {});
+              return Promise.race([answer(), cut]).finally(() => win.clock.clearTimeout(timer));
             });
-            if (relaxed) {
-              try { catalogue?.markPriceRejected?.(req.format.model, { bestDiscountPct: discountError.bestDiscountPct }); } catch {}
-              log(`singit-ask: discount retry ${route} model=${req.format.model} minDiscount ${req.format.minDiscount} -> ${discountError.bestDiscountPct}`);
-              req.format = relaxed;
-              minDiscount = minDiscountFor(req.format, terms);
-              response = await send(); data = await read(response);
-            }
+          } catch (error) {
+            controller.abort();
+            mine?.abandon();
+            throw error;
           }
-          return { response, data };
         };
-        const { response, data } = win ? await withinWindow(win, exchange) : await exchange();
-        if (!response.ok || !data || typeof data !== "object" || data.error || data.type === "error" || data.status === "failed") {
-          const code = typeof data?.error?.code === "string" ? data.error.code
-            : typeof data?.error?.type === "string" ? data.error.type : "upstream_error";
-          throw Object.assign(new NoAnswer(response.status, code), { bestDiscountPct: parseBestDiscount(data?.error?.message) });
+
+        // Whether this model is already known not to be served on this format, with an alternate that fits to use instead.
+        let result, failure = null;
+        const known = unserved.has(route, req.format.model) && (await poolFor()).some(fits);
+        if (known) failure = Object.assign(new NoAnswer(404, "not_found_error"), { singitSkipped: true });
+        else {
+          try { result = await attempt({ reserve: Boolean(win && (await poolFor()).length) }); }
+          catch (error) { if (error instanceof WindowExceeded || !(error instanceof NoAnswer)) throw error; failure = error; }
         }
-        if (spentOnReasoning(route, data)) throw new NoAnswer(response.status, "max_tokens_spent_reasoning");
-        if (!hasAnswer(route, data)) throw new NoAnswer(response.status, "no_text");
+        if (failure) {
+          // The same refusals chat treats as "model unavailable", plus a reasoning model that spent its whole budget thinking
+          // (only here; chat does not retry that). Never once a data event is out, never past the window or the deadline.
+          const spent = failure.code === "max_tokens_spent_reasoning";
+          const formatMiss = failure.status === 404 && failure.code !== "minimum_discount_not_met";
+          const retryable = !fallbackOff && !live?.dataSent && Date.now() < limitAt && (spent || canRetryPaidFallback(asUpstreamError(failure)));
+          const alternate = retryable && ranked(await poolFor(spent)).find(fits);
+          if (formatMiss) unserved.note(route, req.format.model);
+          if (!alternate) {
+            if (!failure.singitSkipped) throw failure;
+            result = await attempt({ reserve: false });   // nothing else fits: ask the model anyway
+          } else {
+            if (!failure.singitSkipped) {
+              try { record(req.format.model, { ok: false, code: failure.code, status: failure.status }); } catch {}
+              // A format miss says nothing about the model elsewhere; a cut for the reserve is not the seller's failure.
+              if (!formatMiss && !failure.singitReserved && !spent) markUnservable(catalogue, req.format.model, failure, log);
+            }
+            log(`singit-ask: ${route} paid fallback from=${req.format.model} to=${alternate.model} code=${failure.code} status=${failure.status}`);
+            req.format = alternate;
+            // One retry, sequential: a second failure is final. Discount, reasoning and window rules apply to it as to any attempt.
+            result = await attempt({ reserve: false });
+          }
+        }
+        const { response, data } = result;
+        if (!live?.started) modelHeaders();
         catalogue?.noteAnswered?.(req.format.model);
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
         const haveCost = (typeof reported === "number" && Number.isSafeInteger(reported) && reported >= 0)
@@ -372,7 +489,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         let billing;
         if (haveCost) {
           const usage = billWithDiagnostics({ ...data.usage, buyer_cost_micro: reported },
-            terms, exact, route, req.format.model, log, retried);
+            terms, exact, route, req.format.model, log, retried || absorb);
           // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override,
           // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
           billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
@@ -410,7 +527,12 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
         log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
         if (error.code === "max_tokens_spent_reasoning") {
-          return refuse(422, refusal(route, 422, MAX_TOKENS_TOO_SMALL, "max_tokens_too_small"));
+          // Say what to send instead. `minimum` is a size that has answered such models; it is never above the route's limit.
+          const field = route === "/v1/messages" ? "max_tokens" : "max_output_tokens";
+          const asked = req.format?.maxTokens ?? 0;
+          const minimum = Math.min(FORMAT_LIMITS.maxTokens, Math.max(REASONING_MIN_UPSTREAM_TOKENS, 2 * asked));
+          return refuse(422, refusal(route, 422, MAX_TOKENS_TOO_SMALL, "max_tokens_too_small",
+            minimum > asked ? { next_action: { type: "raise_max_tokens", field, minimum } } : {}));
         }
         if (live?.started) return live.abort(503);
         // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
