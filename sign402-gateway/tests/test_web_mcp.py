@@ -119,12 +119,12 @@ class InitializeAndListTests(Fixture):
         status, out, _ = self.rpc(key, "ping")
         self.assertEqual((status, out["result"]), (200, {}))
 
-    def test_every_tool_has_a_title_and_boolean_annotations_and_there_are_exactly_seventeen(self):
+    def test_every_tool_has_a_title_and_boolean_annotations_and_there_are_exactly_sixteen(self):
         key = self.make_key()["key"]
         status, out, _ = self.rpc(key, "tools/list")
         listed = out["result"]["tools"]
         self.assertEqual(len(listed), len(OWN_TOOLS) + len(PAID_TOOL_NAMES))
-        self.assertEqual(len(listed), 17)
+        self.assertEqual(len(listed), 16)
         for tool in listed:
             self.assertTrue(tool.get("title"), tool["name"])
             annotations = tool["annotations"]
@@ -174,9 +174,6 @@ class ToolCatalogueTests(Fixture):
                 status, out, _ = self.call_tool(key, hidden)
                 self.assertEqual(out["error"]["code"], -32602)
                 self.assertEqual(self.shop.calls, [])
-        # get_singit_risk_check stays listed: it is not a hidden tool.
-        self.assertIn("get_singit_risk_check", names)
-        self.assertNotIn("get_singit_risk_check", wm.MCP_HIDDEN_TOOLS)
 
     def test_get_balance_needs_a_key_and_reads_only_that_keys_account(self):
         status, out, _ = self.call_tool(None, "get_balance")
@@ -444,7 +441,7 @@ class KeylessTests(Fixture):
         self.assertEqual(self.rpc(None, "ping")[:2], (200, {"jsonrpc": "2.0", "id": 1, "result": {}}))
         status, out, _ = self.rpc(None, "tools/list")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 17)  # the full catalogue, paid tools included
+        self.assertEqual(len(out["result"]["tools"]), 16)  # the full catalogue, paid tools included
         self.assertEqual(self.shop.calls, [])
 
     def test_free_tools_work_without_a_key_and_touch_no_account(self):
@@ -555,7 +552,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
                 self.assertEqual(status, 200)
                 status, out, _ = self.raw_rpc("tools/list", authorization=header)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 17)
+                self.assertEqual(len(out["result"]["tools"]), 16)
                 status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
                                               authorization=header)
                 self.assertFalse(out["result"].get("isError"))
@@ -570,7 +567,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
             with self.subTest(api_key=repr(header)):
                 status, out, _ = self.raw_rpc("tools/list", api_key=header)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 17)
+                self.assertEqual(len(out["result"]["tools"]), 16)
 
     def test_unexpanded_template_placeholder_in_authorization_is_served_keyless(self):
         self.api.mcp.fetch_json = lambda url: {"ok": True}
@@ -579,7 +576,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
             with self.subTest(authorization=placeholder):
                 status, out, _ = self.raw_rpc("tools/list", authorization=placeholder)
                 self.assertEqual(status, 200)
-                self.assertEqual(len(out["result"]["tools"]), 17)
+                self.assertEqual(len(out["result"]["tools"]), 16)
                 status, out, _ = self.raw_rpc("tools/call", {"name": "list_price_symbols", "arguments": {}},
                                               authorization=placeholder)
                 self.assertFalse(out["result"].get("isError"))
@@ -592,7 +589,7 @@ class BlankAndUnexpandedCredentialTests(Fixture):
     def test_unexpanded_template_placeholder_in_x_api_key_is_served_keyless(self):
         status, out, _ = self.raw_rpc("tools/list", api_key="${SINGIT_API_KEY}")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 17)
+        self.assertEqual(len(out["result"]["tools"]), 16)
 
     def test_a_real_but_wrong_key_still_gets_401(self):
         status, out, _ = self.raw_rpc("tools/list", authorization=f"Bearer {BAD_KEY}")
@@ -663,7 +660,7 @@ class TrustedOriginTests(Fixture):
     def test_a_trusted_scanner_origin_without_a_key_reads_the_catalogue(self):
         status, out, headers = self.rpc(None, "tools/list", origin="https://glama.ai")
         self.assertEqual(status, 200)
-        self.assertEqual(len(out["result"]["tools"]), 17)
+        self.assertEqual(len(out["result"]["tools"]), 16)
         self.assertEqual(headers["Access-Control-Allow-Origin"], "https://glama.ai")
 
     def test_a_trusted_scanner_origin_with_a_valid_key_gets_cors_headers_back(self):
@@ -1232,7 +1229,7 @@ class HttpTests(Fixture):
             {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).encode(), headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(request, timeout=10) as response:
             self.assertEqual(response.status, 200)
-            self.assertEqual(len(json.loads(response.read())["result"]["tools"]), 17)
+            self.assertEqual(len(json.loads(response.read())["result"]["tools"]), 16)
 
         request = urllib.request.Request(self.base, data=json.dumps(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize"}).encode(),
@@ -1292,7 +1289,7 @@ class HttpTests(Fixture):
         self.assertEqual(card["transport"], {"type": "streamable-http", "url": URI + "/mcp"})
         self.assertFalse(card["authentication"]["required"])  # free tools work keyless; paid ones need a key
         self.assertEqual(card["authentication"]["schemes"], ["bearer"])
-        self.assertEqual(len(card["tools"]), 17)
+        self.assertEqual(len(card["tools"]), 16)
         self.assertLessEqual(len(card["description"]), 200)
         self.assertEqual(card["serverInfo"]["version"], SERVER_INFO["version"])
         self.assertEqual(SERVER_INFO["version"], "0.1.6")
