@@ -104,7 +104,7 @@ test("image alias uses the base image quote without payment", async t => {
 });
 
 test("each SI-62 model keeps one advertised record, its /v1/chat/<id> route", async t => {
-  assert.equal(MODEL_ROUTES.length, 19);
+  assert.equal(MODEL_ROUTES.length, 20);
   for (const m of MODEL_ROUTES) assert.ok(!MODEL_ALIAS_ROUTES.some(a => a.id === m.id), m.id);
   const { url } = await serve(t);
   const discovery = await (await fetch(url + "/.well-known/x402")).json();

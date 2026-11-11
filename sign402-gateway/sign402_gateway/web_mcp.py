@@ -125,8 +125,10 @@ RECEIPT_KINDS = ("charge", "topup", "refund")
 RECEIPTS_DEFAULT, RECEIPTS_MAX = 10, 50
 # server.PAID_TOOLS entries kept out of MCP: get_sign402_report's upstream is a local demo service
 # (SIGN402_BASE_REPORT_URL, 127.0.0.1:4021) that is not running in production; get_hyperliquid_market's
-# Otto upstream currently returns 410; get_weather's GoPlausible demo is not on Base mainnet in accepts.
-MCP_HIDDEN_TOOLS = frozenset({"get_sign402_report", "get_hyperliquid_market", "get_weather"})
+# Otto upstream currently returns 410; get_weather's GoPlausible demo is not on Base mainnet in accepts;
+# get_singit_risk_check's Bankr upstream URL returns 404.
+MCP_HIDDEN_TOOLS = frozenset({"get_sign402_report", "get_hyperliquid_market", "get_weather",
+                              "get_singit_risk_check"})
 # MCP-facing descriptions for server.PAID_TOOLS, by mcpStyleName: what it returns, when to use it, and how it
 # differs from its neighbours (MCP directories score exactly that). The gateway's own descriptions stay as they are.
 PAID_TOOL_DESCRIPTIONS: dict[str, str] = {

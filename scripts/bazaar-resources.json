@@ -25,6 +25,7 @@
     { "url": "https://ask.singitai.app/v1/chat/gemini-3.1-pro-preview", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/chat/gemini-3.8-flash", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/chat/gemini-4-argon", "method": "POST" },
+    { "url": "https://ask.singitai.app/v1/chat/gemini-4-carbon", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/chat/grok-4.7", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/chat/nemotron-3.5-lightning", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/chat/kimi-k3", "method": "POST" },
