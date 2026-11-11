@@ -317,7 +317,7 @@ for (const code of ["max_tokens_spent_reasoning", "no_text"]) {
 }
 
 
-test("all 27 directory descriptions fit 500 characters and model operations agree", async () => {
+test("all 28 directory descriptions fit 500 characters and model operations agree", async () => {
   const { modelRoutePaths } = await import("../src/model-routes.mjs");
   const { lintChallenge, challengeWithBodyExtensions } = await import("../../scripts/bazaar-lint.mjs");
   const app = createApp(CONFIG, { facilitatorClient: facilitator(), log: () => {}, exaKey: "exa_test",
@@ -326,7 +326,7 @@ test("all 27 directory descriptions fit 500 characters and model operations agre
     fetchImpl: async () => { throw new Error("no upstream calls"); } });
   const routes = [ROUTE, "/v1/messages", "/v1/responses", "/v1/images/generations", "/v1/audio/speech",
     "/v1/exa/search", "/v1/exa/contents", "/v1/exa/answer", ...modelRoutePaths()];
-  assert.equal(routes.length, 27);
+  assert.equal(routes.length, 28);
   const doc = (await request(app, "/openapi.json")).body;
   for (const route of routes) {
     const result = await request(app, route, { headers: { "x-forwarded-proto": "https" } });

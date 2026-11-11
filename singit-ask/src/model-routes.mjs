@@ -41,6 +41,8 @@ export const MODEL_ROUTES = [
     blurb: "Google's fast, lower-cost Gemini model: high-volume or latency-sensitive tasks" },
   { id: "gemini-4-argon", name: "Gemini 4 Argon", provider: "Google", family: ["gemini"],
     blurb: "Google's Gemini 4 Argon model: long-context reasoning and multimodal input" },
+  { id: "gemini-4-carbon", name: "Gemini 4 Carbon", provider: "Google", family: ["gemini"],
+    blurb: "Google's Gemini 4 Carbon model: long-context reasoning and multimodal input" },
   { id: "grok-4.7", name: "Grok 4.7", provider: "xAI", family: ["grok"],
     blurb: "xAI's Grok 4.7 model: general-purpose chat and reasoning" },
   { id: "kimi-k3", name: "Kimi K3", provider: "Moonshot AI", family: ["kimi"],

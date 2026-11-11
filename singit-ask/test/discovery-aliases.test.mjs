@@ -19,6 +19,7 @@ const images = { async imageModels() { return IMAGES; },
 
 const CASES = {
   "gemini-4-argon": ["gemini-4-argon", "google/gemini-4-argon", "GOOGLE/Gemini-4-Argon"],
+  "gemini-4-carbon": ["gemini-4-carbon", "google/gemini-4-carbon", "GOOGLE/Gemini-4-Carbon"],
   "gpt-6-luna": ["openai/gpt-6-luna"],
   "kimi-k3.1-pro": ["moonshot/kimi-k3.1-pro"],
   "minimax-m3": ["minimax/minimax-m3"],
@@ -44,6 +45,7 @@ test("GET /v1/models/<alias> (raw and encoded) returns the canonical card", asyn
   }
   const list = await (await fetch(url + "/v1/models")).json();
   assert.deepEqual(list.data.find(m => m.id === "gemini-4-argon").aliases, ["google/gemini-4-argon"]);
+  assert.deepEqual(list.data.find(m => m.id === "gemini-4-carbon").aliases, ["google/gemini-4-carbon"]);
   assert.equal(facilitator.calls.verify, 0);
   assert.deepEqual(facilitator.calls.settle, []);
 });
@@ -98,7 +100,7 @@ test("the table never maps kimi-k3 or an SI-62/D4 id, and targets are canonical"
 test("new SI-62 ids are URL-safe and listed in well-known as /v1/chat/<id>", async t => {
   const { url } = await serve(t, images);
   const known = await (await fetch(url + "/.well-known/x402")).json();
-  for (const id of ["gpt-6-luna", "gemini-4-argon", "minimax-m3", "kimi-k3.1-pro"]) {
+  for (const id of ["gpt-6-luna", "gemini-4-argon", "gemini-4-carbon", "minimax-m3", "kimi-k3.1-pro"]) {
     assert.ok(MODEL_ROUTES.some(m => m.id === id), id);
     assert.match(id, /^[a-z0-9.-]+$/);
     assert.ok(known.resources.includes(url + routePath(id)), id);
