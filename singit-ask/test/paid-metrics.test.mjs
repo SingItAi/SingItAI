@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
-import { HealthStats, numbersBody, HOUR, LATENCY_CAP, MIN_SAMPLES, isIndeterminateSettlement } from "../src/health-stats.mjs";
+import { HealthStats, numbersBody, healthBody, HOUR, LATENCY_CAP, MIN_SAMPLES, DEGRADED_RATE, isIndeterminateSettlement } from "../src/health-stats.mjs";
 import express from "express";
 import { x402ResourceServer } from "@x402/express";
 import { createApp } from "../src/app.mjs";
@@ -318,4 +318,109 @@ test("indeterminate settlement detection follows causes and facilitator uncertai
     assert.equal(isIndeterminateSettlement(error), false);
   const cyclic = {}; cyclic.cause = cyclic;
   assert.equal(isIndeterminateSettlement(cyclic), false);
+});
+
+// SI-294: /health shows paid_call_success per rail, and a well-sampled low rate degrades that rail and the service.
+const calls = (s, network, attempts, answered, started = s.now()) => {
+  for (let i = 0; i < attempts; i++) call(s, { network, started, ...(i < answered ? { ms: 100 } : {}) });
+};
+test("/health: paid_call_success per rail, same figures as numbers.json, degrades only with enough samples", () => {
+  assert.equal(MIN_SAMPLES, 20); assert.equal(DEGRADED_RATE, 0.1);
+  let now = start;
+  const s = new HealthStats({ now: () => now, ownPayers: [own] });
+  // The 10.11 13:22 baseline: Base 61/62 = 98.4%, Solana 20/38 = 52.6%.
+  calls(s, BASE, 62, 61); calls(s, SOLANA, 38, 20);
+  let h = healthBody(s, null, "m");
+  assert.deepEqual(h.payments.networks.solana.paid_call_success, { window: "last_24h", attempts: 38, answered: 20,
+    success_pct: 52.6, reason: null, suppressed: false, status: "degraded" });
+  assert.deepEqual(h.payments.networks.base.paid_call_success, { window: "last_24h", attempts: 62, answered: 61,
+    success_pct: 98.4, reason: null, suppressed: false, status: "up" });
+  for (const n of ["base", "solana"]) {
+    const { window, status, ...published } = h.payments.networks[n].paid_call_success;
+    assert.deepEqual(published, numbersBody(s).paid_call_success.last_24h[n]);
+  }
+  assert.equal(h.payments.networks.solana.status, "degraded");
+  assert.equal(h.payments.networks.solana.basis, "paid_call_success");
+  assert.equal(h.payments.networks.base.status, "unknown");
+  assert.equal(h.status, "degraded");
+  assert.ok(!JSON.stringify(h).includes(external) && !JSON.stringify(h).includes(own));
+
+  // Base-like 98.4% alone does not degrade; exactly 90% is the bar, not below it.
+  const base = new HealthStats({ now: () => now, ownPayers: [own] });
+  calls(base, BASE, 62, 61); calls(base, SOLANA, 20, 18);
+  h = healthBody(base, null, "m");
+  assert.equal(h.status, "ok");
+  assert.equal(h.payments.networks.solana.paid_call_success.status, "up");
+
+  // Fewer than MIN_SAMPLES with a poor ratio: visible as raw counts, never degraded by itself.
+  const few = new HealthStats({ now: () => now, ownPayers: [own] });
+  calls(few, SOLANA, MIN_SAMPLES - 1, 1);
+  h = healthBody(few, null, "m");
+  assert.deepEqual(h.payments.networks.solana.paid_call_success, { window: "last_24h", attempts: 19, answered: 1,
+    success_pct: null, reason: "below_minimum_n", suppressed: true, status: "unknown" });
+  assert.equal(h.payments.networks.solana.status, "unknown");
+  assert.equal(h.status, "ok");
+  assert.equal(h.payments.networks.base.paid_call_success.reason, "insufficient_data");
+
+  // The failing hour leaves the rolling 24h window; healthy later samples bring the status back to ok.
+  now += 3 * HOUR; calls(s, SOLANA, 25, 25);
+  assert.equal(healthBody(s, null, "m").status, "degraded");
+  now = start + 24 * HOUR;
+  h = healthBody(s, null, "m");
+  assert.deepEqual(h.payments.networks.solana.paid_call_success, { window: "last_24h", attempts: 25, answered: 25,
+    success_pct: 100, reason: null, suppressed: false, status: "up" });
+  assert.equal(h.payments.networks.solana.status, "unknown");
+  assert.equal(h.status, "ok");
+});
+
+test("/health: without an own-payer list rail paid success is unpublished and changes no status", () => {
+  const s = new HealthStats({ now: () => start });
+  calls(s, SOLANA, 38, 0);
+  const h = healthBody(s, null, "m");
+  for (const n of ["base", "solana"]) assert.deepEqual(h.payments.networks[n].paid_call_success,
+    { window: "last_24h", attempts: null, answered: null, success_pct: null, reason: "own_payers_not_configured", status: "unknown" });
+  assert.equal(h.status, "ok");
+});
+
+test("/health: a rail already down or degraded by settlements keeps its settlement basis", () => {
+  const s = new HealthStats({ now: () => start, ownPayers: [own] });
+  calls(s, SOLANA, 30, 3);
+  for (let i = 0; i < 3; i++) s.recordSettlement({ route: "/r", network: SOLANA, ok: false });
+  const rail = healthBody(s, null, "m").payments.networks.solana;
+  assert.equal(rail.status, "down"); assert.equal(rail.basis, "settlements");
+  assert.equal(rail.paid_call_success.status, "degraded");
+});
+
+test("per-model paid success: external only, per network, follows a fallback, ages out and round trips", t => {
+  let now = start;
+  const s = new HealthStats({ now: () => now, ownPayers: [own] });
+  const tally = { network: SOLANA, external: true, started: now, model: "a" };
+  s.recordPaidAttempt(tally);
+  s.recordPaidModelAttempt({ ...tally, model: "b" });
+  s.recordPaidAnswer({ ...tally, model: "b", ms: 10 });
+  s.recordPaidAttempt({ ...tally, external: s.isExternal(own) });
+  s.recordPaidAttempt({ ...tally, network: BASE });
+  assert.deepEqual(s.paidModelSuccess("a", SOLANA), { attempts: 1, answered: 0 });
+  assert.deepEqual(s.paidModelSuccess("b", "solana"), { attempts: 1, answered: 1 });
+  assert.deepEqual(s.paidModelSuccess("a", BASE), { attempts: 1, answered: 0 });
+  assert.deepEqual(s.paidModelSuccess("constructor", SOLANA), { attempts: 0, answered: 0 });
+  // The network figure counts the call once, whatever model answered it.
+  assert.deepEqual(numbersBody(s).paid_call_success.last_24h.solana.attempts, 1);
+  assert.deepEqual(numbersBody(s).paid_call_success.last_24h.solana.answered, 1);
+  const unconfigured = new HealthStats({ now: () => now });
+  unconfigured.recordPaidAttempt(tally);
+  assert.deepEqual(unconfigured.paidModelSuccess("a", SOLANA), { attempts: 0, answered: 0 });
+
+  const dir = mkdtempSync(join(tmpdir(), "paid-models-")); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, "stats.json");
+  const saved = new HealthStats({ file, now: () => now, ownPayers: [own] });
+  saved.recordPaidAttempt(tally); saved.flush();
+  assert.deepEqual(new HealthStats({ file, now: () => now, ownPayers: [own] }).paidModelSuccess("a", SOLANA), { attempts: 1, answered: 0 });
+  const state = JSON.parse(readFileSync(file, "utf8")), key = Object.keys(state.buckets)[0];
+  state.buckets[key].paid.solana.models.a.attempts = -1;
+  writeFileSync(file, JSON.stringify(state));
+  assert.deepEqual(new HealthStats({ file, now: () => now, ownPayers: [own] }).paidModelSuccess("a", SOLANA), { attempts: 0, answered: 0 });
+
+  now += 24 * HOUR;
+  assert.deepEqual(s.paidModelSuccess("b", SOLANA), { attempts: 0, answered: 0 });
 });

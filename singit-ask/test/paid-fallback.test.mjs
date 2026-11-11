@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG, models, catalogue, post, decode, fakeFacilitator } from './auto-router-fixtures.mjs';
-import { AUTO_CONFIG } from '../src/auto-router.mjs';
+import { AUTO_CONFIG, rankPaidAlternates, RANK_MIN_SAMPLES } from '../src/auto-router.mjs';
 import { createApp, UpstreamError, ROUTE } from '../src/app.mjs';
 import { BASE, SOLANA } from '../src/pricing.mjs';
 import { reservations } from '../src/media-payment-replay.mjs';
@@ -30,7 +30,7 @@ async function serve(t, { upstream, cat = catalogue, config = CONFIG }) {
   const app = createApp(config, { facilitatorClient: facilitator, upstream, log: () => {}, catalogue: cat });
   const listener = await new Promise((resolve, reject) => { const l = app.listen(0, '127.0.0.1', e => e ? reject(e) : resolve(l)); });
   t.after(() => listener.close());
-  return { url: `http://127.0.0.1:${listener.address().port}${ROUTE}`, facilitator, settledOk: () => settledOk };
+  return { url: `http://127.0.0.1:${listener.address().port}${ROUTE}`, facilitator, settledOk: () => settledOk, app };
 }
 const pay = (required, network, scheme, signature = '0xsigned') => ({ 'PAYMENT-SIGNATURE': encode({ x402Version: 2, resource: required.resource,
   accepted: required.accepts.find(a => a.network === network && a.scheme === scheme), payload: { signature }, extensions: required.extensions }) });
@@ -235,6 +235,7 @@ test('Solana exact: a window cut never starts the alternate and settles nothing'
   const { response } = await paid(url, body(PINNED), { network: SOLANA, scheme: 'exact' });
   assert.equal(response.status, 503);
   assert.equal(response.headers.get('x-singit-error'), 'no_billable_answer');
+  assert.equal(response.headers.get('x-singit-receipt'), null);
   assert.deepEqual(asked, [PINNED]);
   assert.equal(facilitator.calls.settle.length, 0);
 });
@@ -424,9 +425,18 @@ test('relaxMinDiscount only lowers a floor that was actually sent', () => {
   assert.equal(ok.share, (100 - 91) / 100);
   assert.equal(relaxMinDiscount(input, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 98.9 }),
     { exact: true, network: BASE, maxChargeAtomic: '1500' }), null, 'floor must be strictly below the sent floor');
-  const tooDear = relaxMinDiscount(input, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 0 }),
+  // The same catalog slack as a paid fallback model: 1522 against 1500 signed is retried, 3602 is not.
+  const slight = relaxMinDiscount(input, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 0 }),
+    { exact: false, network: BASE, maxChargeAtomic: '1500' });
+  assert.equal(ceilings(slight.info, slight).upto[BASE], '1522');
+  const tooDear = relaxMinDiscount({ ...input, maxTokens: 4000 }, Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 0 }),
     { exact: false, network: BASE, maxChargeAtomic: '1500' });
   assert.equal(tooDear, null);
+  // Solana exact: the signed ceiling is fee plus a few atomic, so any relaxed share is a little above it.
+  const solana = relaxMinDiscount({ ...input, info: models.find(m => m.id === PINNED) },
+    Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 91.3189 }), { exact: true, network: SOLANA, maxChargeAtomic: '2003' });
+  assert.equal(ceilings(solana.info, solana).exact[SOLANA], '2015');
+  assert.ok(BigInt('2015') <= BigInt('2003') + BigInt(CATALOG_CEILING_SLACK_ATOMIC));
 });
 
 for (const scheme of ['upto', 'exact']) {
@@ -462,7 +472,7 @@ test('default model: a live discount whose ceiling exceeds the signed amount is 
       throw Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 0 });
     },
   });
-  const { response } = await paid(url, body(CHEAP, { max_tokens: 800 }), { scheme: 'upto' });
+  const { response } = await paid(url, body(CHEAP, { max_tokens: 4000 }), { scheme: 'upto' });
   assert.equal(response.status, 503);
   assert.equal(calls, 1);
   assert.equal(facilitator.calls.settle.length, 0);
@@ -484,4 +494,112 @@ test('pinned: a fitting live discount is preferred over switching models', async
   assert.deepEqual(asked, [PINNED, PINNED]);
   assert.equal(response.headers.get('x-singit-fallback-from'), null);
   assert.equal(facilitator.calls.settle.length, 1);
+});
+
+test('Solana exact: a fitting live discount retries the same model inside the window, never the alternate', async t => {
+  const asked = [];
+  const { url, facilitator } = await serve(t, {
+    cat: guardedCatalogue(),
+    upstream: async (_c, _m, _n, _f, model, options) => {
+      asked.push({ model, minDiscount: options?.minDiscount, timeoutMs: options?.timeoutMs });
+      if (asked.length === 1) throw Object.assign(refused(404, 'minimum_discount_not_met'), { bestDiscountPct: 91.3189 });
+      return answer(model);
+    },
+  });
+  const { signed, response } = await paid(url, body(PINNED, { max_tokens: 800 }), { network: SOLANA, scheme: 'exact', signature: '0xsolexactdiscount' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(asked.map(a => a.model), [PINNED, PINNED]);
+  assert.ok(asked[1].minDiscount < asked[0].minDiscount);
+  assert.equal(asked[1].minDiscount, 91);
+  // Still inside the 30 s window: the retry's budget is what is left of it.
+  assert.ok(asked[1].timeoutMs <= 30_000 && asked[1].timeoutMs > 0);
+  assert.equal(response.headers.get('x-singit-fallback-from'), null);
+  assert.equal(response.headers.get('x-singit-fallback-policy'), null);
+  const result = await response.json();
+  assert.equal(result.singit_fallback_from, undefined);
+  assert.equal(result.billing.totalAtomic, signed);
+  assert.equal(facilitator.calls.settle.length, 1);
+  assert.deepEqual(facilitator.calls.settle[0], [SOLANA, signed]);
+});
+
+test('rankPaidAlternates: measured success wins, under-sampled models keep config order behind measured ones', () => {
+  assert.equal(RANK_MIN_SAMPLES, 20);
+  const list = ['a', 'b', 'c', 'd'].map(model => ({ model }));
+  const rank = stats => rankPaidAlternates(list, id => stats[id]).map(c => c.model);
+  // A well-sampled unreliable candidate loses to a well-sampled reliable one.
+  assert.deepEqual(rank({ a: { attempts: 40, answered: 20 }, b: { attempts: 30, answered: 29 } }), ['b', 'a', 'c', 'd']);
+  // A lucky 1/1 (and any count below the minimum) is never ranked above a well-sampled model.
+  assert.deepEqual(rank({ a: { attempts: 1, answered: 1 }, b: { attempts: 19, answered: 19 }, c: { attempts: 20, answered: 11 } }),
+    ['c', 'a', 'b', 'd']);
+  // Cold start, ties and broken lookups keep the reviewed order.
+  assert.deepEqual(rank({}), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(rank({ a: { attempts: 20, answered: 20 }, b: { attempts: 40, answered: 40 } }), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(rankPaidAlternates(list, () => { throw new Error('stats'); }).map(c => c.model), ['a', 'b', 'c', 'd']);
+  assert.deepEqual(rankPaidAlternates(list, () => undefined).map(c => c.model), ['a', 'b', 'c', 'd']);
+});
+
+// hy4 and glm-5.3-flash are outside every auto tier; their reviewed peers are re-ranked by live Solana paid success.
+const HY4 = 'hy4', [V4, V41] = AUTO_CONFIG.pinnedDefaultFallbacks[HY4];
+const OWN = '0x' + '9'.repeat(40);  // the fake facilitator's payer (0x2222…) is therefore external
+function reviewedCatalogue() {
+  const extra = { [HY4]: [1, 4], [V4]: [.05, .5] };
+  const resolve = async id => extra[id] ? { id, promptUsdPerToken: extra[id][0] * 1e-6, completionUsdPerToken: extra[id][1] * 1e-6 }
+    : catalogue.resolve(id);
+  return { ...catalogue, resolve };
+}
+function seed(stats, network, model, attempts, answered) {
+  for (let i = 0; i < attempts; i++) {
+    const tally = { network, external: true, started: Date.now(), model };
+    stats.recordPaidAttempt(tally);
+    if (i < answered) stats.recordPaidAnswer({ ...tally, ms: 100 });
+  }
+}
+async function reviewedServe(t, upstream) {
+  return serve(t, { cat: reviewedCatalogue(), config: { ...CONFIG, ownPayers: [OWN] }, upstream });
+}
+
+test('reviewed defaults on Solana exact: the peer with better live Solana paid success answers', async t => {
+  assert.deepEqual([V4, V41], ['deepseek-v4-flash', 'deepseek-v4.1-flash']);
+  const asked = [];
+  const { url, facilitator, app } = await reviewedServe(t, async (_c, _m, _n, _f, model) => {
+    asked.push(model); if (model === HY4) throw refused(); return answer(model);
+  });
+  const stats = app.locals.healthStats;
+  // Config order puts V4 first; it is well sampled and unreliable on Solana, V41 is well sampled and reliable.
+  seed(stats, SOLANA, V4, 30, 10); seed(stats, SOLANA, V41, 30, 30);
+  // Base figures do not decide a Solana payment.
+  seed(stats, BASE, V4, 30, 30); seed(stats, BASE, V41, 30, 0);
+  const { signed, response } = await paid(url, body(HY4), { network: SOLANA, scheme: 'exact', signature: '0xsolrank' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(asked, [HY4, V41]);
+  assert.equal(response.headers.get('x-singit-fallback-from'), HY4);
+  assert.equal(response.headers.get('x-singit-fallback-policy'), 'paid');
+  assert.equal((await response.json()).billing.totalAtomic, signed);
+  assert.equal(facilitator.calls.settle.length, 1);
+  // The call is one network attempt; the model that was refused and the one that answered are each recorded.
+  assert.deepEqual(stats.paidModelSuccess(HY4, SOLANA), { attempts: 1, answered: 0 });
+  assert.deepEqual(stats.paidModelSuccess(V41, SOLANA), { attempts: 31, answered: 31 });
+});
+
+test('reviewed defaults: an under-sampled 1/1 peer does not jump a well-sampled one', async t => {
+  const asked = [];
+  const { url, app } = await reviewedServe(t, async (_c, _m, _n, _f, model) => {
+    asked.push(model); if (model === HY4) throw refused(); return answer(model);
+  });
+  seed(app.locals.healthStats, SOLANA, V4, 30, 26); seed(app.locals.healthStats, SOLANA, V41, 1, 1);
+  const { response } = await paid(url, body(HY4), { network: SOLANA, scheme: 'exact', signature: '0xsolrank2' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(asked, [HY4, V4]);
+});
+
+test('request fallback_models keep the caller order whatever the live figures', async t => {
+  const asked = [];
+  const { url, app } = await reviewedServe(t, async (_c, _m, _n, _f, model) => {
+    asked.push(model); if (model === HY4) throw refused(); return answer(model);
+  });
+  seed(app.locals.healthStats, SOLANA, V4, 30, 0); seed(app.locals.healthStats, SOLANA, V41, 30, 30);
+  const { response } = await paid(url, body(HY4, { fallback_models: [V4, V41] }), { network: SOLANA, scheme: 'exact', signature: '0xsolrank3' });
+  assert.equal(response.status, 200);
+  assert.deepEqual(asked, [HY4, V4]);
+  assert.equal(response.headers.get('x-singit-fallback-policy'), 'paid');
 });

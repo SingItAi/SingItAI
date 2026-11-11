@@ -12,7 +12,7 @@
   "pinnedDefaultFallbacks": {
     "gpt-6-luna": ["gpt-6-luna-pro"],
     "claude-haiku-4.5": ["claude-haiku-5.5"],
-    "hy4": ["deepseek-v4.1-flash"],
-    "glm-5.3-flash": ["deepseek-v4.1-flash"]
+    "hy4": ["deepseek-v4-flash", "deepseek-v4.1-flash"],
+    "glm-5.3-flash": ["deepseek-v4-flash", "deepseek-v4.1-flash"]
   }
 }

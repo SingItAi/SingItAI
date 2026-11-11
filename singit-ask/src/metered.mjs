@@ -1,5 +1,6 @@
 import { forcedToolError } from "./model-policy.mjs";
 import { isIndeterminateSettlement } from "./health-stats.mjs";
+import { rankPaidAlternates } from "./auto-router.mjs";
 import { LIMITS } from "./limits.mjs";
 import { unsupportedCapability, capabilityError } from "./agent-chat.mjs";
 
@@ -143,7 +144,10 @@ export function fitsSignedCatalogCeiling(candidateCeiling, signedAtomic, slack =
 }
 
 // Surplus answered 404 minimum_discount_not_met: the floor we sent is above every live seller.
-// Retry the same model at the best discount they reported, only when that share still fits what was signed.
+// Retry the same model at the best discount they reported, only when that share still fits what was signed, with the
+// same catalog slack a paid fallback model gets (fitsSignedCatalogCeiling): on Solana the signed ceiling is the fee plus
+// a few atomic of cost with no minimum to absorb a relaxed share, so without it the same model would never be retried
+// there and the request would jump to another model instead. Settlement is still never above the signed amount.
 // Never raise the floor, and never retry when we did not send one (any seller was already allowed).
 export function relaxMinDiscount(input, error, { exact, network, maxChargeAtomic, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION } = {}) {
   if (error?.code !== "minimum_discount_not_met") return null;
@@ -157,7 +161,7 @@ export function relaxMinDiscount(input, error, { exact, network, maxChargeAtomic
   const relaxed = { ...input, share: (100 - floor) / 100, minDiscount: floor };
   const bucket = exact ? "exact" : "upto";
   try {
-    if (BigInt(ceilings(relaxed.info, relaxed, exactOutputFraction)[bucket][network]) > BigInt(maxChargeAtomic)) return null;
+    if (!fitsSignedCatalogCeiling(ceilings(relaxed.info, relaxed, exactOutputFraction)[bucket][network], maxChargeAtomic)) return null;
   } catch {
     return null;
   }
@@ -475,7 +479,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     try {
       const paid = paidTerms(req);
       if (!paid) throw new Error("payment on an unknown network");
-      res.locals.singitPaid = { network: paid.network, external: req.singitExternalPayer === true, started };
+      res.locals.singitPaid = { network: paid.network, external: req.singitExternalPayer === true, started, model: req.askInput.model };
       try { app.locals?.healthStats?.recordPaidAttempt(res.locals.singitPaid); } catch {}
       const exact = paid.scheme === "exact";
       // Solana `exact`: the answer must be complete within the window from verification (solana-exact-window.mjs).
@@ -541,7 +545,11 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         const refused = !discountRetry && !(req.askInput.request && error.status === 400) && canRetryPaidFallback(error)
           && Date.now() < deadline;
         const auto = refused && req.askInput.autoAlternates?.find(fits);
-        const pinned = refused && !auto && req.askInput.paidAlternates?.find(fits);
+        // Server-chosen alternates go best live paid success on this network first; a request's own list keeps its order.
+        const alternates = req.askInput.paidAlternatesRanked && req.askInput.paidAlternates
+          ? rankPaidAlternates(req.askInput.paidAlternates, id => app.locals?.healthStats?.paidModelSuccess(id, paid.network))
+          : req.askInput.paidAlternates;
+        const pinned = refused && !auto && alternates?.find(fits);
         const alternate = discountRetry || auto || pinned;
         if (!alternate) throw error;
         if (discountRetry) {
@@ -554,6 +562,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
           // One retry, sequential: the alternates are dropped, so a second failure is final.
           req.askInput = auto ? alternate
             : { ...alternate, fallbackFrom: req.askInput.fallbackFrom ?? req.askInput.model, fallbackPolicy: "paid" };
+          // The answer, if any, is now this model's: one more paid attempt for it, none for the network.
+          res.locals.singitPaid.model = req.askInput.model;
+          try { app.locals?.healthStats?.recordPaidModelAttempt(res.locals.singitPaid); } catch {}
         }
         answer = await ask(req.askInput);
       }

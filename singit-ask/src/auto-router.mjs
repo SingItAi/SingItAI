@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { UnknownModel, priceGuard, unservableError } from "./catalogue.mjs";
 import { ceilings, catalogCeilingsDearer } from "./metered.mjs";
 import { BASE, TERMS, minDiscountFor, DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
+import { MIN_SAMPLES } from "./health-stats.mjs";
 export const AUTO_ID = "singit/auto";
 export const AUTO_DESCRIPTION = "Picks eco/standard/premium by simple rules for text prompts. Optional min_tier sets the minimum tier. X-SingIt-Model and X-SingIt-Tier report the choice. Only POST /v1/chat/completions. If the chosen model's seller refuses before payment, the router picks the next model of the tier or the next tier up, never below min_tier; after payment it retries once with another model of the same tier only if it costs no more than the price quoted, otherwise the request fails with 503 and no charge; X-SingIt-Model and X-SingIt-Tier show what actually answered. A pinned model (not singit/auto) may likewise be answered once after payment by an equivalent model no dearer than the amount signed, if it is refused without a billable result; X-SingIt-Fallback-From and X-SingIt-Fallback-Policy: paid disclose it, and X-SingIt-Fallback: off disables automatic substitution.";
 export const AUTO_CONFIG = JSON.parse(readFileSync(new URL("./auto-router.config.json", import.meta.url), "utf8"));
@@ -167,5 +168,24 @@ export async function attachPaidAlternates(config, catalogue, input, chosen, { a
     const x = BigInt(ceilings(a.info, a).upto[BASE]), y = BigInt(ceilings(b.info, b).upto[BASE]);
     return x < y ? -1 : x > y ? 1 : 0;
   });
-  return paidAlternates.length ? { ...chosen, paidAlternates } : chosen;
+  // Only server-chosen alternates are re-ordered by live success after payment (rankPaidAlternates); a request's list is not.
+  return paidAlternates.length ? { ...chosen, paidAlternates, paidAlternatesRanked: !input.fallbackModels } : chosen;
+}
+
+// Live order for server-chosen paid alternates, on the network the payment arrived on (metered.mjs). `success(id)` is
+// the model's external paid { attempts, answered } there over the last 24h (HealthStats.paidModelSuccess, own payers
+// excluded). A model with at least RANK_MIN_SAMPLES attempts is ranked by answered / attempts, highest first; every
+// well-sampled model goes before every under-sampled one, so a lucky 1/1 never beats a measured record. Ties and all
+// under-sampled models keep the reviewed/config order, which is also the whole order on a cold start.
+// Each candidate was already checked to be able to take the request, and the caller still checks the signed amount.
+export const RANK_MIN_SAMPLES = MIN_SAMPLES;
+export function rankPaidAlternates(alternates, success) {
+  const scored = alternates.map((candidate, index) => {
+    let c = null;
+    try { c = success(candidate.model); } catch {}
+    const sampled = Number.isSafeInteger(c?.attempts) && Number.isSafeInteger(c?.answered) && c.attempts >= RANK_MIN_SAMPLES;
+    return { candidate, index, rate: sampled ? Math.min(c.answered, c.attempts) / c.attempts : null };
+  });
+  return scored.sort((a, b) => (a.rate == null) - (b.rate == null)
+    || (a.rate != null && b.rate - a.rate) || a.index - b.index).map(s => s.candidate);
 }
