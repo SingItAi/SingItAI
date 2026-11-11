@@ -2389,13 +2389,14 @@
         "output": 10
       },
       "singitUsdPerMillionTokens": {
-        "input": 0.49400000000000005,
-        "output": 2.47
+        "input": 0.5114200000000001,
+        "output": 2.5571000000000006
       },
       "expectedUsdPerMillionTokens": {
-        "basis": "trusted",
-        "n": 0,
-        "window": 20
+        "basis": "observed_preliminary",
+        "n": 1,
+        "window": 20,
+        "note": "Median of only 1 paid answer; not yet a stable median (basis becomes observed at 5 of the last 20)."
       },
       "upto": {
         "base": {
