@@ -11,6 +11,7 @@ import { MODEL_ALIAS_ROUTES } from "./model-alias-routes.mjs";
 export const DISCOVERY_ALIASES = Object.freeze({
   "openai/gpt-6-luna": "gpt-6-luna",
   "google/gemini-4-argon": "gemini-4-argon",
+  "google/gemini-4-carbon": "gemini-4-carbon",
   "moonshot/kimi-k3.1-pro": "kimi-k3.1-pro",
   "moonshotai/kimi-k3.1-pro": "kimi-k3.1-pro",
   "minimax/minimax-m3": "minimax-m3",
