@@ -364,12 +364,25 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         if (!hasAnswer(route, data)) throw new NoAnswer(response.status, "no_text");
         catalogue?.noteAnswered?.(req.format.model);
         const reported = data.usage?.buyer_cost_micro ?? response.headers.get("x-si-buyer-cost-micro");
-        const usage = billWithDiagnostics({ ...data.usage, buyer_cost_micro: reported },
-          terms, exact, route, req.format.model, log, retried);
-        // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override,
-        // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
-        const billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
-        if (exact && usage.overrunAtomic) log(`singit-ask: ${route} exact overrun ${usage.overrunAtomic} micro-USDC`);
+        const haveCost = (typeof reported === "number" && Number.isSafeInteger(reported) && reported >= 0)
+          || (typeof reported === "string" && /^(0|[1-9][0-9]*)$/.test(reported));
+        // Surplus's Anthropic Messages and Responses streams often omit buyer_cost_micro (chat completions include it).
+        // `exact` charges the signed ceiling anyway, so a missing cost must not refuse after tokens have already gone out.
+        // `upto` still needs the actual cost to know what to settle.
+        let billing;
+        if (haveCost) {
+          const usage = billWithDiagnostics({ ...data.usage, buyer_cost_micro: reported },
+            terms, exact, route, req.format.model, log, retried);
+          // `exact` already settled the full ceiling it was offered; see metered.mjs for why there is nothing to override,
+          // and for why going over it (usage.overrunAtomic) still answers instead of refusing.
+          billing = exact ? { ...usage, mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic } : usage;
+          if (exact && usage.overrunAtomic) log(`singit-ask: ${route} exact overrun ${usage.overrunAtomic} micro-USDC`);
+        } else if (exact) {
+          log(`singit-ask: ${route} ${req.format.model} exact answer with no buyer_cost_micro; settling the ceiling`);
+          billing = { mode: "exact_ceiling", totalAtomic: terms.maxChargeAtomic, currency: "USDC" };
+        } else {
+          throw new Error("Provider did not report a valid actual cost; payment refused.");
+        }
         recordWhenSettled(res, answerLog, { route, model: req.format.model, modelOmitted: req.format.modelOmitted, ...acceptedOf(req), usage: data.usage, billing,
           maxTokens: req.format.maxTokens });  // the normalised limit the ceiling was priced from
         if (!exact) setSettlementOverrides(res, { amount: billing.totalAtomic });

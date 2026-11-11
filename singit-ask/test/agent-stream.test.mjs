@@ -66,6 +66,42 @@ for (const network of [BASE, SOLANA]) for (const scheme of ['upto', 'exact']) fo
   assert.equal(numbersBody(app.locals.healthStats).agent_traffic.total.calls, 1);
 });
 
+function withoutBuyerCost(path) {
+  return upstreamFrames(path, false).map((frame) => frame.replace(/,\s*"buyer_cost_micro"\s*:\s*\d+/, ''));
+}
+
+for (const path of ['/v1/messages', '/v1/responses']) test(`exact ${path} live SSE settles the ceiling when Surplus omits buyer_cost_micro`, async t => {
+  const { url, facilitator } = await serve(t, { upstream: null, fetchImpl: async () => sseResponse(withoutBuyerCost(path)) });
+  const body = { ...QUESTION, model: 'cheap-model', stream: true, ...(path.endsWith('responses') ? { input: 'test', max_output_tokens: 300 } : {}) };
+  const challenge = await url(body, {}, path);
+  assert.equal(challenge.status, 402);
+  let settled = 0;
+  const settle = facilitator.settle.bind(facilitator);
+  facilitator.settle = async (...args) => { settled++; return settle(...args); };
+  const res = await url(body, { 'payment-signature': signature(decode(challenge.headers.get('payment-required')), BASE, 'exact') }, path);
+  assert.equal(res.status, 200, await res.clone().text());
+  const text = await res.text(), events = frames(text);
+  assert.equal(settled, 1);
+  const billing = path.endsWith('messages') ? events.at(-2).billing : events.at(-1).response.billing;
+  assert.equal(billing.mode, 'exact_ceiling');
+  assert.ok(billing.totalAtomic);
+  assert.match(text, path.endsWith('messages') ? /event: content_block_delta/ : /response\.output_text\.delta/);
+});
+
+for (const path of ['/v1/messages', '/v1/responses']) test(`upto ${path} live SSE does not settle when Surplus omits buyer_cost_micro`, async t => {
+  const { url, facilitator } = await serve(t, { upstream: null, fetchImpl: async () => sseResponse(withoutBuyerCost(path)) });
+  const body = { ...QUESTION, model: 'cheap-model', stream: true, ...(path.endsWith('responses') ? { input: 'test', max_output_tokens: 300 } : {}) };
+  const challenge = await url(body, {}, path);
+  assert.equal(challenge.status, 402);
+  let settled = 0;
+  const settle = facilitator.settle.bind(facilitator);
+  facilitator.settle = async (...args) => { settled++; return settle(...args); };
+  const res = await url(body, { 'payment-signature': signature(decode(challenge.headers.get('payment-required')), BASE, 'upto') }, path);
+  const text = await res.text();
+  assert.equal(settled, 0);
+  assert.equal(res.status === 200 && /billing/.test(text), false);
+});
+
 // Wire log of one request: when each piece of the response reached the socket.
 function watchWire(app) {
   const wire = [];
