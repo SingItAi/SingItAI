@@ -143,10 +143,16 @@ export class LiveSSE {
     else end.call(res);
   }
   // The stream cannot be finished: no terminal events, and a status the middleware reads as "do not charge".
-  abort(status = 503) {
+  // With a `body` (the native format routes), a 200 stream that only sent keepalives gets one `event: error` frame carrying it, so the
+  // client is not left with an empty success (after data the stream just ends: tests/agent-stream.test.mjs); chat passes none and keeps ending silently.
+  abort(status = 503, body = null) {
     this.stop();
     for (const attempt of this.attempts) attempt.abandon();
-    if (!this.res.writableEnded) { this.res.statusCode = status; this.res.end(); }
+    if (!this.res.writableEnded) {
+      this.res.statusCode = status;
+      if (body && this.started && !this.dataSent) this.raw(`event: error\ndata: ${JSON.stringify(body)}\n\n`);
+      this.res.end();
+    }
   }
 }
 

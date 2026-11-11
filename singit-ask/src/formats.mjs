@@ -9,8 +9,7 @@ import { parseBestDiscount } from "./reject-log.mjs";
 import { MAX_TOKENS_TOO_SMALL } from "./errors.mjs";
 import { randomUUID } from "node:crypto";
 import { solanaExactWindow, withinWindow, windowRefusal, WindowExceeded, fallbackReserveMs } from "./solana-exact-window.mjs";
-import { rankPaidAlternates } from "./auto-router.mjs";
-import { FormatUnserved, formatAlternates, asUpstreamError, isReasoningModel } from "./format-fallback.mjs";
+import { FormatUnserved, FormatTracker, formatAlternates, pickAlternate, fitsWindow, asUpstreamError, isReasoningModel } from "./format-fallback.mjs";
 import { reserveChatPayment, reservationRefusal } from "./payment-reservation.mjs";
 // The other two ways agents ask a model, besides OpenAI's chat completions: Anthropic's Messages (POST /v1/messages,
 // what Claude Code and the Anthropic SDK speak) and OpenAI's Responses (POST /v1/responses). Sold over x402 like the
@@ -247,6 +246,8 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
   const exactOutputFraction = config.exactOutputFraction ?? DEFAULT_EXACT_OUTPUT_FRACTION;
   const bufferPp = config.priceBufferPp ?? 1;
   const answerLog = answerLogFor(config, log);
+  // Recent outcome and duration per model, process-local (format-fallback.mjs); not published.
+  const tracker = app.locals.formatTracker ??= new FormatTracker();
   for (const [route, upstreamPath] of Object.entries(FORMAT_ROUTES)) {
     const quotes = new WeakMap();
     const server = new x402ResourceServer(facilitatorClient)
@@ -317,7 +318,9 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
       let retried = false, recorded = false;
       // Live streaming (agent-stream.mjs). A model that answers with JSON anyway takes the buffered path.
       const live = res.locals?.live ?? null;
-      const refuse = (status, body) => live?.started ? live.abort(status) : res.status(status).json(body);
+      // Headers that already left (a keepalive) cannot carry the status: the body goes out as an SSE error event, and the
+      // status the payment middleware reads stays >= 400, so nothing settles.
+      const refuse = (status, body) => live?.started ? live.abort(status, body) : res.status(status).json(body);
       let liveAttempt = null;
       const modelHeaders = () => {
         if (!req.format?.fallbackFrom) return;
@@ -357,12 +360,18 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         };
         const fits = candidate => fitsSignedCatalogCeiling(
           ceilings(candidate.info, candidate, exactOutputFraction)[exact ? "exact" : "upto"][accepted.network], terms.maxChargeAtomic);
-        const ranked = pool => rankPaidAlternates(pool, id => app.locals?.healthStats?.paidModelSuccess?.(id, accepted.network));
+        const health = id => app.locals?.healthStats?.paidModelSuccess?.(id, accepted.network);
+        const remaining = () => limitAt - Date.now();
         const reservedFailure = () => Object.assign(new NoAnswer(503, "upstream_unavailable"), { singitReserved: true });
 
         // One model's try: the request as it stands in req.format, its discount and reasoning retries, and the check that
         // what came back is an answer. Everything that makes it not one is a NoAnswer.
-        const attempt = async ({ reserve }) => {
+        const attempt = async opts => {
+          const at = Date.now(), model = req.format.model;
+          try { const done = await attemptOnce(opts); tracker.record(model, accepted.network, true, Date.now() - at); return done; }
+          catch (error) { tracker.record(model, accepted.network, false, Date.now() - at); throw error; }
+        };
+        const attemptOnce = async ({ reserve }) => {
           retried = false;
           const controller = new AbortController();
           liveAttempt = live?.attempt() ?? null;
@@ -451,7 +460,10 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
         const known = unserved.has(route, req.format.model) && (await poolFor()).some(fits);
         if (known) failure = Object.assign(new NoAnswer(404, "not_found_error"), { singitSkipped: true });
         else {
-          try { result = await attempt({ reserve: Boolean(win && (await poolFor()).length) }); }
+          // Reserve the end of the window only for an alternate that could still finish in the slice that is held back.
+          const slice = win ? fallbackReserveMs(config, remaining(), true) : 0;
+          const reserve = Boolean(win && (await poolFor()).some(c => fitsWindow(tracker.stats(c.model, accepted.network), slice)));
+          try { result = await attempt({ reserve }); }
           catch (error) { if (error instanceof WindowExceeded || !(error instanceof NoAnswer)) throw error; failure = error; }
         }
         if (failure) {
@@ -460,9 +472,13 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
           const spent = failure.code === "max_tokens_spent_reasoning";
           const formatMiss = failure.status === 404 && failure.code !== "minimum_discount_not_met";
           const retryable = !fallbackOff && !live?.dataSent && Date.now() < limitAt && (spent || canRetryPaidFallback(asUpstreamError(failure)));
-          const alternate = retryable && ranked(await poolFor(spent)).find(fits);
+          const picked = retryable ? await pickAlternate(await poolFor(spent), { route, format: req.format, catalogue, unserved, fits,
+            health, tracker, network: accepted.network, remainingMs: win ? remaining() : Infinity }) : {};
+          const alternate = picked.alternate;
           if (formatMiss) unserved.note(route, req.format.model);
           if (!alternate) {
+            // Only models that cannot finish in the time left: starting one would burn the window. Fail cleanly, not 422.
+            if (picked.tooSlow && !failure.singitSkipped && spent) throw Object.assign(new NoAnswer(503, "upstream_unavailable"), { singitReserved: true });
             if (!failure.singitSkipped) throw failure;
             result = await attempt({ reserve: false });   // nothing else fits: ask the model anyway
           } else {
@@ -523,7 +539,7 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
             ...(live?.started ? {} : windowRefusal(res, `req_${randomUUID()}`)) });
         }
         observe({ ok: false, code: error.code, status: error.status, retried });
-        if (!live?.dataSent) markUnservable(catalogue, req.format?.model, error, log);
+        if (!live?.dataSent && !error.singitReserved) markUnservable(catalogue, req.format?.model, error, log);
         // Not settled: on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
         log(`singit-ask: ${route} ${req.format?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
         if (error.code === "max_tokens_spent_reasoning") {
@@ -534,9 +550,10 @@ export function addFormatRoutes(app, config, { facilitatorClient, publicClient, 
           return refuse(422, refusal(route, 422, MAX_TOKENS_TOO_SMALL, "max_tokens_too_small",
             minimum > asked ? { next_action: { type: "raise_max_tokens", field, minimum } } : {}));
         }
-        if (live?.started) return live.abort(503);
         // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
-        res.set("Retry-After", "30").status(503).json(refusal(route, 503, "No billable answer was produced. You were not charged; try again.", "no_billable_answer"));
+        const none = refusal(route, 503, "No billable answer was produced. You were not charged; try again.", "no_billable_answer");
+        if (live?.started) return live.abort(503, none);
+        res.set("Retry-After", "30").status(503).json(none);
       }
     });
   }
