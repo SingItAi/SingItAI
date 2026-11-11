@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# SingIt for Claude Code: curl -fsSL https://singitai.app/singit-cc-install | bash
+# Installs @singitai/proxy (one local proxy on 127.0.0.1:8787, wallet in
+# ~/.singit/session) and runs `singit-cc setup`. Options: --dry-run, --skip-claude
+# Env: SINGIT_PROXY_TARBALL=<path to packed .tgz> installs that instead of npm;
+#      SINGIT_CC_FROM=checkout runs from an adjacent SingItAI checkout (developers).
+set -euo pipefail
+
+dry_run=false
+skip_client=false
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) dry_run=true ;;
+    --skip-claude) skip_client=true ;;
+    *) echo "Unknown option: $arg" >&2; exit 1 ;;
+  esac
+done
+
+command -v node >/dev/null || { echo 'Node 20+ is required.' >&2; exit 1; }
+node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' || { echo 'Node 20+ is required.' >&2; exit 1; }
+command -v npm >/dev/null || { echo 'npm is required.' >&2; exit 1; }
+
+# Installer caps; package defaults stay $0.01/call, $1/day. Explicit env wins.
+export SINGIT_MAX_PER_CALL_USD="${SINGIT_MAX_PER_CALL_USD-0.05}"
+export SINGIT_MAX_PER_DAY_USD="${SINGIT_MAX_PER_DAY_USD-2}"
+
+# Never the default: curl downloads this file into a temp dir, so the checkout is opt-in only.
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd || pwd)"
+mode=npm
+if [[ "${SINGIT_CC_FROM:-}" == checkout ]]; then
+  mode=checkout
+elif [[ -n "${SINGIT_PROXY_TARBALL:-}" ]]; then
+  mode=tarball
+fi
+
+tarball=""
+if [[ $mode == tarball ]]; then
+  [[ -f "$SINGIT_PROXY_TARBALL" ]] || { echo "SINGIT_PROXY_TARBALL not found: $SINGIT_PROXY_TARBALL" >&2; exit 1; }
+  tarball="$(cd -- "$(dirname -- "$SINGIT_PROXY_TARBALL")" && pwd)/$(basename -- "$SINGIT_PROXY_TARBALL")"
+fi
+if [[ $mode == checkout ]]; then
+  checkout_proxy="$script_dir/../proxy"
+  [[ -f "$checkout_proxy/package.json" ]] || { echo 'SINGIT_CC_FROM=checkout needs the script to sit in a SingItAI checkout (website/ or install/).' >&2; exit 1; }
+fi
+
+case "$mode" in
+  npm) echo "Install: npm i -g @singitai/proxy" ;;
+  tarball) echo "Install: npm i -g $tarball" ;;
+  checkout) echo "Install: (cd proxy && npm install && node src/cc.js setup)" ;;
+esac
+echo "Then: singit-cc setup (caps $SINGIT_MAX_PER_CALL_USD USD/call, $SINGIT_MAX_PER_DAY_USD USD/day)"
+if $dry_run; then
+  echo 'Dry run: nothing installed, no wallet created, no client config written.'
+  exit 0
+fi
+
+if [[ $mode == npm ]] && ! npm view @singitai/proxy version >/dev/null 2>&1; then
+  echo '@singitai/proxy is not on npm yet. Set SINGIT_PROXY_TARBALL=/path/to/singitai-proxy-<version>.tgz to install a packed copy.' >&2
+  exit 1
+fi
+
+if ! $skip_client && ! command -v claude >/dev/null; then
+  echo 'Install Claude Code using the official installer: https://claude.ai/install.sh (or start with --no-launch).'
+fi
+case "$mode" in
+  npm) npm i -g @singitai/proxy ;;
+  tarball) npm i -g "$tarball" ;;
+  checkout) (cd "$checkout_proxy" && npm install) ;;
+esac
+
+if [[ $mode == checkout ]]; then
+  run=(node "$checkout_proxy/src/cc.js")
+else
+  bin="$(command -v singit-cc || true)"
+  [[ -n "$bin" ]] || bin="$(npm prefix -g)/bin/singit-cc"
+  [[ -x "$bin" ]] || { echo 'singit-cc is not on PATH after install; add the npm global bin directory to PATH and run: singit-cc setup' >&2; exit 1; }
+  run=("$bin")
+fi
+"${run[@]}" setup

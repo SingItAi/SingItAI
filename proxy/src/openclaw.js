@@ -2,14 +2,14 @@
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { constants, copyFileSync, existsSync, mkdirSync, writeFileSync, readFileSync, renameSync, rmSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { isMain } from "./is-main.js";
 import { sessionPath } from "@singitai/session-wallet";
 import { startProxy, VERSION } from "./server.js";
 import { readConfig } from "./config.js";
 
 import path from "node:path";
 import { homedir } from "node:os";
-import { printWallet } from "./cc.js";
+import { newestBackup, printWallet } from "./cc.js";
 
 export function installerEnv(env = process.env) {
   return { SINGIT_MAX_PER_CALL_USD: "0.05", SINGIT_MAX_PER_DAY_USD: "2", SINGIT_CLIENT: "openclaw", SINGIT_NETWORK: "base", ...env };
@@ -62,6 +62,44 @@ export function writeProfile(env, port, overwrite = false, { defaultModel = fals
     throw error;
   } finally { rmSync(temporary, { force: true }); }
 }
+const isEmpty = value => value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0;
+// Drop only what setup added; prune the containers it created if they end up empty.
+function removeSingit(data) {
+  delete data.models?.providers?.singit;
+  delete data.mcp?.servers?.singit;
+  if (data.agents?.defaults?.model?.primary === "singit/auto") delete data.agents.defaults.model.primary;
+  if (isEmpty(data.models?.providers)) delete data.models.providers;
+  if (data.models && Object.keys(data.models).length === 1 && data.models.mode === "merge") delete data.models;
+  if (isEmpty(data.mcp?.servers)) delete data.mcp.servers;
+  if (isEmpty(data.mcp)) delete data.mcp;
+  if (isEmpty(data.agents?.defaults?.model)) delete data.agents.defaults.model;
+  if (isEmpty(data.agents?.defaults)) delete data.agents.defaults;
+  if (isEmpty(data.agents)) delete data.agents;
+  return data;
+}
+export function uninstallProfile(env, { renameImpl = renameSync } = {}) {
+  const file = profilePath(env);
+  if (!existsSync(file)) return "none";
+  let data;
+  try { data = JSON.parse(readFileSync(file, "utf8")); } catch { data = null; }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw Object.assign(new Error("openclaw.json is not valid JSON; left unchanged."), { expected: true });
+  }
+  const backup = newestBackup(file, text => text.includes('"singit"'));
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    if (backup) {
+      copyFileSync(backup, temporary, constants.COPYFILE_EXCL);
+      renameImpl(temporary, file);
+      return "restored";
+    }
+    removeSingit(data);
+    if (isEmpty(data)) { rmSync(file); return "removed"; }
+    writeFileSync(temporary, JSON.stringify(data, null, 2) + "\n", { mode: 0o600, flag: "wx" });
+    renameImpl(temporary, file);
+    return "pruned";
+  } finally { rmSync(temporary, { force: true }); }
+}
 export function validProfile(env, port) {
   try {
     const p = JSON.parse(readFileSync(profilePath(env), "utf8")).models?.providers?.singit;
@@ -78,11 +116,16 @@ export async function main(argv = process.argv.slice(2), { env = process.env, st
   const forwarded = split < 0 ? [] : argv.slice(split + 1);
   const command = options[0]?.startsWith("-") ? "start" : (options[0] || "start");
   if (options.includes("--help")) {
-    stdout.write("Usage: singit-openclaw [start|setup|doctor] [--no-launch] [--client label] [--default-model] [--mcp|--no-mcp] [-- ...openclaw arguments]\nNot on npm yet. Uses the existing @singitai/proxy; Base only.\n");
+    stdout.write("Usage: singit-openclaw [start|setup|doctor|uninstall] [--no-launch] [--client label] [--default-model] [--mcp|--no-mcp] [-- ...openclaw arguments]\nUses the one @singitai/proxy on 127.0.0.1:8787; Base only. Not the official OpenClaw clawrouter.\nuninstall: restores the newest openclaw.json.<ts>.bak, or removes only the SingIt provider and MCP entry; the wallet is never touched.\nTo remove the package too: npm uninstall -g @singitai/proxy\n");
     return;
   }
   if (options.includes("--version")) { stdout.write(`${VERSION}\n`); return; }
-  if (!["start", "setup", "doctor"].includes(command)) throw new Error("Unknown command. Use --help.");
+  if (!["start", "setup", "doctor", "uninstall"].includes(command)) throw new Error("Unknown command. Use --help.");
+  if (command === "uninstall") {
+    const result = uninstallProfile(env);
+    stdout.write(`${{ none: "No OpenClaw config found; nothing to do.", restored: "Restored the previous openclaw.json from backup.", pruned: "Removed the SingIt provider and MCP entry; the rest of openclaw.json is unchanged.", removed: "Removed openclaw.json (it only held SingIt entries)." }[result]}\nThe wallet in ~/.singit/session was left in place.\nTo remove the package: npm uninstall -g @singitai/proxy\n`);
+    return;
+  }
   const configured = installerEnv(env);
   const clientIndex = options.indexOf("--client");
   if (clientIndex >= 0) {
@@ -142,10 +185,10 @@ export async function main(argv = process.argv.slice(2), { env = process.env, st
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch(() => {
-    // Upstream errors can contain sensitive configuration; never echo them.
-    process.stderr.write("singit-openclaw could not start. Check Node 20+, Base configuration, port, and wallet permissions; use --help.\n");
+if (isMain(import.meta.url)) {
+  main().catch(error => {
+    // Upstream errors can contain sensitive configuration; only our own flagged messages are echoed.
+    process.stderr.write(error?.expected ? `${error.message}\n` : "singit-openclaw could not start. Check Node 20+, Base configuration, port, and wallet permissions; use --help.\n");
     process.exitCode = 1;
   });
 }

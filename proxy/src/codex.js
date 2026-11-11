@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
-import { constants, copyFileSync, existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { constants, copyFileSync, existsSync, mkdirSync, writeFileSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { isMain } from "./is-main.js";
 import { sessionPath } from "@singitai/session-wallet";
 import { startProxy, VERSION } from "./server.js";
 import { readConfig } from "./config.js";
 
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { printWallet } from "./cc.js";
+import { newestBackup, printWallet } from "./cc.js";
 
 export function installerEnv(env = process.env) {
   return { SINGIT_MAX_PER_CALL_USD: "0.05", SINGIT_MAX_PER_DAY_USD: "2", SINGIT_CLIENT: "codex", SINGIT_NETWORK: "base", ...env };
@@ -46,6 +47,18 @@ bearer_token_env_var = "SINGIT_API_KEY"
 startup_timeout_sec = 15
 `, { mode: 0o600 });
 }
+export function uninstallProfile(env, { renameImpl = renameSync } = {}) {
+  const file = profilePath(env);
+  if (!existsSync(file)) return "none";
+  const backup = newestBackup(file, text => text.includes("[model_providers.singit]"));
+  if (!backup) { rmSync(file); return "removed"; }
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    copyFileSync(backup, temporary, constants.COPYFILE_EXCL);
+    renameImpl(temporary, file);
+  } finally { rmSync(temporary, { force: true }); }
+  return "restored";
+}
 export function hasCodex(env) {
   return !spawnSync("codex", ["--version"], { env: codexEnv(env), stdio: "ignore", timeout: 5000 }).error;
 }
@@ -56,11 +69,16 @@ export async function main(argv = process.argv.slice(2), { env = process.env, st
   const forwarded = split < 0 ? [] : argv.slice(split + 1);
   const command = options[0]?.startsWith("-") ? "start" : (options[0] || "start");
   if (options.includes("--help")) {
-    stdout.write("Usage: singit-codex [start|setup|doctor] [--no-launch] [--client label] [-- ...codex arguments]\nNot on npm yet. Uses the existing @singitai/proxy; Base only.\n");
+    stdout.write("Usage: singit-codex [start|setup|doctor|uninstall] [--no-launch] [--client label] [-- ...codex arguments]\nUses the one @singitai/proxy on 127.0.0.1:8787; Base only.\nuninstall: restores the newest singit.config.toml.<ts>.bak or removes the SingIt profile; config.toml and the wallet are never touched.\nTo remove the package too: npm uninstall -g @singitai/proxy\n");
     return;
   }
   if (options.includes("--version")) { stdout.write(`${VERSION}\n`); return; }
-  if (!["start", "setup", "doctor"].includes(command)) throw new Error("Unknown command. Use --help.");
+  if (!["start", "setup", "doctor", "uninstall"].includes(command)) throw new Error("Unknown command. Use --help.");
+  if (command === "uninstall") {
+    const result = uninstallProfile(env);
+    stdout.write(`${{ none: "No SingIt profile found; nothing to do.", removed: "Removed the SingIt profile (no earlier backup).", restored: "Restored the previous singit.config.toml from backup." }[result]}\nconfig.toml and the wallet in ~/.singit/session were left in place.\nTo remove the package: npm uninstall -g @singitai/proxy\n`);
+    return;
+  }
   const configured = installerEnv(env);
   const clientIndex = options.indexOf("--client");
   if (clientIndex >= 0) {
@@ -118,7 +136,7 @@ export async function main(argv = process.argv.slice(2), { env = process.env, st
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   main().catch(() => {
     // Upstream errors can contain sensitive configuration; never echo them.
     process.stderr.write("singit-codex could not start. Check Node 20+, Base configuration, port, and wallet permissions; use --help.\n");

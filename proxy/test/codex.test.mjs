@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -92,8 +92,10 @@ test("installer dry run creates no wallet", t => {
   const script = fileURLToPath(new URL("../../install/singit-codex-install.sh", import.meta.url));
   const result = spawnSync("bash", [script, "--dry-run"], { env, encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /Not on npm yet/);
-  assert.match(result.stdout, /cd proxy && npm install && node src\/codex.js setup/);
+  assert.match(result.stdout, /Install: npm i -g @singitai\/proxy/);
+  assert.doesNotMatch(result.stdout, /NOT LIVE|Not on npm/);
+  const checkout = spawnSync("bash", [script, "--dry-run"], { env: { ...env, SINGIT_CODEX_FROM: "checkout" }, encoding: "utf8" });
+  assert.match(checkout.stdout, /cd proxy && npm install && node src\/codex.js setup/);
   assert.equal(existsSync(env.SINGIT_HOME), false);
 });
 
@@ -204,4 +206,56 @@ test("SIGINT and SIGTERM stop a running Codex child and the launcher", async t =
     assert.equal(result.code, signal === "SIGINT" ? 130 : 143);
     assert.throws(() => process.kill(pid, 0), error => error.code === "ESRCH");
   }
+});
+
+const codexFile = env => path.join(env.HOME, ".codex", "singit.config.toml");
+const listing = dir => readdirSync(dir).sort();
+
+test("uninstall restores the newest non-SingIt backup, keeps config.toml and the wallet", async t => {
+  const { home, env } = fixture(t);
+  const dir = path.join(home, ".codex");
+  mkdirSync(dir);
+  writeFileSync(path.join(dir, "config.toml"), "model = \"base\"\n");
+  writeFileSync(codexFile(env), "# user profile\n");
+  await main(["setup"], { env, stdout: capture() });
+  await main(["setup"], { env, stdout: capture() }); // second backup holds our own profile
+  assert.match(readFileSync(codexFile(env), "utf8"), /model_providers\.singit/);
+  const session = readFileSync(path.join(env.SINGIT_HOME, "session"), "utf8");
+  const stdout = capture();
+  await main(["uninstall"], { env, stdout });
+  assert.equal(readFileSync(codexFile(env), "utf8"), "# user profile\n");
+  assert.equal(readFileSync(path.join(dir, "config.toml"), "utf8"), "model = \"base\"\n");
+  assert.equal(readFileSync(path.join(env.SINGIT_HOME, "session"), "utf8"), session);
+  assert.ok(listing(dir).some(name => name.endsWith(".bak")));
+  assert.ok(!stdout.text.includes(JSON.parse(session).privateKey));
+  assert.equal(existsSync(path.join(home, ".claude/settings.json")), false);
+});
+
+test("uninstall removes a profile we created and is a no-op when none exists", async t => {
+  const { env } = fixture(t);
+  const none = capture();
+  await main(["uninstall"], { env, stdout: none });
+  assert.match(none.text, /nothing to do/);
+  assert.equal(existsSync(env.SINGIT_HOME), false);
+  await main(["setup"], { env, stdout: capture() });
+  assert.equal(existsSync(codexFile(env)), true);
+  await main(["uninstall"], { env, stdout: capture() });
+  assert.equal(existsSync(codexFile(env)), false);
+  assert.equal(existsSync(path.join(env.SINGIT_HOME, "session")), true);
+  assert.deepEqual(listing(path.join(env.HOME, ".codex")), []);
+});
+
+test("uninstall honours CODEX_HOME", async t => {
+  const { home, env } = fixture(t);
+  const custom = { ...env, CODEX_HOME: path.join(home, "alt") };
+  await main(["setup"], { env: custom, stdout: capture() });
+  assert.equal(existsSync(path.join(home, "alt", "singit.config.toml")), true);
+  await main(["uninstall"], { env: custom, stdout: capture() });
+  assert.equal(existsSync(path.join(home, "alt", "singit.config.toml")), false);
+});
+
+test("help lists uninstall", async () => {
+  const stdout = capture();
+  await main(["--help"], { stdout });
+  assert.match(stdout.text, /uninstall/);
 });
