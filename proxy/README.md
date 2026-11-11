@@ -136,3 +136,15 @@ Ceilings are always on. The defaults are $0.01 per call and $1 per UTC day, matc
 New installs pay on **Base**. Solana is available only as an explicit `--network solana`, and only
 once Ask publishes a paid-success rate of at least 95% in `numbers.json`. Below that (or if the
 figure is missing) the proxy refuses to start on Solana.
+
+## Claude Code / singit-cc
+
+**Not on npm yet.** `singit-cc` is a second CLI in this same package and wraps the existing `startProxy` process. It supports Base only; it adds no payment proxy. From the repository root, run `bash install/singit-cc-install.sh` (or add `--dry-run` to inspect instructions without installing or creating a wallet). Then run `cd proxy && node src/cc.js start`. Use `setup` to create/reuse a wallet, `doctor` for local checks, `start --no-launch` for the proxy alone, and `start -- -p "say hi"` to forward Claude arguments. Node 20+ and Claude Code are required; the official Claude installer is https://claude.ai/install.sh.
+
+The launcher defaults to port 8787 and gives Claude `ANTHROPIC_BASE_URL=http://127.0.0.1:8787` (no `/api` suffix). Both `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` are the dummy value `singit-proxy-handles-auth`. Inherited credentials/OAuth variables are removed from the child; no global Claude settings are written. Model defaults and overrides are documented in [the Claude Code guide](../docs/claude-code.md).
+
+Launcher caps are $0.05/call and $2/day, overridable with `SINGIT_MAX_PER_CALL_USD` and `SINGIT_MAX_PER_DAY_USD`. The proxy’s own defaults remain $0.01/call and $1/day. The wrapper sets `SINGIT_CLIENT=claude-code` unless overridden.
+
+The wallet is `~/.singit/session` (or under `SINGIT_HOME`). Only the public address, a Base USDC funding hint, and a terminal QR are printed. Fund with USDC on Base (`eip155:8453`); the facilitator pays gas, no ETH needed. Never print or pass the private key on argv. `SINGIT_WALLET_KEY` is env-only for the proxy and is removed from Claude’s child environment. HTTP 402 is never success.
+
+The intended future installer command `curl -fsSL https://singitai.app/singit-cc-install | bash` is **NOT LIVE**. Today use the repository script above. After publication the script can detect npm availability and install `@singitai/proxy`; checkout runs always use the local package.

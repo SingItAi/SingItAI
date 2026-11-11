@@ -269,8 +269,8 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
   return { config, handle, payer };
 }
 
-export async function startProxy({ env = process.env, fetchImpl = fetch, listen = true } = {}) {
-  const config = readConfig({ env, argv: process.argv.slice(2) });
+export async function startProxy({ env = process.env, fetchImpl = fetch, listen = true, argv = process.argv.slice(2) } = {}) {
+  const config = readConfig({ env, argv });
   await assertNetworkAllowed(config.network, { askUrl: config.askUrl, fetchImpl });
   // Create the wallet at listen time so GET /wallet works before the first paid call.
   loadOrCreateWallet(env);
