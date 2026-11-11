@@ -40,3 +40,13 @@
 /SKILL.md
   Content-Type: text/markdown; charset=utf-8
   Access-Control-Allow-Origin: *
+
+# curl installers: real extensionless files, served as the scripts themselves.
+/singit-cc-install
+  Content-Type: text/x-shellscript; charset=utf-8
+
+/singit-codex-install
+  Content-Type: text/x-shellscript; charset=utf-8
+
+/singit-openclaw-install
+  Content-Type: text/x-shellscript; charset=utf-8
