@@ -137,15 +137,12 @@ Claude Code + SingIt MCP in 60 seconds: https://singitai.app/docs/claude-code/
 Paid POST https://ask.singitai.app/v1/chat/completions supports function tools, tool replies, developer instructions and text/image blocks within 200 messages, 100000 estimated characters, 64 tools/calls, four images and 8192 output tokens (default 800; JSON body limit 128 kB). Capabilities depend on the chosen model.
 Messages and Responses support tools and up to 32000 output tokens.
 
-Chat, Messages and Responses accept stream:true as live SSE: once payment is
-verified the model's tokens are relayed as they arrive (`: keepalive` comments
-while it is quiet). Billing is on the terminal event, released after settlement;
-PAYMENT-RESPONSE is present only when settlement headers can still be set, which
-a live stream's head usually cannot. Chat stream_options accepts only
-{include_usage:boolean}, only with stream:true. Errors before the first token stay
-JSON and charge nothing; a stream that breaks after its first token ends without
-terminal events and charges nothing. Free and per-model chat stream the same way
-with their existing text-only limits; free models refuse tools/images.
+Chat, Messages and Responses accept stream:true as live SSE: after payment is
+verified, tokens arrive as the model produces them (`: keepalive` while quiet).
+Billing is on the terminal event after settlement. Chat stream_options accepts
+only {include_usage:boolean}, only with stream:true. Errors before the first token
+stay JSON and charge nothing; a break after the first token ends without terminal
+events and charges nothing. Free and per-model chat stream the same way with their existing text-only limits; free models refuse tools/images.
 Legacy plain text requests with stream:false and max_tokens<=1200 keep their behavior.
 
 Clients should treat payment_duplicate and payment_replay as the same condition.
