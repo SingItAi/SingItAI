@@ -222,7 +222,7 @@ singit/auto: POST /v1/chat/completions picks eco/standard/premium by simple rule
 | [Gemini 3.7 Flash](https://singitai.app/models/gemini-3.7-flash/) | $0.0051675 | $0.0258375 | 0.0015 | 0.0015 | 0.002104 | 0.002045 |
 | [Gemini 3.8 Flash](https://singitai.app/models/gemini-3.8-flash/) | $0.039736125 | $0.198680625 | 0.0015 | 0.0015 | 0.002115 | 0.002049 |
 | [Google: Gemini 4 Argon](https://singitai.app/models/gemini-4-argon/) | $0.01248 | $0.0624 | 0.0015 | 0.0015 | 0.002277 | 0.002116 |
-| [Google: Gemini 4 Carbon](https://singitai.app/models/gemini-4-carbon/) | $0.494 | $2.47 | 0.003764 | 0.002151 | 0.004764 | 0.003151 |
+| [Google: Gemini 4 Carbon](https://singitai.app/models/gemini-4-carbon/) | $0.51142 | $2.5571 | 0.003764 | 0.002151 | 0.004764 | 0.003151 |
 | [Gemma 3 12B IT](https://singitai.app/models/gemma-3-12b-it/) | $0.0006435 | $0.0019305 | 0.0015 | 0.0015 | 0.002004 | 0.002002 |
 | [Gemma 3 27B](https://singitai.app/models/gemma-3-27b-it/) | $0.0010296 | $0.002574 | 0.0015 | 0.0015 | 0.002006 | 0.002002 |
 | [Gemma 3 4B IT](https://singitai.app/models/gemma-3-4b-it/) | $0.000598 | $0.001196 | 0.0015 | 0.0015 | 0.002003 | 0.002002 |
