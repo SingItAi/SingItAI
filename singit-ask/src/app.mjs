@@ -31,7 +31,7 @@ import { addAgentFiles } from "./agent-files.mjs";
 import { AUTO_CONFIG, AUTO_ID, AUTO_DESCRIPTION, TIERS, chooseAuto, choosePinnedFallback, attachPaidAlternates } from "./auto-router.mjs";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { errorCodesMiddleware, ERROR_SCHEMAS, errorRef, RATE_LIMIT_HEADERS } from "./errors.mjs";
-import { HealthStats, FacilitatorCheck, healthBody, numbersBody, privateStatsBody } from "./health-stats.mjs";
+import { HealthStats, FacilitatorCheck, healthBody, numbersBody, privateStatsBody, MIN_SAMPLES, DEGRADED_RATE } from "./health-stats.mjs";
 import { declareEip2612GasSponsoringExtension } from "@x402/extensions";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { probeNote, addUsageRoute, baseOffer, solanaOffer, exactBaseOffer, exactSolanaOffer, ceilings } from "./metered.mjs";
@@ -1296,7 +1296,15 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                       "settled": 0,
                       "failed": 0,
                       "lastSettledAt": null,
-                      "lastFailedAt": null
+                      "lastFailedAt": null,
+                      "paid_call_success": {
+                        "window": "last_24h",
+                        "attempts": null,
+                        "answered": null,
+                        "success_pct": null,
+                        "reason": "own_payers_not_configured",
+                        "status": "unknown"
+                      }
                     },
                     "solana": {
                       "status": "unknown",
@@ -1304,7 +1312,15 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                       "settled": 0,
                       "failed": 0,
                       "lastSettledAt": null,
-                      "lastFailedAt": null
+                      "lastFailedAt": null,
+                      "paid_call_success": {
+                        "window": "last_24h",
+                        "attempts": null,
+                        "answered": null,
+                        "success_pct": null,
+                        "reason": "own_payers_not_configured",
+                        "status": "unknown"
+                      }
                     }
                   }
                 }
@@ -1335,7 +1351,30 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                 retryAfterSeconds: { type: "integer", minimum: 30 }
               } } },
               payments: { type: "object", properties: { facilitator: { type: ["object", "null"] },
-                networks: { type: "object" } } }
+                networks: { type: "object", description: "Per payment rail (base, solana). status is down/degraded/up from facilitator "
+                  + "settlements (basis settlements) or the facilitator probe (basis facilitator); a rail they call up or unknown is "
+                  + "degraded with basis paid_call_success when its paid_call_success.status is degraded. Any degraded or down rail "
+                  + "makes the top-level status degraded.",
+                  additionalProperties: { type: "object", properties: {
+                    status: { enum: ["up", "degraded", "down", "unknown"] },
+                    basis: { enum: ["none", "settlements", "facilitator", "paid_call_success"] },
+                    settled: { type: "integer", minimum: 0 }, failed: { type: "integer", minimum: 0 },
+                    lastSettledAt: { type: ["string", "null"], format: "date-time" },
+                    lastFailedAt: { type: ["string", "null"], format: "date-time" },
+                    paid_call_success: { type: "object", required: ["window", "attempts", "answered", "success_pct", "reason", "status"],
+                      description: `The rolling last_24h figure for this rail from numbers.json paid_call_success (same counts, own payers `
+                        + `excluded; null with reason own_payers_not_configured while no own-payer list is configured). status: with at `
+                        + `least ${MIN_SAMPLES} attempts, degraded when the failure rate (attempts - answered) / attempts is above `
+                        + `${DEGRADED_RATE * 100}% (success_pct below ${100 - DEGRADED_RATE * 100}), else up; with fewer attempts, an `
+                        + "empty window or no own-payer list, unknown, which never degrades the rail or the service by itself. "
+                        + "Failures stop counting once their UTC hour leaves the 24h window; no last-failure rule keeps it degraded.",
+                      properties: {
+                        window: { const: "last_24h" },
+                        attempts: { type: ["integer", "null"], minimum: 0 }, answered: { type: ["integer", "null"], minimum: 0 },
+                        success_pct: { type: ["number", "null"], minimum: 0, maximum: 100 },
+                        reason: { enum: [null, "below_minimum_n", "insufficient_data", "own_payers_not_configured"] },
+                        suppressed: { type: "boolean" },
+                        status: { enum: ["up", "degraded", "unknown"] } } } } } } } }
             } } } } } } } },
         "/numbers.json": { get: { operationId: "getNumbers", security: [], summary: "Get measured usage numbers with definitions",
           responses: { 200: { description: "Calls, USDC volume, unique payer counts and agent_traffic since counters began. agent_traffic has total/last_24h/last_7d calls, with_tools, with_stream, with_images and fixed by_source product labels for served paid and free answers.", content: { "application/json": { schema: { type: "object", required: ["own_payers_configured"], properties: { agent_traffic: { type: "object", description: "Served paid and free answers; total, last_24h and last_7d contain calls, with_tools, with_stream, with_images and fixed by_source counters. No raw client headers or prompt data." }, own_payers_configured: { type: "boolean" }, counts_basis: { type: "string", enum: ["including_own_payments", "excluding_configured_own_payers"] }, counts_label: { type: "string" } } } } } } } } },
