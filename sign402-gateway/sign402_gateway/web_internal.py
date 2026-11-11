@@ -116,7 +116,7 @@ def _limits_from_limiter(server: Any, gw: Any, account: str) -> None:
     row = server.allowance.store.active_limiter(account)
     if row is None:
         return
-    defaults, ceilings = gw._operator_user_wallet_limits(), gw._operator_user_wallet_ceilings()
+    defaults, ceilings = gw._operator_user_wallet_limits(), gw._operator_user_wallet_ceilings_for(server, account)
     per_tx, daily = int(row["per_purchase_cap"]), int(row["daily_cap"])
     if ceilings["ceilingPerTxAtomic"] is not None:
         per_tx = min(per_tx, ceilings["ceilingPerTxAtomic"])

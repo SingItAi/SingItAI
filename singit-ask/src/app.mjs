@@ -42,6 +42,7 @@ import { AGENT_LIMITS, LIMITS } from "./limits.mjs";
 import { ObservedPrices, KEEP as OBSERVED_KEEP, OBSERVED_MIN_N } from "./observed.mjs";
 import { paymentRequiredHeaderMiddleware } from "./payment-required-header.mjs";
 import { SpendLimitReader, spendLimitMiddleware } from "./spend-limit.mjs";
+import { createHolderDiscount } from "./holder-discount.mjs";
 import { FREE_PREFIX, addFreeRoute, freeTerms } from "./free.mjs";
 import { CREDIT_ROUTE, addCreditRoute } from "./credit.mjs";
 import { SEARCH_ROUTES, addSearchRoutes, exaRequestBody, exaPriceRange } from "./search.mjs";
@@ -590,6 +591,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
                                       suspensionsFile: config.suspensionsFile, guardSharesFile: config.guardSharesFile, neverHide: [config.model, ...Object.values(AUTO_CONFIG.tiers).flat(), ...freeTerms(config).models], unservableTtlMs: config.unservableTtlMs }) : null,
                                     observed = new ObservedPrices({ file: config.observedFile }),
                                     spendLimits = priceBook?.publicClient ? new SpendLimitReader({ publicClient: priceBook.publicClient }) : null,
+                                    holderDiscount = createHolderDiscount({ publicClient: priceBook?.publicClient, log }),
                                     clock }) {
   // Every refusal Surplus answers a paid question with is logged once, with its error code and any price it names.
   fetchImpl = withRejectLog(fetchImpl, { surplusUrl: config.surplusUrl, log, responseLimits: {
@@ -605,6 +607,8 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
     isPublicRoute: route => discoverableRoutes().includes(route), ownPayers: config.ownPayers ?? [], log });
   app.locals.facilitatorCheck = new FacilitatorCheck({ client: facilitatorClient });
   app.locals.catalogue = catalogue;  // server.mjs warms it
+  // SINGIT-holder pricing on Base (holder-discount.mjs): offers read it from config, the verify guard from app.locals.
+  config.holderDiscount = app.locals.holderDiscount = holderDiscount;
   app.disable("x-powered-by");
   // cloudflared connects over loopback and supplies the public HTTPS scheme.
   app.set("trust proxy", "loopback");

@@ -17,6 +17,7 @@ import { UnknownModel } from "./catalogue.mjs";
 import { resolveDiscoveryId } from "./discovery-aliases.mjs";
 import { addPaymentRoute, isDiscoveryProbe, perRequest } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, SERVICE_NAMES, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
+import { holderBasePrice, holderBilling, floorOf } from "./holder-discount.mjs";
 
 export const IMAGE_ROUTE = "/v1/images/generations";
 export const IMAGE_MODELS_ROUTE = "/v1/images/models";
@@ -160,8 +161,10 @@ export function addImageRoutes(app, config, { facilitatorClient, publicClient, c
     });
     const price = (network) => async (ctx) => {
       const quote = priced.get(ctx.adapter.getBody());
-      const amount = imagePrice(quote?.listAtomic ?? await probeList(ctx), network).totalAtomic;
-      return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
+      const listed = imagePrice(quote?.listAtomic ?? await probeList(ctx), network);
+      if (network !== BASE) return { asset: SOLANA_ASSET, amount: listed.totalAtomic };
+      const held = await holderBasePrice(config, ctx, listed.totalAtomic, floorOf(listed), { name: "USD Coin", version: "2" });
+      return { asset: ASSET, amount: held.amount, extra: held.extra };
     };
     app.post(route, async (req, res, next) => {
       // x402scan's empty, unpaid probe gets the example's offer (`probeList`), not a model-lookup 404;
@@ -219,7 +222,7 @@ export function addImageRoutes(app, config, { facilitatorClient, publicClient, c
       }
       const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
       if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: ${request.model} cost ${cost} micro-USD, listed ${listAtomic}`);
-      const billing = publicBilling({ ...imagePrice(listAtomic, network), currency: "USDC" });
+      const billing = publicBilling({ ...holderBilling(imagePrice(listAtomic, network), req), currency: "USDC" });
       log(`singit-ask: ${images.length} image(s) from ${request.model} in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
       res.json({ created: data.created ?? Math.floor(started / 1000), data: images, model: request.model, billing });
     });

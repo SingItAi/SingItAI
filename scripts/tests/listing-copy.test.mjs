@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { listingCopy, bazaarLimitsBoilerplate, checkedDescription, serviceDescription, MAX_DESCRIPTION } from '../../singit-ask/src/listing-copy.mjs';
+import { listingCopy, bazaarLimitsBoilerplate, checkedDescription, serviceDescription, MAX_DESCRIPTION, HOLDER_NOTE } from '../../singit-ask/src/listing-copy.mjs';
 import { routeCopy } from '../../singit-ask/src/listing-snapshot.mjs';
 import { catalogResponse } from '../../singit-ask/src/catalog-shape.mjs';
 import { serve, request } from '../../singit-ask/test/fixtures/listing-harness.mjs';
@@ -9,7 +9,7 @@ import { aliasPaths } from '../../singit-ask/src/model-alias-routes.mjs';
 import { SERVICE_NAME } from '../../singit-ask/src/pricing.mjs';
 
 
-const tail = unit => `Pay-per-${unit} in USDC on Base or Solana, no API key; the max charge is quoted before signing. Models: GET /v1/catalog.`;
+const tail = unit => `Pay-per-${unit} in USDC on Base or Solana, no API key; the max charge is quoted before signing. ${HOLDER_NOTE} Models: GET /v1/catalog.`;
 const TAIL = tail('answer');
 const CALL_TAIL = tail('call');
 

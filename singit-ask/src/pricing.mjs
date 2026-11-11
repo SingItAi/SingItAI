@@ -1,3 +1,4 @@
+import { applyDiscount } from "./holder-discount.mjs";
 // The published settlement fee is charged consistently, including while the
 // facilitator's promotional free allowance applies. Amounts are USDC micro-units.
 export const METERED_ROUTE = "/v1/chat/completions/metered";
@@ -57,7 +58,7 @@ export const MIN_CEILING_ATOMIC = "1500";
 
 // `allowOverrun` absorbs the difference above the signed ceiling for exact payments and reasoning retries.
 // Ordinary upto answers still refuse an overrun; retries clamp settlement to the authorization.
-export function billUsage(usage, terms = TERMS, { allowOverrun = false } = {}) {
+export function billUsage(usage, terms = TERMS, { allowOverrun = false, holderBps = 0 } = {}) {
   const raw = usage?.buyer_cost_micro;
   if (!(typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0)
       && !(typeof raw === "string" && /^(0|[1-9][0-9]*)$/.test(raw))) {
@@ -65,9 +66,12 @@ export function billUsage(usage, terms = TERMS, { allowOverrun = false } = {}) {
   }
   const provider = BigInt(raw);
   const markup = (provider * BigInt(terms.markupBps) + 9999n) / 10000n;
-  const total = provider + markup + BigInt(terms.settlementFeeAtomic);
+  // A SINGIT holder on Base (holder-discount.mjs) pays less than list for the same answer, never less than the
+  // provider's cost plus the fee; `terms.maxChargeAtomic` is then the lowered ceiling they signed.
+  const listTotal = provider + markup + BigInt(terms.settlementFeeAtomic);
+  const total = holderBps > 0 ? applyDiscount(listTotal, provider + BigInt(terms.settlementFeeAtomic), holderBps) : listTotal;
   const cap = BigInt(terms.maxChargeAtomic);
-  const billed = { ...terms, providerCostAtomic: provider.toString(), markupAtomic: markup.toString() };
+  const billed = { ...terms, providerCostAtomic: provider.toString(), markupAtomic: markup.toString(), ...(holderBps > 0 ? { holderDiscountBps: holderBps } : {}) };
   if (total <= cap) return { ...billed, totalAtomic: total.toString(), currency: "USDC" };
   if (!allowOverrun) throw Object.assign(new Error("Actual cost exceeds the authorized ceiling; payment refused."),
     { code: "ceiling_exceeded", totalAtomic: total.toString() });

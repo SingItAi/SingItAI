@@ -12,8 +12,10 @@ export function checkedDescription(description) {
 }
 
 // What a buyer pays with and how; `unit` is "answer" for chat and "call" for everything else.
+// A statement of fact, not an instruction; the tiers and how to qualify are in the 402's extra.holderDiscount.
+export const HOLDER_NOTE = 'SINGIT holders on Base can get a lower USDC quote (see extra.holderDiscount).';
 export const payTail = (unit = 'call', networks = 'Base or Solana') =>
-  `Pay-per-${unit} in USDC on ${networks}, no API key; the max charge is quoted before signing.`;
+  `Pay-per-${unit} in USDC on ${networks}, no API key; the max charge is quoted before signing. ${HOLDER_NOTE}`;
 
 // Service-level blurb (the bare origin's index, llms.txt), not a route's 402 description. It names only what
 // this instance sells: `formats` adds Anthropic/Responses, images and speech, `search` adds Exa.

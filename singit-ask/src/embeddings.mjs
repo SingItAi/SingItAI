@@ -21,6 +21,7 @@ class RequestError extends Error {
 const DESCRIPTION = routeCopy("/v1/embeddings").description;
 
 import { readEmbeddingRequest, INPUT_SCHEMA, EXAMPLE, OUTPUT_SCHEMA, OUTPUT_EXAMPLE, listAtomic as estimateListAtomic, maxListAtomic, catalogueCeiling } from "./embeddings-request.mjs";
+import { holderBasePrice, holderBilling, floorOf } from "./holder-discount.mjs";
 export const REQUEST_BODY = () => ({ required: true, content: { "application/json": { schema: { type: "object", ...INPUT_SCHEMA }, example: EXAMPLE } } });
 
 export function addRoutes(app, config, { facilitatorClient, publicClient, catalogue, fetchImpl = fetch, log = console.error, open }) {
@@ -43,8 +44,10 @@ export function addRoutes(app, config, { facilitatorClient, publicClient, catalo
   });
   const price = (network) => async (ctx) => {
     const quote = priced.get(ctx.adapter.getBody());
-    const amount = imagePrice(quote?.listAtomic ?? await probeList(ctx), network).totalAtomic;
-    return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
+    const listed = imagePrice(quote?.listAtomic ?? await probeList(ctx), network);
+    if (network !== BASE) return { asset: SOLANA_ASSET, amount: listed.totalAtomic };
+    const held = await holderBasePrice(config, ctx, listed.totalAtomic, floorOf(listed), { name: "USD Coin", version: "2" });
+    return { asset: ASSET, amount: held.amount, extra: held.extra };
   };
   app.post(ROUTE, async (req, res, next) => {
     // x402scan's empty, unpaid probe gets the example's offer (`probeList`), not a model-lookup 404;
@@ -105,7 +108,7 @@ export function addRoutes(app, config, { facilitatorClient, publicClient, catalo
     }
     const cost = Number(response.headers.get("x-si-buyer-cost-micro"));
     if (Number.isFinite(cost) && cost > listAtomic) log(`singit-ask: upstream cost ${cost} micro-USD, listed ${listAtomic}`);
-    const billing = publicBilling({ ...imagePrice(listAtomic, network), currency: "USDC" });
+    const billing = publicBilling({ ...holderBilling(imagePrice(listAtomic, network), req), currency: "USDC" });
     log(`singit-ask: ${embeddings.length} embedding(s) in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
     res.json({ object: "list", data: embeddings, model: request.model, usage: data.usage, billing });
   });

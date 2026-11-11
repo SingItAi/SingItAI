@@ -28,6 +28,7 @@ import { UptoEvmScheme } from "@x402/evm/upto/server";
 import { createUptoSvmServerScheme, attachUptoSvmClaimGuards } from "./upto-svm-claim.mjs";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { ExactSvmScheme } from "@x402/svm/exact/server";
+import { holderBasePrice, costFloorFromTotal, applyDiscount } from "./holder-discount.mjs";
 import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, publicTerms, publicBilling, ceilingAtomic, minDiscountFor, exactReserveTokens,
   DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 import { clientSource } from "./agent-traffic.mjs";
@@ -65,12 +66,18 @@ const forcedFailure = () => Object.assign(new Error("model answered HTTP 503 (up
 // below). It may return a Promise: @x402/core awaits an offer's `price` before using it (chunk-FV2JN4FK.mjs,
 // `await option.price(context)`), so a route whose model is known ahead of time (model-routes.mjs) can quote that
 // model's own ceiling instead of the generic one, without touching the metered payment path at all.
+// A Base ceiling for a holder-hinted or holder-signed payer (holder-discount.mjs): the list ceiling, lowered by the
+// payer's tier but never below provider cost plus the fee. Without a qualifying payer it is the list ceiling.
+export const holderCeiling = (config, ctx, listed) =>
+  holderBasePrice(config, ctx, listed, costFloorFromTotal(listed, TERMS.markupBps, TERMS.settlementFeeAtomic));
+
 export const baseOffer = (config, quotes, fallback) => ({
   // 120 s covers the model and settlement; after it, a lost answer's signature is provably unusable.
   scheme: "upto", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.upto?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
-    return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2", billing: { ...publicTerms(TERMS), maxChargeAtomic: amount } } };
+    const listed = quotes.get(ctx.adapter.getBody())?.upto?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
+    const { amount, extra } = await holderCeiling(config, ctx, listed);
+    return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2", billing: { ...publicTerms(TERMS), maxChargeAtomic: amount }, ...extra } };
   },
 });
 export const solanaOffer = (config, quotes, fallback) => ({
@@ -88,9 +95,10 @@ export const solanaOffer = (config, quotes, fallback) => ({
 export const exactBaseOffer = (config, quotes, fallback) => ({
   scheme: "exact", network: BASE, payTo: config.payToBase, maxTimeoutSeconds: 120,
   price: async ctx => {
-    const amount = quotes.get(ctx.adapter.getBody())?.exact?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
+    const listed = quotes.get(ctx.adapter.getBody())?.exact?.[BASE] ?? (fallback ? await fallback(ctx) : TERMS.maxChargeAtomic);
+    const { amount, extra } = await holderCeiling(config, ctx, listed);
     return { asset: ASSET, amount, extra: { name: "USD Coin", version: "2",
-      billing: { ...publicTerms(TERMS), mode: "exact_ceiling", maxChargeAtomic: amount } } };
+      billing: { ...publicTerms(TERMS), mode: "exact_ceiling", maxChargeAtomic: amount }, ...extra } };
   },
 });
 export const exactSolanaOffer = (config, quotes, fallback) => ({
@@ -145,7 +153,7 @@ export function fitsSignedCatalogCeiling(candidateCeiling, signedAtomic, slack =
 // Surplus answered 404 minimum_discount_not_met: the floor we sent is above every live seller.
 // Retry the same model at the best discount they reported, only when that share still fits what was signed.
 // Never raise the floor, and never retry when we did not send one (any seller was already allowed).
-export function relaxMinDiscount(input, error, { exact, network, maxChargeAtomic, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION } = {}) {
+export function relaxMinDiscount(input, error, { exact, network, maxChargeAtomic, exactOutputFraction = DEFAULT_EXACT_OUTPUT_FRACTION, holderBps = 0 } = {}) {
   if (error?.code !== "minimum_discount_not_met") return null;
   const best = error.bestDiscountPct;
   if (typeof best !== "number" || !Number.isFinite(best) || best < 0 || best > 100) return null;
@@ -154,11 +162,18 @@ export function relaxMinDiscount(input, error, { exact, network, maxChargeAtomic
   const relaxed = { ...input, share: (100 - best) / 100, minDiscount: best };
   const bucket = exact ? "exact" : "upto";
   try {
-    if (BigInt(ceilings(relaxed.info, relaxed, exactOutputFraction)[bucket][network]) > BigInt(maxChargeAtomic)) return null;
+    const ceiling = ceilings(relaxed.info, relaxed, exactOutputFraction)[bucket][network];
+    if (BigInt(discountedCeiling(ceiling, { network, holderBps })) > BigInt(maxChargeAtomic)) return null;
   } catch {
     return null;
   }
   return relaxed;
+}
+
+// The same lowering `holderCeiling` applies to a quote, for a candidate ceiling compared with what was signed.
+export function discountedCeiling(ceiling, { network, holderBps = 0 } = {}) {
+  if (network !== BASE || !(holderBps > 0)) return ceiling;
+  return applyDiscount(ceiling, costFloorFromTotal(ceiling, TERMS.markupBps, TERMS.settlementFeeAtomic), holderBps).toString();
 }
 
 // The terms of the network the payer chose, with the ceiling this question was offered for the scheme they
@@ -169,7 +184,14 @@ function paidTerms(req) {
   const { network, scheme } = JSON.parse(Buffer.from(header, "base64").toString()).accepted ?? {};
   const terms = TERMS_BY_NETWORK[network];
   const bucket = scheme === "exact" ? req.askCeilings?.exact : req.askCeilings?.upto;
-  return terms && bucket && { terms: { ...terms, maxChargeAtomic: bucket[network] }, scheme, network };
+  if (!terms || !bucket) return null;
+  // A holder-discounted Base payment signed a lower ceiling than the list one; the guard in holder-discount.mjs
+  // recorded the verified amount and tier on the request. It never exceeds the list ceiling.
+  const holderBps = network === BASE && req.singitHolderBps > 0 ? req.singitHolderBps : 0;
+  const signed = holderBps && /^[0-9]+$/.test(req.singitSignedAtomic ?? "") ? BigInt(req.singitSignedAtomic) : null;
+  const listed = BigInt(bucket[network]);
+  const maxChargeAtomic = signed !== null && signed < listed ? signed.toString() : bucket[network];
+  return { terms: { ...terms, maxChargeAtomic }, scheme, network, holderBps };
 }
 
 // A request with no body at all: what a directory's crawler sends to see whether a route takes payment.
@@ -240,10 +262,13 @@ const allowanceServers = new WeakSet();
 // Buyers echo the server's declared extension (`info: { version }`) back whether or not they signed anything for it,
 // so only a payload that carries the signed material counts as sponsored.
 const signedExtension = (extension, field) => typeof extension?.info?.[field] === "string" && extension.info[field].length > 0;
+const holderServers = new WeakSet();
 const statsServers = new WeakSet(), statsRoutes = new WeakMap();
 export function addPaymentRoute(app, routes, server,
   { discoverable = true, log = console.log, permitGuard = defaultPermitGuard, publicClient, allowanceTimeoutMs = 3_000 } = {}) {
   attachUptoSvmClaimGuards(server);
+  // Re-check the paying address for any holder-discounted Base amount, once per server (holder-discount.mjs).
+  if (app.locals?.holderDiscount && !holderServers.has(server)) { holderServers.add(server); app.locals.holderDiscount.attach(server, { log }); }
   const paths = statsRoutes.get(server) ?? new Set();
   for (const key of Object.keys(routes)) if (key.startsWith("POST ")) paths.add(key.slice(5));
   statsRoutes.set(server, paths);
@@ -512,12 +537,12 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         const bucket = exact ? "exact" : "upto";
         // Within the amount already signed, for this scheme and network.
         const fits = candidate => fitsSignedCatalogCeiling(
-          ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network],
+          discountedCeiling(ceilings(candidate.info, candidate, exactOutputFraction)[bucket][paid.network], paid),
           paid.terms.maxChargeAtomic);
         // Solana exact may retry too, but only while its window has time left (`deadline` is capped at the cutoff);
         // the retry runs inside the same window, and a WindowExceeded above never reaches this point.
         const discountRetry = Date.now() < deadline && relaxMinDiscount(req.askInput, error, {
-          exact, network: paid.network, maxChargeAtomic: paid.terms.maxChargeAtomic, exactOutputFraction,
+          exact, network: paid.network, maxChargeAtomic: paid.terms.maxChargeAtomic, exactOutputFraction, holderBps: paid.holderBps,
         });
         const refused = !discountRetry && !(req.askInput.request && error.status === 400) && canRetryPaidFallback(error)
           && Date.now() < deadline;
@@ -547,7 +572,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         res.set("X-SingIt-Tier", req.askInput.autoTier);
       }
       // A reasoning retry is delivered at no more than the signed ceiling; the service absorbs its exposure.
-      const usage = billWithDiagnostics(answer.usage, paid.terms, exact, route, req.askInput.model, log, answer.retried);
+      const usage = billWithDiagnostics(answer.usage, paid.terms, exact, route, req.askInput.model, log, answer.retried, paid.holderBps);
       // `exact` already settled the full ceiling it was offered: there is no lower amount to settle to, and no
       // way to refund the unused part, so the override below is only ever for `upto`. Its actual cost may run
       // over that flat ceiling (usage.overrunAtomic): the payer is never charged more than they signed for, this
@@ -592,9 +617,9 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
 
 // Preserve the provider's usage only for an overrun diagnostic: no prompt, answer or payment payload belongs
 // in this log. Centralizing it keeps both API formats equally observable without changing their pricing.
-export function billWithDiagnostics(usage, terms, exact, route, model, log, retried = false) {
+export function billWithDiagnostics(usage, terms, exact, route, model, log, retried = false, holderBps = 0) {
   try {
-    const billed = billUsage(usage, terms, { allowOverrun: exact || retried });
+    const billed = billUsage(usage, terms, { allowOverrun: exact || retried, holderBps });
     if (retried && billed.overrunAtomic) log(`singit-ask: reasoning retry overrun ${billed.overrunAtomic} micro-USDC`);
     return billed;
   }

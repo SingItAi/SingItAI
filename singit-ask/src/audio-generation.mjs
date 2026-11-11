@@ -8,6 +8,7 @@ import { payTail } from './listing-copy.mjs';
 import { imagePrice } from './images.mjs';
 import { paymentDigest, reservePayment } from './media-payment-replay.mjs';
 import { runMediaJob } from './media-jobs.mjs';
+import { holderBasePrice, holderBilling, floorOf } from "./holder-discount.mjs";
 
 export const SFX_ROUTE = '/v1/audio/sound-effects';
 export const MUSIC_ROUTE = '/v1/audio/generations';
@@ -120,10 +121,11 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
       }
       catch (error) { res.status(422).json({ error: { type: 'invalid_request_error', code: 'invalid_request', message: error.message } }); }
     });
-    const price = network => ctx => {
+    const price = network => async ctx => {
       const model = priced.get(ctx.adapter.getBody())?.model ?? AUDIO_MODELS[i ? 2 : 0];
-      const amount = imagePrice(model.listAtomic, network).totalAtomic;
-      return { asset: ASSET, amount, extra: { name: 'USD Coin', version: '2' } };
+      const listed = imagePrice(model.listAtomic, network);
+      const held = await holderBasePrice(config, ctx, listed.totalAtomic, floorOf(listed), { name: 'USD Coin', version: '2' });
+      return { asset: ASSET, amount: held.amount, extra: held.extra };
     };
     addPaymentRoute(app, { [`POST ${route}`]: {
       accepts: [BASE].map(network => ({ scheme: 'exact', network, payTo: config.payToBase, maxTimeoutSeconds: i ? 240 : 120, price: price(network) })),
@@ -147,7 +149,7 @@ export function addAudioGenerationRoutes(app, config, { facilitatorClient, publi
         const { audio, contentType } = await runMediaJob({ baseUrl: config.surplusUrl, key: config.surplusKey,
           request: surplusAudioRequest(request), idempotencyKey: `singit-${digest}`, timeoutMs: i ? 180000 : 60000,
           maxBytes: (i ? 25 : 5) * 1024 * 1024, fetchImpl, ...config.mediaJobOptions });
-        const billing = imagePrice(model.listAtomic, payment.accepted.network);
+        const billing = holderBilling(imagePrice(model.listAtomic, payment.accepted.network), req);
         res.set({ 'Content-Type': contentType, 'Cache-Control': 'no-store', 'X-SingIt-Charged-Atomic': billing.totalAtomic, 'X-SingIt-List-Atomic': billing.listAtomic });
         res.send(audio);
       } catch (error) {

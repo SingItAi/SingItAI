@@ -15,6 +15,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { addPaymentRoute, isDiscoveryProbe } from "./metered.mjs";
 import { ASSET, BASE, SOLANA, SOLANA_ASSET, SERVICE_NAMES, ICON_URL, discoveryTags, publicBilling } from "./pricing.mjs";
+import { holderBasePrice, holderBilling, floorOf } from "./holder-discount.mjs";
 
 export const EXA_URL = "https://api.exa.ai";
 export const SEARCH_ROUTES = { "/v1/exa/search": "/search", "/v1/exa/contents": "/contents", "/v1/exa/answer": "/answer" };
@@ -187,9 +188,12 @@ export function addSearchRoutes(app, config, { facilitatorClient, publicClient, 
   const probePrice = (route) => {
     try { return exaPrice(route, EXAMPLES[route]); } catch { return SEARCH_TERMS.maxExaAtomic; }
   };
-  const price = (route, network) => (ctx) => {
-    const amount = searchPrice(prices.get(ctx.adapter.getBody()) ?? probePrice(route), network).totalAtomic;
-    return network === BASE ? { asset: ASSET, amount, extra: { name: "USD Coin", version: "2" } } : { asset: SOLANA_ASSET, amount };
+  const price = (route, network) => async (ctx) => {
+    const listed = searchPrice(prices.get(ctx.adapter.getBody()) ?? probePrice(route), network);
+    if (network !== BASE) return { asset: SOLANA_ASSET, amount: listed.totalAtomic };
+    // With no markup (SINGIT_ASK_EXA_MARKUP_BPS 0) cost floor and list price are the same, so a holder pays the same.
+    const held = await holderBasePrice(config, ctx, listed.totalAtomic, floorOf(listed), { name: "USD Coin", version: "2" });
+    return { asset: ASSET, amount: held.amount, extra: held.extra };
   };
   // exact on Base first: the simplest offer for a buyer that only inspects accepts[0].
   const offers = (route) => [
@@ -248,7 +252,7 @@ export function addSearchRoutes(app, config, { facilitatorClient, publicClient, 
       const reported = Math.ceil(Number(data.costDollars?.total ?? 0) * 1e6);
       if (reported > listed) log(`singit-ask: Exa ${exaPath} cost ${reported} micro-USD, listed ${listed}`);
       delete data.costDollars;
-      const billing = publicBilling({ ...searchPrice(listed, network), currency: "USDC" });
+      const billing = publicBilling({ ...holderBilling(searchPrice(listed, network), req), currency: "USDC" });
       log(`singit-ask: Exa ${exaPath} answered in ${Date.now() - started} ms for ${billing.totalAtomic} micro-USDC`);
       res.json({ ...data, billing });
     });
