@@ -47,7 +47,7 @@ const fakeCatalogue = { async market() { return new Map([["pro-model", { trusted
 async function serve(t, { upstream, config = CONFIG, catalogue = fakeCatalogue, fetchImpl, log = () => {}, clock } = {}) {
   const facilitator = fakeFacilitator();
   const asked = [];
-  const answer = upstream ?? (async (_config, messages, maxTokens) => {
+  const answer = upstream === null ? undefined : upstream ?? (async (_config, messages, maxTokens) => {
     asked.push({ messages, maxTokens });
     return { content: "Try Caffè Propaganda.", finishReason: "stop", usage: { total_tokens: 42, buyer_cost_micro: 100 } };
   });
@@ -56,7 +56,7 @@ async function serve(t, { upstream, config = CONFIG, catalogue = fakeCatalogue, 
   const url = async (body, headers = {}, path = ROUTE) => {
     const chunks = [];
     app.locals.testWireBytes = 0;
-    const socket = new Duplex({ read() {}, write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); app.locals.testWireBytes += chunk.length; callback(); } });
+    const socket = new Duplex({ read() {}, write(chunk, _encoding, callback) { chunks.push(Buffer.from(chunk)); app.locals.testWireBytes += chunk.length; app.locals.testOnWire?.(Buffer.from(chunk).toString()); callback(); } });
     socket.remoteAddress = '127.0.0.1';
     const req = new IncomingMessage(socket);
     req.method = ['/openapi.json', '/numbers.json', '/v1/models'].includes(path) ? 'GET' : 'POST'; req.url = path; req.httpVersionMajor = 1; req.httpVersionMinor = 1; req.httpVersion = '1.1';
@@ -79,7 +79,8 @@ async function serve(t, { upstream, config = CONFIG, catalogue = fakeCatalogue, 
           while (data) { const i = data.indexOf('\r\n'), n = parseInt(data.slice(0,i),16); if (!n) break; decoded += data.slice(i+2,i+2+n); data = data.slice(i+2+n+2); }
           data = decoded;
         }
-        resolve(new Response(data || null, { status: res.statusCode, headers: responseHeaders }));
+        // The status line that went out; res.statusCode may be changed after a stream's head is committed (it is how the payment middleware is told not to charge).
+        resolve(new Response(data || null, { status: Number(head[0].split(' ')[1]), headers: responseHeaders }));
       });
       app.handle(req, res, error => reject(error ?? new Error('Unhandled request')));
     });
@@ -112,3 +113,20 @@ function exactSignature(required, network = BASE) {
 
 
 export { post, serve, CONFIG, fakeCatalogue, QUESTION, decode, baseSignature, exactSignature, SOLANA_PAY_TO, BASE_PAY_TO, PAYER, PRICEY, CHEAP, IDLE };
+
+// A fetch Response carrying SSE frames. `steps` is a list of frame strings or numbers (ms to wait before the next one);
+// `onFrame(index)` runs as each frame is produced, so a test can tell when the upstream last spoke.
+export function sseResponse(steps, { onFrame, headers, status = 200 } = {}) {
+  const encoder = new TextEncoder();
+  let index = 0;
+  return new Response(new ReadableStream({
+    async pull(controller) {
+      while (index < steps.length) {
+        const step = steps[index++];
+        if (typeof step === 'number') { await new Promise(resolve => setTimeout(resolve, step)); continue; }
+        onFrame?.(index - 1, step); controller.enqueue(encoder.encode(step)); return;
+      }
+      controller.close();
+    },
+  }), { status, headers: { 'content-type': 'text/event-stream', ...headers } });
+}

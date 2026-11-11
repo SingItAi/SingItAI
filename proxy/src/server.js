@@ -14,6 +14,7 @@ import { anthropicToChatCompletions, chatCompletionToMessage, estimateTokenCount
 import {
   completionToOpenAiSse, messageToAnthropicSse, openaiSseToAnthropicSse,
   looksLikeSse, ensureOpenAiDone, responseToSse, openaiSseToResponsesSse, responsesErrorSse,
+  OpenAiToAnthropic, OpenAiToResponses, sseFrames,
 } from "./sse.js";
 
 const BODY_LIMIT = 1_000_000;
@@ -109,18 +110,46 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
     return { singit, wallet };
   }
 
+  // One request, paid by the SDK's paidFetch (the only payment code here). stream:true is paid as asked: Ask streams the
+  // answer after verification and the SDK hands back the live body, reading the invoice off its terminal event.
   async function upstreamChat(paying, openaiBody) {
     const target = `${config.askUrl}/v1/chat/completions`;
-    const streaming = openaiBody?.stream === true;
-    const headers = { "content-type": "application/json" };
-    if (streaming) {
-      const preview = await tagged(target, { method: "POST", headers, body: JSON.stringify(openaiBody) });
-      if (preview.status !== 402) return preview;
-      const paidBody = { ...openaiBody, stream: false };
-      delete paidBody.stream_options;
-      return paying.singit.paidFetch()(target, { method: "POST", headers, body: JSON.stringify(paidBody) });
+    return paying.singit.paidFetch()(target, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(openaiBody) });
+  }
+
+  // Relays a live Ask SSE body to the client as it arrives. OpenAI chunks pass through untouched; Messages and Responses
+  // are translated one event at a time. Keepalive comments are relayed so a quiet model does not stall the client. If
+  // the stream breaks after the head has gone out, the client gets that format's error event and the connection ends.
+  async function pipeSse(res, response, { format }) {
+    res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", "x-accel-buffering": "no", ...CORS });
+    const translator = format === "anthropic" ? new OpenAiToAnthropic() : format === "responses" ? new OpenAiToResponses() : null;
+    const reader = response.body.getReader();
+    res.on("close", () => { reader.cancel().catch(() => {}); });
+    const write = text => { if (text && !res.destroyed) res.write(text); };
+    try {
+      if (!translator) {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          write(Buffer.from(value));
+        }
+      } else {
+        const chunks = (async function* () { for (;;) { const { done, value } = await reader.read(); if (done) return; yield value; } })();
+        for await (const item of sseFrames(chunks)) {
+          if (item.comment) write(": keepalive\n\n");
+          else if (item.done) break;
+          else if (item.data) write(translator.push(item.data));
+          if (translator.ended) break;
+        }
+        write(translator.end());
+      }
+    } catch (error) {
+      const message = error?.message || "The stream was interrupted.";
+      if (format === "anthropic") write(`event: error\ndata: ${JSON.stringify({ type: "error", error: { type: "api_error", message } })}\n\n`);
+      else if (format === "responses") write(responsesErrorSse(message));
+      else write(`data: ${JSON.stringify({ error: { message, type: "proxy_error" } })}\n\n`);
     }
-    return paying.singit.paidFetch()(target, { method: "POST", headers, body: JSON.stringify(openaiBody) });
+    if (!res.destroyed) res.end();
   }
 
   async function sendChatResponse(res, response, { streaming, format }) {
@@ -130,6 +159,7 @@ export function createProxy({ env = process.env, fetchImpl = fetch, config: give
       return json(res, 402, { error: { message, type: "payment_required" } });
     }
     const contentType = response.headers.get("content-type") || "";
+    if (response.status === 200 && streaming && /text\/event-stream/i.test(contentType) && response.body) return pipeSse(res, response, { format });
     const text = await response.text();
     if (response.status !== 200) {
       if (format === "responses") {

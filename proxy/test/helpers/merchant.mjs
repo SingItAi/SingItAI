@@ -50,7 +50,10 @@ async function verifyUpto(payment) {
   return { ok, payer: auth.from };
 }
 
-export function startMerchant({ offer, funded = true, acceptBearer, freeSse = false, toolReply = false } = {}) {
+// `paidSse`: a paid stream:true request is answered like Ask does now, with live SSE: the first token, a pause of
+// `sseDelayMs`, the rest, then the billing on the finish chunk. `entry.firstWriteAt` / `entry.lastWriteAt` say when
+// the merchant produced them, so a test can tell the client saw the first before the last existed.
+export function startMerchant({ offer, funded = true, acceptBearer, freeSse = false, toolReply = false, paidSse = false, sseDelayMs = 150, breakAfterFirst = false } = {}) {
   const requests = [];
   let resourceUrl;
   const server = http.createServer(async (req, res) => {
@@ -99,6 +102,33 @@ export function startMerchant({ offer, funded = true, acceptBearer, freeSse = fa
     entry.payer = payer ?? null;
     if (!ok || !funded) return reply(402, { error: "Payment refused." });
     const billed = (BigInt(payment.accepted.amount) / 2n).toString();
+    if (paidSse && body?.stream === true) {
+      entry.status = 200;
+      const chunk = (delta, finish = null, extra = {}) => `data: ${JSON.stringify({
+        id: "singit-ask-mock-1", object: "chat.completion.chunk", created: 0, model: body.model,
+        choices: [{ index: 0, delta, finish_reason: finish }], ...extra })}\n\n`;
+      const tools = toolReply && Array.isArray(body.tools) && body.tools.length;
+      const name = body.tools?.[0]?.function?.name ?? "lookup";
+      const first = tools
+        ? chunk({ role: "assistant", tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name, arguments: "{\"q\":" } }] })
+        : chunk({ role: "assistant", content: "Hel" });
+      const rest = [
+        tools ? chunk({ tool_calls: [{ index: 0, function: { arguments: "\"hi\"}" } }] }) : chunk({ content: "lo" }),
+        chunk({}, tools ? "tool_calls" : "stop", { billing: { totalAtomic: billed } }),
+        ...(body.stream_options?.include_usage ? [`data: ${JSON.stringify({ id: "singit-ask-mock-1", object: "chat.completion.chunk", choices: [], usage: { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 } })}\n\n`] : []),
+        "data: [DONE]\n\n",
+      ];
+      res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache" });
+      res.write(first);
+      entry.firstWriteAt = performance.now();
+      setTimeout(() => {
+        if (breakAfterFirst) return res.destroy();   // the connection drops after the first token, with no invoice
+        for (const piece of rest) res.write(piece);
+        entry.lastWriteAt = performance.now();
+        res.end();
+      }, sseDelayMs);
+      return;
+    }
     const paidHeaders = {
       "payment-response": encode({ success: true, network: payment.accepted.network, payer, transaction: `0x${"ab".repeat(32)}` }),
     };

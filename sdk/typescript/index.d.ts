@@ -68,7 +68,9 @@ export declare class SingIt {
    * A fetch-compatible function for frameworks that take a custom fetch (LangChain's ChatOpenAI `configuration.fetch`,
    * the AI SDK's createOpenAICompatible({ fetch }), the OpenAI SDK's `fetch`). A request to baseUrl that gets HTTP 402 is
    * paid like chat(): same pins and per-call/per-day ceilings (shared with chat() on this instance), signed once, never
-   * repeated. Other origins pass through unpaid. Non-streaming JSON answers only; set the framework's maxRetries to 0.
+   * repeated. Other origins pass through unpaid. A JSON answer is returned whole; a `text/event-stream` answer (stream: true) is
+   * returned as a live stream whose `billing.totalAtomic` is read from its terminal event as it passes, and which errors
+   * if it ends without a valid invoice. Set the framework's maxRetries to 0.
    */
   paidFetch(options?: { scheme?: SingItScheme }): typeof fetch;
   /** GET /v1/wallet/{address}/reconciliation on appBaseUrl (SI-67). */

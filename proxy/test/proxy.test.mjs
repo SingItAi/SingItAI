@@ -76,7 +76,35 @@ test("pinned /v1/chat/<id> is rewritten onto completions so the mock (and Ask) s
   assert.equal(merchant.requests[0].body.model, "claude-opus-5.5");
 });
 
-test("stream:true after a paid JSON invoice is emitted as OpenAI SSE plus [DONE]", async t => {
+// Reads a response body piece by piece, noting when each arrived.
+async function readTimed(response) {
+  const reader = response.body.getReader(), decoder = new TextDecoder(), pieces = [];
+  for (let chunk; !(chunk = await reader.read()).done;) pieces.push({ at: performance.now(), text: decoder.decode(chunk.value) });
+  return pieces;
+}
+const eventsOf = text => text.trim().split("\n\n").map(block => ({
+  event: block.match(/^event: (.*)$/m)?.[1],
+  data: (d => d === "[DONE]" ? d : JSON.parse(d))(block.match(/^data: (.*)$/m)[1]),
+}));
+
+test("stream:true is paid as stream:true and Ask's SSE reaches the client before it ends", async t => {
+  const { merchant, url } = await listenProxy(t, { merchantOptions: { paidSse: true, sseDelayMs: 200 } });
+  const response = await post(url, { model: "deepseek-v4.1-flash", messages: [{ role: "user", content: "Hello" }], stream: true, stream_options: { include_usage: true } });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /text\/event-stream/);
+  const pieces = await readTimed(response);
+  const text = pieces.map(p => p.text).join("");
+  assert.match(text, /Hel/); assert.match(text, /lo/); assert.match(text, /"billing":\{"totalAtomic":"4500"\}/); assert.match(text, /data: \[DONE\]/);
+  const entry = merchant.requests.at(-1);
+  const early = pieces.find(p => /Hel/.test(p.text));
+  assert.ok(early.at < entry.lastWriteAt - 100, "first token reached the client while Ask was still producing the answer");
+  assert.deepEqual(merchant.requests.map(r => r.status), [402, 200]);
+  assert.equal(merchant.requests[0].body.stream, true);
+  assert.equal(entry.body.stream, true, "the paid replay keeps stream:true");
+  assert.deepEqual(entry.body.stream_options, { include_usage: true });
+});
+
+test("stream:true after a paid JSON invoice (an Ask that answers whole) is still emitted as OpenAI SSE plus [DONE]", async t => {
   const { merchant, url } = await listenProxy(t);
   const response = await post(url, { model: "deepseek-v4.1-flash", messages: [{ role: "user", content: "Hello" }], stream: true });
   assert.equal(response.status, 200);
@@ -85,10 +113,69 @@ test("stream:true after a paid JSON invoice is emitted as OpenAI SSE plus [DONE]
   assert.match(text, /Hello back\./);
   assert.match(text, /data: \[DONE\]/);
   assert.match(text, /chat\.completion\.chunk/);
-  assert.equal(text.includes('"object":"chat.completion"') && !text.includes("chat.completion.chunk"), false);
-  assert.deepEqual(merchant.requests.map(r => r.status), [402, 402, 200]);
-  assert.equal(merchant.requests[0].body.stream, true);
-  assert.equal(merchant.requests[2].body.stream, false);
+  assert.deepEqual(merchant.requests.map(r => r.status), [402, 200]);
+  assert.equal(merchant.requests[1].body.stream, true);
+});
+
+test("/v1/messages stream:true is translated event by event while Ask is still streaming", async t => {
+  for (const tool of [false, true]) {
+    const { merchant, url } = await listenProxy(t, { merchantOptions: { paidSse: true, sseDelayMs: 200, toolReply: tool } });
+    const response = await post(url, { model: "deepseek-v4.1-flash", max_tokens: 32, stream: true, messages: [{ role: "user", content: "Hello" }],
+      ...(tool ? { tools: [{ name: "lookup", description: "d", input_schema: { type: "object" } }] } : {}) }, "/v1/messages");
+    assert.equal(response.status, 200);
+    const pieces = await readTimed(response);
+    const text = pieces.map(p => p.text).join("");
+    const events = eventsOf(text);
+    assert.equal(events[0].event, "message_start");
+    assert.equal(events.at(-1).event, "message_stop");
+    const delta = events.at(-2);
+    assert.equal(delta.event, "message_delta");
+    assert.equal(delta.data.delta.stop_reason, tool ? "tool_use" : "end_turn");
+    assert.equal(delta.data.billing.totalAtomic, "4500");
+    const early = pieces.find(p => /content_block_delta/.test(p.text));
+    assert.ok(early.at < merchant.requests.at(-1).lastWriteAt - 100, "a content delta reached the client before Ask finished");
+    assert.equal(merchant.requests.at(-1).body.stream, true);
+    if (tool) {
+      assert.equal(events.find(e => e.event === "content_block_start").data.content_block.name, "lookup");
+      assert.equal(events.filter(e => e.event === "content_block_delta").map(e => e.data.delta.partial_json).join(""), '{"q":"hi"}');
+    } else assert.equal(events.filter(e => e.event === "content_block_delta").map(e => e.data.delta.text).join(""), "Hello");
+    // Blocks open and close in order.
+    const starts = events.filter(e => e.event === "content_block_start").length, stops = events.filter(e => e.event === "content_block_stop").length;
+    assert.equal(starts, stops);
+  }
+});
+
+test("/v1/responses stream:true is translated event by event while Ask is still streaming", async t => {
+  for (const tool of [false, true]) {
+    const { merchant, url } = await listenProxy(t, { merchantOptions: { paidSse: true, sseDelayMs: 200, toolReply: tool } });
+    const response = await post(url, { model: "deepseek-v4.1-flash", input: ["Hello"], stream: true,
+      ...(tool ? { tools: [{ type: "function", name: "lookup", parameters: { type: "object" } }] } : {}) }, "/v1/responses");
+    assert.equal(response.status, 200);
+    const pieces = await readTimed(response);
+    const events = eventsOf(pieces.map(p => p.text).join(""));
+    const types = events.map(e => e.event);
+    assert.equal(types[0], "response.created");
+    assert.equal(types.at(-1), "response.completed");
+    assert.ok(types.indexOf("response.output_item.added") < types.findIndex(x => /output_text.delta|function_call_arguments.delta/.test(x)));
+    const done = events.at(-1).data.response;
+    assert.equal(done.billing.totalAtomic, "4500");
+    if (tool) { assert.equal(done.output[0].name, "lookup"); assert.equal(done.output[0].arguments, '{"q":"hi"}'); }
+    else assert.equal(done.output[0].content[0].text, "Hello");
+    const early = pieces.find(p => /response\.(output_text|function_call_arguments)\.delta/.test(p.text));
+    assert.ok(early.at < merchant.requests.at(-1).lastWriteAt - 100, "a delta reached the client before Ask finished");
+    assert.deepEqual(events.map(e => e.data.sequence_number), events.map((_, i) => i));
+    assert.equal(merchant.requests.at(-1).body.stream, true);
+  }
+});
+
+test("a stream that breaks after the head went out ends with that format's error event, never a second payment", async t => {
+  const { merchant, url } = await listenProxy(t, { merchantOptions: { paidSse: true, sseDelayMs: 10, breakAfterFirst: true } });
+  const response = await post(url, { model: "x", max_tokens: 8, stream: true, messages: [{ role: "user", content: "Hi" }] }, "/v1/messages");
+  assert.equal(response.status, 200);
+  const text = await response.text();
+  assert.match(text, /event: error/);
+  assert.doesNotMatch(text, /message_stop/);
+  assert.equal(merchant.requests.filter(r => r.headers["payment-signature"]).length, 1);
 });
 
 test("stream:true passes through live SSE from Ask when no payment is required", async t => {
@@ -307,9 +394,10 @@ test("Responses translates free SSE and refuses unpaid 402 as JSON", async t => 
 
 test("Responses catalog failure passes model through; upstream errors fail SSE", async t => {
   const seen = [];
-  const { url } = await listenProxy(t, { fetchImpl: async (url, options) => {
-    if (String(url).endsWith("/v1/models")) throw new Error("offline");
-    seen.push(JSON.parse(options.body));
+  const { url } = await listenProxy(t, { fetchImpl: async (input, options) => {
+    if (String(input.url ?? input).endsWith("/v1/models")) throw new Error("offline");
+    // paidFetch hands the transport a Request; the body is on it, not in init.
+    seen.push(JSON.parse(options?.body ?? await input.clone().text()));
     return new Response('{"error":{"message":"Unavailable"}}', { status: 400 });
   } });
   const response = await post(url, { model: "auto", input: ["Hi"], stream: true }, "/v1/responses");
@@ -324,7 +412,7 @@ test("Responses cap refusal is HTTP 402 JSON, with no signed retry", async t => 
   const response = await post(url, { model: "x", input: ["Hi"], stream: true }, "/v1/responses");
   assert.equal(response.status, 402);
   assert.equal((await response.json()).error.type, "payment_required");
-  assert.deepEqual(merchant.requests.map(item => item.status), [402, 402]);
+  assert.deepEqual(merchant.requests.map(item => item.status), [402]);
   assert.ok(merchant.requests.every(item => !item.headers["payment-signature"]));
 });
 

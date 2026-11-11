@@ -125,6 +125,9 @@ const config = {
 }
 // A bad value stops the process at start, never prices a request with a guess.
 config.reasoningEffort = parseReasoningEffort(process.env.SINGIT_ASK_REASONING_EFFORT);
+// How long a live stream may stay silent before a `: keepalive` comment goes out (0 turns them off).
+const keepalive = Number(process.env.SINGIT_ASK_STREAM_KEEPALIVE_MS);
+if (Number.isFinite(keepalive) && keepalive >= 0) config.streamKeepaliveMs = keepalive;
 setReasoningHeadroomOverrides(parseReasoningHeadroom(process.env.SINGIT_ASK_REASONING_HEADROOM));
 setExactReserve(parseExactReserve(process.env.SINGIT_ASK_EXACT_RESERVE));
 setExaMarkupBps(parseExaMarkupBps(process.env.SINGIT_ASK_EXA_MARKUP_BPS));

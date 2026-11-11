@@ -5,7 +5,8 @@ import { routeCopy as baseRouteCopy } from "./listing-snapshot.mjs";
 import { serviceDescription } from "./listing-copy.mjs";
 const routeCopy = path => aliasCopy(path) ?? baseRouteCopy(path);
 import { buildCatalog, catalogResponse, MODALITIES } from './catalog.mjs';
-import { validateStream, agentResponses } from './agent-stream.mjs';
+import { validateStream, agentResponses, liveStreams, consumeChatStream, StreamBreak } from './agent-stream.mjs';
+import { isEventStream } from './sse-read.mjs';
 import { upstreamModelId } from "./model-aliases.mjs";
 import { imagePrice } from "./images.mjs";
 import { addRoutes as addEditRoutes, REQUEST_BODY as EDIT_BODY } from "./image-edits.mjs";
@@ -247,7 +248,7 @@ const defaultFallbackNote = (config) => {
     + "most once. Send fallback_models to choose your own list, or the header X-SingIt-Fallback: off to stay strictly pinned.";
 };
 
-export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs, agent } = {}) {
+export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch, model = config.model, { minDiscount, params, info, retryOnReasoning = false, timeoutMs = LIMITS.timeoutMs, deadline = Date.now() + timeoutMs, agent, live } = {}) {
   const sends = (name) => samplingAllowed(model, name) && (!params || params.includes(name));
   const nestedReasoning = !sends("reasoning_effort") && sends("reasoning");
   const off = Object.hasOwn(REASONING_OFF, model) ? REASONING_OFF[model] : null;
@@ -268,8 +269,10 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
         ...(agent?.parallelToolCalls !== undefined ? { parallel_tool_calls: agent.parallelToolCalls } : {}), max_tokens: budget, ...(sends("temperature") ? { temperature: 0.4 } : {}),
                              ...(sends("reasoning_effort") ? { reasoning_effort: reasoning }
                                : nestedReasoning ? { reasoning: { effort: reasoning } } : {}),
-                             ...extra, si_route: { objective: "price" } }),
-      signal: AbortSignal.timeout(Math.max(1, Math.min(LIMITS.timeoutMs, timeoutMs, deadline - Date.now()))),
+                             ...extra, si_route: { objective: "price" },
+                             // Surplus reports the cost on the last chunk; asked for even when the client did not.
+                             ...(live ? { stream: true, stream_options: { include_usage: true } } : {}) }),
+      signal: (signal => live ? AbortSignal.any([signal, live.signal]) : signal)(AbortSignal.timeout(Math.max(1, Math.min(LIMITS.timeoutMs, timeoutMs, deadline - Date.now())))),
     });
   };
   const refusedReasoning = async (response) => {
@@ -286,7 +289,16 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
   } catch (error) {
     throw new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" });
   }
-  let data = await response.json().catch(() => null);
+  // A stream goes to the client as it arrives (consumeChatStream); anything else, errors included, is read whole.
+  const read = async () => {
+    if (!(live && response.ok && isEventStream(response))) return response.json().catch(() => null);
+    try { return await consumeChatStream(response, live); }
+    catch (error) {
+      if (!(error instanceof StreamBreak)) throw new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" });
+      throw new UpstreamError(`model stream ended (${error.code})`, { status: error.status, code: error.code });
+    }
+  };
+  let data = await read();
   let choice = data?.choices?.[0];
   if (retryOnReasoning && response.ok && !data?.error && choice?.finish_reason === "length"
       && !toolCalls(choice.message?.tool_calls)
@@ -295,22 +307,24 @@ export async function askSurplus(config, messages, maxTokens, fetchImpl = fetch,
     budget = retryBudget(budget); retried = true;
     try { response = await ask(sentReasoning, sentExtra); }
     catch (error) { throw Object.assign(new UpstreamError(`model unreachable (${error.name})`, { code: "unreachable" }), { retried: true }); }
-    data = await response.json().catch(() => null); choice = data?.choices?.[0];
+    data = await read(); choice = data?.choices?.[0];
   }
   if (!response.ok || data?.error || !choice) {
     const code = typeof data?.error?.code === "string" ? data.error.code : "upstream_error";
     throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
-  const calls = toolCalls(choice.message?.tool_calls);
+  // Already on the wire: what the client received is what is billed, so it is not re-validated.
+  const sent = live?.committed === true;
+  const calls = sent ? (choice.message?.tool_calls ?? null) : toolCalls(choice.message?.tool_calls);
   const content = typeof choice.message?.content === "string" ? choice.message.content : null;
-  if (!calls && (typeof content !== "string" || !content.trim())) {
+  if (!sent && !calls && (typeof content !== "string" || !content.trim())) {
     const code = choice.finish_reason === "length" ? "max_tokens_spent_reasoning" : "no_text";
     throw Object.assign(new UpstreamError(`model answered HTTP ${response.status} (${code})`, { status: response.status, code }), { bestDiscountPct: parseBestDiscount(data?.error?.message), ...(retried ? { retried: true } : {}) });
   }
   // The cost is in the body, and in a header too (docs: x-si-buyer-cost-micro); billUsage reads the body's field.
   const header = response.headers?.get?.("x-si-buyer-cost-micro");
   const usage = data.usage?.buyer_cost_micro == null && header != null ? { ...data.usage, buyer_cost_micro: header } : data.usage ?? null;
-  return { ...(retried ? { retried: true } : {}), content, ...(calls ? { message: { role: "assistant", content, tool_calls: calls } } : {}), finishReason: choice.finish_reason ?? "stop", usage };
+  return { ...(retried ? { retried: true } : {}), ...(live?.committed ? { streamed: true } : {}), content, ...(calls ? { message: { role: "assistant", content, tool_calls: calls } } : {}), finishReason: choice.finish_reason ?? "stop", usage };
 }
 
 // The question's shape, for the 402 challenge (Bazaar) and for the OpenAPI document alike.
@@ -332,7 +346,7 @@ const INPUT_SCHEMA = {
     fallback_models: { type: "array", minItems: 1, maxItems: 3, uniqueItems: true, items: { type: "string" },
       description: "Optional on paid /v1/chat/completions only: 1–3 trimmed unique model ids, excluding the pinned model and singit/auto. Before payment, an unavailable pinned model may use the first healthy priced candidate whose Base upto maximum price is no higher than the pinned model's, and in the same auto tier if the pinned model has one. The chosen model determines the quote and usage charge. After payment, if that model is refused without a billable result, one further listed model may answer once, only within the amount signed (X-SingIt-Fallback-Policy: paid)." },
     stream_options: { type: "object", additionalProperties: false, properties: { include_usage: { type: "boolean" } }, description: "Only with stream:true." },
-    stream: { type: "boolean", enum: [false, true], description: "Buffered SSE: the complete answer is released after settlement, not token by token." },
+    stream: { type: "boolean", enum: [false, true], description: "Live SSE: tokens are relayed as the model writes them once payment is verified; billing is on the terminal event, released after settlement." },
   },
   required: ["messages"],
 };
@@ -671,6 +685,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
   // nohumans.directory alerts: signed over the raw bytes, so this route reads them itself, before the global parser.
   app.post(NOHUMANS_PATH, ...nohumansAlertHandlers(config, { log, fetchImpl, clock: clock ?? Date }));
   app.use(express.json({ limit: "128kb" })); // unreadable JSON is refused before any payment is asked
+  app.use(liveStreams({ keepaliveMs: config.streamKeepaliveMs }));
   // ...with a JSON body like every other refusal, not Express's HTML page (documented in openapi.json).
   app.use((error, req, res, next) => {
     const tooLarge = error.type === "entity.too.large";
@@ -1036,7 +1051,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
               model: { ...inputSchema.properties.model, description: inputSchema.properties.model.description + " " + AUTO_DESCRIPTION + defaultFallbackNote(config) } } }, example: EXAMPLE.input } } },
           responses: {
             200: { description: "The answer, with what it was charged", headers: { ...autoHeaders, "X-SingIt-Free-Remaining": { description: "Free answers left today for this network; the shared cost budget may end free answers sooner", schema: { type: "integer", minimum: 0 } } },
-                   content: { "application/json": { schema: AGENT_OUTPUT_SCHEMA, example: EXAMPLE.output }, "text/event-stream": { schema: { type: "string" }, description: "Complete buffered SSE answer after settlement; billing in the final choice chunk; optional usage chunk; ends with [DONE]." } } },
+                   content: { "application/json": { schema: AGENT_OUTPUT_SCHEMA, example: EXAMPLE.output }, "text/event-stream": { schema: { type: "string" }, description: "Live SSE: tokens as the model writes them after payment is verified; keepalive comments while quiet; billing in the final choice chunk (released after settlement); optional usage chunk; ends with [DONE]. Errors before the first token are JSON." } } },
             ...Object.fromEntries(Object.entries(paidErrors({ noAnswer: "No billable answer came back; nothing was charged", reasoning: true }))
               .map(([status, response]) => [status, { ...response, headers: { ...response.headers, ...autoHeaders } }])),
             429: {
@@ -1083,7 +1098,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
           description: routeCopy(route).description,
           "x-payment-info": { notes: probeNote(300, config, true), price: { mode: "dynamic", currency: "USD", ...price }, protocols: [{ x402: {} }] },
           requestBody: formatRequestBody(route),
-          responses: { 200: { description: "The answer in that API's format, with billing; stream:true returns complete buffered SSE after settlement.", content: { "application/json": { schema: { type: "object" } }, "text/event-stream": { schema: { type: "string" } } } },
+          responses: { 200: { description: "The answer in that API's format, with billing; stream:true returns live SSE (tokens as they arrive after payment is verified; billing on the terminal event, released after settlement; errors before the first token are JSON).", content: { "application/json": { schema: { type: "object" } }, "text/event-stream": { schema: { type: "string" } } } },
                        ...paidErrors({ notFound: "No such model; nothing was charged", noAnswer: "No billable answer; nothing charged", reasoning: true,
                                        schema: route === "/v1/messages" ? ANTHROPIC_ERROR_SCHEMA : ERROR_SCHEMA }) },
           security: [{ x402: [] }],
@@ -1479,7 +1494,7 @@ export function createApp(config, { facilitatorClient, upstream = askSurplus, fe
         + `${base}/pricing.json). Step by step: ${FIRST_PAID_CALL_DOC} ${SETTLEMENT_FEE_SENTENCE}`, "",
       "## Agent chat and streams", "",
       "Paid /v1/chat/completions: up to 200 messages, 100000 estimated characters including tools and 8000 per image, 64 tools/calls, four images and 8192 output tokens (default 800; 128 kB JSON body). Tools/images depend on model capabilities. Messages and Responses support tools and up to 32000 output tokens.", "",
-      "Chat, Messages and Responses accept stream:true as complete buffered SSE after settlement, not token by token. Billing and PAYMENT-RESPONSE are retained; errors remain JSON. Chat stream_options accepts only include_usage:boolean and requires stream:true. Free and per-model chat retain their existing text-only limits and also support buffered SSE.", "",
+      "Chat, Messages and Responses accept stream:true as live SSE: once payment is verified the model's tokens are relayed as they arrive, with keepalive comments while it is quiet. Billing is on the terminal event (the last chat chunk, Messages message_delta, Responses response.completed), released after settlement; PAYMENT-RESPONSE is present only when settlement headers can still be set, which a live stream's head usually cannot. Errors before the first token stay JSON and charge nothing; a stream that breaks after its first token ends without terminal events and charges nothing. Chat stream_options accepts only include_usage:boolean and requires stream:true. Free and per-model chat retain their existing text-only limits and stream the same way.", "",
       "numbers.json agent_traffic reports served paid/free calls, with_tools, with_stream, with_images and fixed by_source product labels for total/last_24h/last_7d. No raw headers or prompts are stored.", "",
 
       "## Spending limits", "",

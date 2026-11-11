@@ -33,7 +33,8 @@ console.log(answer.choices[0].message.content, answer.payment);
 
 `paidFetch()` returns a `fetch` that pays a 402 from SingIt Ask exactly like `chat()` (same pins,
 same per-call and per-day ceilings, shared with `chat()` on the same instance). Requests to other
-hosts pass through unpaid. Answers must be non-streaming, and the framework must not retry (a retry
+hosts pass through unpaid. JSON answers are returned whole and `stream: true` answers come back as a live
+SSE body (tokens arrive as the model writes them); either way the framework must not retry (a retry
 would sign a second payment).
 
 ```js
@@ -127,7 +128,11 @@ needed.
   with the wallet; without one the server answers 401 and the SDK says so.
 - The daily counter is in memory, per `SingIt` instance and per UTC day. A new process or a new
   instance starts at zero, so build one instance per agent and keep it for the life of the process.
-- `paidFetch()` reads the billed amount from the JSON answer: streaming answers are not supported.
+- `paidFetch()` reads the billed amount from `billing.totalAtomic`: in the JSON answer, or on the terminal event of a
+  `stream: true` answer (the last chat chunk, Messages' `message_delta`, Responses' `response.completed`) as it passes
+  through. A stream that ends without a valid invoice errors its body and leaves the ceiling counted. A live stream's
+  head leaves before settlement, so `PAYMENT-RESPONSE` is usually absent; it is checked when present. `chat()` stays
+  non-streaming.
 - No on-chain confirmation of the settlement transaction (see "Guards" above).
 - Solana signing is implemented (via `@x402/svm`'s client schemes) but is exercised in this SDK's
   own test suite only at the offer-selection/guard level, not with a real signer — that needs a

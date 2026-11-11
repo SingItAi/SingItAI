@@ -32,6 +32,7 @@ import { ExactSvmScheme } from "@x402/svm/exact/server";
 import { BASE, ASSET, SOLANA, SOLANA_ASSET, TERMS, SOLANA_TERMS, billUsage, publicTerms, publicBilling, ceilingAtomic, minDiscountFor, exactReserveTokens,
   DEFAULT_EXACT_OUTPUT_FRACTION } from "./pricing.mjs";
 import { clientSource } from "./agent-traffic.mjs";
+import { terminalSSE } from "./agent-stream.mjs";
 
 // The price shown for the model, metered by what the answer actually used, plus the network's settlement fee. Solana's upto escrows the ceiling, then
 // settles the actual amount and refunds the rest: two transactions, hence its higher fee.
@@ -476,6 +477,11 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
     { discoverable: offerEmptyProbe, log, publicClient });
   app.post(route, async (req, res) => {
     const started = Date.now();
+    // Live streaming (agent-stream.mjs): the model's tokens go to the client as they arrive. Only a call that streams
+    // gets `live`; an upstream that answers whole (or a request without stream:true) takes the buffered path below.
+    const live = res.locals?.live ?? null;
+    // The failure reply: JSON while nothing has been sent; once the head is out, the stream just ends (not charged).
+    const refuse = (status, body) => live?.started ? live.abort(status) : res.status(status).json(body);
     try {
       const paid = paidTerms(req);
       if (!paid) throw new Error("payment on an unknown network");
@@ -488,8 +494,19 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       const inWindow = work => win ? withinWindow(win, work) : work();
       // With a window, each model call's outcome is recorded here, after the gate has decided.
       const observeWindow = (model, outcome) => { if (win) try { app.locals?.healthStats?.recordModel(model, outcome); } catch {} };
-      const attempt = input => upstream(config, input.messages, input.maxTokens, fetchImpl, input.model,
-        { ...(input.request ? { agent: input.request } : {}), minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: !win,  // Solana exact: no reasoning retry inside the window
+      const modelHeaders = () => {
+        if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
+        if (req.askInput.fallbackFrom) {
+          res.set("X-SingIt-Fallback-From", req.askInput.fallbackFrom);
+          res.set("X-SingIt-Fallback-Policy", req.askInput.fallbackPolicy ?? "request");
+        }
+        if (req.askInput.autoTier) res.set("X-SingIt-Tier", req.askInput.autoTier);
+      };
+      if (live) { live.onCommit = modelHeaders; live.arm(); }
+      const chatBase = () => ({ id: `singit-ask-${started}`, object: "chat.completion.chunk", created: Math.floor(started / 1000),
+        model: req.askInput.fallbackFrom ? req.askInput.model : "singit-ask" });
+      const attempt = (input, liveAttempt) => upstream(config, input.messages, input.maxTokens, fetchImpl, input.model,
+        { ...(input.request ? { agent: input.request } : {}), ...(liveAttempt ? { live: liveAttempt } : {}), minDiscount: minDiscountFor(input, paid.terms), params: input.info?.params, info: input.info, retryOnReasoning: !win,  // Solana exact: no reasoning retry inside the window
           ...(win ? { windowObserved: true } : {}),
           timeoutMs: Math.max(1, deadline - Date.now()), deadline });
       const reservedFailure = () => Object.assign(new Error("model reserved for fallback"),
@@ -501,14 +518,16 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       // One gated model call, its outcome observed once the gate has decided.
       // `reserve` cuts a slow first model before the Solana exact cutoff so one fallback can still finish.
       const ask = async (input, force, { reserve = false } = {}) => {
+        const liveAttempt = live && !force ? Object.assign(live.attempt(), { base: chatBase }) : null;
         try {
           const result = await inWindow(remainingMs => {
-            const work = () => force ? Promise.reject(forcedFailure()) : attempt(input);
+            const work = () => force ? Promise.reject(forcedFailure()) : attempt(input, liveAttempt);
             const reserveMs = reserve ? fallbackReserveMs(config, remainingMs, true) : 0;
             if (!(reserveMs > 0 && remainingMs > reserveMs)) return work();
             let timer;
             const cut = new Promise((_, reject) => {
-              timer = win.clock.setTimeout(() => reject(reservedFailure()), remainingMs - reserveMs);
+              // The reserve only protects a fallback; once the client has data there is no fallback to protect.
+              timer = win.clock.setTimeout(() => { if (!live?.dataSent) reject(reservedFailure()); }, remainingMs - reserveMs);
             });
             cut.catch(() => {});
             return Promise.race([work(), cut]).finally(() => win.clock.clearTimeout(timer));
@@ -516,6 +535,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
           observeWindow(input.model, { ok: true, retried: result.retried });
           return result;
         } catch (error) {
+          liveAttempt?.abandon();
           // The model was asked and did not answer in time: one failure. Spent before the model: no model outcome.
           if (error instanceof WindowExceeded) {
             if (error.phase === "timeout" || error.phase === "late") observeWindow(input.model, { ok: false, code: error.code, status: 503 });
@@ -568,14 +588,7 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         }
         answer = await ask(req.askInput);
       }
-      if (req.askInput.autoTier || req.askInput.fallbackFrom) res.set("X-SingIt-Model", req.askInput.model);
-      if (req.askInput.fallbackFrom) {
-        res.set("X-SingIt-Fallback-From", req.askInput.fallbackFrom);
-        res.set("X-SingIt-Fallback-Policy", req.askInput.fallbackPolicy ?? "request");
-      }
-      if (req.askInput.autoTier) {
-        res.set("X-SingIt-Tier", req.askInput.autoTier);
-      }
+      if (!live?.started) modelHeaders();
       // A reasoning retry is delivered at no more than the signed ceiling; the service absorbs its exposure.
       const usage = billWithDiagnostics(answer.usage, paid.terms, exact, route, req.askInput.model, log, answer.retried);
       // `exact` already settled the full ceiling it was offered: there is no lower amount to settle to, and no
@@ -589,6 +602,14 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
       log(`singit-ask: answer ready in ${Date.now() - started} ms, isDefault=${req.askInput.modelOmitted == null ? null : req.askInput.modelOmitted === true}, settling ${billing.totalAtomic} micro-USDC`);
       res.locals.singitReceipt = { ref: `singit-ask-${started}`, chargedAtomic: billing.totalAtomic };
       res.locals.singitAnswered = Date.now() - started;
+      if (answer.streamed) {
+        // The tokens are out. The billing event and [DONE] wait for settlement; end() hands the middleware its one
+        // settle (the override above) and releases them afterwards.
+        const base = chatBase();
+        live.final = terminalSSE("/v1/chat/completions", { base, billing: publicBilling(billing), includeUsage: live.includeUsage,
+          answer: { choices: [{ finish_reason: answer.finishReason }], usage: answer.usage } });
+        return res.end();
+      }
       res.json({ id: `singit-ask-${started}`, object: "chat.completion", created: Math.floor(started / 1000),
         model: req.askInput.fallbackFrom ? req.askInput.model : "singit-ask",
         ...(answer.retried ? { retried: true } : {}),
@@ -599,21 +620,22 @@ export function addUsageRoute(app, route, makeOffers, details, { facilitatorClie
         // Not the seller's failure to count against it: the payment's window ran out. Nothing settles.
         log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (solana exact window, ${error.phase})`);
         try { app.locals?.healthStats?.recordWindowRefusal?.(error.phase); } catch {}
-        return res.status(503).json({ error: { type: "upstream_error", code: "no_billable_answer",
+        return refuse(503, { error: { type: "upstream_error", code: "no_billable_answer",
           message: "The answer did not complete in time for this Solana exact payment. You were not charged; try again." },
-          ...windowRefusal(res, `req_${randomUUID()}`) });
+          ...(live?.started ? {} : windowRefusal(res, `req_${randomUUID()}`)) });
       }
-      if (req.askInput?.request && error.status === 400) return res.status(400).json({ error: {
+      if (req.askInput?.request && error.status === 400) return refuse(400, { error: {
         type: "invalid_request_error", code: "upstream_rejected_request",
         message: "The seller rejected this request (tools, images or length). You were not charged." } });
-      if (!error.singitForced && !error.singitReserved) markUnservable(catalogue, req.askInput?.model, error, log);
+      if (!error.singitForced && !error.singitReserved && !live?.dataSent) markUnservable(catalogue, req.askInput?.model, error, log);
       // Not settled (status >= 400): on Base nothing moves, on Solana the escrowed ceiling is refunded in full.
       // Never 502: Cloudflare swaps an origin 502/504 for its own HTML page, and passes a 503 through.
       log(`singit-ask: ${route} ${req.askInput?.model} no billable answer after ${Date.now() - started} ms (${error.message})`);
       if (error.code === "max_tokens_spent_reasoning") {
-        return res.status(422).json({ error: { type: "invalid_request_error", code: "max_tokens_too_small",
+        return refuse(422, { error: { type: "invalid_request_error", code: "max_tokens_too_small",
           message: MAX_TOKENS_TOO_SMALL } });
       }
+      if (live?.started) return live.abort(503);
       res.set("Retry-After", "30").status(503).json({ error: { type: "upstream_error", code: "no_billable_answer",
         message: "No billable answer was produced. You were not charged; try again." } });
     }
