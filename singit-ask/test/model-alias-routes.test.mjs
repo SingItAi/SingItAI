@@ -34,8 +34,10 @@ import { MODEL_ALIAS_ROUTES, aliasPath, aliasDescription } from "../src/model-al
 import { readFileSync } from "node:fs";
 import { MODEL_ROUTES, routePath } from "../src/model-routes.mjs";
 test("wave config and strict discovery copy", () => {
-  assert.equal(MODEL_ALIAS_ROUTES.length, 33);
-  assert.equal(MODEL_ALIAS_ROUTES.filter(m => m.modality === "chat").length, 23);
+  assert.equal(MODEL_ALIAS_ROUTES.length, 32);
+  assert.equal(MODEL_ALIAS_ROUTES.filter(m => m.modality === "chat").length, 22);
+  // No trusted healthy seller (scripts/hidden-models.json): its alias must not be listed or quoted.
+  assert.ok(!MODEL_ALIAS_ROUTES.some(m => m.id === "minimax-m2.7-highspeed"));
   assert.equal(MODEL_ALIAS_ROUTES.filter(m => m.modality === "image").length, 10);
   for (const m of MODEL_ALIAS_ROUTES) {
     const d = aliasDescription(m);

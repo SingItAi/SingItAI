@@ -87,12 +87,6 @@
       "base_path": "/v1/chat/completions"
     },
     {
-      "id": "minimax-m2.7-highspeed",
-      "modality": "chat",
-      "suffix": "chat",
-      "base_path": "/v1/chat/completions"
-    },
-    {
       "id": "e2ee-glm-5.1",
       "modality": "chat",
       "suffix": "chat",
@@ -205,6 +199,10 @@
     {
       "id": "gemini-3.1-pro",
       "reason": "Offline hidden-models.json: seller cannot route this model (2026-11-01)."
+    },
+    {
+      "id": "minimax-m2.7-highspeed",
+      "reason": "Offline hidden-models.json: no trusted, healthy Surplus seller (2026-11-10); 503 no_healthy_sellers on every quote."
     }
   ]
 }
