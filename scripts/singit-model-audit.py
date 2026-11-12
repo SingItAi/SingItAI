@@ -38,6 +38,16 @@ _spec.loader.exec_module(health)
 DEFAULTS = ('https://ask.singitai.app', 'https://api.cdp.coinbase.com', 'https://api.surplusintelligence.ai')
 # 64 paid routes need ~175 unpaid quotes, plus /health, ~20 order books and the free canaries.
 REQUEST_CAP = 400
+
+
+def upstream_aliases(path=Path(__file__).resolve().parents[1] / 'singit-ask' / 'src' / 'model-aliases.mjs'):
+    """Public id -> Surplus id, read from singit-ask's MODEL_ALIASES (nemotron-3.5-lightning is listed under
+    another id on Surplus, so its order book must be read under that id). Missing file: no aliases."""
+    try:
+        block = re.search(r'MODEL_ALIASES\s*=\s*Object\.freeze\(\{(.*?)\}\)', path.read_text(), re.S)
+    except OSError:
+        return {}
+    return dict(re.findall(r'"([a-z0-9._-]+)"\s*:\s*"([a-z0-9._-]+)"', block.group(1))) if block else {}
 # Monitor-side or listing-side findings: a warning ("SingIt price alert"), never "SingIt is down".
 # A single route/model failure is a "SingIt model alert"; "SingIt is down" is kept for unreadable
 # OpenAPI/model inventory or an unreadable /health.
@@ -126,7 +136,7 @@ def exceeds(actual, listed):
 
 
 def audit(*, fetch=fetch, ask_url=DEFAULTS[0], bazaar_url=DEFAULTS[1], surplus_url=DEFAULTS[2],
-          no_free_canary=False, sleep=time.sleep, now=time.time, blocked=None):
+          no_free_canary=False, sleep=time.sleep, now=time.time, blocked=None, aliases=None):
     bases = [u.rstrip('/') for u in (ask_url, bazaar_url, surplus_url)]
     for base in bases:
         p = urllib.parse.urlsplit(base)
@@ -258,7 +268,8 @@ def audit(*, fetch=fetch, ask_url=DEFAULTS[0], bazaar_url=DEFAULTS[1], surplus_u
         add('health', 'health', ['error'], signal='health outcome window')
     for model in sorted(pinned):
         try:
-            book = get(surplus, '/api/markets/' + urllib.parse.quote(model, safe=''))
+            upstream = (upstream_aliases() if aliases is None else aliases).get(model, model)
+            book = get(surplus, '/api/markets/' + urllib.parse.quote(upstream, safe=''))
             missing = health.cheapest_trusted_share(book, blocked or set()) is None
             add('book', model, ['no_sellers'] if missing else [], signal='order book only; paid liveness unverified')
         except Exception:
