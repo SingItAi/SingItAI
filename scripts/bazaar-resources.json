@@ -49,7 +49,6 @@
     { "url": "https://ask.singitai.app/v1/models/qwen3.5-plus/chat", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/models/e2ee-gpt-oss-20b-p/chat", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/models/qwen3-5-9b/chat", "method": "POST" },
-    { "url": "https://ask.singitai.app/v1/models/minimax-m2.7-highspeed/chat", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/models/e2ee-glm-5.1/chat", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/models/qwen3.5-flash/chat", "method": "POST" },
     { "url": "https://ask.singitai.app/v1/models/gpt-6-astra/chat", "method": "POST" },
