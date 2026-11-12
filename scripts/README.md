@@ -322,7 +322,7 @@ Audit row mapping:
 | OpenAPI ceiling (section 2) | `above_openapi_max` (warning) | 2000-token quote exceeds advertised maximum |
 | Request budget | `request_cap` (warning) | The audit's own 400-request cap was reached; the routes it could not quote are skipped, not broken |
 | Listed/pinned model (section 3) | `seller down`, `degraded` (warning), `reasoning422` (warning) | Primary signal: `/health` outcome window; `seller down` is status down/unavailable or zero successes with at least two failures; retry delay surfaced |
-| Pinned model book (section 3) | `no_sellers`, `error` | No trusted, healthy, available, unblocked offer, or unreadable book |
+| Pinned model book (section 3) | `no_sellers`, `error` | No trusted, healthy, available, unblocked offer, or unreadable book; read under the Surplus id from `singit-ask/src/model-aliases.mjs` |
 | Free model | `free_canary_failed` | Response must be 200, nonempty text, billing.free true and remainingToday present |
 
 Rows marked warning go out as "SingIt price alert". One route or model failing (no valid 402,

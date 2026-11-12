@@ -191,6 +191,16 @@ class AuditTests(unittest.TestCase):
         self.fake.window = {}
         self.assertTrue(self.row('health')['skipped'])
 
+    def test_order_book_is_read_under_the_surplus_id(self):
+        # nemotron-3.5-lightning is sold on Surplus as nvidia-nemotron-3-5-lightning-30b-a3b; reading the public id
+        # found an empty book and reported no_sellers although three trusted sellers were live.
+        self.assertEqual(audit.upstream_aliases().get('nemotron-3.5-lightning'), 'nvidia-nemotron-3-5-lightning-30b-a3b')
+        self.fake.paths = {'/v1/chat/nemotron-3.5-lightning': operation(model='nemotron-3.5-lightning')}
+        self.run_audit(aliases={'nemotron-3.5-lightning': 'nvidia-nemotron-3-5-lightning-30b-a3b'})
+        books = [u for _, u, _, _ in self.fake.calls if '/api/markets/' in u]
+        self.assertEqual([u.rsplit('/', 1)[1] for u in books], ['nvidia-nemotron-3-5-lightning-30b-a3b'])
+        self.assertEqual(audit.upstream_aliases(Path(self.tmp.name) / 'missing.mjs'), {})
+
     def test_no_sellers_uses_shared_filter(self):
         self.fake.book = {'offers': [{'trusted': False, 'healthy': True, 'available': True, 'discount_pct': 90}]}
         self.assertEqual(self.row('book')['issues'], ['no_sellers'])
