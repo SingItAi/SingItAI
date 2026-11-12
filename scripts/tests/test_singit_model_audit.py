@@ -125,7 +125,7 @@ class AuditTests(unittest.TestCase):
         self.fake.probe = (402, challenge('2000'), {})
         self.fake.bazaar = (200, {}, {'resources': [{'resource': audit.DEFAULTS[0] + '/v1/chat/sample',
                             'accepts': [{'network': 'base', 'scheme': 'upto', 'amount': '500'}]}]})
-        self.assertIn('price_mismatch', self.row()['issues'])
+        self.assertEqual(self.row()['issues'], ['listing_drift'])
         self.fake.paths['/v1/chat/sample'] = operation(maximum='0.0009')
         self.assertIn('above_openapi_max', self.row()['issues'])
 
@@ -173,12 +173,19 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(self.main()[0], 0)
 
     def test_health_outcomes_and_reasoning_counter(self):
-        for status in ('down', 'degraded', 'unavailable'):
+        for status in ('down', 'unavailable'):
             self.fake.window = {'status': status, 'reasoning422': 2, 'retryAfterSeconds': 90}
             row = self.row('health')
             self.assertEqual(row['issues'], ['seller down', 'reasoning422'])
+            self.assertEqual(row['severity'], 'model')
             self.assertEqual(row['retryAfterSeconds'], 90)
             self.assertEqual(row['signal'], 'health outcome window')
+        # Degraded (some failures, still selling) and a reasoning-422 counter are warnings, not "down".
+        self.fake.window = {'status': 'degraded', 'successes': 10, 'failures': 4, 'reasoning422': 2}
+        row = self.row('health')
+        self.assertEqual((row['issues'], row['severity']), (['degraded', 'reasoning422'], 'warning'))
+        self.fake.window = {'status': 'degraded', 'successes': 0, 'failures': 3}
+        self.assertEqual(self.row('health')['issues'], ['seller down'])
         self.fake.window = {'status': 'insufficient_data', 'successes': 0, 'failures': 2}
         self.assertIn('seller down', self.row('health')['issues'])
         self.fake.window = {}
@@ -248,6 +255,59 @@ class AuditTests(unittest.TestCase):
         self.assertTrue(any(not r['ok'] for r in report['results']))
         self.assertTrue(pauses)
         self.assertEqual(set(pauses), {0.2})
+
+    def test_request_budget_never_starves_health_books_and_free_canaries(self):
+        # 12 Nov 2026: 64 routes used the whole 150-request budget, so /health, every order book and every free
+        # canary were reported broken ("SingIt is down") although nothing was down.
+        self.fake.paths = {f'/v1/chat/m{n}': operation(model=f'm{n}') for n in range(200)}
+        report = self.run_audit()
+        self.assertLessEqual(len(self.fake.calls), audit.REQUEST_CAP)
+        rows = report['results']
+        for kind in ('health', 'book', 'free'):
+            checked = [r for r in rows if r['kind'] == kind and not r['skipped']]
+            self.assertTrue(checked, kind)
+            self.assertTrue(all(r['ok'] for r in checked), kind)
+        starved = [r for r in rows if r['kind'] == 'quote' and r.get('status') == 'request_budget']
+        self.assertTrue(starved)
+        self.assertTrue(all(r['skipped'] and r['ok'] for r in starved))
+        budget = next(r for r in rows if r['kind'] == 'budget')
+        self.assertEqual((budget['issues'], budget['severity'], budget['skipped_routes']),
+                         (['request_cap'], 'warning', len(starved)))
+        self.assertFalse(any('request_cap' in json.dumps(r.get('errors', {})) for r in rows))
+
+    def test_live_inventory_fits_the_request_budget(self):
+        # 64 paid routes (about half chat, 4 requests each) plus 20 books, /health and 6 free canaries.
+        self.fake.paths = {**{f'/v1/chat/m{n}': operation(model=f'm{n}') for n in range(32)},
+                           **{f'/v1/fixed/{n}': operation() for n in range(32)}}
+        rows = self.run_audit()['results']
+        self.assertFalse([r for r in rows if r['kind'] == 'budget' or r.get('status') == 'request_budget'])
+
+    def test_drift_and_budget_are_price_alerts_not_down(self):
+        self.fake.bazaar = (200, {}, {'resources': [{'resource': audit.DEFAULTS[0] + '/v1/chat/sample',
+                            'accepts': [{'network': 'base', 'scheme': 'upto', 'amount': '500'}]}]})
+        code, _ = self.main()
+        self.assertEqual(code, 2)
+        self.assertEqual(len(self.sent), 1)
+        self.assertTrue(self.sent[0].startswith('SingIt price alert:'), self.sent[0])
+        self.assertIn('quote:/v1/chat/sample', self.sent[0])
+        self.assertNotIn('SingIt health alert', self.sent[0])
+
+    def test_broken_route_is_a_model_alert_and_unreadable_service_is_down(self):
+        self.fake.quote = (500, {}, {})
+        self.main()
+        self.assertTrue(self.sent[0].startswith('SingIt model alert:'), self.sent[0])
+        self.assertIn('quote:/v1/chat/sample', self.sent[0])
+        self.state.unlink()
+        self.sent.clear()
+        original = self.fake
+        self.fake = lambda m, u, h, b: (500, {}, None) if u.endswith('/health') else original(m, u, h, b)
+        self.main()
+        self.assertTrue(self.sent[0].startswith('SingIt health alert:\n- health:health'), self.sent[0])
+        self.state.unlink()
+        self.sent.clear()
+        self.fake = lambda m, u, h, b: (500, {}, None) if u.endswith('/openapi.json') else original(m, u, h, b)
+        self.main()
+        self.assertTrue(self.sent[0].startswith('SingIt health alert:\n- inventory:inventory'), self.sent[0])
 
     def test_report_and_history_do_not_contain_sensitive_data(self):
         _, output = self.main()

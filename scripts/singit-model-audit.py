@@ -36,7 +36,12 @@ _spec = importlib.util.spec_from_file_location('model_audit_health', Path(__file
 health = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(health)
 DEFAULTS = ('https://ask.singitai.app', 'https://api.cdp.coinbase.com', 'https://api.surplusintelligence.ai')
-REQUEST_CAP = 150
+# 64 paid routes need ~175 unpaid quotes, plus /health, ~20 order books and the free canaries.
+REQUEST_CAP = 400
+# Monitor-side or listing-side findings: a warning ("SingIt price alert"), never "SingIt is down".
+# A single route/model failure is a "SingIt model alert"; "SingIt is down" is kept for unreadable
+# OpenAPI/model inventory or an unreadable /health.
+WARNING_ISSUES = frozenset({'price_mismatch', 'listing_drift', 'above_openapi_max', 'request_cap', 'degraded', 'reasoning422'})
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -134,6 +139,11 @@ def audit(*, fetch=fetch, ask_url=DEFAULTS[0], bazaar_url=DEFAULTS[1], surplus_u
     def add(kind, target, issues=(), *, skipped=False, **details):
         row = dict(name=f'{kind}:{safe(target)}', route=safe(target), kind=kind,
                    ok=not issues, once=True, skipped=skipped, issues=list(issues), **details)
+        if issues and set(issues) <= WARNING_ISSUES:
+            row['severity'] = 'warning'
+        elif issues and kind in ('quote', 'health', 'book', 'free') and target != 'health':
+            # One route or model failing while the service answers: "SingIt model alert", not "SingIt is down".
+            row['severity'] = 'model'
         row['message'] = json.dumps({k: v for k, v in row.items() if k not in ('name', 'message', 'once')}, sort_keys=True)
         results.append(row)
         return row
@@ -199,7 +209,7 @@ def audit(*, fetch=fetch, ask_url=DEFAULTS[0], bazaar_url=DEFAULTS[1], surplus_u
     except Exception:
         listings = {}
         add('bazaar', 'discovery', skipped=True)
-    pinned = set()
+    pinned, routes = set(), []
     for path, operations in spec['paths'].items():
         for method, op in operations.items():
             if not isinstance(op, dict) or 'x-payment-info' not in op:
@@ -227,50 +237,18 @@ def audit(*, fetch=fetch, ask_url=DEFAULTS[0], bazaar_url=DEFAULTS[1], surplus_u
             if chat and isinstance(model, str) and not model.startswith('free/'):
                 pinned.add(model)
                 ids.add(model)
-            variants = [('example', example)]
-            if chat:
-                field = 'max_output_tokens' if path == '/v1/responses' else 'max_tokens'
-                variants += [(str(n), {**example, field: n}) for n in (400, 2000)]
-            probe, quotes, issues, statuses, errors = {}, {}, [], {}, {}
-            try:
-                status, headers, _ = request('GET', ask, path)
-                probe = offers(status, headers)
-            except Exception as exc:
-                issues.append('error')
-                errors['probe'] = error_code(exc)
-            for label, body in variants:
-                try:
-                    status, headers, data = request('POST', ask, path, body)
-                    statuses[label] = status
-                    code = (data.get('error') or {}) if isinstance(data, dict) else {}
-                    code = code.get('code') if isinstance(code, dict) else code
-                    if status == 503 and code == 'no_healthy_sellers':
-                        issues.append('seller down')
-                    quotes[label] = offers(status, headers)
-                except Exception as exc:
-                    issues.append('error')
-                    errors[label] = error_code(exc)
-            # A listing prices the route's own example; a larger max_tokens is quoted higher on purpose, so only the
-            # example-sized quotes must stay within the probe/listing (2000 is checked against the OpenAPI maximum).
-            if any(exceeds(quotes.get(k, {}), probe) for k in ('example', '400')) or exceeds(quotes.get('example', {}), listings.get(path, {})):
-                issues.append('price_mismatch')
-            maximum = op['x-payment-info'].get('price', {}).get('max')
-            try:
-                ceiling = Decimal(str(maximum)) * 1_000_000
-                if any(Decimal(v) > ceiling for v in quotes.get('2000', {}).values()):
-                    issues.append('above_openapi_max')
-            except (InvalidOperation, TypeError):
-                issues.append('error')
-            add('quote', path, sorted(set(issues)), status=statuses, errors=errors, quotes=quotes, probe=probe,
-                listed=listings.get(path, {}), openapi_max=str(maximum) if re.fullmatch(r'\d+(\.\d+)?', str(maximum)) else None)
+            routes.append((path, op, example, chat))
     try:
         health_data = get(ask, '/health')
         windows = health_data.get('models', {})
         for model in sorted(ids - free):
             window = windows.get(model, {})
             issues = []
-            if window.get('status') in ('down', 'unavailable', 'degraded') or (window.get('successes') == 0 and count_value(window.get('failures')) >= 2):
+            if window.get('status') in ('down', 'unavailable') or (window.get('successes') == 0 and count_value(window.get('failures')) >= 2):
                 issues.append('seller down')
+            elif window.get('status') == 'degraded':
+                # Still selling, with some failed calls in the 24 h window: a warning, not "down".
+                issues.append('degraded')
             if count_value(window.get('reasoning422')):
                 issues.append('reasoning422')
             add('health', model, issues, skipped=not window, signal='health outcome window',
@@ -303,6 +281,55 @@ def audit(*, fetch=fetch, ask_url=DEFAULTS[0], bazaar_url=DEFAULTS[1], surplus_u
             add('free', model, [] if ok or skipped else ['free_canary_failed'], skipped=skipped, status=status)
         except Exception:
             add('free', model, ['free_canary_failed'])
+    starved = 0
+    for path, op, example, chat in routes:
+        variants = [('example', example)]
+        if chat:
+            field = 'max_output_tokens' if path == '/v1/responses' else 'max_tokens'
+            variants += [(str(n), {**example, field: n}) for n in (400, 2000)]
+        probe, quotes, issues, statuses, errors = {}, {}, [], {}, {}
+        if count + 1 + len(variants) > REQUEST_CAP:
+            # Out of the monitor's own request budget: not evidence about the route, so no alert and no recovery.
+            add('quote', path, skipped=True, status='request_budget')
+            starved += 1
+            continue
+        try:
+            status, headers, _ = request('GET', ask, path)
+            probe = offers(status, headers)
+        except Exception as exc:
+            issues.append('error')
+            errors['probe'] = error_code(exc)
+        for label, body in variants:
+            try:
+                status, headers, data = request('POST', ask, path, body)
+                statuses[label] = status
+                code = (data.get('error') or {}) if isinstance(data, dict) else {}
+                code = code.get('code') if isinstance(code, dict) else code
+                if status == 503 and code == 'no_healthy_sellers':
+                    issues.append('seller down')
+                quotes[label] = offers(status, headers)
+            except Exception as exc:
+                issues.append('error')
+                errors[label] = error_code(exc)
+        # A listing prices the route's own example; a larger max_tokens is quoted higher on purpose, so only the
+        # example-sized quotes must stay within the probe/listing (2000 is checked against the OpenAPI maximum).
+        # Against our own GET probe this is a real listing bug; against Bazaar it is CDP's indexed snapshot of a
+        # dynamic (order-book) price, so it drifts on its own and is reported as listing_drift.
+        if any(exceeds(quotes.get(k, {}), probe) for k in ('example', '400')):
+            issues.append('price_mismatch')
+        if exceeds(quotes.get('example', {}), listings.get(path, {})):
+            issues.append('listing_drift')
+        maximum = op['x-payment-info'].get('price', {}).get('max')
+        try:
+            ceiling = Decimal(str(maximum)) * 1_000_000
+            if any(Decimal(v) > ceiling for v in quotes.get('2000', {}).values()):
+                issues.append('above_openapi_max')
+        except (InvalidOperation, TypeError):
+            issues.append('error')
+        add('quote', path, sorted(set(issues)), status=statuses, errors=errors, quotes=quotes, probe=probe,
+            listed=listings.get(path, {}), openapi_max=str(maximum) if re.fullmatch(r'\d+(\.\d+)?', str(maximum)) else None)
+    if starved:
+        add('budget', 'request_cap', ['request_cap'], skipped_routes=starved, limit=REQUEST_CAP)
     return dict(at=now(), results=results, requests=count, inventory_unreadable=False)
 
 
