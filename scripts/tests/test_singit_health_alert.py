@@ -220,6 +220,29 @@ class TriageAndDedupeTests(unittest.TestCase):
         self.assertIn("Recovered:", text)
         self.assertIn("app: ok", text)
 
+    def test_warning_severity_rows_are_price_alerts_not_down(self):
+        drift = {"name": "quote:/v1/chat/x", "ok": False, "severity": "warning", "message": "listing_drift"}
+        down = {"name": "quote:/v1/chat/y", "ok": False, "message": "not_402"}
+        self.assertEqual(self.ha.format_message([drift], []).splitlines()[0], "SingIt price alert:")
+        both = self.ha.format_message([drift, down], []).splitlines()
+        self.assertEqual(both, ["SingIt health alert:", "- quote:/v1/chat/y: not_402",
+                                "SingIt price alert:", "- quote:/v1/chat/x: listing_drift"])
+        model = {"name": "health:m", "ok": False, "severity": "model", "message": "seller down"}
+        self.assertEqual(self.ha.format_message([drift, model], []).splitlines(),
+                         ["SingIt model alert:", "- health:m: seller down",
+                          "SingIt price alert:", "- quote:/v1/chat/x: listing_drift"])
+
+    def test_ntfy_titles_per_alert_tier(self):
+        for text, title in (("SingIt health alert:\n- ask: HTTP 502", "SingIt is down"),
+                            ("SingIt model alert:\n- health:m: seller down", "SingIt model alert"),
+                            ("SingIt price alert:\n- quote:x: listing_drift", "SingIt price alert"),
+                            ("Recovered:\n- x: ok", "SingIt recovered")):
+            with patch.object(self.ha.urllib.request, "urlopen") as urlopen:
+                urlopen.return_value.__enter__.return_value.read.return_value = b""
+                self.ha.send_ntfy("https://ntfy.test/t", text, token=None, timeout=5)
+            headers = {k.lower(): v for k, v in urlopen.call_args.args[0].header_items()}
+            self.assertEqual(headers["title"], title)
+
     def test_format_message_is_empty_when_nothing_changed(self):
         self.assertEqual(self.ha.format_message([], []), "")
 

@@ -317,11 +317,19 @@ Audit row mapping:
 | Check | Issues | Evidence |
 |---|---|---|
 | Paid operation (audit section 2) | `error`, `seller down` | Non-402, invalid/missing challenge, missing Base offer; seller-specific 503 |
-| Listing price (section 2) | `price_mismatch` | Example exceeds Bazaar, or any quote exceeds the route's GET discovery probe |
-| OpenAPI ceiling (section 2) | `above_openapi_max` | 2000-token quote exceeds advertised maximum |
-| Listed/pinned model (section 3) | `seller down`, `reasoning422` | Primary signal: `/health` outcome window, including zero successes with at least two failures; retry delay surfaced |
+| Listing price (section 2) | `price_mismatch` (warning) | An example-sized quote exceeds the route's own GET discovery probe |
+| Bazaar snapshot (section 2) | `listing_drift` (warning) | Example quote exceeds CDP Bazaar's indexed price; dynamic order-book prices drift on their own |
+| OpenAPI ceiling (section 2) | `above_openapi_max` (warning) | 2000-token quote exceeds advertised maximum |
+| Request budget | `request_cap` (warning) | The audit's own 400-request cap was reached; the routes it could not quote are skipped, not broken |
+| Listed/pinned model (section 3) | `seller down`, `degraded` (warning), `reasoning422` (warning) | Primary signal: `/health` outcome window; `seller down` is status down/unavailable or zero successes with at least two failures; retry delay surfaced |
 | Pinned model book (section 3) | `no_sellers`, `error` | No trusted, healthy, available, unblocked offer, or unreadable book |
 | Free model | `free_canary_failed` | Response must be 200, nonempty text, billing.free true and remainingToday present |
+
+Rows marked warning go out as "SingIt price alert". One route or model failing (no valid 402,
+a seller outage, a `/health` window down, an order book or a free canary) is a "SingIt model
+alert". Only unreadable OpenAPI/model inventory or an unreadable `/health` produce "SingIt health
+alert" and the ntfy title "SingIt is down". `/health`, order books and free
+canaries run before the quote sweep, so the request budget can never starve them.
 
 An unreadable Bazaar is skipped. Missing model outcome windows are unverified,
 not proof of recovery. Older servers may omit reasoning422; this audit cannot

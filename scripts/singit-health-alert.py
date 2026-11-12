@@ -306,11 +306,20 @@ def triage(results: list[dict[str, Any]], state: dict[str, Any], *, now: float,
 
 def format_message(to_alert: list[dict[str, Any]], recovered: list[dict[str, Any]]) -> str:
     lines = []
-    health = [r for r in to_alert if r.get("kind") != "price"]
-    price = [r for r in to_alert if r.get("kind") == "price"]
+    # A warning (listing drift, price above a ceiling, the audit's own request budget) is a price alert, and one
+    # model or route failing while the service answers is a model alert: only the service itself failing
+    # produces "SingIt health alert:" and the ntfy title "SingIt is down".
+    def warning(r: dict[str, Any]) -> bool:
+        return r.get("kind") == "price" or r.get("severity") == "warning"
+    model = [r for r in to_alert if not warning(r) and r.get("severity") == "model"]
+    health = [r for r in to_alert if not warning(r) and r.get("severity") != "model"]
+    price = [r for r in to_alert if warning(r)]
     if health:
         lines.append("SingIt health alert:")
         lines += [f"- {r['name']}: {r['message']}" for r in health]
+    if model:
+        lines.append("SingIt model alert:")
+        lines += [f"- {r['name']}: {r['message']}" for r in model]
     if price:
         lines.append("SingIt price alert:")
         lines += [f"- {r['name']}: {r['message']}" for r in price]
@@ -339,10 +348,12 @@ def send_webhook(url: str, text: str, *, timeout: float) -> None:
 def send_ntfy(url: str, text: str, *, token: str | None, timeout: float) -> None:
     """One push through ntfy: plain text to the topic URL. A message that is only recoveries is sent at
     normal priority; anything still failing is high priority, so the phone makes a sound."""
-    alerting = text.startswith("SingIt health alert:") or text.startswith("SingIt price alert:")
-    down = text.startswith("SingIt health alert:")
+    kinds = {"SingIt health alert:": "SingIt is down", "SingIt model alert:": "SingIt model alert",
+             "SingIt price alert:": "SingIt price alert"}
+    title = next((t for prefix, t in kinds.items() if text.startswith(prefix)), None)
+    alerting = title is not None
     headers = {"Content-Type": "text/plain; charset=utf-8", "User-Agent": USER_AGENT,
-               "Title": ("SingIt is down" if down else "SingIt price alert") if alerting else "SingIt recovered",
+               "Title": title or "SingIt recovered",
                "Priority": "high" if alerting else "default",
                "Tags": "warning" if alerting else "white_check_mark"}
     if token:
