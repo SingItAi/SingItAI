@@ -64,8 +64,9 @@ function signature(required, network, scheme) {
     payload: network === SOLANA ? { transaction: 'signed' } : { signature: '0xsigned' }, extensions: required.extensions })).toString('base64') };
 }
 // Solana exact windows run on a scripted clock; the reserve timer is the shorter one.
-function reserveClock() {
-  const t0 = Date.now(), timers = new Map();
+// `age`: how long ago, in real ms, the payment was verified, so less of the 30 s window is left.
+function reserveClock(age = 0) {
+  const t0 = Date.now() - age, timers = new Map();
   let id = 0;
   return { timers, now: () => t0, setTimeout: (fn, ms) => { timers.set(++id, { fn, ms }); return id; }, clearTimeout: n => timers.delete(n),
     fireAll() { for (const [n, t] of [...timers]) { timers.delete(n); t.fn(); } },
@@ -308,3 +309,163 @@ test('/v1/messages solana exact stream: a model with data on the wire is not cut
   assert.equal(ctx.sent.length, 1, 'no alternate once the client has data');
   assert.equal(ctx.settled.length, 1);
 });
+
+// ---- which model is the alternate -----------------------------------------------------------------------------------
+const FAMILY_MODELS = [
+  price('gemma-4-31b', 0.2e-6, 0.8e-6),
+  price('gemma-4-e2b', 0.05e-6, 0.1e-6),
+  price('cheap-a', 0.1e-6, 0.3e-6),
+  price('cheap-b', 0.15e-6, 0.5e-6),
+];
+const only = (...ids) => makeCatalogue(FAMILY_MODELS.filter(m => ids.includes(m.id)));
+const failing = (path, ...bad) => (model, _n, options) => bad.includes(model) ? refused(path) : answered(path, false);
+
+for (const path of ['/v1/messages', '/v1/responses']) for (const network of [BASE, SOLANA]) {
+  test(`${path} ${network}: an overloaded model's cheaper sibling is skipped for another family, one settlement within the signed amount`, async t => {
+    const ctx = await paid(t, path, { model: 'gemma-4-31b', network, clock: network === SOLANA ? reserveClock() : undefined,
+      catalogue: only('gemma-4-31b', 'gemma-4-e2b', 'cheap-a'), script: failing(path, 'gemma-4-31b', 'gemma-4-e2b') });
+    const res = await ctx.send();
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.deepEqual(ctx.models(), ['gemma-4-31b', 'cheap-a']);
+    assert.equal(ctx.settled.length, 1);
+    assert.ok(ctx.settled[0] <= ctx.signed + 100n);
+  });
+}
+
+test('a sibling of the same family is the alternate when it is the only one that fits, or the others are out', async t => {
+  const path = '/v1/messages';
+  // The other family is dearer than the quote.
+  let ctx = await paid(t, path, { model: 'gemma-4-31b', catalogue: makeCatalogue([FAMILY_MODELS[0], FAMILY_MODELS[1], MODELS.find(m => m.id === 'dear-model')]),
+    script: failing(path, 'gemma-4-31b') });
+  assert.equal((await ctx.send()).status, 200);
+  assert.deepEqual(ctx.models(), ['gemma-4-31b', 'gemma-4-e2b']);
+  // Unservable, unhealthy and excluded on the format.
+  const down = new Set(['cheap-a']);
+  const catalogue = { ...only('gemma-4-31b', 'gemma-4-e2b', 'cheap-a', 'cheap-b'), isUnservable: id => down.has(id),
+    canAnswer: async id => id !== 'cheap-b' };
+  ctx = await paid(t, path, { model: 'gemma-4-31b', catalogue, script: failing(path, 'gemma-4-31b') });
+  assert.equal((await ctx.send()).status, 200);
+  assert.deepEqual(ctx.models(), ['gemma-4-31b', 'gemma-4-e2b'], 'neither the unservable nor the unhealthy model, though both are another family');
+  ctx = await paid(t, path, { model: 'glm-4.7-flash', catalogue: makeCatalogue(MODELS.filter(m => ['glm-4.7-flash', 'deepseek-v4-flash', 'gemma-4-e2b'].includes(m.id)).concat(FAMILY_MODELS[1])),
+    script: failing(path, 'glm-4.7-flash') });
+  assert.equal((await ctx.send()).status, 200);
+  assert.deepEqual(ctx.models(), ['glm-4.7-flash', 'gemma-4-e2b'], 'deepseek is never an alternate on Messages');
+});
+
+test('solana: a model that turned unservable while the first one was asked is not picked, though it is cheaper', async t => {
+  const path = '/v1/messages', down = new Set();
+  const catalogue = { ...only('gemma-4-31b', 'cheap-a', 'cheap-b'), isUnservable: id => down.has(id) };
+  const ctx = await paid(t, path, { model: 'gemma-4-31b', network: SOLANA, clock: reserveClock(), catalogue,
+    script: model => { if (model === 'gemma-4-31b') { down.add('cheap-a'); return refused(path); } return answered(path, false); } });
+  assert.equal((await ctx.send()).status, 200);
+  assert.deepEqual(ctx.models(), ['gemma-4-31b', 'cheap-b']);
+});
+
+for (const path of ['/v1/messages', '/v1/responses']) {
+  test(`${path}: of two other-family candidates the one with the better recent record is the alternate; cold start keeps catalog order`, async t => {
+    const cold = await paid(t, path, { model: 'gemma-4-31b', catalogue: only('gemma-4-31b', 'cheap-a', 'cheap-b'), script: failing(path, 'gemma-4-31b') });
+    assert.equal((await cold.send()).status, 200);
+    assert.deepEqual(cold.models(), ['gemma-4-31b', 'cheap-a']);
+    // In-memory record: cheap-a just failed twice, cheap-b answered.
+    const ctx = await paid(t, path, { model: 'gemma-4-31b', catalogue: only('gemma-4-31b', 'cheap-a', 'cheap-b'), script: failing(path, 'gemma-4-31b') });
+    ctx.app.locals.formatTracker.record('cheap-a', BASE, false, 300);
+    ctx.app.locals.formatTracker.record('cheap-a', BASE, false, 300);
+    ctx.app.locals.formatTracker.record('cheap-b', BASE, true, 900);
+    assert.equal((await ctx.send()).status, 200);
+    assert.deepEqual(ctx.models(), ['gemma-4-31b', 'cheap-b']);
+    assert.equal(ctx.settled.length, 1);
+    // HealthStats with enough samples decides first.
+    const stats = await paid(t, path, { model: 'gemma-4-31b', catalogue: only('gemma-4-31b', 'cheap-a', 'cheap-b'), script: failing(path, 'gemma-4-31b') });
+    stats.app.locals.healthStats = { paidModelSuccess: id => ({ 'cheap-a': { attempts: 40, answered: 10 }, 'cheap-b': { attempts: 40, answered: 38 } })[id] };
+    assert.equal((await stats.send()).status, 200);
+    assert.deepEqual(stats.models(), ['gemma-4-31b', 'cheap-b']);
+  });
+}
+
+// ---- Solana exact: only an alternate that can finish in what is left --------------------------------------------------
+const SLOW = 25_000;   // a recorded p50 above what is left of the window once the first model used its slice
+for (const path of ['/v1/messages', '/v1/responses']) {
+  test(`${path} solana exact: an alternate with a recorded p50 above the time left is skipped, a faster or unmeasured one answers`, async t => {
+    const clock = reserveClock(10_000);   // verified 10 s ago: about 20 s of the window left
+    const ctx = await paid(t, path, { model: 'glm-4.7-flash', network: SOLANA, clock, catalogue: makeCatalogue(MODELS.filter(m => ['glm-4.7-flash', 'cheap-a', 'cheap-b'].includes(m.id))),
+      script: (model, _n, options) => model === 'glm-4.7-flash' ? hangs(options) : answered(path, false) });
+    ctx.app.locals.formatTracker.record('cheap-a', SOLANA, true, SLOW);
+    const pending = ctx.send();
+    await waitFor(() => clock.timers.size >= 2);
+    clock.fireReserve();
+    const res = await pending;
+    assert.equal(res.status, 200, await res.clone().text());
+    assert.deepEqual(ctx.models(), ['glm-4.7-flash', 'cheap-b'], 'cheap-a is known to need 25 s; cheap-b has no sample and stays eligible');
+    assert.equal(ctx.settled.length, 1);
+    assert.ok(ctx.settled[0] <= ctx.signed + 100n);
+  });
+
+  test(`${path} solana exact: known-too-slow alternates are never started: no reserve cut for them, 503 no_billable_answer, nothing settled`, async t => {
+    const catalogue = makeCatalogue(MODELS.filter(m => ['glm-4.7-flash', 'cheap-a'].includes(m.id)));
+    // The first model hangs: with no viable alternate it keeps the whole window.
+    let clock = reserveClock(10_000);
+    let ctx = await paid(t, path, { network: SOLANA, clock, catalogue, script: (_m, _n, options) => hangs(options) });
+    ctx.app.locals.formatTracker.record('cheap-a', SOLANA, false, 30_000);   // one timeout is enough
+    let pending = ctx.send();
+    await waitFor(() => clock.timers.size >= 1);
+    assert.equal(clock.timers.size, 1, 'only the window cutoff: the first model is not cut for an alternate that would not be started');
+    clock.fireAll();
+    let res = await pending;
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('x-singit-error'), 'no_billable_answer');
+    assert.deepEqual(ctx.models(), ['glm-4.7-flash']);
+    assert.equal(ctx.settled.length, 0);
+    // The first model fails fast and the only alternate is too slow for what is left.
+    clock = reserveClock(10_000);
+    ctx = await paid(t, path, { network: SOLANA, clock, catalogue, script: () => refused(path) });
+    ctx.app.locals.formatTracker.record('cheap-a', SOLANA, true, SLOW);
+    res = await ctx.send();
+    assert.equal(res.status, 503);
+    assert.equal((await res.json()).error.code, 'no_billable_answer');
+    assert.deepEqual(ctx.models(), ['glm-4.7-flash']);
+    assert.equal(ctx.settled.length, 0);
+  });
+}
+
+// ---- a failure after payment is a clear error, never an empty 200 ----------------------------------------------------------
+const KEEPALIVE = { ...CONFIG, streamKeepaliveMs: 40 };
+const slowly = (ms, make) => new Promise(resolve => setTimeout(() => resolve(make()), ms));
+for (const path of ['/v1/messages', '/v1/responses']) {
+  for (const [first, label] of [[spentReasoning, 'spends its budget thinking'], [path => refused(path), 'is overloaded']]) {
+    test(`${path} stream: a model that ${label} after a keepalive, then a failed fallback, ends with an error event and no charge`, async t => {
+      const ctx = await paid(t, path, { model: 'qwen3-5-9b', tokens: 150, stream: true, config: KEEPALIVE,
+        script: model => model === 'qwen3-5-9b' ? slowly(150, () => first(path)) : refused(path) });
+      const res = await ctx.send();
+      const text = await res.text();
+      assert.match(text, /: keepalive/, 'headers left on a keepalive');
+      assert.match(text, /event: error/);
+      assert.match(text, /"code":"no_billable_answer"/);
+      assert.ok(!/max_tokens_too_small/.test(text), 'a failed fallback is an availability failure, not a small budget');
+      assert.ok(ctx.models().includes('cheap-a'), 'the fallback did run');
+      assert.ok(ctx.settled.every(amount => amount === 0n), `nothing charged: ${ctx.settled}`);
+    });
+  }
+
+  test(`${path} stream: reasoning spent after a keepalive with no non-reasoning alternate carries max_tokens_too_small and next_action`, async t => {
+    const catalogue = makeCatalogue(MODELS.filter(m => ['qwen3-5-9b', 'think-cheap', 'dear-model'].includes(m.id)));
+    const ctx = await paid(t, path, { model: 'qwen3-5-9b', tokens: 150, stream: true, config: KEEPALIVE, catalogue,
+      script: () => slowly(150, () => spentReasoning(path)) });
+    const text = await (await ctx.send()).text();
+    assert.match(text, /event: error/);
+    const frame = JSON.parse(/event: error\ndata: (.*)\n/.exec(text)[1]);
+    assert.equal(frame.error.code, 'max_tokens_too_small');
+    assert.equal(frame.error.next_action.type, 'raise_max_tokens');
+    assert.ok(ctx.settled.every(amount => amount === 0n));
+  });
+
+  test(`${path}: reasoning spent, then a failed fallback is a JSON 503 no_billable_answer, nothing settled`, async t => {
+    const ctx = await paid(t, path, { model: 'qwen3-5-9b', tokens: 150, script: model => model === 'qwen3-5-9b' ? spentReasoning(path) : refused(path) });
+    const res = await ctx.send();
+    assert.equal(res.status, 503);
+    const text = await res.text();
+    assert.ok(text.length > 0);
+    assert.equal(JSON.parse(text).error.code, 'no_billable_answer');
+    assert.ok(ctx.models().includes('cheap-a'));
+    assert.ok(ctx.settled.every(amount => amount === 0n));
+  });
+}
